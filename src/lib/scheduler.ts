@@ -239,7 +239,10 @@ export function generateMonthSchedule(
           }
         }
 
-        if (dayLoad[type] + 1 <= cap) {
+        // cap >= 1 → that many tasks/day. cap < 1 → multi-day task,
+        // ceiling is 1 task starting per day.
+        const dailyCeiling = cap >= 1 ? Math.floor(cap) : 1;
+        if (dayLoad[type] + 1 <= dailyCeiling) {
           return new Date(d);
         }
       }
@@ -286,14 +289,31 @@ export function generateMonthSchedule(
     date: Date,
     idx: number,
   ) {
-    const iso = toISODate(date);
-    loadFor(assigneeId, iso)[type]++;
+    // Duration follows the member's per-type capacity:
+    //   cap >= 1  → one task / day  → duration = 1
+    //   cap < 1   → one task spans ceil(1/cap) days
+    // (e.g. capPlan=0.5 → 2-day plan; capReelAi=0.5 → 2-day reel_ai.)
+    const member = team.find((m) => m.id === assigneeId);
+    const cap = member ? getCap(member, type) : 1;
+    const duration = cap > 0 && cap < 1 ? Math.ceil(1 / cap) : 1;
+    const endDate = addWorkingDaysInclusive(date, duration);
+
+    // Mark load on every working day this task occupies so the next
+    // findSlot sees the tail days as busy.
+    let cur = new Date(date);
+    while (cur.getTime() <= endDate.getTime()) {
+      if (!isWeekend(cur)) {
+        loadFor(assigneeId, toISODate(cur))[type]++;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+
     generated.push({
       title: `${TYPE_LABELS[type]} ${idx} — ${co.name}`,
       type,
       startDate: date,
-      endDate: date,
-      duration: 1,
+      endDate,
+      duration,
       assigneeId,
       companyId: co.id,
       isAuto: true,

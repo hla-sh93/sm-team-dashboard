@@ -93,14 +93,14 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  let anchor = pending[0].startDate;
-  if (freedSlotHint && freedSlotHint.getTime() < anchor.getTime()) {
-    anchor = freedSlotHint;
-  }
-  if (anchor.getTime() < today.getTime()) anchor = today;
-  anchor = nextWorkday(new Date(anchor));
+  // Urgent tasks are user-pinned: they keep their startDate and act as fixed
+  // obstacles that everything else has to flow around. Non-urgent tasks pack
+  // densely starting from `anchor`.
+  const urgent = pending.filter((t) => t.priority === "urgent");
+  const nonUrgent = pending.filter((t) => t.priority !== "urgent");
 
-  // Per-day load tracker for THIS repack pass.
+  // Per-day load tracker for THIS repack pass. Pre-loaded with urgent slots
+  // so non-urgent tasks see them as occupied.
   const loadByISO: Map<string, DayLoad> = new Map();
   function loadFor(iso: string): DayLoad {
     let l = loadByISO.get(iso);
@@ -110,6 +110,29 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
     }
     return l;
   }
+  for (const u of urgent) {
+    let cur = new Date(u.startDate);
+    while (cur.getTime() <= u.endDate.getTime()) {
+      if (!isWeekend(cur)) {
+        loadFor(toISODate(cur))[u.type as TaskType]++;
+      }
+      cur = shiftDays(cur, 1);
+    }
+  }
+
+  // Anchor for non-urgent: earliest of (freedSlotHint, earliest non-urgent
+  // pending start), capped at today.
+  let anchor: Date;
+  if (nonUrgent.length > 0) {
+    anchor = nonUrgent[0].startDate;
+    if (freedSlotHint && freedSlotHint.getTime() < anchor.getTime()) {
+      anchor = freedSlotHint;
+    }
+  } else {
+    anchor = today;
+  }
+  if (anchor.getTime() < today.getTime()) anchor = today;
+  anchor = nextWorkday(new Date(anchor));
 
   function findSlot(type: TaskType, fromDate: Date): Date {
     let d = nextWorkday(new Date(fromDate));
@@ -129,7 +152,12 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
 
         if (!blocked) {
           if (cap > 0) {
-            if (load[type] + 1 <= cap) return new Date(d);
+            // cap >= 1 → that many tasks per day.
+            // cap < 1  → one task spans ceil(1/cap) days, so the per-day
+            //            ceiling is 1 (load[type] must be 0 to start a new
+            //            multi-day task on this day).
+            const dailyCeiling = cap >= 1 ? Math.floor(cap) : 1;
+            if (load[type] + 1 <= dailyCeiling) return new Date(d);
           } else {
             // No cap defined for this type → treat as 1 task/day.
             const total =
@@ -147,7 +175,9 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
     return new Date(fromDate);
   }
 
-  for (const t of pending) {
+  // Pack non-urgent tasks. Already-loaded urgent slots act as obstacles
+  // that findSlot will skip past via mutex/cap checks.
+  for (const t of nonUrgent) {
     const type = t.type as TaskType;
     const start = findSlot(type, anchor);
     const end = addWorkingDaysInclusive(start, t.duration);
@@ -397,20 +427,21 @@ export async function autoScheduleMonth(year: number, month: number) {
     const team = await prisma.teamMember.findMany({ where: { active: true } });
     const companies = await prisma.company.findMany();
 
-    // Existing tasks that count toward capacity:
-    // - all manual tasks
-    // - auto tasks from OTHER months
-    // - completed auto tasks for THIS month (preserved above)
+    // Existing PENDING tasks that consume per-day capacity going forward:
+    //   - manual tasks still in flight
+    //   - auto tasks from OTHER months that overlap into this one
+    //
+    // Completed tasks (ready / published) are intentionally excluded — they
+    // are historical records, not future obligations. Their day's capacity
+    // is freed for new work, even though the row stays in the DB for the
+    // monthly report. Their quota is still subtracted via preservedCounts
+    // below so we don't regenerate work the team has already finished.
     const existing = await prisma.task.findMany({
       where: {
+        status: { notIn: ["ready", "published"] },
         OR: [
           { isAuto: false },
           { isAuto: true, targetMonth: { not: targetMonth } },
-          {
-            isAuto: true,
-            targetMonth,
-            status: { in: ["ready", "published"] },
-          },
         ],
       },
       select: { assigneeId: true, startDate: true, endDate: true, type: true },

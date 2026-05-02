@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npx vitest *)",
       "Bash(npx tsc *)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(cat prisma/.env)",
+      "Bash(cat .env)",
+      "Bash(ls prisma/migrations)",
+      "Bash(npx prisma *)",
+      "Bash(cp /tmp/inspect.mjs ./inspect.mjs)",
+      "Bash(node inspect.mjs)"
     ]
   }
 }

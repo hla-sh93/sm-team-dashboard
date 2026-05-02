@@ -200,7 +200,9 @@ export function detectConflicts(team: TeamMember[], tasks: Task[]): Conflict[] {
       };
       for (const t of dayTasks) counts[t.type as TaskType].push(t);
 
-      // Check capacity
+      // Check capacity. cap < 1 means "this task type spans multiple days"
+      // (e.g. capPlan=0.5 → one plan takes 2 days), so the per-day ceiling
+      // is 1 task, not `cap`. Use ceil(cap) with a minimum of 1.
       for (const type of [
         "post",
         "reel_ai",
@@ -208,13 +210,15 @@ export function detectConflicts(team: TeamMember[], tasks: Task[]): Conflict[] {
         "plan",
       ] as TaskType[]) {
         const cap = getCap(member, type);
-        if (cap > 0 && counts[type].length > cap) {
+        if (cap <= 0) continue;
+        const dailyCeiling = Math.max(1, Math.ceil(cap));
+        if (counts[type].length > dailyCeiling) {
           conflicts.push({
             date,
             memberId,
             memberName: member.name,
             type: "over_capacity",
-            message: `${member.name} عنده ${counts[type].length} مهام من نوع "${type}" — الحد الأقصى ${cap}`,
+            message: `${member.name} عنده ${counts[type].length} مهام من نوع "${type}" — الحد الأقصى ${dailyCeiling}`,
             taskIds: counts[type].map((t) => t.id),
           });
         }
