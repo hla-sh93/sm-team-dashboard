@@ -1,0 +1,96 @@
+// Social Media Team Management — Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TEAM MEMBER
+// ============================================
+model TeamMember {
+  id              String   @id @default(cuid())
+  name            String
+  role            String   // 'lead' | 'writer' | 'designer' | 'photographer' | 'publisher'
+  capPost         Float    @default(0)
+  capReelAi       Float    @default(0)
+  capReelVideo    Float    @default(0)
+  capPlan         Float    @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  tasks           Task[]
+  asDesigner      Company[] @relation("CompanyDesigner")
+  asPhotographer  Company[] @relation("CompanyPhotographer")
+}
+
+// ============================================
+// COMPANY (CLIENT)
+// ============================================
+model Company {
+  id            String   @id @default(cuid())
+  name          String
+  color         String   @default("#d4af37")
+  priority      Int      @default(99)
+  posts         Int      @default(0)
+  reelAi        Int      @default(0)
+  reelVideo     Int      @default(0)
+  needsApproval Boolean  @default(false)
+  status        String   @default("active") // 'active' | 'paused' | 'archived'
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  designerId      String?
+  designer        TeamMember? @relation("CompanyDesigner", fields: [designerId], references: [id], onDelete: SetNull)
+  photographerId  String?
+  photographer    TeamMember? @relation("CompanyPhotographer", fields: [photographerId], references: [id], onDelete: SetNull)
+  tasks           Task[]
+}
+
+// ============================================
+// TASK
+// ============================================
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   // 'plan' | 'post' | 'reel_ai' | 'reel_video' | 'custom'
+  status      String   @default("in_progress") // 'in_progress' | 'review' | 'ready' | 'published'
+  priority    String   @default("normal") // 'urgent' | 'normal' | 'low'
+  startDate   DateTime
+  endDate     DateTime
+  duration    Float    @default(1) // working days
+  notes       String?
+  isAuto      Boolean  @default(false)
+  targetMonth String?  // 'YYYY-MM' for auto-generated
+  completedAt DateTime? // set when status transitions to ready/published
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  assigneeId  String
+  assignee    TeamMember @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  companyId   String?
+  company     Company?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([startDate])
+  @@index([assigneeId])
+  @@index([companyId])
+  @@index([status])
+  @@index([targetMonth])
+}
+
+// ============================================
+// SETTINGS (key-value store for app config)
+// ============================================
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

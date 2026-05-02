@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0f;
+  --bg-elev: #13131c;
+  --bg-elev-2: #1a1a26;
+  --bg-card: #111118;
+  --border: #2a2a3a;
+  --border-soft: #1f1f2e;
+  --fg: #f4f4f8;
+  --fg-dim: #9090a8;
+  --fg-muted: #5a5a70;
+  --accent: #d4af37;
+  --accent-dim: #a08828;
+  --success: #3fb27f;
+  --warning: #e5a04a;
+  --danger: #e0584a;
+  --info: #5a8fd4;
+}
+
+@layer base {
+  html {
+    direction: rtl;
+  }
+  body {
+    @apply bg-bg text-fg;
+    background-image:
+      radial-gradient(
+        ellipse 80% 60% at 50% -20%,
+        rgba(212, 175, 55, 0.08),
+        transparent
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 100% 100%,
+        rgba(90, 143, 212, 0.05),
+        transparent
+      );
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  * {
+    border-color: var(--border-soft);
+  }
+}
+
+select option,
+select optgroup {
+  background-color: var(--bg-elev);
+  color: var(--fg);
+}
+
+@layer components {
+  .display-font {
+    font-family: var(--font-reem), serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .card {
+    @apply bg-bg-card border border-border-soft rounded-[14px] p-6;
+  }
+  .input,
+  .select,
+  .textarea {
+    @apply bg-bg-elev border border-border rounded-lg px-3 py-2.5 text-fg w-full text-sm transition-colors;
+  }
+  .input:focus,
+  .select:focus,
+  .textarea:focus {
+    @apply outline-none border-accent;
+    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-bg-elev-2;
+    border-right: 3px solid currentColor;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-muted);
+}
