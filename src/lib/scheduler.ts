@@ -43,13 +43,18 @@ export type SchedulerResult = {
 };
 
 /**
- * Per-day load tracker: { memberId: { isoDate: { post, reel_ai, reel_video, plan } } }
+ * Per-day load tracker. `usage` is the total fraction of the day consumed by
+ * any combination of tasks; per-type counts are kept for designer mutual
+ * exclusion (post vs reel_ai cannot share a day).
  */
-type DailyLoad = Record<string, Record<string, Record<TaskType, number>>>;
+type DayLoad = Record<TaskType, number> & { usage: number };
+type DailyLoad = Record<string, Record<string, DayLoad>>;
 
-function makeLoad(): Record<TaskType, number> {
-  return { post: 0, reel_ai: 0, reel_video: 0, plan: 0, custom: 0 };
+function makeLoad(): DayLoad {
+  return { post: 0, reel_ai: 0, reel_video: 0, plan: 0, custom: 0, usage: 0 };
 }
+
+const DAY_FULL = 1.0 + 1e-9;
 
 function getCap(member: TeamMember, type: TaskType): number {
   switch (type) {
@@ -64,6 +69,18 @@ function getCap(member: TeamMember, type: TaskType): number {
     default:
       return 0;
   }
+}
+
+/** See tasks.ts taskUsagePerDay — same semantics. */
+function taskUsagePerDay(
+  member: TeamMember,
+  type: TaskType,
+  duration: number,
+): number {
+  if (duration > 1) return 1.0;
+  const cap = getCap(member, type);
+  if (cap > 0) return cap >= 1 ? 1 / cap : 1.0;
+  return Math.min(1.0, Math.max(0, duration));
 }
 
 /**
@@ -104,6 +121,7 @@ export function generateMonthSchedule(
     startDate: Date;
     endDate: Date;
     type: string;
+    duration?: number;
   }[] = [],
   preserved: PreservedCounts = {},
 ): SchedulerResult {
@@ -116,19 +134,28 @@ export function generateMonthSchedule(
   // ---- Setup load tracker ----
   const load: DailyLoad = {};
 
-  function loadFor(memberId: string, iso: string): Record<TaskType, number> {
+  function loadFor(memberId: string, iso: string): DayLoad {
     if (!load[memberId]) load[memberId] = {};
     if (!load[memberId][iso]) load[memberId][iso] = makeLoad();
     return load[memberId][iso];
   }
 
-  // Pre-populate load from existing manual tasks
+  // Pre-populate load from existing manual tasks. Their per-type count is
+  // tracked for mutex checks, and their day-usage fraction is tracked so
+  // total per-day capacity (across types) is respected during scheduling.
   for (const t of existingNonAutoTasks) {
+    const member = team.find((m) => m.id === t.assigneeId);
+    const duration = t.duration ?? 1;
+    const usage = member
+      ? taskUsagePerDay(member, t.type as TaskType, duration)
+      : 1.0;
     const cur = new Date(t.startDate);
     const end = new Date(t.endDate);
     while (cur <= end) {
       if (!isWeekend(cur)) {
-        loadFor(t.assigneeId, toISODate(cur))[t.type as TaskType]++;
+        const l = loadFor(t.assigneeId, toISODate(cur));
+        l[t.type as TaskType]++;
+        l.usage += usage;
       }
       cur.setDate(cur.getDate() + 1);
     }
@@ -189,10 +216,15 @@ export function generateMonthSchedule(
         notes: `كتابة الخطة الشهرية لشركة ${co.name}`,
       });
 
-      // Mark load
+      // Mark load (per-type count for mutex + total day usage for capacity)
+      const planUsage = taskUsagePerDay(writer, "plan", planDuration);
       const cur = new Date(start);
       while (cur <= end) {
-        if (!isWeekend(cur)) loadFor(writer.id, toISODate(cur))["plan"]++;
+        if (!isWeekend(cur)) {
+          const l = loadFor(writer.id, toISODate(cur));
+          l["plan"]++;
+          l.usage += planUsage;
+        }
         cur.setDate(cur.getDate() + 1);
       }
 
@@ -216,6 +248,8 @@ export function generateMonthSchedule(
     if (!member) return null;
     const cap = getCap(member, type);
     if (cap <= 0) return null;
+    const duration = cap < 1 ? Math.ceil(1 / cap) : 1;
+    const usagePerDay = taskUsagePerDay(member, type, duration);
 
     let d = new Date(fromDate);
     if (isWeekend(d)) {
@@ -224,8 +258,7 @@ export function generateMonthSchedule(
 
     while (d <= lateLimit) {
       if (!isWeekend(d)) {
-        const iso = toISODate(d);
-        const dayLoad = loadFor(memberId, iso);
+        const dayLoad = loadFor(memberId, toISODate(d));
 
         // Designer mutual exclusion: post day OR reel_ai day, not both
         if (member.role === "designer") {
@@ -239,10 +272,10 @@ export function generateMonthSchedule(
           }
         }
 
-        // cap >= 1 → that many tasks/day. cap < 1 → multi-day task,
-        // ceiling is 1 task starting per day.
-        const dailyCeiling = cap >= 1 ? Math.floor(cap) : 1;
-        if (dayLoad[type] + 1 <= dailyCeiling) {
+        // Total day usage (across all types) must fit. This stops a member's
+        // post-cap from being filled while custom/manual work still sits on
+        // the same day.
+        if (dayLoad.usage + usagePerDay <= DAY_FULL) {
           return new Date(d);
         }
       }
@@ -297,13 +330,18 @@ export function generateMonthSchedule(
     const cap = member ? getCap(member, type) : 1;
     const duration = cap > 0 && cap < 1 ? Math.ceil(1 / cap) : 1;
     const endDate = addWorkingDaysInclusive(date, duration);
+    const usagePerDay = member
+      ? taskUsagePerDay(member, type, duration)
+      : 1.0;
 
     // Mark load on every working day this task occupies so the next
     // findSlot sees the tail days as busy.
     let cur = new Date(date);
     while (cur.getTime() <= endDate.getTime()) {
       if (!isWeekend(cur)) {
-        loadFor(assigneeId, toISODate(cur))[type]++;
+        const l = loadFor(assigneeId, toISODate(cur));
+        l[type]++;
+        l.usage += usagePerDay;
       }
       cur.setDate(cur.getDate() + 1);
     }

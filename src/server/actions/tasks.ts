@@ -16,10 +16,16 @@ import { revalidatePath } from "next/cache";
 
 const PRIORITY_RANK: Record<string, number> = { urgent: 0, normal: 1, low: 2 };
 
-type DayLoad = Record<TaskType, number>;
+// A working day is one full unit. Each task on that day consumes a fraction
+// (`usage`) — when the running total reaches 1.0, the day is full and any
+// further task must move forward, regardless of type. Per-type counts are
+// kept alongside for designer post/reel_ai mutual-exclusion checks.
+type DayLoad = Record<TaskType, number> & { usage: number };
 function emptyDayLoad(): DayLoad {
-  return { post: 0, reel_ai: 0, reel_video: 0, plan: 0, custom: 0 };
+  return { post: 0, reel_ai: 0, reel_video: 0, plan: 0, custom: 0, usage: 0 };
 }
+
+const DAY_FULL = 1.0 + 1e-9;
 
 function getCap(
   member: {
@@ -42,6 +48,31 @@ function getCap(
     default:
       return 0;
   }
+}
+
+/**
+ * Fraction of a working day that one task of this type consumes.
+ *
+ *   cap >= 1  → 1/cap (e.g. capPost=4 → 0.25/day per post; 4 posts = 1 day)
+ *   0 < cap<1 → 1.0   (multi-day task, fully occupies each day it spans)
+ *   cap = 0   → user-supplied `duration` (capped at 1.0 per day for
+ *               multi-day work). A 0.5-day custom task uses half a day,
+ *               so two of them fit on the same day.
+ */
+function taskUsagePerDay(
+  member: {
+    capPost: number;
+    capReelAi: number;
+    capReelVideo: number;
+    capPlan: number;
+  },
+  type: TaskType,
+  duration: number,
+): number {
+  if (duration > 1) return 1.0;
+  const cap = getCap(member, type);
+  if (cap > 0) return cap >= 1 ? 1 / cap : 1.0;
+  return Math.min(1.0, Math.max(0, duration));
 }
 
 /**
@@ -102,6 +133,10 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
   // Per-day load tracker for THIS repack pass. Pre-loaded with urgent slots
   // so non-urgent tasks see them as occupied.
   const loadByISO: Map<string, DayLoad> = new Map();
+  // Days reserved entirely for urgent work. Non-urgent tasks of ANY type
+  // must skip these days — capacity is per-type, but a person's day is a
+  // shared resource: dropping an urgent task on a day claims the whole day.
+  const urgentDays = new Set<string>();
   function loadFor(iso: string): DayLoad {
     let l = loadByISO.get(iso);
     if (!l) {
@@ -111,10 +146,15 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
     return l;
   }
   for (const u of urgent) {
+    const usage = taskUsagePerDay(member, u.type as TaskType, u.duration);
     let cur = new Date(u.startDate);
     while (cur.getTime() <= u.endDate.getTime()) {
       if (!isWeekend(cur)) {
-        loadFor(toISODate(cur))[u.type as TaskType]++;
+        const iso = toISODate(cur);
+        const l = loadFor(iso);
+        l[u.type as TaskType]++;
+        l.usage += usage;
+        urgentDays.add(iso);
       }
       cur = shiftDays(cur, 1);
     }
@@ -134,14 +174,22 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
   if (anchor.getTime() < today.getTime()) anchor = today;
   anchor = nextWorkday(new Date(anchor));
 
-  function findSlot(type: TaskType, fromDate: Date): Date {
+  function findSlot(type: TaskType, duration: number, fromDate: Date): Date {
     let d = nextWorkday(new Date(fromDate));
+    const usagePerDay = taskUsagePerDay(member, type, duration);
     // Hard ceiling to avoid runaway loops on misconfigured caps.
     for (let safety = 0; safety < 365; safety++) {
       if (!isWeekend(d)) {
         const iso = toISODate(d);
+
+        // An urgent task claims the whole day. Non-urgent placement
+        // (this loop is only ever called for non-urgent tasks) must skip.
+        if (urgentDays.has(iso)) {
+          d = shiftDays(d, 1);
+          continue;
+        }
+
         const load = loadFor(iso);
-        const cap = getCap(member, type);
 
         // Designer mutual exclusion: a day is either posts OR reel_ai.
         let blocked = false;
@@ -150,24 +198,11 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
           if (type === "reel_ai" && load.post > 0) blocked = true;
         }
 
-        if (!blocked) {
-          if (cap > 0) {
-            // cap >= 1 → that many tasks per day.
-            // cap < 1  → one task spans ceil(1/cap) days, so the per-day
-            //            ceiling is 1 (load[type] must be 0 to start a new
-            //            multi-day task on this day).
-            const dailyCeiling = cap >= 1 ? Math.floor(cap) : 1;
-            if (load[type] + 1 <= dailyCeiling) return new Date(d);
-          } else {
-            // No cap defined for this type → treat as 1 task/day.
-            const total =
-              load.post +
-              load.reel_ai +
-              load.reel_video +
-              load.plan +
-              load.custom;
-            if (total === 0) return new Date(d);
-          }
+        // Capacity check is on TOTAL day usage across all types, not per-type
+        // count. This is what stops 4 posts (full capPost=4 day) from sharing
+        // a day with a custom task — together they'd exceed 1.0.
+        if (!blocked && load.usage + usagePerDay <= DAY_FULL) {
+          return new Date(d);
         }
       }
       d = shiftDays(d, 1);
@@ -179,14 +214,17 @@ async function repackAssignee(assigneeId: string, freedSlotHint?: Date) {
   // that findSlot will skip past via mutex/cap checks.
   for (const t of nonUrgent) {
     const type = t.type as TaskType;
-    const start = findSlot(type, anchor);
+    const start = findSlot(type, t.duration, anchor);
     const end = addWorkingDaysInclusive(start, t.duration);
+    const usage = taskUsagePerDay(member, type, t.duration);
 
     // Mark load for every working day this task spans.
     let cur = new Date(start);
     while (cur.getTime() <= end.getTime()) {
       if (!isWeekend(cur)) {
-        loadFor(toISODate(cur))[type]++;
+        const l = loadFor(toISODate(cur));
+        l[type]++;
+        l.usage += usage;
       }
       cur = shiftDays(cur, 1);
     }
@@ -383,6 +421,9 @@ async function shiftTasksAfterUrgent(urgentTask: {
       assigneeId: urgentTask.assigneeId,
       id: { not: urgentTask.id },
       status: { in: ["in_progress", "review"] },
+      // Other urgent tasks are also user-pinned — they coexist on the same
+      // day rather than getting shoved aside.
+      priority: { notIn: ["urgent"] },
       startDate: { lte: urgentTask.endDate },
       endDate: { gte: urgentTask.startDate },
     },
@@ -444,7 +485,13 @@ export async function autoScheduleMonth(year: number, month: number) {
           { isAuto: true, targetMonth: { not: targetMonth } },
         ],
       },
-      select: { assigneeId: true, startDate: true, endDate: true, type: true },
+      select: {
+        assigneeId: true,
+        startDate: true,
+        endDate: true,
+        type: true,
+        duration: true,
+      },
     });
 
     // Per-company counts of preserved completed tasks for THIS month.

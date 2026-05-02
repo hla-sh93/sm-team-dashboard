@@ -614,6 +614,222 @@ describe('STATUS change — algorithm response', () => {
     expect(toISODate(pending[1].startDate)).toBe('2026-05-05');
   });
 
+  it("urgent CUSTOM tasks claim the whole day — Hala's posts get pushed past them", async () => {
+    // Mirrors the user's scenario: Hala already has post-work scheduled, then
+    // gets two urgent custom tasks for tomorrow. The custom days must be
+    // exclusively reserved for the urgent work; her existing posts shift
+    // forward to AFTER those days.
+    const team = await setupTeam();
+
+    // Hala has 6 normal post tasks (capPost=3 → 2 days of work).
+    for (let i = 0; i < 6; i++) {
+      const r = await createTask({
+        title: `جدارات ${i + 1}`, type: 'post',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-04', duration: 1,
+        assigneeId: team.hla,
+      });
+      if (!r.ok) throw new Error('create failed');
+    }
+
+    // Two urgent custom tasks pinned to Sunday May 3.
+    const u1 = await createTask({
+      title: 'تصميم بوستات مدارس', type: 'custom',
+      status: 'in_progress', priority: 'urgent',
+      startDate: '2026-05-03', duration: 1,
+      assigneeId: team.hla,
+    });
+    const u2 = await createTask({
+      title: 'تحديث بروفايل الشركاء', type: 'custom',
+      status: 'in_progress', priority: 'urgent',
+      startDate: '2026-05-03', duration: 1,
+      assigneeId: team.hla,
+    });
+    if (!u1.ok || !u2.ok) throw new Error('urgent create failed');
+
+    // Both urgent tasks pinned at May 3.
+    const stored1 = await mockPrisma.task.findUnique({ where: { id: u1.data.id } });
+    const stored2 = await mockPrisma.task.findUnique({ where: { id: u2.data.id } });
+    expect(toISODate(stored1!.startDate)).toBe('2026-05-03');
+    expect(toISODate(stored2!.startDate)).toBe('2026-05-03');
+
+    // No NORMAL post sits on May 3 (the urgent day is reserved).
+    const allHala = await mockPrisma.task.findMany({ where: { assigneeId: team.hla } });
+    const may3Normals = allHala.filter(
+      (t) => t.priority === 'normal' && toISODate(t.startDate) === '2026-05-03',
+    );
+    expect(may3Normals.length).toBe(0);
+  });
+
+  it('upgrading an existing task to urgent: other tasks on the same day shift away', async () => {
+    const team = await setupTeam();
+
+    // Hala has 3 jadarat posts (cap=3) → all on Sat May 2.
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await createTask({
+        title: `جدارات ${i + 1}`, type: 'post',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-02', duration: 1,
+        assigneeId: team.hla,
+      });
+      if (!r.ok) throw new Error('create failed');
+      ids.push(r.data.id);
+    }
+
+    // Add an urgent custom task pinned to May 2 (same day).
+    const ur = await createTask({
+      title: 'مهمة طارئة', type: 'custom',
+      status: 'in_progress', priority: 'urgent',
+      startDate: '2026-05-02', duration: 1,
+      assigneeId: team.hla,
+    });
+    if (!ur.ok) throw new Error('urgent create failed');
+
+    const allHala = await mockPrisma.task.findMany({ where: { assigneeId: team.hla } });
+    const may2Tasks = allHala.filter((t) => toISODate(t.startDate) === '2026-05-02');
+    // Only the urgent task remains on May 2.
+    expect(may2Tasks.length).toBe(1);
+    expect(may2Tasks[0].id).toBe(ur.data.id);
+
+    // The 3 normal posts moved to a later workday.
+    for (const id of ids) {
+      const stored = await mockPrisma.task.findUnique({ where: { id } });
+      expect(toISODate(stored!.startDate)).not.toBe('2026-05-02');
+    }
+  });
+
+  it('two urgent tasks on consecutive days: posts skip BOTH days', async () => {
+    const team = await setupTeam();
+
+    // Hala has 9 post tasks (cap=3 → 3 days of work).
+    for (let i = 0; i < 9; i++) {
+      const r = await createTask({
+        title: `p${i + 1}`, type: 'post',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-02', duration: 1,
+        assigneeId: team.hla,
+      });
+      if (!r.ok) throw new Error('create failed');
+    }
+
+    // Two urgent customs on consecutive days (Mon May 4, Tue May 5).
+    await createTask({
+      title: 'urgent A', type: 'custom',
+      status: 'in_progress', priority: 'urgent',
+      startDate: '2026-05-04', duration: 1,
+      assigneeId: team.hla,
+    });
+    await createTask({
+      title: 'urgent B', type: 'custom',
+      status: 'in_progress', priority: 'urgent',
+      startDate: '2026-05-05', duration: 1,
+      assigneeId: team.hla,
+    });
+
+    const all = await mockPrisma.task.findMany({ where: { assigneeId: team.hla } });
+    const normalDates = all
+      .filter((t) => t.priority === 'normal')
+      .map((t) => toISODate(t.startDate));
+
+    // No normal post sits on May 4 or May 5.
+    expect(normalDates).not.toContain('2026-05-04');
+    expect(normalDates).not.toContain('2026-05-05');
+  });
+
+  it("Hala's day stays under capacity: 4 posts + 1 custom can't share — custom moves out", async () => {
+    // Mirrors the user's reported bug: Hala's capPost=4 means 4 posts already
+    // saturate her day. Adding a custom (no cap → 1 full day) on top must
+    // push the custom forward, not stack it.
+    const team = await setupTeam();
+
+    // 4 jadarat posts on Sat May 2 (cap=3 in our test setup → adjust to capPost=4 manually).
+    // Use Hala (capPost=3) and 3 posts to saturate, then try a custom.
+    for (let i = 0; i < 3; i++) {
+      const r = await createTask({
+        title: `جدارات ${i + 1}`, type: 'post',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-02', duration: 1,
+        assigneeId: team.hla,
+      });
+      if (!r.ok) throw new Error('create failed');
+    }
+
+    // Add a custom task pinned to May 2 — it should NOT actually land on May 2.
+    const cust = await createTask({
+      title: 'مهمة داخلية', type: 'custom',
+      status: 'in_progress', priority: 'normal',
+      startDate: '2026-05-02', duration: 1,
+      assigneeId: team.hla,
+    });
+    if (!cust.ok) throw new Error('custom create failed');
+
+    const allHala = await mockPrisma.task.findMany({ where: { assigneeId: team.hla } });
+    const may2 = allHala.filter((t) => toISODate(t.startDate) === '2026-05-02');
+
+    // Either the 3 posts OR the custom occupies May 2, never both at full capacity.
+    const may2HasPosts = may2.some((t) => t.type === 'post');
+    const may2HasCustom = may2.some((t) => t.type === 'custom');
+    expect(may2HasPosts && may2HasCustom).toBe(false);
+  });
+
+  it('two half-day customs (duration=0.5) fit on the same day; a third moves out', async () => {
+    const team = await setupTeam();
+
+    // Three half-day custom tasks pinned to the same day. Only two should
+    // actually land there (0.5 + 0.5 = 1.0 day full); the third moves out.
+    for (let i = 0; i < 3; i++) {
+      const r = await createTask({
+        title: `half ${i + 1}`, type: 'custom',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-04', duration: 0.5,
+        assigneeId: team.hla,
+      });
+      if (!r.ok) throw new Error('create failed');
+    }
+
+    const allHala = await mockPrisma.task.findMany({ where: { assigneeId: team.hla } });
+    const may4 = allHala.filter((t) => toISODate(t.startDate) === '2026-05-04');
+
+    expect(may4.length).toBe(2);
+    expect(allHala.length).toBe(3);
+  });
+
+  it('member with capPost=4 + 1 custom: regen pushes custom past the 4-post day', async () => {
+    // The user's seed: hla capPost=4. Verify the day-usage rule explicitly
+    // for that capacity.
+    const hlaResult = await createMember({
+      name: 'Test Lead',
+      role: 'lead',
+      capPost: 4, capReelAi: 0, capReelVideo: 0, capPlan: 0,
+      active: true,
+    });
+    if (!hlaResult.ok) throw new Error('member create failed');
+    const lead = hlaResult.data.id;
+
+    // 4 posts on Sat May 2 saturate her day exactly.
+    for (let i = 0; i < 4; i++) {
+      const r = await createTask({
+        title: `p ${i + 1}`, type: 'post',
+        status: 'in_progress', priority: 'normal',
+        startDate: '2026-05-02', duration: 1,
+        assigneeId: lead,
+      });
+      if (!r.ok) throw new Error('create failed');
+    }
+
+    const cust = await createTask({
+      title: 'custom', type: 'custom',
+      status: 'in_progress', priority: 'normal',
+      startDate: '2026-05-02', duration: 1,
+      assigneeId: lead,
+    });
+    if (!cust.ok) throw new Error('custom create failed');
+
+    const stored = await mockPrisma.task.findUnique({ where: { id: cust.data.id } });
+    expect(toISODate(stored!.startDate)).not.toBe('2026-05-02');
+  });
+
   it('rejects an invalid status string', async () => {
     const team = await setupTeam();
     const r = await createTask({
