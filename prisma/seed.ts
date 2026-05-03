@@ -66,6 +66,13 @@ async function main() {
     },
   });
 
+  // Publishing-day weekday convention: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  // (matches JS getDay()). Stored as JSON-encoded strings on the Company row.
+  const SAT_MON_WED = JSON.stringify([6, 1, 3]);
+  const SUN_TUE_THU = JSON.stringify([0, 2, 4]);
+  const SAT_WED = JSON.stringify([6, 3]);
+  const MON_ONLY = JSON.stringify([1]);
+
   // ===== COMPANIES =====
   const companies = [
     {
@@ -76,6 +83,9 @@ async function main() {
       reelAi: 4,
       reelVideo: 0,
       needsApproval: false,
+      publishDaysPost: SAT_MON_WED,
+      publishDaysReel: null,
+      publishDaysVideo: null,
     },
     {
       name: 'باسيفيك',
@@ -85,6 +95,9 @@ async function main() {
       reelAi: 1,
       reelVideo: 0,
       needsApproval: true,
+      publishDaysPost: SAT_WED,
+      publishDaysReel: MON_ONLY,
+      publishDaysVideo: null,
     },
     {
       name: 'غلامور',
@@ -94,6 +107,9 @@ async function main() {
       reelAi: 1,
       reelVideo: 0,
       needsApproval: true,
+      publishDaysPost: SAT_WED,
+      publishDaysReel: MON_ONLY,
+      publishDaysVideo: null,
     },
     {
       name: 'BW',
@@ -103,6 +119,9 @@ async function main() {
       reelAi: 4,
       reelVideo: 0,
       needsApproval: false,
+      publishDaysPost: SAT_MON_WED,
+      publishDaysReel: null,
+      publishDaysVideo: null,
     },
     {
       name: 'فونيتيك',
@@ -112,6 +131,9 @@ async function main() {
       reelAi: 0,
       reelVideo: 6,
       needsApproval: false,
+      publishDaysPost: SUN_TUE_THU,
+      publishDaysReel: null,
+      publishDaysVideo: null,
     },
     {
       name: 'مخبر نور',
@@ -121,6 +143,9 @@ async function main() {
       reelAi: 0,
       reelVideo: 6,
       needsApproval: true,
+      publishDaysPost: SAT_MON_WED,
+      publishDaysReel: null,
+      publishDaysVideo: null,
     },
   ];
 

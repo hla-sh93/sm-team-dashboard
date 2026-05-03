@@ -1,7 +1,7 @@
 'use client';
 
 import { useTransition } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Company, TeamMember } from '@/types';
 import { companySchema, type CompanyInput } from '@/lib/schemas';
@@ -17,6 +17,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toaster';
+import { WEEKDAY_LABELS, WEEKDAY_ORDER } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 
 interface CompanyFormProps {
   open: boolean;
@@ -32,9 +34,19 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
   const designers = team.filter((m) => m.capPost > 0 || m.capReelAi > 0);
   const photogs = team.filter((m) => m.capReelVideo > 0);
 
+  const parseDays = (raw: string | null | undefined): number[] => {
+    if (!raw) return [];
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter((n) => typeof n === 'number');
+    } catch {}
+    return [];
+  };
+
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
     reset,
   } = useForm<CompanyInput>({
@@ -52,6 +64,9 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
           designerId: company.designerId ?? '',
           photographerId: company.photographerId ?? '',
           notes: company.notes ?? '',
+          publishDaysPost: parseDays(company.publishDaysPost),
+          publishDaysReel: parseDays(company.publishDaysReel),
+          publishDaysVideo: parseDays(company.publishDaysVideo),
         }
       : {
           name: '',
@@ -65,6 +80,9 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
           designerId: designers[0]?.id ?? '',
           photographerId: photogs[0]?.id ?? '',
           notes: '',
+          publishDaysPost: [],
+          publishDaysReel: [],
+          publishDaysVideo: [],
         },
   });
 
@@ -182,6 +200,49 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
             </div>
           </div>
 
+          {/* Publishing days */}
+          <div className="border-t border-border-soft pt-4 space-y-3">
+            <div>
+              <Label className="text-sm font-semibold">أيام النشر على إنستغرام</Label>
+              <p className="text-xs text-fg-muted mt-1">
+                اختر الأيام المسموح فيها النشر لهذه الشركة. الفراغ = استخدام الإفتراضي (سبت/اثنين/أربعاء)
+              </p>
+            </div>
+            <Controller
+              control={control}
+              name="publishDaysPost"
+              render={({ field }) => (
+                <DayPicker
+                  label="أيام البوستات"
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="publishDaysReel"
+              render={({ field }) => (
+                <DayPicker
+                  label="أيام ريل AI (اختياري — يرث من البوستات)"
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="publishDaysVideo"
+              render={({ field }) => (
+                <DayPicker
+                  label="أيام ريل التصوير (اختياري — يرث من ريل AI)"
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+          </div>
+
           <DialogFooter>
             <Button
               type="button"
@@ -198,5 +259,48 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DayPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number[];
+  onChange: (v: number[]) => void;
+}) {
+  const set = new Set(value);
+  const toggle = (d: number) => {
+    const next = new Set(set);
+    if (next.has(d)) next.delete(d);
+    else next.add(d);
+    onChange(Array.from(next).sort());
+  };
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-fg-dim">{label}</Label>
+      <div className="flex flex-wrap gap-1.5">
+        {WEEKDAY_ORDER.map((d) => {
+          const active = set.has(d);
+          return (
+            <button
+              key={d}
+              type="button"
+              onClick={() => toggle(d)}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-semibold border transition-all',
+                active
+                  ? 'bg-accent text-bg border-accent'
+                  : 'bg-bg-elev text-fg-dim border-border hover:border-accent-dim hover:text-fg',
+              )}
+            >
+              {WEEKDAY_LABELS[d]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

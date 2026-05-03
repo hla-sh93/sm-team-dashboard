@@ -4,6 +4,22 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
 import { companySchema, reorderSchema, type CompanyInput } from '@/lib/schemas';
 
+/**
+ * The Prisma Company model stores publishing-day patterns as JSON-encoded
+ * strings (SQLite has no array type). The zod schema parses them as
+ * `number[] | null` for nice form ergonomics, so we re-serialize them at
+ * the action boundary right before the DB call.
+ */
+function toDbPayload(parsed: CompanyInput) {
+  const { publishDaysPost, publishDaysReel, publishDaysVideo, ...rest } = parsed;
+  return {
+    ...rest,
+    publishDaysPost: publishDaysPost ? JSON.stringify(publishDaysPost) : null,
+    publishDaysReel: publishDaysReel ? JSON.stringify(publishDaysReel) : null,
+    publishDaysVideo: publishDaysVideo ? JSON.stringify(publishDaysVideo) : null,
+  };
+}
+
 export async function createCompany(input: CompanyInput) {
   const parsed = companySchema.safeParse(input);
   if (!parsed.success) {
@@ -14,11 +30,12 @@ export async function createCompany(input: CompanyInput) {
     const last = await prisma.company.findFirst({ orderBy: { priority: 'desc' } });
     const priority = (last?.priority ?? 0) + 1;
     const company = await prisma.company.create({
-      data: { ...parsed.data, priority },
+      data: { ...toDbPayload(parsed.data), priority },
     });
     revalidatePath('/companies');
     revalidatePath('/priorities');
     revalidatePath('/');
+    revalidatePath('/publishing');
     return { ok: true as const, data: company };
   } catch (e) {
     return { ok: false as const, error: 'فشل إنشاء الشركة' };
@@ -33,11 +50,12 @@ export async function updateCompany(id: string, input: CompanyInput) {
   try {
     const company = await prisma.company.update({
       where: { id },
-      data: parsed.data,
+      data: toDbPayload(parsed.data),
     });
     revalidatePath('/companies');
     revalidatePath('/priorities');
     revalidatePath('/');
+    revalidatePath('/publishing');
     return { ok: true as const, data: company };
   } catch (e) {
     return { ok: false as const, error: 'فشل تحديث الشركة' };

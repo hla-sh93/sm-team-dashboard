@@ -43,6 +43,15 @@ model Company {
   needsApproval Boolean  @default(false)
   status        String   @default("active") // 'active' | 'paused' | 'archived'
   notes         String?
+
+  // Publishing day-of-week patterns. JSON-encoded arrays of weekday numbers
+  // using JS getDay() convention: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
+  // If publishDaysReel / publishDaysVideo is null, falls back to publishDaysPost.
+  // If publishDaysPost is null, defaults are derived in code (Sat/Mon/Wed pattern).
+  publishDaysPost  String?
+  publishDaysReel  String?
+  publishDaysVideo String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -52,6 +61,7 @@ model Company {
   photographerId  String?
   photographer    TeamMember? @relation("CompanyPhotographer", fields: [photographerId], references: [id], onDelete: SetNull)
   tasks           Task[]
+  publishingItems PublishingItem[]
 }
 
 // ============================================
@@ -81,6 +91,37 @@ model Task {
 
   @@index([startDate])
   @@index([assigneeId])
+  @@index([companyId])
+  @@index([status])
+  @@index([targetMonth])
+}
+
+// ============================================
+// PUBLISHING ITEM
+// ============================================
+// Schedule for the publisher (Omar). Independent of the production Task table:
+// these slots can be planned for any day (weekend included) and don't consume
+// team capacity. Each company's monthly quota (posts + reelAi + reelVideo) is
+// distributed across the company's preferred publishing days-of-week.
+model PublishingItem {
+  id          String   @id @default(cuid())
+  contentType String   // 'post' | 'reel_ai' | 'reel_video'
+  publishDate DateTime
+  status      String   @default("scheduled") // 'scheduled' | 'published'
+  notes       String?
+  isAuto      Boolean  @default(false)
+  targetMonth String   // 'YYYY-MM'
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Optional link back to the production Task that becomes this published item.
+  taskId      String?
+
+  @@index([publishDate])
   @@index([companyId])
   @@index([status])
   @@index([targetMonth])

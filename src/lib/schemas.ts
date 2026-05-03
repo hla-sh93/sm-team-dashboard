@@ -18,6 +18,14 @@ export type MemberInput = z.infer<typeof memberSchema>;
 // ============================================
 // COMPANY
 // ============================================
+// Weekday array: 0..6 (Sun..Sat). Empty array = "no preference, use fallback".
+const weekdayArraySchema = z
+  .array(z.number().int().min(0).max(6))
+  .max(7)
+  .nullable()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? Array.from(new Set(v)).sort() : null));
+
 export const companySchema = z.object({
   name: z.string().min(1, "اسم الشركة مطلوب").max(100),
   color: z
@@ -45,6 +53,9 @@ export const companySchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
+  publishDaysPost: weekdayArraySchema,
+  publishDaysReel: weekdayArraySchema,
+  publishDaysVideo: weekdayArraySchema,
 });
 
 export type CompanyInput = z.infer<typeof companySchema>;
@@ -74,3 +85,21 @@ export type TaskInput = z.infer<typeof taskSchema>;
 export const reorderSchema = z.object({
   orderedIds: z.array(z.string()).min(1),
 });
+
+// ============================================
+// PUBLISHING ITEM
+// ============================================
+export const publishingItemSchema = z.object({
+  contentType: z.enum(["post", "reel_ai", "reel_video"]),
+  publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح"),
+  status: z.enum(["scheduled", "published"]).default("scheduled"),
+  notes: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null)),
+  companyId: z.string().min(1, "الشركة مطلوبة"),
+  taskId: z.string().nullable().optional(),
+});
+
+export type PublishingItemInput = z.infer<typeof publishingItemSchema>;

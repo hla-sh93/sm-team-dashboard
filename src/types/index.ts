@@ -34,10 +34,28 @@ export type Company = {
   needsApproval: boolean;
   status: string;
   notes: string | null;
+  publishDaysPost: string | null;
+  publishDaysReel: string | null;
+  publishDaysVideo: string | null;
   createdAt: Date;
   updatedAt: Date;
   designerId: string | null;
   photographerId: string | null;
+};
+
+export type PublishingItem = {
+  id: string;
+  contentType: string; // 'post' | 'reel_ai' | 'reel_video'
+  publishDate: Date;
+  status: string; // 'scheduled' | 'published'
+  notes: string | null;
+  isAuto: boolean;
+  targetMonth: string;
+  publishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  companyId: string;
+  taskId: string | null;
 };
 
 export type Task = {

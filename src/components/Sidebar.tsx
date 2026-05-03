@@ -8,6 +8,7 @@ import {
   FileBarChart,
   LayoutDashboard,
   ListOrdered,
+  Send,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const navSections = [
       { href: "/", label: "نظرة عامة", icon: LayoutDashboard },
       { href: "/calendar", label: "الجدول", icon: Calendar },
       { href: "/tasks", label: "كل التاسكات", icon: CheckSquare },
+      { href: "/publishing", label: "جدول النشر", icon: Send },
       { href: "/workload", label: "أحمال العمل", icon: TrendingUp },
       { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
     ],
