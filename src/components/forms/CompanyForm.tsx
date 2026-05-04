@@ -200,12 +200,16 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
             </div>
           </div>
 
-          {/* Publishing days */}
+          {/* Publishing days — optional override */}
           <div className="border-t border-border-soft pt-4 space-y-3">
             <div>
-              <Label className="text-sm font-semibold">أيام النشر على إنستغرام</Label>
+              <Label className="text-sm font-semibold">
+                أيام النشر — تقييد اختياري
+              </Label>
               <p className="text-xs text-fg-muted mt-1">
-                اختر الأيام المسموح فيها النشر لهذه الشركة. الفراغ = استخدام الإفتراضي (سبت/اثنين/أربعاء)
+                الافتراضي: النشر مسموح بكل الأيام عدا الجمعة، وعمر بيوزّع
+                المنشورات بشكل متوازن. لو هاي الشركة بدها أيام محددة فقط،
+                اختار الأيام هنا. اترك الكل فاضي للسلوك الافتراضي.
               </p>
             </div>
             <Controller
@@ -213,7 +217,7 @@ export default function CompanyForm({ open, onOpenChange, company, team }: Compa
               name="publishDaysPost"
               render={({ field }) => (
                 <DayPicker
-                  label="أيام البوستات"
+                  label="أيام البوستات (اختياري)"
                   value={field.value ?? []}
                   onChange={field.onChange}
                 />

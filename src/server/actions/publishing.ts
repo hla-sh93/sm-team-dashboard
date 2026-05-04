@@ -145,6 +145,11 @@ export async function updatePublishingItemStatus(id: string, status: string) {
  *   - PENDING auto-items (scheduled) for this month are wiped and re-built.
  *   - Manual items (any status) and already-published items are preserved.
  *   - Published items count against the company's quota so we don't double-book.
+ *
+ * Each scheduled item is gated by the corresponding production task's end
+ * date — i.e. we don't schedule "publish post #1 for Glamour" before the
+ * designer is supposed to be done with it. The production tasks are fetched
+ * here and passed to the algorithm.
  */
 export async function autoSchedulePublishing(year: number, month: number) {
   try {
@@ -159,6 +164,24 @@ export async function autoSchedulePublishing(year: number, month: number) {
     });
 
     const companies = await prisma.company.findMany();
+
+    // Pull production tasks targeting this month for all publishable types.
+    // We use endDate as the gating signal regardless of task status — even
+    // tasks still in_progress have a planned end date, and that's when the
+    // publisher can plan to actually post.
+    const productionTasks = await prisma.task.findMany({
+      where: {
+        targetMonth,
+        type: { in: ["post", "reel_ai", "reel_video"] },
+      },
+      select: {
+        id: true,
+        companyId: true,
+        type: true,
+        endDate: true,
+        status: true,
+      },
+    });
 
     const preservedDone = await prisma.publishingItem.findMany({
       where: {
@@ -188,6 +211,7 @@ export async function autoSchedulePublishing(year: number, month: number) {
       year,
       month,
       companies,
+      productionTasks,
       preservedCounts,
     );
 
@@ -201,6 +225,7 @@ export async function autoSchedulePublishing(year: number, month: number) {
               status: it.status,
               notes: it.notes,
               companyId: it.companyId,
+              taskId: it.taskId,
               isAuto: it.isAuto,
               targetMonth: it.targetMonth,
             },

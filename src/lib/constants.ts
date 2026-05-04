@@ -125,7 +125,17 @@ export const WEEKDAY_LABELS: Record<number, string> = {
 
 export const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
 
-// Default publishing pattern when a company has no override (Mon/Wed/Sat —
-// the more common rhythm for the existing client base).
-// Stored sorted ascending so equality / display behaves predictably.
-export const DEFAULT_PUBLISH_DAYS = [1, 3, 6];
+// Days where publishing is NEVER allowed (Friday only — for the team's
+// rest day on social platforms).
+export const PUBLISH_FORBIDDEN_DAYS = [5]; // Friday
+
+// Default publishing canvas: every weekday except Friday. The scheduler
+// uses this when a company has no per-type override; companies who want a
+// stricter pattern (e.g. "posts only on Sat/Wed") can still set publishDays*
+// fields and that pattern is enforced. Stored sorted ascending.
+export const DEFAULT_PUBLISH_DAYS = [0, 1, 2, 3, 4, 6]; // Sun, Mon, Tue, Wed, Thu, Sat
+
+// Maximum total publishing items to schedule on any single calendar day.
+// This caps Omar's daily workload; it's a soft cap — collisions can push
+// past it as a last resort.
+export const MAX_ITEMS_PER_DAY = 6;
