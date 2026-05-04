@@ -144,37 +144,39 @@ function interleaveTokens(counts: {
 /**
  * Generate the monthly publishing schedule.
  *
+ * Two GOLDEN RULES that the algorithm enforces strictly:
+ *   (a) A company NEVER publishes twice on the same day.
+ *   (b) A company NEVER publishes on two consecutive days (±1 calendar day).
+ * If we can't satisfy them for some item we emit a warning and skip rather
+ * than degrade the plan.
+ *
  * Algorithm:
  *
- * 1. Build the publishing canvas — every day in the month whose weekday
- *    is allowed. Friday is excluded by default. (Per-company overrides
- *    via publishDays* can narrow this further.)
+ * 1. Build the global canvas — month days minus forbidden weekdays (Friday).
  *
- * 2. For each active company in priority order, compute its publishing
- *    queue:
- *      - Subtract preserved (already-published) counts from the quota.
- *      - Group production tasks by type, sorted by endDate.
- *      - Build an interleaved [post, reel, post, reel, ...] token sequence.
- *      - For each token, pair with the i-th production task of its type.
- *        That pairing gives us:
- *          • taskId — link back to the production row
- *          • earliestPublishDate = task.endDate + 1 working day
- *        If there are more publish items than production tasks (e.g. user
- *        forgot to schedule production), `earliestPublishDate` falls back
- *        to month start.
+ * 2. For each company, narrow the canvas to its OWN allowed weekdays. Each
+ *    content type can have its own pattern via publishDaysPost / Reel /
+ *    Video; these fall back through Post → DEFAULT (every weekday except
+ *    Friday). The user's actual rhythm is encoded in the seed: ono =
+ *    Sat/Mon/Wed, phonetic = Sun/Tue/Thu, pacific posts = Sat/Wed but
+ *    pacific reels = Mon, etc.
  *
- * 3. For each company independently, compute target indexes within its
- *    OWN allowed-days canvas (filtered by the company's publishDays*
- *    overrides), distributed evenly across the days from earliestPublish
- *    onward. Even spacing → posts spread over the month, not clumped.
+ * 3. For each (company, type) compute earliestPublishISO = first production
+ *    task end date + 1 day (or month start if no production task exists).
+ *    All items of that (company, type) share the same earliest, so spacing
+ *    within the type stays clean.
  *
- * 4. Resolve cross-company collisions globally:
- *      - Walk all targets in chronological order.
- *      - When a chosen day already has the same company → slide right
- *        until the same-company constraint is satisfied.
- *      - When a chosen day exceeds MAX_ITEMS_PER_DAY → slide right.
- *      - This naturally produces "1-2 items / day, mostly different
- *        companies" — Omar's load stays even.
+ * 4. Within each (company, type), spread the items evenly across the
+ *    type's canvas-from-earliest using midpoint formula. Each item also
+ *    carries its taskId pairing for traceability back to the design row.
+ *
+ * 5. Walk all targets globally, sorted chronologically (priority breaks ties).
+ *    For each target, find a real placement that respects:
+ *      - day >= earliestISO
+ *      - GOLDEN RULES — no same-day and no ±1-day same-company collision
+ *      - day total < MAX_ITEMS_PER_DAY (relaxed only if necessary)
+ *    The walk goes forward first, then backward (always above earliestISO),
+ *    so we exhaust the company's available canvas before giving up.
  */
 export function generateMonthPublishingSchedule(
   year: number,
@@ -225,6 +227,26 @@ export function generateMonthPublishingSchedule(
   }
   function dayTotal(iso: string): number {
     return dayTotalLoad.get(iso) ?? 0;
+  }
+
+  // Calendar arithmetic for the ±1 day rule. We never want the same company
+  // to publish on day D if it's already booked on D-1 or D+1 — that's the
+  // user's "two-consecutive-days" prohibition.
+  function isoOffset(iso: string, deltaDays: number): string {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + deltaDays);
+    return toISODate(dt);
+  }
+  /** Returns true if `iso` itself, the day before, or the day after is
+   *  already taken by `companyId`. This is the GOLDEN RULE: a company never
+   *  publishes on the same day twice and never on two consecutive days. */
+  function companyConflict(iso: string, companyId: string): boolean {
+    return (
+      dayHasCompany(iso, companyId) ||
+      dayHasCompany(isoOffset(iso, -1), companyId) ||
+      dayHasCompany(isoOffset(iso, 1), companyId)
+    );
   }
 
   type Target = {
@@ -298,12 +320,27 @@ export function generateMonthPublishingSchedule(
       );
     }
 
+    // Per-(company, type) earliest. We use the FIRST production task's end
+    // date for each type — once one item of that type is in the design queue,
+    // publishing for that type can begin and items spread evenly from there.
+    // (Per-ITEM gating proved too aggressive: late-priority companies got
+    // their items pushed to the last week of the month and clustered there.)
+    const perTypeEarliestISO: Record<PublishContentType, string> = {
+      post: tasksByType.post[0]
+        ? toISODate(shiftDays(tasksByType.post[0].endDate, 1))
+        : toISODate(monthStart),
+      reel_ai: tasksByType.reel_ai[0]
+        ? toISODate(shiftDays(tasksByType.reel_ai[0].endDate, 1))
+        : toISODate(monthStart),
+      reel_video: tasksByType.reel_video[0]
+        ? toISODate(shiftDays(tasksByType.reel_video[0].endDate, 1))
+        : toISODate(monthStart),
+    };
+
     // Build the interleaved token sequence.
     const tokens = interleaveTokens(counts);
     const counters = { post: 0, reel_ai: 0, reel_video: 0 };
 
-    // Assign each token to a target ISO using even spacing within its
-    // type's canvas, starting from each item's `earliest` date.
     type SubTarget = {
       type: PublishContentType;
       earliestISO: string;
@@ -315,12 +352,12 @@ export function generateMonthPublishingSchedule(
     for (const type of tokens) {
       const idx = counters[type]++;
       const prodTask = tasksByType[type][idx];
-      const earliest = prodTask
-        ? shiftDays(prodTask.endDate, 1)
-        : monthStart;
+      // taskId still pairs each publishing item with its production row, but
+      // earliestISO is per-(company, type), giving all items of a type the
+      // same publishing window for clean even spacing.
       subTargets.push({
         type,
-        earliestISO: toISODate(earliest),
+        earliestISO: perTypeEarliestISO[type],
         taskId: prodTask?.id ?? null,
         indexInType: idx,
         countInType: counts[type],
@@ -369,48 +406,49 @@ export function generateMonthPublishingSchedule(
     return a.coPriority - b.coPriority;
   });
 
-  for (const tg of allTargets) {
-    // Find the first day from targetISO forward in the company's canvas
-    // that satisfies:
-    //   - day >= earliestISO (always implied since targetISO >= earliestISO)
-    //   - dayHasCompany(day, co) === false (no double-booking same account)
-    //   - dayTotal(day) < MAX_ITEMS_PER_DAY (cap Omar's daily load)
-    const startIdx = tg.coCanvas.indexOf(tg.targetISO);
-    let chosen: string | null = null;
+  /** Walk the company's canvas to find a valid placement, expanding outward
+   *  from the target. Forward is preferred (calendars feel natural pushing
+   *  later, not earlier), but if forward is blocked we look backward — the
+   *  earliestISO floor is always respected. Returns null when no day in the
+   *  canvas satisfies the GOLDEN RULE (no same-day, no consecutive day).
+   *
+   *  We NEVER allow same-company stacking. If we can't find a clean slot we
+   *  emit a warning and skip the item rather than degrade the schedule. */
+  function placeTarget(tg: Target, allowExceedDailyMax: boolean): string | null {
+    const targetIdx = tg.coCanvas.indexOf(tg.targetISO);
+    const startIdx = targetIdx === -1 ? 0 : targetIdx;
 
-    // First pass: respect both constraints.
-    for (let i = startIdx === -1 ? 0 : startIdx; i < tg.coCanvas.length; i++) {
-      const iso = tg.coCanvas[i];
-      if (iso < tg.earliestISO) continue;
-      if (dayHasCompany(iso, tg.coId)) continue;
-      if (dayTotal(iso) >= MAX_ITEMS_PER_DAY) continue;
-      chosen = iso;
-      break;
-    }
-    // Second pass: relax MAX_ITEMS_PER_DAY but still avoid same-company stacking.
-    if (!chosen) {
-      for (let i = startIdx === -1 ? 0 : startIdx; i < tg.coCanvas.length; i++) {
-        const iso = tg.coCanvas[i];
-        if (iso < tg.earliestISO) continue;
-        if (dayHasCompany(iso, tg.coId)) continue;
-        chosen = iso;
-        break;
+    function ok(iso: string): boolean {
+      if (iso < tg.earliestISO) return false;
+      if (companyConflict(iso, tg.coId)) return false;
+      if (!allowExceedDailyMax && dayTotal(iso) >= MAX_ITEMS_PER_DAY) {
+        return false;
       }
+      return true;
     }
-    // Third pass: just satisfy the date gate, allow stacking.
-    if (!chosen) {
-      for (let i = startIdx === -1 ? 0 : startIdx; i < tg.coCanvas.length; i++) {
-        const iso = tg.coCanvas[i];
-        if (iso < tg.earliestISO) continue;
-        chosen = iso;
-        break;
-      }
+
+    // Forward sweep.
+    for (let i = startIdx; i < tg.coCanvas.length; i++) {
+      if (ok(tg.coCanvas[i])) return tg.coCanvas[i];
     }
-    // Last resort: company canvas exhausted. Warn and skip.
+    // Backward sweep (still respects earliestISO via the `ok` guard).
+    for (let i = startIdx - 1; i >= 0; i--) {
+      if (ok(tg.coCanvas[i])) return tg.coCanvas[i];
+    }
+    return null;
+  }
+
+  for (const tg of allTargets) {
+    // Try with the daily-max cap first; relax it only if we can't fit.
+    let chosen = placeTarget(tg, false);
+    if (!chosen) chosen = placeTarget(tg, true);
+
     if (!chosen) {
+      // No clean slot anywhere — better to drop this item than break the
+      // GOLDEN RULE (same-day or consecutive-day stacking for the same co).
       warnings.push({
         level: "warning",
-        message: `${tg.coName} — ${PUBLISH_TYPE_LABELS[tg.type]}: لا يوجد يوم متاح بعد انتهاء التصميم`,
+        message: `${tg.coName} — ${PUBLISH_TYPE_LABELS[tg.type]}: لا يوجد يوم متاح يحترم قاعدة عدم التكرار للشركة (راجع أيام النشر)`,
         companyId: tg.coId,
       });
       continue;
