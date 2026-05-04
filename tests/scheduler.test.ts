@@ -264,12 +264,32 @@ describe('scheduler: plans scheduled in prior month', () => {
     });
   });
 
-  it('plans start from day 15 onwards in prior month', () => {
+  it('every plan finishes before the target month begins', () => {
+    // Hard rule: all plans must be delivered before the new month starts
+    // so production has approved plans on day 1.
     const result = generateMonthSchedule(2026, 4, realTeam(), realCompanies());
     const plans = result.tasks.filter((t) => t.type === 'plan');
+    const targetMonthStart = new Date(2026, 4, 1); // May 1, 2026
     plans.forEach((p) => {
-      expect(p.startDate.getDate()).toBeGreaterThanOrEqual(15);
+      expect(p.endDate.getTime()).toBeLessThan(targetMonthStart.getTime());
     });
+  });
+
+  it('plans pack against the end of the prior month, not the middle', () => {
+    // The writer ideally starts in the last 10 days of the prior month.
+    // For 6 companies × 2-day plans = 12 working days, this won't fit in
+    // the 10-day window — so we expect a warning AND plans starting before
+    // day 21, but the LAST plan should still finish on the last working
+    // day of the prior month.
+    const result = generateMonthSchedule(2026, 4, realTeam(), realCompanies());
+    const plans = result.tasks.filter((t) => t.type === 'plan');
+    const sortedByEnd = [...plans].sort(
+      (a, b) => b.endDate.getTime() - a.endDate.getTime(),
+    );
+    const lastPlanEnd = sortedByEnd[0].endDate;
+    // Last plan should end on or after April 25 (within last 6 days of April)
+    expect(lastPlanEnd.getMonth()).toBe(3); // April
+    expect(lastPlanEnd.getDate()).toBeGreaterThanOrEqual(25);
   });
 
   it('plans are assigned to writer (Nawal)', () => {
@@ -286,6 +306,33 @@ describe('scheduler: plans scheduled in prior month', () => {
     plans.forEach((p) => {
       expect(p.duration).toBe(2);
     });
+  });
+
+  it('warns when plans cannot fit in the last 10 days of prior month', () => {
+    // 6 companies × 2 days = 12 working days needed; April has only ~7
+    // working days in its last 10 calendar days, so the writer must start
+    // earlier and we surface that to the user.
+    const result = generateMonthSchedule(2026, 4, realTeam(), realCompanies());
+    const ten = result.warnings.find((w) =>
+      w.message.includes('آخر 10 أيام'),
+    );
+    expect(ten).toBeDefined();
+  });
+
+  it('with few enough companies, plans actually start within the last 10 days', () => {
+    // 3 companies × 2 days = 6 working days — fits easily in last 10 calendar
+    // days of April, so no "earlier than 10 days" warning should fire.
+    const fewCompanies = realCompanies().slice(0, 3);
+    const result = generateMonthSchedule(2026, 4, realTeam(), fewCompanies);
+    const plans = result.tasks.filter((t) => t.type === 'plan');
+    plans.forEach((p) => {
+      // April has 30 days; "last 10 calendar days" = April 21–30.
+      expect(p.startDate.getDate()).toBeGreaterThanOrEqual(21);
+    });
+    const ten = result.warnings.find((w) =>
+      w.message.includes('آخر 10 أيام'),
+    );
+    expect(ten).toBeUndefined();
   });
 });
 

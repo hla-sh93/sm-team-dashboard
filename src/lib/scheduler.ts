@@ -185,11 +185,56 @@ export function generateMonthSchedule(
       prior.getMonth(),
     );
 
-    // Start from day 15 (or middle of prior month if 15 falls on weekend)
-    let writerCursor =
-      priorWorkDays.find((d) => d.getDate() >= 15) ??
-      priorWorkDays[Math.floor(priorWorkDays.length / 2)] ??
-      new Date(prior);
+    // HARD RULE: every plan must be DELIVERED before the target month begins.
+    // Pack the writer's plan tasks tightly against the END of the prior month
+    // so they finish on (or before) its last working day. The writer ideally
+    // starts in the last 10 days of the prior month — if there are too many
+    // companies for that window we still pack as late as possible and warn.
+    const totalPlansToGenerate = activeCompanies.filter(
+      (co) => preservedFor(co.id).plan === 0,
+    ).length;
+    const totalPlanDays = totalPlansToGenerate * planDuration;
+
+    let writerCursor: Date;
+    if (totalPlanDays === 0 || priorWorkDays.length === 0) {
+      // No plans to generate (everything preserved) or no working days in
+      // the prior month — fall back to start of prior month.
+      writerCursor = priorWorkDays[0] ?? new Date(prior);
+    } else {
+      // Pack from the end: the last `totalPlanDays` working days of the
+      // prior month are the writing window.
+      const latestStartIdx = Math.max(
+        0,
+        priorWorkDays.length - totalPlanDays,
+      );
+      writerCursor = priorWorkDays[latestStartIdx];
+
+      // The "last 10 calendar days" preference is a soft hint to the user
+      // that they're approaching the limit. Only warn when the writing
+      // window is forced earlier than that.
+      const priorMonthLastDate = new Date(
+        prior.getFullYear(),
+        prior.getMonth() + 1,
+        0,
+      ).getDate();
+      const tenDayWindowStart = priorMonthLastDate - 9;
+      if (writerCursor.getDate() < tenDayWindowStart) {
+        warnings.push({
+          level: "warning",
+          message: `كتابة الخطط بدأت قبل آخر 10 أيام من الشهر السابق — ${totalPlansToGenerate} شركة تحتاج ${totalPlanDays} يوم عمل`,
+        });
+      }
+
+      // True overflow: prior month doesn't have enough working days for all
+      // plans. We still pack from index 0; some plans will overflow into the
+      // target month and production will be late. Surface this loudly.
+      if (priorWorkDays.length < totalPlanDays) {
+        warnings.push({
+          level: "error",
+          message: `أيام العمل في الشهر السابق غير كافية لكل الخطط (${totalPlanDays} مطلوبة، ${priorWorkDays.length} متاحة) — قلّل عدد الشركات أو ارفع طاقة الكاتب`,
+        });
+      }
+    }
 
     for (const co of activeCompanies) {
       // Skip plan generation if a plan for this company was already completed.
