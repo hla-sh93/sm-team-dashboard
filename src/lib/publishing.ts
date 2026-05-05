@@ -460,12 +460,62 @@ export function generateMonthPublishingSchedule(
       contentType: tg.type,
       publishDate: new Date(y, m - 1, d),
       companyId: tg.coId,
+      // taskId is set provisionally here from the index-based pairing; the
+      // post-pass below re-pairs by chronological order so it always points
+      // to a production task that is actually finished BEFORE the publish
+      // date. Items whose chronologically-paired task ends after the publish
+      // date end up with taskId = null (genuine "published without a linked
+      // design" — the design gate at the type level still ensures the FIRST
+      // task is done by the time of the FIRST publish).
       taskId: tg.taskId,
       isAuto: true,
       targetMonth,
       status: "scheduled",
       notes: "",
     });
+  }
+
+  // Re-pair taskIds: within each (company, type), sort items by publishDate
+  // and tasks by endDate, then pair index-wise. Drop the link if the paired
+  // task ends on or after the publish date — that prevents the situation
+  // where the index-based pairing happens to link a publish to a task whose
+  // design isn't actually done yet (came up in the E2E regression test).
+  const groupKey = (coId: string, t: PublishContentType) => `${coId}::${t}`;
+  const itemsByGroup = new Map<string, GeneratedPublishingItem[]>();
+  for (const it of items) {
+    const k = groupKey(it.companyId, it.contentType);
+    const arr = itemsByGroup.get(k) ?? [];
+    arr.push(it);
+    itemsByGroup.set(k, arr);
+  }
+  const tasksByGroup = new Map<string, ProductionTaskSummary[]>();
+  for (const t of productionTasks) {
+    if (
+      t.companyId &&
+      (t.type === "post" || t.type === "reel_ai" || t.type === "reel_video")
+    ) {
+      const k = groupKey(t.companyId, t.type as PublishContentType);
+      const arr = tasksByGroup.get(k) ?? [];
+      arr.push(t);
+      tasksByGroup.set(k, arr);
+    }
+  }
+  for (const [k, groupItems] of itemsByGroup) {
+    const groupTasks = (tasksByGroup.get(k) ?? []).slice().sort(
+      (a, b) => a.endDate.getTime() - b.endDate.getTime(),
+    );
+    const sortedItems = groupItems
+      .slice()
+      .sort((a, b) => a.publishDate.getTime() - b.publishDate.getTime());
+    for (let i = 0; i < sortedItems.length; i++) {
+      const item = sortedItems[i];
+      const task = groupTasks[i];
+      if (task && item.publishDate.getTime() > task.endDate.getTime()) {
+        item.taskId = task.id;
+      } else {
+        item.taskId = null;
+      }
+    }
   }
 
   return {
