@@ -30,7 +30,28 @@ async function main() {
     `Seeding ${data.meta.label} (stored month=${month}) — ${data.tasks.length} tasks, ${data.photoSessions.length} sessions`,
   );
 
-  /* ---------- 1) Employees (always upsert) ---------- */
+  const empIds = (data.employees as any[]).map((e) => e.id);
+  const coIds = (data.companies as any[]).map((c) => c.id);
+
+  // AUTHORITATIVE cleanup: remove any employee/company NOT in seed-data. This
+  // de-duplicates a DB that was seeded twice with different id schemes (e.g. an
+  // earlier seed used random cuids, this one uses e_*/c_*). Companies are
+  // deleted FIRST so their unique names are freed before we upsert the canonical
+  // rows (deleting a company cascades its tasks/sessions; deleting an employee
+  // just nulls their task.assignee).
+  const delCo = await prisma.company.deleteMany({
+    where: { id: { notIn: coIds } },
+  });
+  const delEmp = await prisma.employee.deleteMany({
+    where: { id: { notIn: empIds } },
+  });
+  if (delCo.count || delEmp.count) {
+    console.log(
+      `🧹 removed ${delEmp.count} stale employees, ${delCo.count} stale companies`,
+    );
+  }
+
+  /* ---------- 1) Employees (upsert canonical set) ---------- */
   for (const e of data.employees as any[]) {
     const payload = {
       name: e.name,
@@ -49,7 +70,7 @@ async function main() {
   }
   console.log(`✓ employees: ${data.employees.length}`);
 
-  /* ---------- 2) Companies (always upsert) ---------- */
+  /* ---------- 2) Companies (upsert canonical set) ---------- */
   for (const c of data.companies as any[]) {
     const payload = {
       name: c.name,
