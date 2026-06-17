@@ -1,24 +1,22 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { MonthBar } from "@/components/MonthBar";
+import Calendar, { type CalendarMode } from "@/components/calendar/Calendar";
 import {
+  CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
-  PHOTO_KIND_LABELS,
-  PHOTO_STATUSES,
-  PHOTO_STATUS_LABELS,
+  CONTENT_TYPE_COLORS,
   STATUSES,
   STATUS_LABELS,
-  WEEKDAY_LABELS,
+  type ContentType,
 } from "@/lib/constants";
-import { formatDateShort, toISODate } from "@/lib/dates";
-import { updateTaskStatus, updatePhotoSessionStatus } from "@/server/actions/tasks";
+import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
-import type { Company, Employee, Task, PhotoSession } from "@/types";
-import { AlertTriangle, Camera } from "lucide-react";
+import type { Company, Employee, Task } from "@/types";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export default function PublishingClient({
   year,
@@ -26,19 +24,55 @@ export default function PublishingClient({
   employees,
   companies,
   tasks,
-  sessions,
 }: {
   year: number;
   month: number;
   employees: Employee[];
   companies: Company[];
   tasks: Task[];
-  sessions: PhotoSession[];
 }) {
   const router = useRouter();
+  const [view, setView] = useState<CalendarMode>("monthly");
+  const [company, setCompany] = useState<string>("all");
+  const [type, setType] = useState<string>("all");
   const [, start] = useTransition();
-  const empName = (id: string | null) => employees.find((e) => e.id === id)?.name ?? "—";
+
+  const empName = (id: string | null) =>
+    employees.find((e) => e.id === id)?.name ?? "—";
+  const coName = (id: string | null) =>
+    companies.find((c) => c.id === id)?.name ?? "";
   const managed = companies.filter((c) => c.managed && c.status === "active");
+
+  // Publishing items = content tasks that have a publishDate.
+  const pubTasks = useMemo(
+    () => tasks.filter((t) => t.kind === "CONTENT" && t.publishDate),
+    [tasks],
+  );
+
+  const items = useMemo(
+    () =>
+      pubTasks.filter(
+        (t) =>
+          (company === "all" || t.companyId === company) &&
+          (type === "all" || t.type === type),
+      ),
+    [pubTasks, company, type],
+  );
+
+  // No-interruption check (§4.4): each managed company must have ≥1 publish in
+  // every one of the 4 weeks.
+  const gaps = useMemo(() => {
+    const out: string[] = [];
+    for (const co of managed) {
+      const rows = pubTasks.filter((t) => t.companyId === co.id);
+      if (rows.length === 0) continue;
+      const missing = [1, 2, 3, 4].filter(
+        (w) => !rows.some((r) => r.week === w),
+      );
+      if (missing.length) out.push(`${co.name} (أسبوع ${missing.join("، ")})`);
+    }
+    return out;
+  }, [managed, pubTasks]);
 
   const onStatus = (id: string, status: string) =>
     start(async () => {
@@ -49,157 +83,174 @@ export default function PublishingClient({
       } else toast(r.error, "error");
     });
 
-  const onSessionStatus = (id: string, status: string) =>
-    start(async () => {
-      const r = await updatePhotoSessionStatus(id, status);
-      if (r.ok) {
-        toast("تم تحديث حالة النزلة");
-        router.refresh();
-      } else toast(r.error, "error");
-    });
+  const typeColor = (t: Task) =>
+    CONTENT_TYPE_COLORS[(t.type as ContentType) ?? "POST"] ?? "#C8A84E";
+  const typeLabel = (t: Task) =>
+    CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? t.type;
+
+  const renderChip = (t: Task) => (
+    <div
+      className="flex items-center gap-1 text-[10px] rounded px-1 py-0.5 truncate"
+      style={{ background: `${typeColor(t)}22`, color: typeColor(t) }}
+      title={`${typeLabel(t)} · ${coName(t.companyId)}`}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ background: typeColor(t) }}
+      />
+      <span className="truncate">
+        {typeLabel(t)} · {coName(t.companyId)}
+      </span>
+    </div>
+  );
+
+  const renderCard = (t: Task) => {
+    const color = typeColor(t);
+    return (
+      <div
+        className="rounded-lg border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
+        style={{ borderInlineStartColor: color, borderInlineStartWidth: 3 }}
+      >
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="text-xs font-semibold truncate">{coName(t.companyId)}</span>
+          <span
+            className="text-[10px] rounded px-1.5 py-0.5 shrink-0"
+            style={{ background: `${color}22`, color }}
+          >
+            {typeLabel(t)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-fg-muted">
+          <span>أسبوع {t.week}</span>
+          <span>· {empName(t.assigneeId)}</span>
+        </div>
+        <Select
+          className="w-full h-7 text-[11px] py-0.5"
+          value={t.status}
+          onChange={(e) => onStatus(t.id, e.target.value)}
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </Select>
+      </div>
+    );
+  };
+
+  const renderDrawer = (date: Date, dayItems: Task[]) => (
+    <div className="flex flex-col gap-2">
+      {dayItems.length === 0 && (
+        <p className="text-sm text-fg-muted text-center py-4">لا منشورات في هذا اليوم.</p>
+      )}
+      {dayItems.map((t) => (
+        <div key={t.id}>{renderCard(t)}</div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between flex-wrap gap-3">
+      <header className="flex items-center justify-between flex-wrap gap-3 border-t-4 border-accent pt-3 -mt-3 rounded">
         <div>
-          <h1 className="display-font text-2xl">جدول النشر</h1>
-          <p className="text-sm text-fg-dim">منشورات كل شركة موزّعة على أسابيع الشهر</p>
+          <h1 className="display-font text-2xl flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" />
+            جدول النشر للشركات
+          </h1>
+          <p className="text-sm text-fg-dim">متى يُنشر المحتوى — حسب موعد النشر (publishDate)</p>
         </div>
         <MonthBar year={year} month={month} />
       </header>
 
-      {managed.map((co) => {
-        const rows = tasks
-          .filter((t) => t.companyId === co.id && t.publishDate)
-          .sort(
-            (a, b) =>
-              new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime(),
-          );
-        if (rows.length === 0) return null;
-        const weekHas = [1, 2, 3, 4].map((w) => rows.some((r) => r.week === w));
-        const interruption = weekHas.some((h) => !h);
-        return (
-          <Card key={co.id}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-3 h-3 rounded-full"
-                  style={{ background: co.color ?? "#C8A84E" }}
-                />
-                <h2 className="display-font text-lg">{co.name}</h2>
-                <span className="text-xs text-fg-muted">({rows.length} منشور)</span>
-              </div>
-              {interruption ? (
-                <span className="text-xs text-danger flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> انقطاع نشر
-                </span>
-              ) : (
-                <span className="text-xs text-success">تغطية كل الأسابيع ✓</span>
-              )}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-fg-dim text-xs border-b border-border-soft">
-                    <th className="text-right font-medium pb-2">النوع</th>
-                    <th className="text-right font-medium pb-2">الأسبوع</th>
-                    <th className="text-right font-medium pb-2">موعد النشر</th>
-                    <th className="text-right font-medium pb-2">اليوم</th>
-                    <th className="text-right font-medium pb-2">المسؤول</th>
-                    <th className="text-right font-medium pb-2">الحالة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((t) => (
-                    <tr key={t.id} className="border-b border-border-soft/50">
-                      <td className="py-2">
-                        {CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? t.type}
-                      </td>
-                      <td className="py-2 text-fg-dim">{t.week}</td>
-                      <td className="py-2">{formatDateShort(new Date(t.publishDate!))}</td>
-                      <td className="py-2 text-fg-dim">
-                        {WEEKDAY_LABELS[new Date(t.publishDate!).getDay()]}
-                      </td>
-                      <td className="py-2 text-fg-dim">{empName(t.assigneeId)}</td>
-                      <td className="py-2">
-                        <Select
-                          className="w-32 h-8 text-xs py-1"
-                          value={t.status}
-                          onChange={(e) => onStatus(t.id, e.target.value)}
-                        >
-                          {STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {STATUS_LABELS[s]}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        );
-      })}
-
-      {sessions.length > 0 && (
-        <Card>
-          <h2 className="display-font text-lg mb-3 flex items-center gap-2">
-            <Camera className="w-5 h-5 text-accent" /> نزلات التصوير
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-fg-dim text-xs border-b border-border-soft">
-                  <th className="text-right font-medium pb-2">الشركة</th>
-                  <th className="text-right font-medium pb-2">#</th>
-                  <th className="text-right font-medium pb-2">النوع</th>
-                  <th className="text-right font-medium pb-2">عدد الريلات</th>
-                  <th className="text-right font-medium pb-2">يوم التصوير</th>
-                  <th className="text-right font-medium pb-2">التسليم</th>
-                  <th className="text-right font-medium pb-2">الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((s) => (
-                  <tr key={s.id} className="border-b border-border-soft/50">
-                    <td className="py-2">
-                      {companies.find((c) => c.id === s.companyId)?.name ?? ""}
-                    </td>
-                    <td className="py-2 text-fg-dim">{s.no}</td>
-                    <td className="py-2">
-                      {PHOTO_KIND_LABELS[s.kind as keyof typeof PHOTO_KIND_LABELS] ?? s.kind}
-                    </td>
-                    <td className="py-2 tabular-nums">{s.reelCount || "—"}</td>
-                    <td className="py-2">{formatDateShort(new Date(s.shootDate))}</td>
-                    <td className="py-2 text-fg-dim">{formatDateShort(new Date(s.deliverBy))}</td>
-                    <td className="py-2">
-                      <Select
-                        className="w-32 h-8 text-xs py-1"
-                        value={s.status}
-                        onChange={(e) => onSessionStatus(s.id, e.target.value)}
-                      >
-                        {PHOTO_STATUSES.map((st) => (
-                          <option key={st} value={st}>
-                            {PHOTO_STATUS_LABELS[st]}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* No-interruption banner (§4.4) */}
+      {pubTasks.length > 0 &&
+        (gaps.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-success bg-success/10 border border-success/30 rounded-lg px-3 py-2">
+            <CheckCircle2 className="w-4 h-4" /> لا انقطاع نشر — كل شركة لها محتوى
+            في كل أسبوع.
           </div>
-        </Card>
-      )}
+        ) : (
+          <div className="flex items-start gap-2 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>انقطاع نشر في: {gaps.join(" · ")}</span>
+          </div>
+        ))}
 
-      {tasks.length === 0 && (
-        <Card className="text-center py-10 text-fg-muted">
-          لا يوجد جدول نشر لهذا الشهر — اضغط «توليد الجدول».
-          <span className="block text-xs mt-1">{toISODate(new Date(year, month, 1))}</span>
-        </Card>
+      {/* View toggle + filters */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-1 bg-bg-elev border border-border rounded-lg p-1 w-fit">
+          {(["monthly", "weekly", "daily"] as CalendarMode[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={
+                "px-4 py-1.5 rounded-md text-sm font-medium transition " +
+                (view === v ? "bg-accent text-bg" : "text-fg-dim hover:text-fg")
+              }
+            >
+              {v === "monthly" ? "شهري" : v === "weekly" ? "أسبوعي" : "يومي"}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Select
+            className="h-9 w-40 text-sm"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          >
+            <option value="all">كل الشركات</option>
+            {managed.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="h-9 w-36 text-sm"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="all">كل الأنواع</option>
+            {CONTENT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {CONTENT_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* Type legend */}
+      <div className="flex gap-3 flex-wrap text-[11px] text-fg-dim -mt-2">
+        {CONTENT_TYPES.map((t) => (
+          <span key={t} className="flex items-center gap-1">
+            <span
+              className="w-3 h-3 rounded inline-block"
+              style={{ background: CONTENT_TYPE_COLORS[t] }}
+            />
+            {CONTENT_TYPE_LABELS[t]}
+          </span>
+        ))}
+      </div>
+
+      <Calendar<Task>
+        mode={view}
+        year={year}
+        month={month}
+        items={items}
+        getDate={(t) => (t.publishDate ? new Date(t.publishDate) : null)}
+        renderChip={renderChip}
+        renderCard={renderCard}
+        renderDrawer={renderDrawer}
+        accent="var(--accent, #C8A84E)"
+        emptyLabel="لا منشورات"
+      />
+
+      {pubTasks.length === 0 && (
+        <div className="text-center py-10 text-fg-muted">
+          لا يوجد جدول نشر لهذا الشهر — اضغط «توليد الجدول» أو انتقل لشهر آخر.
+        </div>
       )}
     </div>
   );

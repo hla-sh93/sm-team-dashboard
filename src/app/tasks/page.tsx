@@ -8,10 +8,11 @@ export default async function TasksPage({
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = resolveMonth(searchParams);
-  const [employees, companies, tasks] = await Promise.all([
+  const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({ where: { year, month } }),
+    prisma.photoSession.findMany({ where: { year, month } }),
   ]);
 
   return (
@@ -21,6 +22,7 @@ export default async function TasksPage({
       employees={employees}
       companies={companies}
       tasks={tasks}
+      sessions={sessions}
     />
   );
 }

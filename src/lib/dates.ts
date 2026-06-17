@@ -371,6 +371,26 @@ export function batchSizes(n: number): number[] {
   return out;
 }
 
+/**
+ * Full month calendar grid: all days from the Saturday on/before the 1st to the
+ * Friday on/after the last day (so every week row has 7 cells, Sat→Fri).
+ */
+export function monthGridDays(year: number, month: number): Date[] {
+  const first = new Date(year, month, 1);
+  const start = new Date(first);
+  while (start.getDay() !== 6) start.setDate(start.getDate() - 1);
+  const last = new Date(year, month + 1, 0);
+  const end = new Date(last);
+  while (end.getDay() !== 5) end.setDate(end.getDate() + 1);
+  const days: Date[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
 /** Which publishing week (1..4) a given date falls in, or null if outside. */
 export function weekOf(date: Date, year: number, month: number): number | null {
   const iso = toISODate(date);

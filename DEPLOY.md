@@ -27,11 +27,19 @@ later deploys never wipe your data (it only seeds an empty database).
 - To use the same database locally, copy its connection string into a local
   `.env` as `DATABASE_URL` (see `.env.example`).
 
+## Two schemas (local SQLite vs production Postgres)
+
+- `prisma/schema.prisma` — **SQLite**, used for local development/preview.
+- `prisma/schema.postgres.prisma` — **Postgres**, used by Vercel (selected with
+  `--schema` in the build command). Keep the two models in sync.
+
 ## Build pipeline (configured in package.json)
 
 ```
-postinstall : prisma generate
-build       : prisma db push --accept-data-loss --skip-generate
-              && tsx prisma/seed.ts
+postinstall : prisma generate                       (local SQLite client)
+build       : prisma generate --schema=prisma/schema.postgres.prisma
+              && prisma db push --schema=prisma/schema.postgres.prisma
+                   --accept-data-loss --skip-generate
+              && tsx prisma/seed.ts                 (idempotent — empty DB only)
               && next build
 ```

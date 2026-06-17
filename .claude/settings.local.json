@@ -21,7 +21,28 @@
       "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 1; \"freed\")",
       "Bash(git add *)",
       "Bash(git reset *)",
-      "Bash(xargs echo \"staged files:\")"
+      "Bash(xargs echo \"staged files:\")",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)",
+      "Bash(docker --version)",
+      "Bash(echo \"docker: $\\(docker --version || echo 'NOT available'\\)\")",
+      "Bash(docker rm *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git branch *)",
+      "Bash(docker info *)",
+      "Bash(DATABASE_URL=\"postgresql://u:p@localhost:5432/db\" npx prisma validate)",
+      "Bash(docker context *)",
+      "Bash(cp seed-data.json prisma/seed-data.json)",
+      "Bash(python -c \"import json; d=json.load\\(open\\('prisma/seed-data.json',encoding='utf-8'\\)\\); print\\('tasks',len\\(d['tasks']\\),'sessions',len\\(d['photoSessions']\\),'meta month',d['meta']['month']\\)\")",
+      "Bash(npx tsx *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"TYPECHECK_EXIT=$?\")",
+      "Bash(DATABASE_URL=\"postgresql://u:p@localhost:5432/db\" npx prisma validate --schema=prisma/schema.postgres.prisma)"
     ]
   }
 }

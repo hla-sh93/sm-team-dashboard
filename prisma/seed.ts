@@ -1,250 +1,129 @@
+/**
+ * prisma/seed.ts — load the agreed dataset (prisma/seed-data.json).
+ *
+ * Notes:
+ *  - seed-data.json uses 1-based months (month:7 = July). The app stores months
+ *    0-based (July = 6), so we normalize: stored month = meta.month - 1.
+ *  - Dates are parsed as LOCAL midnight to match the app's toISODate() (which
+ *    reads local Y/M/D) — avoids off-by-one day shifts across timezones.
+ *  - Build-safe idempotency: employees/companies are always upserted; the
+ *    month's tasks/sessions are only (re)built when none exist yet, so a Vercel
+ *    redeploy never wipes status edits. Set SEED_FORCE=1 to force a rebuild.
+ */
 import { PrismaClient } from "@prisma/client";
+import data from "./seed-data.json";
 
 const prisma = new PrismaClient();
 
-// SOCIAL_SCHEDULER_SPEC.md §8 — current reality seed.
+/** Parse "YYYY-MM-DD" into a LOCAL Date at midnight (null-safe). */
+const D = (s: string | null | undefined): Date | null => {
+  if (!s) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+
 async function main() {
-  // Idempotent guard: this seed is also run during the Vercel build, which
-  // happens on every deploy. Only seed an empty database so existing data
-  // (statuses, ad-hoc tasks, schedules) is never wiped. To force a re-seed,
-  // clear the Employee table first.
-  const existing = await prisma.employee.count();
-  if (existing > 0) {
-    console.log(`↩︎  Database already seeded (${existing} employees) — skipping.`);
+  const year = data.meta.year;
+  const month = data.meta.month - 1; // normalize 1-based → 0-based
+  const force = process.env.SEED_FORCE === "1";
+  console.log(
+    `Seeding ${data.meta.label} (stored month=${month}) — ${data.tasks.length} tasks, ${data.photoSessions.length} sessions`,
+  );
+
+  /* ---------- 1) Employees (always upsert) ---------- */
+  for (const e of data.employees as any[]) {
+    const payload = {
+      name: e.name,
+      role: e.role,
+      hoursPerDay: e.hoursPerDay,
+      workDays: JSON.stringify(e.workDays),
+      isScheduled: e.isScheduled,
+      isPhotographer: e.isPhotographer,
+      color: e.color,
+    };
+    await prisma.employee.upsert({
+      where: { id: e.id },
+      update: payload,
+      create: { id: e.id, ...payload },
+    });
+  }
+  console.log(`✓ employees: ${data.employees.length}`);
+
+  /* ---------- 2) Companies (always upsert) ---------- */
+  for (const c of data.companies as any[]) {
+    const payload = {
+      name: c.name,
+      managed: c.managed,
+      posts: c.posts,
+      reels: c.reels,
+      stories: c.stories,
+      aiReels: c.aiReels,
+      postOwnerId: c.postOwnerId,
+      storyOwnerId: c.storyOwnerId,
+      aiReelOwnerId: c.aiReelOwnerId,
+      defaultOwnerId: c.defaultOwnerId,
+    };
+    await prisma.company.upsert({
+      where: { id: c.id },
+      update: payload,
+      create: { id: c.id, ...payload },
+    });
+  }
+  console.log(`✓ companies: ${data.companies.length}`);
+
+  /* ---------- 3) Tasks + 4) Photo sessions (build-safe) ---------- */
+  const existing = await prisma.task.count({ where: { month, year } });
+  if (existing > 0 && !force) {
+    console.log(
+      `↩︎  ${existing} tasks already exist for this month — skipping task/session rebuild (set SEED_FORCE=1 to override).`,
+    );
     return;
   }
 
-  console.log("🌱 Seeding database (spec §8)...");
+  await prisma.task.deleteMany({ where: { month, year } });
+  await prisma.photoSession.deleteMany({ where: { month, year } });
 
-  await prisma.task.deleteMany();
-  await prisma.photoSession.deleteMany();
-  await prisma.company.deleteMany();
-  await prisma.employee.deleteMany();
+  await prisma.task.createMany({
+    data: (data.tasks as any[]).map((t) => ({
+      id: t.id,
+      kind: t.kind,
+      type: t.type ?? null,
+      title: t.title ?? null,
+      companyId: t.companyId ?? null,
+      assigneeId: t.assigneeId ?? null,
+      hours: t.hours ?? 0,
+      priority: t.priority,
+      status: t.status,
+      publishDate: D(t.publishDate),
+      readyDate: D(t.readyDate),
+      workDate: D(t.workDate),
+      week: t.week ?? null,
+      overflow: t.overflow ?? false,
+      notes: t.note ?? null,
+      isAuto: t.kind === "CONTENT",
+      month,
+      year,
+    })),
+  });
+  console.log(`✓ tasks: ${data.tasks.length}`);
 
-  // ===== TEAM (§8) =====
-  const ayman = await prisma.employee.create({
-    data: {
-      name: "أيمن",
-      role: "designer",
-      hoursPerDay: 6,
-      workDays: JSON.stringify([0, 1, 2, 3, 4]), // Sun→Thu (exception)
-      isScheduled: true,
-      color: "#5dade2",
-    },
+  await prisma.photoSession.createMany({
+    data: (data.photoSessions as any[]).map((s) => ({
+      id: s.id,
+      companyId: s.companyId,
+      no: s.no,
+      kind: s.kind,
+      shootDate: D(s.shootDate)!,
+      deliverBy: D(s.deliverBy)!,
+      reelCount: s.reelCount,
+      status: s.status,
+      isAuto: true,
+      month,
+      year,
+    })),
   });
-  const sabin = await prisma.employee.create({
-    data: {
-      name: "سابين",
-      role: "designer",
-      hoursPerDay: 6,
-      workDays: JSON.stringify([6, 0, 1, 2, 3]), // Sat→Wed
-      isScheduled: true,
-      color: "#48c9b0",
-    },
-  });
-  const hla = await prisma.employee.create({
-    data: {
-      name: "حلا",
-      role: "lead",
-      hoursPerDay: 3, // team lead + half designer
-      workDays: JSON.stringify([6, 0, 1, 2, 3]),
-      isScheduled: true,
-      color: "#C8A84E",
-    },
-  });
-  await prisma.employee.create({
-    data: {
-      name: "نوال",
-      role: "writer",
-      hoursPerDay: 6,
-      workDays: JSON.stringify([6, 0, 1, 2, 3]),
-      isScheduled: false,
-      color: "#c9a0dc",
-    },
-  });
-  await prisma.employee.create({
-    data: {
-      name: "عمر",
-      role: "publisher",
-      hoursPerDay: 6,
-      workDays: JSON.stringify([6, 0, 1, 2, 3]),
-      isScheduled: false,
-      color: "#f5b041",
-    },
-  });
-  const photo = await prisma.employee.create({
-    data: {
-      name: "المصور",
-      role: "photographer",
-      hoursPerDay: 6,
-      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]), // Sat→Thu (freelancer)
-      isScheduled: false,
-      isPhotographer: true,
-      color: "#85929e",
-    },
-  });
-
-  // ===== MANAGED COMPANIES (§8) =====
-  const managed = [
-    {
-      name: "BW",
-      priority: 1,
-      color: "#85929e",
-      posts: 4,
-      reels: 4,
-      aiReels: 0,
-      stories: 8,
-      postOwnerId: ayman.id,
-      storyOwnerId: ayman.id,
-      aiReelOwnerId: null,
-    },
-    {
-      name: "Phoenitech",
-      priority: 2,
-      color: "#f5b041",
-      posts: 4,
-      reels: 4,
-      aiReels: 0,
-      stories: 8,
-      postOwnerId: sabin.id,
-      storyOwnerId: sabin.id,
-      aiReelOwnerId: null,
-    },
-    {
-      name: "مخبر د.نور",
-      priority: 3,
-      color: "#c9a0dc",
-      posts: 6,
-      reels: 6,
-      aiReels: 0,
-      stories: 8,
-      postOwnerId: sabin.id,
-      storyOwnerId: sabin.id,
-      aiReelOwnerId: null,
-    },
-    {
-      name: "برو",
-      priority: 4,
-      color: "#ec7063",
-      posts: 6,
-      reels: 8,
-      aiReels: 0,
-      stories: 12,
-      postOwnerId: sabin.id,
-      storyOwnerId: ayman.id, // story owner = أيمن (per §8)
-      aiReelOwnerId: null,
-    },
-    {
-      name: "المول الصيني",
-      priority: 5,
-      color: "#5dade2",
-      posts: 10,
-      reels: 3,
-      aiReels: 0,
-      stories: 15,
-      postOwnerId: ayman.id,
-      storyOwnerId: ayman.id,
-      aiReelOwnerId: null,
-    },
-    {
-      name: "جدارات",
-      priority: 6,
-      color: "#48c9b0",
-      posts: 6,
-      reels: 0,
-      aiReels: 6,
-      stories: 12,
-      postOwnerId: sabin.id,
-      storyOwnerId: sabin.id,
-      aiReelOwnerId: ayman.id, // AI reel owner = أيمن (per §8)
-    },
-    {
-      name: "التدريب",
-      priority: 7,
-      color: "#f7dc6f",
-      posts: 7,
-      reels: 0,
-      aiReels: 0,
-      stories: 0,
-      postOwnerId: ayman.id,
-      storyOwnerId: ayman.id,
-      aiReelOwnerId: null,
-    },
-  ];
-
-  for (const c of managed) {
-    await prisma.company.create({
-      data: {
-        name: c.name,
-        managed: true,
-        priority: c.priority,
-        color: c.color,
-        posts: c.posts,
-        reels: c.reels,
-        aiReels: c.aiReels,
-        stories: c.stories,
-        postOwnerId: c.postOwnerId,
-        storyOwnerId: c.storyOwnerId,
-        aiReelOwnerId: c.aiReelOwnerId,
-      },
-    });
-  }
-
-  // ===== DESIGN-ONLY COMPANIES (§4.9) =====
-  const schools = await prisma.company.create({
-    data: {
-      name: "المدارس",
-      managed: false,
-      priority: 90,
-      color: "#aab7b8",
-      defaultOwnerId: hla.id,
-    },
-  });
-  const cabriani = await prisma.company.create({
-    data: {
-      name: "كابرياني",
-      managed: false,
-      priority: 91,
-      color: "#d7bde2",
-      defaultOwnerId: hla.id,
-    },
-  });
-  void schools;
-
-  // ===== AD-HOC SEED TASKS (§8) =====
-  const targetYear = 2026;
-  const targetMonth = 5; // June (0-based)
-  await prisma.task.create({
-    data: {
-      kind: "ADHOC",
-      title: "تصميم بروفايل كابرياني",
-      hours: 8,
-      priority: "URGENT",
-      status: "NOT_STARTED",
-      companyId: cabriani.id,
-      assigneeId: sabin.id,
-      month: targetMonth,
-      year: targetYear,
-      isAuto: false,
-    },
-  });
-  await prisma.task.create({
-    data: {
-      kind: "ADHOC",
-      title: "تصميم موقع كابرياني",
-      hours: 24,
-      priority: "URGENT",
-      status: "IN_PROGRESS",
-      companyId: cabriani.id,
-      assigneeId: hla.id,
-      month: targetMonth,
-      year: targetYear,
-      isAuto: false,
-    },
-  });
-
-  void photo;
-  console.log("✅ Seeded: 6 employees, 7 managed + 2 design-only companies, 2 ad-hoc tasks.");
+  console.log(`✓ photoSessions: ${data.photoSessions.length}`);
+  console.log("✅ Seed complete.");
 }
 
 main()

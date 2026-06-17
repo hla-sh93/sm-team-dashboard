@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push --accept-data-loss --skip-generate && tsx prisma/seed.ts && next build",
+    "build": "prisma generate --schema=prisma/schema.postgres.prisma && prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss --skip-generate && tsx prisma/seed.ts && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",

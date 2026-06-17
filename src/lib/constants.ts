@@ -184,6 +184,33 @@ export const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
 // Publishing week = Sat→Wed (5 days). Index 0..4 maps to these getDay values.
 export const PUBLISH_WEEK_DAYS = [6, 0, 1, 2, 3] as const; // Sat,Sun,Mon,Tue,Wed
 
+// Per-content-type accent colors for calendar chips (hex; design palette).
+export const CONTENT_TYPE_COLORS: Record<ContentType, string> = {
+  POST: "#17408E", // navy-blue
+  REEL: "#AD3D5B", // rose (photographer)
+  AI_REEL: "#7C3AED", // purple
+  STORY: "#C8A84E", // gold
+};
+
+// Color for any task by kind/type (used to tint calendar cards).
+export function taskColor(kind: string, type?: string | null): string {
+  if (type && type in CONTENT_TYPE_COLORS) {
+    return CONTENT_TYPE_COLORS[type as ContentType];
+  }
+  switch (kind) {
+    case "ADHOC":
+      return "#E8590C"; // urgent orange
+    case "CONTENT_WRITING":
+      return "#0E9F6E"; // teal (writer)
+    case "REPORT":
+      return "#0B7285"; // deep cyan (publisher report)
+    case "PHOTOSHOOT":
+      return "#AD3D5B";
+    default:
+      return "#8a94a6";
+  }
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   lead: "تيم ليدر",
   writer: "كاتب محتوى",
