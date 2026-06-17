@@ -4,6 +4,16 @@ const prisma = new PrismaClient();
 
 // SOCIAL_SCHEDULER_SPEC.md §8 — current reality seed.
 async function main() {
+  // Idempotent guard: this seed is also run during the Vercel build, which
+  // happens on every deploy. Only seed an empty database so existing data
+  // (statuses, ad-hoc tasks, schedules) is never wiped. To force a re-seed,
+  // clear the Employee table first.
+  const existing = await prisma.employee.count();
+  if (existing > 0) {
+    console.log(`↩︎  Database already seeded (${existing} employees) — skipping.`);
+    return;
+  }
+
   console.log("🌱 Seeding database (spec §8)...");
 
   await prisma.task.deleteMany();
