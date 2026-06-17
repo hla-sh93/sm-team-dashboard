@@ -1,0 +1,29 @@
+/**
+ * CSV helpers — SOCIAL_SCHEDULER_SPEC.md §7 / §9 criterion 12.
+ * Output is prefixed with a UTF-8 BOM so Excel renders Arabic without tofu.
+ */
+export const BOM = "﻿";
+
+function escapeCell(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Build a BOM-prefixed CSV string from a header + rows. */
+export function toCSV(header: string[], rows: (string | number | null)[][]): string {
+  const lines = [header, ...rows].map((r) => r.map(escapeCell).join(","));
+  return BOM + lines.join("\r\n");
+}
+
+/** Trigger a browser download of a CSV string (client only). */
+export function downloadCSV(filename: string, content: string): void {
+  if (typeof window === "undefined") return;
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

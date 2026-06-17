@@ -1,171 +1,240 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// SOCIAL_SCHEDULER_SPEC.md §8 — current reality seed.
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log("🌱 Seeding database (spec §8)...");
 
-  // Clear existing data
   await prisma.task.deleteMany();
+  await prisma.photoSession.deleteMany();
   await prisma.company.deleteMany();
-  await prisma.teamMember.deleteMany();
+  await prisma.employee.deleteMany();
 
-  // ===== TEAM =====
-  const hla = await prisma.teamMember.create({
+  // ===== TEAM (§8) =====
+  const ayman = await prisma.employee.create({
     data: {
-      name: 'هلا',
-      role: 'lead',
-      capPost: 3,
-      capReelAi: 0.5,
-      capReelVideo: 0,
-      capPlan: 0,
+      name: "أيمن",
+      role: "designer",
+      hoursPerDay: 6,
+      workDays: JSON.stringify([0, 1, 2, 3, 4]), // Sun→Thu (exception)
+      isScheduled: true,
+      color: "#5dade2",
+    },
+  });
+  const sabin = await prisma.employee.create({
+    data: {
+      name: "سابين",
+      role: "designer",
+      hoursPerDay: 6,
+      workDays: JSON.stringify([6, 0, 1, 2, 3]), // Sat→Wed
+      isScheduled: true,
+      color: "#48c9b0",
+    },
+  });
+  const hla = await prisma.employee.create({
+    data: {
+      name: "حلا",
+      role: "lead",
+      hoursPerDay: 3, // team lead + half designer
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+      isScheduled: true,
+      color: "#C8A84E",
+    },
+  });
+  await prisma.employee.create({
+    data: {
+      name: "نوال",
+      role: "writer",
+      hoursPerDay: 6,
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+      isScheduled: false,
+      color: "#c9a0dc",
+    },
+  });
+  await prisma.employee.create({
+    data: {
+      name: "عمر",
+      role: "publisher",
+      hoursPerDay: 6,
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+      isScheduled: false,
+      color: "#f5b041",
+    },
+  });
+  const photo = await prisma.employee.create({
+    data: {
+      name: "المصور",
+      role: "photographer",
+      hoursPerDay: 6,
+      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]), // Sat→Thu (freelancer)
+      isScheduled: false,
+      isPhotographer: true,
+      color: "#85929e",
     },
   });
 
-  const nawal = await prisma.teamMember.create({
-    data: {
-      name: 'نوال',
-      role: 'writer',
-      capPost: 0,
-      capReelAi: 0,
-      capReelVideo: 0,
-      capPlan: 0.5,
-    },
-  });
-
-  const ayman = await prisma.teamMember.create({
-    data: {
-      name: 'أيمن',
-      role: 'designer',
-      capPost: 6,
-      capReelAi: 1,
-      capReelVideo: 0,
-      capPlan: 0,
-    },
-  });
-
-  const majed = await prisma.teamMember.create({
-    data: {
-      name: 'ماجد',
-      role: 'photographer',
-      capPost: 0,
-      capReelAi: 0,
-      capReelVideo: 1,
-      capPlan: 0,
-    },
-  });
-
-  await prisma.teamMember.create({
-    data: {
-      name: 'عمر',
-      role: 'publisher',
-      capPost: 0,
-      capReelAi: 0,
-      capReelVideo: 0,
-      capPlan: 0,
-    },
-  });
-
-  // Publishing-day weekday convention: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-  // (matches JS getDay()). Stored as JSON-encoded strings on the Company row.
-  // The patterns below are Omar's actual publishing rhythm; the scheduler enforces
-  // them strictly so each company gets a consistent presence on its days.
-  const SAT_MON_WED = JSON.stringify([6, 1, 3]);
-  const SUN_TUE_THU = JSON.stringify([0, 2, 4]);
-  const SAT_WED = JSON.stringify([6, 3]);
-  const MON_ONLY = JSON.stringify([1]);
-
-  // ===== COMPANIES =====
-  const companies = [
+  // ===== MANAGED COMPANIES (§8) =====
+  const managed = [
     {
-      name: 'أونوكود',
-      color: '#5dade2',
+      name: "BW",
       priority: 1,
+      color: "#85929e",
       posts: 4,
-      reelAi: 4,
-      reelVideo: 0,
-      needsApproval: false,
-      publishDaysPost: SAT_MON_WED,
-      publishDaysReel: null,
-      publishDaysVideo: null,
+      reels: 4,
+      aiReels: 0,
+      stories: 8,
+      postOwnerId: ayman.id,
+      storyOwnerId: ayman.id,
+      aiReelOwnerId: null,
     },
     {
-      name: 'باسيفيك',
-      color: '#48c9b0',
+      name: "Phoenitech",
       priority: 2,
-      posts: 8,
-      reelAi: 1,
-      reelVideo: 0,
-      needsApproval: true,
-      publishDaysPost: SAT_WED,
-      publishDaysReel: MON_ONLY,
-      publishDaysVideo: null,
-    },
-    {
-      name: 'غلامور',
-      color: '#ec7063',
-      priority: 3,
-      posts: 8,
-      reelAi: 1,
-      reelVideo: 0,
-      needsApproval: true,
-      publishDaysPost: SAT_WED,
-      publishDaysReel: MON_ONLY,
-      publishDaysVideo: null,
-    },
-    {
-      name: 'BW',
-      color: '#85929e',
-      priority: 4,
+      color: "#f5b041",
       posts: 4,
-      reelAi: 4,
-      reelVideo: 0,
-      needsApproval: false,
-      publishDaysPost: SAT_MON_WED,
-      publishDaysReel: null,
-      publishDaysVideo: null,
+      reels: 4,
+      aiReels: 0,
+      stories: 8,
+      postOwnerId: sabin.id,
+      storyOwnerId: sabin.id,
+      aiReelOwnerId: null,
     },
     {
-      name: 'فونيتيك',
-      color: '#f5b041',
-      priority: 5,
-      posts: 0,
-      reelAi: 0,
-      reelVideo: 6,
-      needsApproval: false,
-      publishDaysPost: SUN_TUE_THU,
-      publishDaysReel: null,
-      publishDaysVideo: null,
-    },
-    {
-      name: 'مخبر نور',
-      color: '#c9a0dc',
-      priority: 6,
+      name: "مخبر د.نور",
+      priority: 3,
+      color: "#c9a0dc",
       posts: 6,
-      reelAi: 0,
-      reelVideo: 6,
-      needsApproval: true,
-      publishDaysPost: SAT_MON_WED,
-      publishDaysReel: null,
-      publishDaysVideo: null,
+      reels: 6,
+      aiReels: 0,
+      stories: 8,
+      postOwnerId: sabin.id,
+      storyOwnerId: sabin.id,
+      aiReelOwnerId: null,
+    },
+    {
+      name: "برو",
+      priority: 4,
+      color: "#ec7063",
+      posts: 6,
+      reels: 8,
+      aiReels: 0,
+      stories: 12,
+      postOwnerId: sabin.id,
+      storyOwnerId: ayman.id, // story owner = أيمن (per §8)
+      aiReelOwnerId: null,
+    },
+    {
+      name: "المول الصيني",
+      priority: 5,
+      color: "#5dade2",
+      posts: 10,
+      reels: 3,
+      aiReels: 0,
+      stories: 15,
+      postOwnerId: ayman.id,
+      storyOwnerId: ayman.id,
+      aiReelOwnerId: null,
+    },
+    {
+      name: "جدارات",
+      priority: 6,
+      color: "#48c9b0",
+      posts: 6,
+      reels: 0,
+      aiReels: 6,
+      stories: 12,
+      postOwnerId: sabin.id,
+      storyOwnerId: sabin.id,
+      aiReelOwnerId: ayman.id, // AI reel owner = أيمن (per §8)
+    },
+    {
+      name: "التدريب",
+      priority: 7,
+      color: "#f7dc6f",
+      posts: 7,
+      reels: 0,
+      aiReels: 0,
+      stories: 0,
+      postOwnerId: ayman.id,
+      storyOwnerId: ayman.id,
+      aiReelOwnerId: null,
     },
   ];
 
-  for (const c of companies) {
+  for (const c of managed) {
     await prisma.company.create({
       data: {
-        ...c,
-        designerId: ayman.id,
-        photographerId: majed.id,
+        name: c.name,
+        managed: true,
+        priority: c.priority,
+        color: c.color,
+        posts: c.posts,
+        reels: c.reels,
+        aiReels: c.aiReels,
+        stories: c.stories,
+        postOwnerId: c.postOwnerId,
+        storyOwnerId: c.storyOwnerId,
+        aiReelOwnerId: c.aiReelOwnerId,
       },
     });
   }
 
-  console.log('✅ Seeded:');
-  console.log('   - 5 team members');
-  console.log('   - 6 companies');
-  console.log('');
-  console.log('Run "npm run dev" to start the app at http://localhost:3000');
+  // ===== DESIGN-ONLY COMPANIES (§4.9) =====
+  const schools = await prisma.company.create({
+    data: {
+      name: "المدارس",
+      managed: false,
+      priority: 90,
+      color: "#aab7b8",
+      defaultOwnerId: hla.id,
+    },
+  });
+  const cabriani = await prisma.company.create({
+    data: {
+      name: "كابرياني",
+      managed: false,
+      priority: 91,
+      color: "#d7bde2",
+      defaultOwnerId: hla.id,
+    },
+  });
+  void schools;
+
+  // ===== AD-HOC SEED TASKS (§8) =====
+  const targetYear = 2026;
+  const targetMonth = 5; // June (0-based)
+  await prisma.task.create({
+    data: {
+      kind: "ADHOC",
+      title: "تصميم بروفايل كابرياني",
+      hours: 8,
+      priority: "URGENT",
+      status: "NOT_STARTED",
+      companyId: cabriani.id,
+      assigneeId: sabin.id,
+      month: targetMonth,
+      year: targetYear,
+      isAuto: false,
+    },
+  });
+  await prisma.task.create({
+    data: {
+      kind: "ADHOC",
+      title: "تصميم موقع كابرياني",
+      hours: 24,
+      priority: "URGENT",
+      status: "IN_PROGRESS",
+      companyId: cabriani.id,
+      assigneeId: hla.id,
+      month: targetMonth,
+      year: targetYear,
+      isAuto: false,
+    },
+  });
+
+  void photo;
+  console.log("✅ Seeded: 6 employees, 7 managed + 2 design-only companies, 2 ad-hoc tasks.");
 }
 
 main()

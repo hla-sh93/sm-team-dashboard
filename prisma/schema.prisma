@@ -1,4 +1,11 @@
-// Social Media Team Management — Database Schema
+// Social Media Team Scheduler — Database Schema
+// Implements SOCIAL_SCHEDULER_SPEC.md §3 (source of truth).
+//
+// SQLite-specific adaptations (semantics preserved per §0 "adapt to schema"):
+//   - Prisma enums are unsupported on SQLite → stored as String with the
+//     spec's enum identifiers as values (e.g. status = "NOT_STARTED").
+//   - Int[] is unsupported on SQLite → workDays stored as a JSON string,
+//     e.g. "[6,0,1,2,3]". Parse with parseWorkDays() in lib/dates.ts.
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,129 +16,145 @@ datasource db {
 }
 
 // ============================================
-// TEAM MEMBER
+// EMPLOYEE  (§3)
+// Enum mirrors (stored as String):
+//   role: free text — مصمم / كاتب محتوى / ناشر / مصور / تيم ليدر
 // ============================================
-model TeamMember {
-  id              String   @id @default(cuid())
-  name            String
-  role            String   // 'lead' | 'writer' | 'designer' | 'photographer' | 'publisher'
-  capPost         Float    @default(0)
-  capReelAi       Float    @default(0)
-  capReelVideo    Float    @default(0)
-  capPlan         Float    @default(0)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model Employee {
+  id             String   @id @default(cuid())
+  name           String
+  role           String
+  hoursPerDay    Float    @default(6)          // daily capacity in hours
+  workDays       String   @default("[6,0,1,2,3]") // JSON Int[] getDay() values
+  isScheduled    Boolean  @default(true)        // enters the auto content engine
+  isPhotographer Boolean  @default(false)
+  color          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  // Relations
+  // Per-content-type ownership (§3)
+  postCompanies   Company[] @relation("postOwner")
+  storyCompanies  Company[] @relation("storyOwner")
+  aiReelCompanies Company[] @relation("aiReelOwner")
+  defaultCompanies Company[] @relation("defaultOwner")
   tasks           Task[]
-  asDesigner      Company[] @relation("CompanyDesigner")
-  asPhotographer  Company[] @relation("CompanyPhotographer")
 }
 
 // ============================================
-// COMPANY (CLIENT)
+// COMPANY  (§3)
 // ============================================
 model Company {
-  id            String   @id @default(cuid())
-  name          String
-  color         String   @default("#d4af37")
-  priority      Int      @default(99)
-  posts         Int      @default(0)
-  reelAi        Int      @default(0)
-  reelVideo     Int      @default(0)
-  needsApproval Boolean  @default(false)
-  status        String   @default("active") // 'active' | 'paused' | 'archived'
-  notes         String?
+  id      String  @id @default(cuid())
+  name    String  @unique
+  managed Boolean @default(true)
 
-  // Publishing day-of-week patterns. JSON-encoded arrays of weekday numbers
-  // using JS getDay() convention: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
-  // If publishDaysReel / publishDaysVideo is null, falls back to publishDaysPost.
-  // If publishDaysPost is null, defaults are derived in code (Sat/Mon/Wed pattern).
-  publishDaysPost  String?
-  publishDaysReel  String?
-  publishDaysVideo String?
+  // Monthly plan (managed companies only)
+  posts   Int @default(0)
+  reels   Int @default(0)   // real reels → photographer
+  stories Int @default(0)
+  aiReels Int @default(0)   // AI reels → designer
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // Carried-over UI / deterministic-ordering fields (not part of §3 plan but
+  // used by screens and to give the engine a stable company order).
+  color    String? @default("#C8A84E")
+  priority Int     @default(99)
+  status   String  @default("active") // 'active' | 'paused' | 'archived'
 
-  // Relations
-  designerId      String?
-  designer        TeamMember? @relation("CompanyDesigner", fields: [designerId], references: [id], onDelete: SetNull)
-  photographerId  String?
-  photographer    TeamMember? @relation("CompanyPhotographer", fields: [photographerId], references: [id], onDelete: SetNull)
-  tasks           Task[]
-  publishingItems PublishingItem[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Per-type owners + design-only default owner (§3 / §4.9)
+  postOwnerId   String?
+  postOwner     Employee? @relation("postOwner", fields: [postOwnerId], references: [id], onDelete: SetNull)
+  storyOwnerId  String?
+  storyOwner    Employee? @relation("storyOwner", fields: [storyOwnerId], references: [id], onDelete: SetNull)
+  aiReelOwnerId String?
+  aiReelOwner   Employee? @relation("aiReelOwner", fields: [aiReelOwnerId], references: [id], onDelete: SetNull)
+  defaultOwnerId String?
+  defaultOwner   Employee? @relation("defaultOwner", fields: [defaultOwnerId], references: [id], onDelete: SetNull)
+
+  tasks         Task[]
+  photoSessions PhotoSession[]
 }
 
 // ============================================
-// TASK
+// TASK  (§3)
+// Enum mirrors (stored as String):
+//   kind:     CONTENT | ADHOC | PHOTOSHOOT | REPORT | CONTENT_WRITING
+//   type:     POST | REEL | AI_REEL | STORY  (null for ADHOC/REPORT)
+//   priority: NORMAL | IMPORTANT | URGENT
+//   status:   NOT_STARTED | IN_PROGRESS | AWAITING_APPROVAL | READY | PUBLISHED
 // ============================================
 model Task {
-  id          String   @id @default(cuid())
-  title       String
-  type        String   // 'plan' | 'post' | 'reel_ai' | 'reel_video' | 'custom'
-  status      String   @default("in_progress") // 'in_progress' | 'review' | 'ready' | 'published'
-  priority    String   @default("normal") // 'urgent' | 'normal' | 'low'
-  startDate   DateTime
-  endDate     DateTime
-  duration    Float    @default(1) // working days
+  id          String    @id @default(cuid())
+  kind        String    @default("CONTENT")
+  type        String?
+  title       String?
+  hours       Float     @default(0)
+  priority    String    @default("NORMAL")
+  status      String    @default("NOT_STARTED")
+  publishDate DateTime?
+  readyDate   DateTime?
+  workDate    DateTime?
+  week        Int?      // 1..4
+  overflow    Boolean   @default(false)
+  month       Int                                 // 0..11
+  year        Int
+  isPinned    Boolean   @default(false)           // manual lock — no auto reschedule
+  isAuto      Boolean   @default(false)           // generated by the engine
+  // Deterministic match key: companyId|type|YYYY-MM-DD(publishDate)|seq (§3)
+  detKey      String?
   notes       String?
-  isAuto      Boolean  @default(false)
-  targetMonth String?  // 'YYYY-MM' for auto-generated
-  completedAt DateTime? // set when status transitions to ready/published
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  // Relations
-  assigneeId  String
-  assignee    TeamMember @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
-  companyId   String?
-  company     Company?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  String?
+  company    Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assigneeId String?
+  assignee   Employee? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
 
-  @@index([startDate])
+  @@index([year, month])
   @@index([assigneeId])
   @@index([companyId])
   @@index([status])
-  @@index([targetMonth])
+  @@index([detKey])
 }
 
 // ============================================
-// PUBLISHING ITEM
+// PHOTO SESSION  (§3, §4.6, §5.5)
+// Enum mirrors (stored as String):
+//   kind:   PHOTOSHOOT | REELS
+//   status: NOT_STARTED | SHOT | EDITING | DELIVERED
 // ============================================
-// Schedule for the publisher (Omar). Independent of the production Task table:
-// these slots can be planned for any day (weekend included) and don't consume
-// team capacity. Each company's monthly quota (posts + reelAi + reelVideo) is
-// distributed across the company's preferred publishing days-of-week.
-model PublishingItem {
-  id          String   @id @default(cuid())
-  contentType String   // 'post' | 'reel_ai' | 'reel_video'
-  publishDate DateTime
-  status      String   @default("scheduled") // 'scheduled' | 'published'
-  notes       String?
-  isAuto      Boolean  @default(false)
-  targetMonth String   // 'YYYY-MM'
-  publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model PhotoSession {
+  id        String   @id @default(cuid())
+  no        Int                              // session order per client (1 = photoshoot)
+  kind      String   @default("REELS")
+  shootDate DateTime
+  deliverBy DateTime
+  reelCount Int      @default(0)             // 0 for photoshoot, 2..3 for reels
+  status    String   @default("NOT_STARTED")
+  month     Int
+  year      Int
+  isAuto    Boolean  @default(true)
+  detKey    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relations
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  // Optional link back to the production Task that becomes this published item.
-  taskId      String?
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@index([publishDate])
+  @@index([year, month])
   @@index([companyId])
-  @@index([status])
-  @@index([targetMonth])
+  @@index([detKey])
 }
 
 // ============================================
-// SETTINGS (key-value store for app config)
+// SETTING — editable app config (§3)
 // ============================================
 model Setting {
   key       String   @id
-  value     String
+  value     String                            // JSON
   updatedAt DateTime @updatedAt
 }

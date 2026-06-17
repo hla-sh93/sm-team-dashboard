@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useTransition } from 'react';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import type { Company, TeamMember } from '@/types';
-import { companySchema, type CompanyInput } from '@/lib/schemas';
-import { createCompany, updateCompany } from '@/server/actions/companies';
-import { Button } from '@/components/ui/button';
-import { Input, Select, Label } from '@/components/ui/input';
+import { useEffect, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { Company, Employee } from "@/types";
+import { companySchema, type CompanyInput } from "@/lib/schemas";
+import { createCompany, updateCompany } from "@/server/actions/companies";
+import { Button } from "@/components/ui/button";
+import { Input, Select, Label } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -15,296 +15,189 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { toast } from '@/components/ui/toaster';
-import { WEEKDAY_LABELS, WEEKDAY_ORDER } from '@/lib/constants';
-import { cn } from '@/lib/utils';
+} from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toaster";
 
-interface CompanyFormProps {
+interface Props {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (o: boolean) => void;
   company?: Company | null;
-  team: TeamMember[];
+  employees: Employee[];
 }
 
-export default function CompanyForm({ open, onOpenChange, company, team }: CompanyFormProps) {
-  const [isPending, startTransition] = useTransition();
+export default function CompanyForm({ open, onOpenChange, company, employees }: Props) {
+  const [isPending, start] = useTransition();
   const isEdit = !!company;
 
-  const designers = team.filter((m) => m.capPost > 0 || m.capReelAi > 0);
-  const photogs = team.filter((m) => m.capReelVideo > 0);
-
-  const parseDays = (raw: string | null | undefined): number[] => {
-    if (!raw) return [];
-    try {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.filter((n) => typeof n === 'number');
-    } catch {}
-    return [];
-  };
+  const defaults: Partial<CompanyInput> = company
+    ? {
+        name: company.name,
+        managed: company.managed,
+        posts: company.posts,
+        reels: company.reels,
+        aiReels: company.aiReels,
+        stories: company.stories,
+        color: company.color ?? "#C8A84E",
+        priority: company.priority,
+        status: company.status as CompanyInput["status"],
+        postOwnerId: company.postOwnerId ?? "",
+        storyOwnerId: company.storyOwnerId ?? "",
+        aiReelOwnerId: company.aiReelOwnerId ?? "",
+        defaultOwnerId: company.defaultOwnerId ?? "",
+      }
+    : {
+        name: "",
+        managed: true,
+        posts: 0,
+        reels: 0,
+        aiReels: 0,
+        stories: 0,
+        color: "#C8A84E",
+        priority: 99,
+        status: "active",
+        postOwnerId: "",
+        storyOwnerId: "",
+        aiReelOwnerId: "",
+        defaultOwnerId: "",
+      };
 
   const {
     register,
     handleSubmit,
-    control,
+    watch,
     formState: { errors },
     reset,
   } = useForm<CompanyInput>({
     resolver: zodResolver(companySchema),
-    defaultValues: company
-      ? {
-          name: company.name,
-          color: company.color,
-          priority: company.priority,
-          posts: company.posts,
-          reelAi: company.reelAi,
-          reelVideo: company.reelVideo,
-          needsApproval: company.needsApproval,
-          status: company.status as CompanyInput['status'],
-          designerId: company.designerId ?? '',
-          photographerId: company.photographerId ?? '',
-          notes: company.notes ?? '',
-          publishDaysPost: parseDays(company.publishDaysPost),
-          publishDaysReel: parseDays(company.publishDaysReel),
-          publishDaysVideo: parseDays(company.publishDaysVideo),
-        }
-      : {
-          name: '',
-          color: '#d4af37',
-          priority: 99,
-          posts: 0,
-          reelAi: 0,
-          reelVideo: 0,
-          needsApproval: false,
-          status: 'active',
-          designerId: designers[0]?.id ?? '',
-          photographerId: photogs[0]?.id ?? '',
-          notes: '',
-          publishDaysPost: [],
-          publishDaysReel: [],
-          publishDaysVideo: [],
-        },
+    defaultValues: defaults as CompanyInput,
   });
 
+  useEffect(() => {
+    reset(defaults as CompanyInput);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company, open]);
+
+  const managed = watch("managed");
+
   const onSubmit = (data: CompanyInput) => {
-    startTransition(async () => {
-      const result = isEdit
-        ? await updateCompany(company!.id, data)
-        : await createCompany(data);
-      if (result.ok) {
-        toast(isEdit ? 'تم التحديث' : 'تمت الإضافة');
+    start(async () => {
+      const r = isEdit ? await updateCompany(company!.id, data) : await createCompany(data);
+      if (r.ok) {
+        toast(isEdit ? "تم تحديث الشركة" : "تمت إضافة الشركة");
         onOpenChange(false);
-        reset();
-      } else {
-        toast(result.error, 'error');
-      }
+      } else toast(r.error, "error");
     });
   };
+
+  const ownerOptions = (
+    <>
+      <option value="">— بدون —</option>
+      {employees.map((e) => (
+        <option key={e.id} value={e.id}>
+          {e.name}
+        </option>
+      ))}
+    </>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'تعديل شركة' : 'إضافة شركة جديدة'}</DialogTitle>
-          <DialogDescription>حدد الخطة الشهرية وقواعد سير العمل</DialogDescription>
+          <DialogTitle>{isEdit ? "تعديل شركة" : "إضافة شركة"}</DialogTitle>
+          <DialogDescription>
+            الشركة المُدارة لها خطة نشر؛ شركة التصميم-فقط تستقبل مهام يدوية فقط.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5 col-span-2 md:col-span-1">
-              <Label>اسم الشركة</Label>
-              <Input {...register('name')} placeholder="مثال: غلامور" />
+            <div className="space-y-1.5">
+              <Label>الاسم</Label>
+              <Input {...register("name")} />
               {errors.name && <p className="text-xs text-danger">{errors.name.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>اللون المميز</Label>
-              <Input
-                type="color"
-                {...register('color')}
-                className="h-10 cursor-pointer p-1"
-              />
+              <Label>اللون</Label>
+              <Input type="color" {...register("color")} className="h-10 p-1" />
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label>بوستات/شهر</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('posts', { valueAsNumber: true })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>ريل AI/شهر</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('reelAi', { valueAsNumber: true })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>ريل تصوير/شهر</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('reelVideo', { valueAsNumber: true })}
-              />
-            </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" {...register("managed")} className="accent-accent" />
+              شركة مُدارة (لها خطة نشر)
+            </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>المصمم المسؤول</Label>
-              <Select {...register('designerId')}>
-                <option value="">— لا يوجد —</option>
-                {designers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </Select>
+          {managed && (
+            <div className="grid grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label>بوست</Label>
+                <Input type="number" min="0" {...register("posts", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>ريل</Label>
+                <Input type="number" min="0" {...register("reels", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>ريل AI</Label>
+                <Input type="number" min="0" {...register("aiReels", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>ستوري</Label>
+                <Input type="number" min="0" {...register("stories", { valueAsNumber: true })} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>المصور المسؤول</Label>
-              <Select {...register('photographerId')}>
-                <option value="">— لا يوجد —</option>
-                {photogs.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </Select>
+          )}
+
+          {managed ? (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>مالك البوست</Label>
+                <Select {...register("postOwnerId")}>{ownerOptions}</Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>مالك الستوري</Label>
+                <Select {...register("storyOwnerId")}>{ownerOptions}</Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>مالك ريل AI</Label>
+                <Select {...register("aiReelOwnerId")}>{ownerOptions}</Select>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>المسؤول الافتراضي (تصميم-فقط)</Label>
+              <Select {...register("defaultOwnerId")}>{ownerOptions}</Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>يحتاج موافقة العميل؟</Label>
-              <Select
-                {...register('needsApproval', {
-                  setValueAs: (v) => v === 'true' || v === true,
-                })}
-              >
-                <option value="false">لا، يبدأ بعد مراجعة هلا</option>
-                <option value="true">نعم، إلزامية</option>
-              </Select>
+              <Label>الأولوية</Label>
+              <Input type="number" min="1" max="99" {...register("priority", { valueAsNumber: true })} />
             </div>
             <div className="space-y-1.5">
               <Label>الحالة</Label>
-              <Select {...register('status')}>
+              <Select {...register("status")}>
                 <option value="active">نشط</option>
-                <option value="paused">متوقف مؤقتاً</option>
+                <option value="paused">متوقف</option>
                 <option value="archived">مؤرشف</option>
               </Select>
             </div>
           </div>
 
-          {/* Publishing days — optional override */}
-          <div className="border-t border-border-soft pt-4 space-y-3">
-            <div>
-              <Label className="text-sm font-semibold">
-                أيام النشر — تقييد اختياري
-              </Label>
-              <p className="text-xs text-fg-muted mt-1">
-                الافتراضي: النشر مسموح بكل الأيام عدا الجمعة، وعمر بيوزّع
-                المنشورات بشكل متوازن. لو هاي الشركة بدها أيام محددة فقط،
-                اختار الأيام هنا. اترك الكل فاضي للسلوك الافتراضي.
-              </p>
-            </div>
-            <Controller
-              control={control}
-              name="publishDaysPost"
-              render={({ field }) => (
-                <DayPicker
-                  label="أيام البوستات (اختياري)"
-                  value={field.value ?? []}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="publishDaysReel"
-              render={({ field }) => (
-                <DayPicker
-                  label="أيام ريل AI (اختياري — يرث من البوستات)"
-                  value={field.value ?? []}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="publishDaysVideo"
-              render={({ field }) => (
-                <DayPicker
-                  label="أيام ريل التصوير (اختياري — يرث من ريل AI)"
-                  value={field.value ?? []}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-          </div>
-
           <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={isPending}
-            >
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
               إلغاء
             </Button>
             <Button type="submit" variant="primary" disabled={isPending}>
-              {isPending ? 'جاري الحفظ...' : isEdit ? 'تحديث' : 'إضافة'}
+              {isPending ? "جاري الحفظ..." : isEdit ? "تحديث" : "إضافة"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function DayPicker({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number[];
-  onChange: (v: number[]) => void;
-}) {
-  const set = new Set(value);
-  const toggle = (d: number) => {
-    const next = new Set(set);
-    if (next.has(d)) next.delete(d);
-    else next.add(d);
-    onChange(Array.from(next).sort());
-  };
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-fg-dim">{label}</Label>
-      <div className="flex flex-wrap gap-1.5">
-        {WEEKDAY_ORDER.map((d) => {
-          const active = set.has(d);
-          return (
-            <button
-              key={d}
-              type="button"
-              onClick={() => toggle(d)}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-xs font-semibold border transition-all',
-                active
-                  ? 'bg-accent text-bg border-accent'
-                  : 'bg-bg-elev text-fg-dim border-border hover:border-accent-dim hover:text-fg',
-              )}
-            >
-              {WEEKDAY_LABELS[d]}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }

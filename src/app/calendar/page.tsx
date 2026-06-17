@@ -1,30 +1,19 @@
 import CalendarView from "@/components/calendar/CalendarView";
 import { prisma } from "@/lib/db";
+import { resolveMonth } from "@/lib/month";
 
-export default async function CalendarPage() {
-  const [team, companies, tasks] = await Promise.all([
-    prisma.teamMember.findMany({
-      where: { active: true },
-      orderBy: { createdAt: "asc" },
-    }),
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: { y?: string; m?: string };
+}) {
+  const { year, month } = resolveMonth(searchParams);
+  const [companies, tasks] = await Promise.all([
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({
-      where: { status: { in: ["in_progress", "review"] } },
-      orderBy: { startDate: "asc" },
-    }),
+    prisma.task.findMany({ where: { year, month, kind: "CONTENT" } }),
   ]);
 
   return (
-    <div className="animate-fade-in">
-      <div className="mb-7">
-        <h1 className="display-font text-3xl font-semibold leading-tight">
-          الجدول
-        </h1>
-        <p className="text-fg-dim mt-1.5">
-          عرض المهام بثلاث طرق: يومي، أسبوعي، شهري — مع فلاتر حسب الموظف والشركة
-        </p>
-      </div>
-      <CalendarView tasks={tasks} team={team} companies={companies} />
-    </div>
+    <CalendarView year={year} month={month} tasks={tasks} companies={companies} />
   );
 }

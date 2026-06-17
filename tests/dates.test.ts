@@ -1,195 +1,122 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import {
-  isWeekend,
-  addWorkingDays,
-  addWorkingDaysInclusive,
-  nextWorkday,
-  getMonthDays,
-  getWorkingDaysInMonth,
-  getWeekDays,
-  getWorkingWeekDays,
-  isSameDay,
+  backWorkday,
+  forwardWorkday,
+  addWorkdaysFor,
+  batchSizes,
+  firstSaturday,
+  parseWorkDays,
+  periodDays,
+  split4,
   toISODate,
-  fromISODate,
-  prevMonth,
-  nextMonth,
-  shiftDays,
-  formatMonthLabel,
-  formatWeekLabel,
-} from '@/lib/dates';
+  weekOf,
+  weeks,
+} from "@/lib/dates";
 
-describe('dates: isWeekend', () => {
-  it('returns true for Thursday (day 4)', () => {
-    // 2026-05-07 is Thursday
-    expect(isWeekend(new Date(2026, 4, 7))).toBe(true);
+const SAT_WED = [6, 0, 1, 2, 3];
+const SUN_THU = [0, 1, 2, 3, 4];
+
+describe("split4 (§4.4)", () => {
+  it("distributes remainder to earliest weeks", () => {
+    expect(split4(6)).toEqual([2, 2, 1, 1]);
+    expect(split4(10)).toEqual([3, 3, 2, 2]);
+    expect(split4(15)).toEqual([4, 4, 4, 3]);
+    expect(split4(8)).toEqual([2, 2, 2, 2]);
+    expect(split4(4)).toEqual([1, 1, 1, 1]);
+    expect(split4(3)).toEqual([1, 1, 1, 0]);
+    expect(split4(0)).toEqual([0, 0, 0, 0]);
   });
-  it('returns true for Friday (day 5)', () => {
-    // 2026-05-08 is Friday
-    expect(isWeekend(new Date(2026, 4, 8))).toBe(true);
-  });
-  it('returns false for Saturday', () => {
-    // 2026-05-09 is Saturday
-    expect(isWeekend(new Date(2026, 4, 9))).toBe(false);
-  });
-  it('returns false for Sunday-Wednesday', () => {
-    expect(isWeekend(new Date(2026, 4, 10))).toBe(false); // Sun
-    expect(isWeekend(new Date(2026, 4, 11))).toBe(false); // Mon
-    expect(isWeekend(new Date(2026, 4, 12))).toBe(false); // Tue
-    expect(isWeekend(new Date(2026, 4, 13))).toBe(false); // Wed
+  it("sum of split equals input", () => {
+    for (let n = 0; n <= 40; n++) {
+      expect(split4(n).reduce((a, b) => a + b, 0)).toBe(n);
+    }
   });
 });
 
-describe('dates: addWorkingDays', () => {
-  it('adds zero days returns same date', () => {
-    const d = new Date(2026, 4, 9); // Sat
-    const result = addWorkingDays(d, 0);
-    expect(isSameDay(result, d)).toBe(true);
+describe("batchSizes (§4.6)", () => {
+  it("matches spec examples", () => {
+    expect(batchSizes(3)).toEqual([3]);
+    expect(batchSizes(4)).toEqual([2, 2]);
+    expect(batchSizes(6)).toEqual([3, 3]);
+    expect(batchSizes(8)).toEqual([3, 3, 2]);
   });
-  it('skips weekend when adding 1 day from Wednesday', () => {
-    // Wed May 13 + 1 working day = Sat May 16 (skip Thu+Fri)
-    const wed = new Date(2026, 4, 13);
-    const result = addWorkingDays(wed, 1);
-    expect(toISODate(result)).toBe('2026-05-16');
-  });
-  it('adds 5 working days correctly', () => {
-    // Sat May 9 + 5 working days = Sat May 16
-    // Sat→Sun→Mon→Tue→Wed = 5 days, but starting from Sat, so:
-    // +1=Sun, +2=Mon, +3=Tue, +4=Wed, +5=Sat (skip Thu+Fri)
-    const sat = new Date(2026, 4, 9);
-    const result = addWorkingDays(sat, 5);
-    expect(toISODate(result)).toBe('2026-05-16');
+  it("never leaves a lone reel for n>=2 and sums correctly", () => {
+    for (let n = 2; n <= 30; n++) {
+      const b = batchSizes(n);
+      expect(b.reduce((a, x) => a + x, 0)).toBe(n);
+      for (const size of b) expect(size).toBeGreaterThanOrEqual(2);
+      for (const size of b) expect(size).toBeLessThanOrEqual(3);
+    }
   });
 });
 
-describe('dates: addWorkingDaysInclusive', () => {
-  it('returns same day for duration 1', () => {
-    const sat = new Date(2026, 4, 9); // Saturday
-    const result = addWorkingDaysInclusive(sat, 1);
-    expect(toISODate(result)).toBe('2026-05-09');
+describe("workday helpers (§4.1, §4.5)", () => {
+  it("parseWorkDays handles JSON, arrays, and bad input", () => {
+    expect(parseWorkDays("[6,0,1,2,3]")).toEqual([6, 0, 1, 2, 3]);
+    expect(parseWorkDays([0, 1, 2, 3, 4])).toEqual([0, 1, 2, 3, 4]);
+    expect(parseWorkDays(null)).toEqual([6, 0, 1, 2, 3]);
+    expect(parseWorkDays("garbage")).toEqual([6, 0, 1, 2, 3]);
   });
-  it('returns next workday for duration 2', () => {
-    const sat = new Date(2026, 4, 9); // Saturday
-    const result = addWorkingDaysInclusive(sat, 2);
-    expect(toISODate(result)).toBe('2026-05-10'); // Sunday
+
+  it("backWorkday on a Saturday publish lands on the previous Wednesday (skips Thu/Fri)", () => {
+    // 2026-07-11 is a Saturday. publish - lead(2) = Jul 9 (Thu) → back to Wed Jul 8.
+    const sat = new Date(2026, 6, 11);
+    const back = backWorkday(new Date(2026, 6, 9), SAT_WED); // Thu
+    expect(back.getDay()).toBe(3); // Wednesday
+    expect(toISODate(back)).toBe("2026-07-08");
+    expect(sat.getDay()).toBe(6);
   });
-  it('skips weekend in middle of duration 5', () => {
-    // Sat→Sun→Mon→Tue→Wed (5 days, no weekend hit)
-    const sat = new Date(2026, 4, 9);
-    const result = addWorkingDaysInclusive(sat, 5);
-    expect(toISODate(result)).toBe('2026-05-13'); // Wed
+
+  it("forwardWorkday skips to next working day", () => {
+    const fri = new Date(2026, 6, 10); // Friday
+    expect(forwardWorkday(fri, SAT_WED).getDay()).toBe(6); // Saturday
+  });
+
+  it("addWorkdaysFor respects per-employee workDays", () => {
+    // From a Wednesday, +2 working days for Sat→Wed skips Thu/Fri → Sun.
+    const wed = new Date(2026, 6, 8);
+    const r = addWorkdaysFor(wed, 2, SAT_WED);
+    expect(r.getDay()).toBe(0); // Sunday
+  });
+
+  it("Ayman (Sun→Thu) treats Thursday as a working day", () => {
+    const thu = new Date(2026, 6, 9);
+    expect(forwardWorkday(thu, SUN_THU).getDay()).toBe(4);
+    expect(backWorkday(thu, SUN_THU).getDay()).toBe(4);
   });
 });
 
-describe('dates: getWorkingDaysInMonth', () => {
-  it('May 2026 has correct number of working days', () => {
-    // May 2026: 31 days. Thursdays: 7,14,21,28 (4). Fridays: 1,8,15,22,29 (5). Weekends = 9.
-    // Working days = 31 - 9 = 22
-    const days = getWorkingDaysInMonth(2026, 4);
-    expect(days.length).toBe(22);
+describe("calendar (§5.1)", () => {
+  it("firstSaturday is a Saturday in the month", () => {
+    const fs = firstSaturday(2026, 6);
+    expect(fs.getDay()).toBe(6);
+    expect(fs.getMonth()).toBe(6);
+    expect(fs.getDate()).toBeLessThanOrEqual(7);
   });
-  it('all returned days are non-weekends', () => {
-    const days = getWorkingDaysInMonth(2026, 4);
-    days.forEach((d) => expect(isWeekend(d)).toBe(false));
-  });
-});
 
-describe('dates: getWeekDays', () => {
-  it('returns 7 days starting from Saturday', () => {
-    const wed = new Date(2026, 4, 13); // Wednesday
-    const days = getWeekDays(wed);
-    expect(days.length).toBe(7);
-    expect(days[0].getDay()).toBe(6); // Saturday
-    expect(days[6].getDay()).toBe(5); // Friday
+  it("weeks() returns 4 weeks of Sat..Wed", () => {
+    const w = weeks(2026, 6);
+    expect(w).toHaveLength(4);
+    for (const week of w) {
+      expect(week).toHaveLength(5);
+      expect(week.map((d) => d.getDay())).toEqual([6, 0, 1, 2, 3]);
+    }
+    // consecutive weeks are 7 days apart
+    expect(w[1][0].getTime() - w[0][0].getTime()).toBe(7 * 86400000);
   });
-  it('returns Sat-Fri sequence', () => {
-    const sat = new Date(2026, 4, 9); // Sat
-    const days = getWeekDays(sat);
-    expect(toISODate(days[0])).toBe('2026-05-09'); // Sat
-    expect(toISODate(days[1])).toBe('2026-05-10'); // Sun
-    expect(toISODate(days[6])).toBe('2026-05-15'); // Fri
-  });
-});
 
-describe('dates: getWorkingWeekDays', () => {
-  it('returns 5 working days', () => {
-    const days = getWorkingWeekDays(new Date(2026, 4, 13));
-    expect(days.length).toBe(5);
-    days.forEach((d) => expect(isWeekend(d)).toBe(false));
+  it("periodDays spans from firstSaturday-7 to week4 Wednesday", () => {
+    const w = weeks(2026, 6);
+    const pd = periodDays(2026, 6);
+    const start = pd[0];
+    const end = pd[pd.length - 1];
+    expect(start.getTime()).toBe(w[0][0].getTime() - 7 * 86400000);
+    expect(end.getTime()).toBe(w[3][4].getTime());
   });
-});
 
-describe('dates: ISO date helpers', () => {
-  it('round trip: Date → ISO → Date', () => {
-    const d = new Date(2026, 4, 9);
-    const iso = toISODate(d);
-    expect(iso).toBe('2026-05-09');
-    const back = fromISODate(iso);
-    expect(isSameDay(back, d)).toBe(true);
-  });
-  it('formats single-digit month/day with leading zeros', () => {
-    expect(toISODate(new Date(2026, 0, 5))).toBe('2026-01-05');
-  });
-});
-
-describe('dates: prevMonth / nextMonth', () => {
-  it('prevMonth of Jan returns Dec of prev year', () => {
-    const result = prevMonth(new Date(2026, 0, 15));
-    expect(result.getMonth()).toBe(11);
-    expect(result.getFullYear()).toBe(2025);
-    expect(result.getDate()).toBe(1);
-  });
-  it('nextMonth of Dec returns Jan of next year', () => {
-    const result = nextMonth(new Date(2026, 11, 15));
-    expect(result.getMonth()).toBe(0);
-    expect(result.getFullYear()).toBe(2027);
-  });
-});
-
-describe('dates: shiftDays', () => {
-  it('shifts forward', () => {
-    const result = shiftDays(new Date(2026, 4, 9), 7);
-    expect(toISODate(result)).toBe('2026-05-16');
-  });
-  it('shifts backward', () => {
-    const result = shiftDays(new Date(2026, 4, 9), -7);
-    expect(toISODate(result)).toBe('2026-05-02');
-  });
-});
-
-describe('dates: nextWorkday', () => {
-  it('Thursday → Saturday (skip Thu+Fri)', () => {
-    const thu = new Date(2026, 4, 7);
-    const result = nextWorkday(thu);
-    expect(toISODate(result)).toBe('2026-05-09');
-  });
-  it('Saturday returns same day', () => {
-    const sat = new Date(2026, 4, 9);
-    const result = nextWorkday(sat);
-    expect(toISODate(result)).toBe('2026-05-09');
-  });
-});
-
-describe('dates: format helpers', () => {
-  it('formatMonthLabel returns Arabic month + year', () => {
-    expect(formatMonthLabel(new Date(2026, 4, 1))).toBe('مايو 2026');
-  });
-  it('formatWeekLabel within same month', () => {
-    // Sat May 9 to Fri May 15 → all in May
-    const result = formatWeekLabel(new Date(2026, 4, 13));
-    expect(result).toContain('مايو');
-    expect(result).toContain('9');
-    expect(result).toContain('15');
-  });
-});
-
-describe('dates: getMonthDays', () => {
-  it('returns 31 days for May', () => {
-    expect(getMonthDays(2026, 4).length).toBe(31);
-  });
-  it('returns 28 days for Feb 2026', () => {
-    expect(getMonthDays(2026, 1).length).toBe(28);
-  });
-  it('returns 29 days for Feb 2024 (leap year)', () => {
-    expect(getMonthDays(2024, 1).length).toBe(29);
+  it("weekOf maps a date to its publishing week", () => {
+    const w = weeks(2026, 6);
+    expect(weekOf(w[0][0], 2026, 6)).toBe(1);
+    expect(weekOf(w[3][4], 2026, 6)).toBe(4);
   });
 });

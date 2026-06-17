@@ -1,117 +1,110 @@
-import { prisma } from '@/lib/db';
-import { calculateMonthlyWorkload } from '@/lib/workload';
-import { Avatar } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { ROLE_LABELS, type Role, TYPE_LABELS } from '@/lib/constants';
-import { formatMonthLabel } from '@/lib/dates';
-import { cn } from '@/lib/utils';
-import { AlertTriangle } from 'lucide-react';
+import { prisma } from "@/lib/db";
+import { Card } from "@/components/ui/card";
+import { Avatar } from "@/components/ui/badge";
+import { MonthBar } from "@/components/MonthBar";
+import { resolveMonth } from "@/lib/month";
+import { computeWorkload } from "@/lib/workload";
+import { AlertTriangle } from "lucide-react";
 
-export default async function WorkloadPage() {
-  const today = new Date();
-  const yr = today.getFullYear();
-  const mo = today.getMonth();
-
-  const [team, tasks] = await Promise.all([
-    prisma.teamMember.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' } }),
-    prisma.task.findMany(),
+export default async function WorkloadPage({
+  searchParams,
+}: {
+  searchParams: { y?: string; m?: string };
+}) {
+  const { year, month } = resolveMonth(searchParams);
+  const [employees, tasks] = await Promise.all([
+    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.task.findMany({ where: { year, month } }),
   ]);
 
-  const workload = calculateMonthlyWorkload(team, tasks, yr, mo);
+  const workload = computeWorkload(
+    employees.filter((e) => e.isScheduled),
+    tasks,
+    year,
+    month,
+  ).sort((a, b) => b.pct - a.pct);
 
   return (
-    <div className="animate-fade-in">
-      <div className="mb-7">
-        <h1 className="display-font text-3xl font-semibold">أحمال العمل</h1>
-        <p className="text-fg-dim mt-1.5">
-          تحليل تفصيلي لأحمال كل موظف خلال {formatMonthLabel(new Date(yr, mo, 1))}
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="display-font text-2xl">أحمال العمل</h1>
+          <p className="text-sm text-fg-dim">إجمالي الساعات مقابل السعة لكل موظف</p>
+        </div>
+        <MonthBar year={year} month={month} />
+      </header>
 
-      <div className="space-y-4">
+      <div className="grid md:grid-cols-2 gap-5">
         {workload.map((w) => (
-          <Card key={w.member.id}>
-            <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-5 items-center">
-              <div className="flex items-center gap-3">
-                <Avatar name={w.member.name} size={48} />
+          <Card key={w.employee.id}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Avatar name={w.employee.name} color={w.employee.color ?? undefined} size={32} />
                 <div>
-                  <div className="font-bold text-base">{w.member.name}</div>
-                  <div className="text-xs text-fg-muted">{ROLE_LABELS[w.member.role as Role]}</div>
+                  <div className="font-semibold">{w.employee.name}</div>
+                  <div className="text-xs text-fg-dim">{w.employee.role}</div>
                 </div>
               </div>
-
-              <div>
-                <div className="flex justify-between mb-2 text-xs">
-                  <span className="text-fg-muted">من {w.workDays} يوم عمل في الشهر</span>
-                  <span
-                    className={cn(
-                      'font-bold',
-                      w.level === 'over' && 'text-danger',
-                      w.level === 'warn' && 'text-warning'
-                    )}
-                  >
-                    {w.consumedDays} / {w.workDays} يوم
-                  </span>
+              <div className="text-right">
+                <div
+                  className={
+                    "text-2xl display-font " +
+                    (w.level === "over"
+                      ? "text-danger"
+                      : w.level === "warn"
+                        ? "text-warning"
+                        : "text-success")
+                  }
+                >
+                  {w.pct}%
                 </div>
-                <div className="h-3.5 bg-bg-elev-2 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all duration-700',
-                      w.level === 'over' && 'bg-gradient-to-l from-danger to-orange-500',
-                      w.level === 'warn' && 'bg-gradient-to-l from-warning to-orange-400',
-                      w.level === 'normal' && 'bg-gradient-to-l from-success to-accent'
-                    )}
-                    style={{ width: `${Math.min(w.pct, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div
-                className={cn(
-                  'display-font text-3xl font-bold text-left min-w-[80px]',
-                  w.level === 'over' && 'text-danger',
-                  w.level === 'warn' && 'text-warning',
-                  w.level === 'normal' && 'text-success'
+                {w.overflowCount > 0 && (
+                  <div className="text-xs text-warning flex items-center gap-1 justify-end">
+                    <AlertTriangle className="w-3 h-3" /> {w.overflowCount} تجاوز
+                  </div>
                 )}
-              >
-                {w.pct}%
               </div>
             </div>
-
-            <hr className="my-4 border-border-soft" />
-
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(w.breakdown).map(([k, v]) => {
-                if (v === 0) return null;
-                return (
-                  <span
-                    key={k}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-bg-elev border border-border"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    {v} {TYPE_LABELS[k as keyof typeof TYPE_LABELS]}
-                  </span>
-                );
-              })}
-              {w.tasksCount === 0 && (
-                <span className="text-xs text-fg-muted">لا توجد مهام لهذا الشهر</span>
-              )}
+            <div className="h-2.5 rounded-full bg-bg-elev-2 overflow-hidden mb-3">
+              <div
+                className={
+                  "h-full rounded-full " +
+                  (w.level === "over"
+                    ? "bg-danger"
+                    : w.level === "warn"
+                      ? "bg-warning"
+                      : "bg-success")
+                }
+                style={{ width: `${Math.min(100, w.pct)}%` }}
+              />
             </div>
-
-            {w.level === 'over' && (
-              <div className="mt-4 bg-gradient-to-l from-danger/10 to-danger/5 border border-danger/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-danger font-bold mb-1">
-                  <AlertTriangle className="w-4 h-4" />
-                  تجاوز الطاقة بـ {w.pct - 100}%
-                </div>
-                <div className="text-xs">
-                  اقترح: نقل بعض المهام لموظف آخر أو تأجيل لأسبوع لاحق
-                </div>
-              </div>
-            )}
+            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+              <Stat label="إجمالي" value={`${w.totalHours}س`} />
+              <Stat label="السعة" value={`${w.capacityHours}س`} />
+              <Stat label="مشغول" value={`${w.busyDays} يوم`} />
+              <Stat label="فاضي" value={`${w.freeDays} يوم`} />
+            </div>
+            <div className="flex gap-2 mt-3 text-[11px] text-fg-dim flex-wrap">
+              <span>بوست: {w.breakdown.POST}</span>
+              <span>· ريل AI: {w.breakdown.AI_REEL}</span>
+              <span>· ستوري: {w.breakdown.STORY}</span>
+              <span>· مستعجلة: {w.breakdown.ADHOC}</span>
+            </div>
           </Card>
         ))}
+        {workload.length === 0 && (
+          <p className="text-sm text-fg-muted">لا يوجد موظفون مجدولون.</p>
+        )}
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-bg-elev rounded-lg py-2">
+      <div className="font-semibold tabular-nums">{value}</div>
+      <div className="text-fg-muted text-[10px]">{label}</div>
     </div>
   );
 }

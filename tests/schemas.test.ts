@@ -1,191 +1,93 @@
-import { describe, it, expect } from 'vitest';
-import { memberSchema, companySchema, taskSchema, reorderSchema } from '@/lib/schemas';
+import { describe, it, expect } from "vitest";
+import {
+  employeeSchema,
+  companySchema,
+  taskSchema,
+  reorderSchema,
+} from "@/lib/schemas";
 
-describe('schemas: memberSchema', () => {
-  it('accepts valid input', () => {
-    const result = memberSchema.safeParse({
-      name: 'Test',
-      role: 'designer',
-      capPost: 6,
-      capReelAi: 1,
-      capReelVideo: 0,
-      capPlan: 0,
-      active: true,
+describe("employeeSchema", () => {
+  it("accepts valid input and normalizes workDays", () => {
+    const r = employeeSchema.safeParse({
+      name: "أيمن",
+      role: "designer",
+      hoursPerDay: 6,
+      workDays: [0, 1, 2, 3, 4, 4],
+      isScheduled: true,
+      isPhotographer: false,
     });
-    expect(result.success).toBe(true);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.workDays).toEqual([0, 1, 2, 3, 4]);
   });
 
-  it('rejects empty name', () => {
-    const result = memberSchema.safeParse({
-      name: '',
-      role: 'designer',
-      capPost: 0,
-      capReelAi: 0,
-      capReelVideo: 0,
-      capPlan: 0,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects invalid role', () => {
-    const result = memberSchema.safeParse({
-      name: 'X',
-      role: 'manager', // not allowed
-      capPost: 0,
-      capReelAi: 0,
-      capReelVideo: 0,
-      capPlan: 0,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('coerces string numbers to numbers', () => {
-    const result = memberSchema.safeParse({
-      name: 'X',
-      role: 'designer',
-      capPost: '6', // string but should coerce
-      capReelAi: '1',
-      capReelVideo: '0',
-      capPlan: '0',
-    });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.capPost).toBe(6);
-  });
-
-  it('rejects negative capacities', () => {
-    const result = memberSchema.safeParse({
-      name: 'X',
-      role: 'designer',
-      capPost: -1,
-      capReelAi: 0,
-      capReelVideo: 0,
-      capPlan: 0,
-    });
-    expect(result.success).toBe(false);
+  it("rejects empty name and empty workDays", () => {
+    expect(employeeSchema.safeParse({ name: "", role: "x", workDays: [1] }).success).toBe(false);
+    expect(
+      employeeSchema.safeParse({ name: "a", role: "x", workDays: [] }).success,
+    ).toBe(false);
   });
 });
 
-describe('schemas: companySchema', () => {
-  it('accepts valid input', () => {
-    const result = companySchema.safeParse({
-      name: 'Test Co',
-      color: '#d4af37',
-      priority: 1,
+describe("companySchema", () => {
+  it("accepts a managed company with plan + owners", () => {
+    const r = companySchema.safeParse({
+      name: "BW",
+      managed: true,
       posts: 4,
-      reelAi: 4,
-      reelVideo: 0,
-      needsApproval: false,
-      status: 'active',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects invalid color format', () => {
-    const result = companySchema.safeParse({
-      name: 'Test',
-      color: 'red',
+      reels: 4,
+      aiReels: 0,
+      stories: 8,
       priority: 1,
-      posts: 0,
-      reelAi: 0,
-      reelVideo: 0,
-      needsApproval: false,
-      status: 'active',
+      postOwnerId: "e1",
+      storyOwnerId: "e1",
     });
-    expect(result.success).toBe(false);
+    expect(r.success).toBe(true);
   });
 
-  it('rejects invalid status', () => {
-    const result = companySchema.safeParse({
-      name: 'Test',
-      color: '#d4af37',
-      priority: 1,
-      posts: 0,
-      reelAi: 0,
-      reelVideo: 0,
-      needsApproval: false,
-      status: 'frozen', // invalid
-    });
-    expect(result.success).toBe(false);
+  it("coerces empty owner ids to null", () => {
+    const r = companySchema.safeParse({ name: "X", postOwnerId: "" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.postOwnerId).toBeNull();
   });
 
-  it('uses defaults for optional fields', () => {
-    const result = companySchema.safeParse({ name: 'Test' });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.color).toBe('#d4af37');
-      expect(result.data.priority).toBe(99);
-      expect(result.data.status).toBe('active');
-    }
+  it("rejects bad color", () => {
+    expect(companySchema.safeParse({ name: "X", color: "red" }).success).toBe(false);
   });
 });
 
-describe('schemas: taskSchema', () => {
-  it('accepts valid task', () => {
-    const result = taskSchema.safeParse({
-      title: 'Design post',
-      type: 'post',
-      status: 'in_progress',
-      priority: 'normal',
-      startDate: '2026-05-09',
-      duration: 1,
-      assigneeId: 'm-1',
-      companyId: 'c-1',
+describe("taskSchema (ad-hoc)", () => {
+  it("accepts a valid urgent task", () => {
+    const r = taskSchema.safeParse({
+      title: "تصميم بروفايل",
+      kind: "ADHOC",
+      hours: 8,
+      priority: "URGENT",
+      status: "NOT_STARTED",
+      assigneeId: "e1",
+      companyId: "c1",
+      month: 5,
+      year: 2026,
     });
-    expect(result.success).toBe(true);
+    expect(r.success).toBe(true);
   });
 
-  it('rejects invalid date format', () => {
-    const result = taskSchema.safeParse({
-      title: 'Design',
-      type: 'post',
-      startDate: '09/05/2026', // wrong format
-      duration: 1,
-      assigneeId: 'm-1',
-    });
-    expect(result.success).toBe(false);
+  it("rejects invalid priority/status enums", () => {
+    expect(
+      taskSchema.safeParse({ title: "x", priority: "high", month: 1, year: 2026 }).success,
+    ).toBe(false);
+    expect(
+      taskSchema.safeParse({ title: "x", status: "done", month: 1, year: 2026 }).success,
+    ).toBe(false);
   });
 
-  it('rejects empty title', () => {
-    const result = taskSchema.safeParse({
-      title: '',
-      type: 'post',
-      startDate: '2026-05-09',
-      duration: 1,
-      assigneeId: 'm-1',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects missing assignee', () => {
-    const result = taskSchema.safeParse({
-      title: 'X',
-      type: 'post',
-      startDate: '2026-05-09',
-      duration: 1,
-      assigneeId: '',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('accepts duration 0.5', () => {
-    const result = taskSchema.safeParse({
-      title: 'X',
-      type: 'post',
-      startDate: '2026-05-09',
-      duration: 0.5,
-      assigneeId: 'm-1',
-    });
-    expect(result.success).toBe(true);
+  it("requires a title", () => {
+    expect(taskSchema.safeParse({ title: "", month: 1, year: 2026 }).success).toBe(false);
   });
 });
 
-describe('schemas: reorderSchema', () => {
-  it('accepts non-empty array', () => {
-    const result = reorderSchema.safeParse({ orderedIds: ['a', 'b', 'c'] });
-    expect(result.success).toBe(true);
-  });
-  it('rejects empty array', () => {
-    const result = reorderSchema.safeParse({ orderedIds: [] });
-    expect(result.success).toBe(false);
+describe("reorderSchema", () => {
+  it("requires at least one id", () => {
+    expect(reorderSchema.safeParse({ orderedIds: [] }).success).toBe(false);
+    expect(reorderSchema.safeParse({ orderedIds: ["a"] }).success).toBe(true);
   });
 });

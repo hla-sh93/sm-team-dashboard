@@ -223,3 +223,160 @@ export function formatWeekLabel(date: Date): string {
   }
   return `${first.getDate()} ${ARABIC_MONTHS[first.getMonth()]} - ${last.getDate()} ${ARABIC_MONTHS[last.getMonth()]}`;
 }
+
+// ============================================================================
+// SPEC §5.1 calendar + workday primitives (SOCIAL_SCHEDULER_SPEC.md)
+// Weekends are now PER-EMPLOYEE via workDays (getDay() values), not global.
+// ============================================================================
+
+/** Parse a workDays value (JSON string or array) into getDay() numbers.
+ *  Falls back to Sat→Wed [6,0,1,2,3] when missing/invalid. */
+export function parseWorkDays(raw: string | number[] | null | undefined): number[] {
+  const fallback = [6, 0, 1, 2, 3];
+  if (raw == null) return fallback;
+  let arr: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  }
+  if (!Array.isArray(arr)) return fallback;
+  const clean = arr
+    .filter((n): n is number => typeof n === 'number' && n >= 0 && n <= 6)
+    .map((n) => Math.floor(n));
+  return clean.length > 0 ? Array.from(new Set(clean)) : fallback;
+}
+
+/** True if `date` is a working day for the given workDays set. */
+export function isWorkDay(date: Date, workDays: number[]): boolean {
+  return workDays.includes(date.getDay());
+}
+
+/** Move BACKWARD (inclusive) to the nearest working day in `workDays`. */
+export function backWorkday(date: Date, workDays: number[]): Date {
+  const d = new Date(date);
+  let guard = 0;
+  while (!isWorkDay(d, workDays) && guard < 14) {
+    d.setDate(d.getDate() - 1);
+    guard++;
+  }
+  return d;
+}
+
+/** Move FORWARD (inclusive) to the nearest working day in `workDays`. */
+export function forwardWorkday(date: Date, workDays: number[]): Date {
+  const d = new Date(date);
+  let guard = 0;
+  while (!isWorkDay(d, workDays) && guard < 14) {
+    d.setDate(d.getDate() + 1);
+    guard++;
+  }
+  return d;
+}
+
+/** Add `n` working days forward relative to `start` for the given workDays.
+ *  n=0 returns the nearest forward working day (start itself if it's a workday). */
+export function addWorkdaysFor(start: Date, n: number, workDays: number[]): Date {
+  let d = forwardWorkday(start, workDays);
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    d = forwardWorkday(d, workDays);
+    added++;
+  }
+  return d;
+}
+
+/** First Saturday (getDay()===6) of the month. */
+export function firstSaturday(year: number, month: number): Date {
+  const d = new Date(year, month, 1);
+  while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+/**
+ * The four publishing weeks. weeks[wi] = [Sat,Sun,Mon,Tue,Wed] Date objects,
+ * starting at the first Saturday of the month (§5.1).
+ */
+export function weeks(year: number, month: number): Date[][] {
+  const sat0 = firstSaturday(year, month);
+  const result: Date[][] = [];
+  for (let wi = 0; wi < 4; wi++) {
+    const week: Date[] = [];
+    for (let k = 0; k < 5; k++) {
+      const d = new Date(sat0);
+      d.setDate(sat0.getDate() + wi * 7 + k);
+      week.push(d);
+    }
+    result.push(week);
+  }
+  return result;
+}
+
+/**
+ * All calendar days in the scheduling period: from (firstSaturday − 7) through
+ * the last Wednesday of week 4 inclusive — this includes prep days from the end
+ * of the prior month (§5.1, §5.6 case 6).
+ */
+export function periodDays(year: number, month: number): Date[] {
+  const sat0 = firstSaturday(year, month);
+  const start = new Date(sat0);
+  start.setDate(sat0.getDate() - 7);
+  const end = new Date(sat0);
+  end.setDate(sat0.getDate() + 3 * 7 + 4); // week 4 Wednesday
+  const days: Date[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * Distribute N across 4 weeks: base = floor(N/4); the N%4 remainder goes to the
+ * earliest weeks (§4.4). e.g. 6→[2,2,1,1], 10→[3,3,2,2], 15→[4,4,4,3].
+ */
+export function split4(n: number): [number, number, number, number] {
+  const base = Math.floor(n / 4);
+  const rem = n % 4;
+  const out: number[] = [base, base, base, base];
+  for (let i = 0; i < rem; i++) out[i]++;
+  return out as [number, number, number, number];
+}
+
+/**
+ * Photographer batch sizes for N reels (§4.6): chunks of 3, last chunk 2 or 3,
+ * never leave a lone reel. 3→[3], 4→[2,2], 6→[3,3], 8→[3,3,2].
+ */
+export function batchSizes(n: number): number[] {
+  if (n <= 0) return [];
+  if (n <= 3) return [n];
+  const out: number[] = [];
+  let rem = n;
+  while (rem > 0) {
+    if (rem === 4) {
+      out.push(2);
+      rem = 2;
+    } else if (rem <= 3) {
+      out.push(rem);
+      rem = 0;
+    } else {
+      out.push(3);
+      rem -= 3;
+    }
+  }
+  return out;
+}
+
+/** Which publishing week (1..4) a given date falls in, or null if outside. */
+export function weekOf(date: Date, year: number, month: number): number | null {
+  const iso = toISODate(date);
+  const ws = weeks(year, month);
+  for (let wi = 0; wi < ws.length; wi++) {
+    if (ws[wi].some((d) => toISODate(d) === iso)) return wi + 1;
+  }
+  return null;
+}

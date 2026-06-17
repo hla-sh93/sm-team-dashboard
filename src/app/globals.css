@@ -81,6 +81,25 @@ select optgroup {
   }
 }
 
+/* Print: hide navigation / controls, render report full-width (§7). */
+@media print {
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .card,
+  table {
+    break-inside: avoid;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

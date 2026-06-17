@@ -6,7 +6,7 @@ import { GripVertical, Wand2, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { reorderCompanies } from '@/server/actions/companies';
-import { autoScheduleMonth } from '@/server/actions/tasks';
+import { generateSchedule } from '@/server/actions/schedule';
 import { toast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
@@ -68,9 +68,9 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
   const handleReschedule = () => {
     const today = new Date();
     startScheduling(async () => {
-      const result = await autoScheduleMonth(today.getFullYear(), today.getMonth());
+      const result = await generateSchedule(today.getFullYear(), today.getMonth());
       if (result.ok) {
-        toast(`تم إعادة الجدولة: ${result.stats.totalGenerated} مهمة`);
+        toast(`تم إعادة الجدولة: ${result.stats.total} مهمة`);
       } else {
         toast(result.error, 'error');
       }
@@ -130,7 +130,7 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
 
             <div
               className="display-font text-2xl font-bold w-10 text-center"
-              style={{ color: co.color }}
+              style={{ color: co.color ?? "#C8A84E" }}
             >
               {i + 1}
             </div>
@@ -138,14 +138,14 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
             <div className="flex-1">
               <div className="font-bold text-base">{co.name}</div>
               <div className="text-xs text-fg-muted mt-0.5">
-                {co.posts} بوست · {co.reelAi} ريل AI · {co.reelVideo} ريل تصوير
+                {co.posts} بوست · {co.reels} ريل · {co.aiReels} ريل AI · {co.stories} ستوري
               </div>
             </div>
 
             <div className="flex items-center gap-2 text-xs text-fg-dim">
-              {co.needsApproval && (
-                <span className="bg-warning/15 text-warning px-2 py-0.5 rounded-full font-semibold">
-                  موافقة مطلوبة
+              {!co.managed && (
+                <span className="bg-info/15 text-info px-2 py-0.5 rounded-full font-semibold">
+                  تصميم-فقط
                 </span>
               )}
               <span

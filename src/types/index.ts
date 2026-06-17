@@ -1,24 +1,25 @@
 /**
- * Centralized type definitions matching the Prisma schema.
- *
- * These mirror prisma/schema.prisma exactly. Keeping them as plain TypeScript
- * types (rather than re-exports from `@prisma/client`) means:
- *  1. Components don't depend on Prisma's runtime/internals.
- *  2. Type checks work even without `prisma generate` having run.
- *  3. Clear single source of truth for the shape of our domain entities.
- *
- * If you change `prisma/schema.prisma`, update these types to match.
+ * Domain types — mirror prisma/schema.prisma (SOCIAL_SCHEDULER_SPEC.md §3).
+ * Plain TS so components don't depend on the Prisma runtime.
  */
+import type {
+  ContentType,
+  Priority,
+  Status,
+  TaskKind,
+  PhotoKind,
+  PhotoStatus,
+} from "@/lib/constants";
 
-export type TeamMember = {
+export type Employee = {
   id: string;
   name: string;
   role: string;
-  capPost: number;
-  capReelAi: number;
-  capReelVideo: number;
-  capPlan: number;
-  active: boolean;
+  hoursPerDay: number;
+  workDays: string; // JSON Int[]
+  isScheduled: boolean;
+  isPhotographer: boolean;
+  color: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -26,55 +27,63 @@ export type TeamMember = {
 export type Company = {
   id: string;
   name: string;
-  color: string;
-  priority: number;
+  managed: boolean;
   posts: number;
-  reelAi: number;
-  reelVideo: number;
-  needsApproval: boolean;
+  reels: number;
+  stories: number;
+  aiReels: number;
+  color: string | null;
+  priority: number;
   status: string;
-  notes: string | null;
-  publishDaysPost: string | null;
-  publishDaysReel: string | null;
-  publishDaysVideo: string | null;
+  postOwnerId: string | null;
+  storyOwnerId: string | null;
+  aiReelOwnerId: string | null;
+  defaultOwnerId: string | null;
   createdAt: Date;
   updatedAt: Date;
-  designerId: string | null;
-  photographerId: string | null;
-};
-
-export type PublishingItem = {
-  id: string;
-  contentType: string; // 'post' | 'reel_ai' | 'reel_video'
-  publishDate: Date;
-  status: string; // 'scheduled' | 'published'
-  notes: string | null;
-  isAuto: boolean;
-  targetMonth: string;
-  publishedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  companyId: string;
-  taskId: string | null;
 };
 
 export type Task = {
   id: string;
-  title: string;
-  type: string;
-  status: string;
-  priority: string;
-  startDate: Date;
-  endDate: Date;
-  duration: number;
-  notes: string | null;
+  kind: TaskKind | string;
+  type: ContentType | string | null;
+  title: string | null;
+  hours: number;
+  priority: Priority | string;
+  status: Status | string;
+  publishDate: Date | null;
+  readyDate: Date | null;
+  workDate: Date | null;
+  week: number | null;
+  overflow: boolean;
+  month: number;
+  year: number;
+  isPinned: boolean;
   isAuto: boolean;
-  targetMonth: string | null;
+  detKey: string | null;
+  notes: string | null;
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  assigneeId: string;
   companyId: string | null;
+  assigneeId: string | null;
+};
+
+export type PhotoSession = {
+  id: string;
+  no: number;
+  kind: PhotoKind | string;
+  shootDate: Date;
+  deliverBy: Date;
+  reelCount: number;
+  status: PhotoStatus | string;
+  month: number;
+  year: number;
+  isAuto: boolean;
+  detKey: string | null;
+  companyId: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type Setting = {

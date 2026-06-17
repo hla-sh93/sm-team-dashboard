@@ -12,3 +12,5 @@ out/
 # Build artefacts
 tsconfig.tsbuildinfo
 next-env.d.ts
+
+.claude/worktrees/

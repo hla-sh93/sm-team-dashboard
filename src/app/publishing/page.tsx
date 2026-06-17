@@ -1,23 +1,31 @@
 import { prisma } from "@/lib/db";
+import { resolveMonth } from "@/lib/month";
 import PublishingClient from "./publishing-client";
 
-export default async function PublishingPage() {
-  const [companies, items] = await Promise.all([
+export default async function PublishingPage({
+  searchParams,
+}: {
+  searchParams: { y?: string; m?: string };
+}) {
+  const { year, month } = resolveMonth(searchParams);
+  const [employees, companies, tasks, sessions] = await Promise.all([
+    prisma.employee.findMany(),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.publishingItem.findMany({ orderBy: { publishDate: "asc" } }),
+    prisma.task.findMany({ where: { year, month, kind: "CONTENT" } }),
+    prisma.photoSession.findMany({
+      where: { year, month },
+      orderBy: [{ companyId: "asc" }, { no: "asc" }],
+    }),
   ]);
 
   return (
-    <div className="animate-fade-in">
-      <div className="mb-7">
-        <h1 className="display-font text-3xl font-semibold leading-tight">
-          جدول النشر
-        </h1>
-        <p className="text-fg-dim mt-1.5">
-          خطة النشر الشهرية على منصات التواصل — مسؤولية الناشر (عمر)
-        </p>
-      </div>
-      <PublishingClient companies={companies} items={items} />
-    </div>
+    <PublishingClient
+      year={year}
+      month={month}
+      employees={employees}
+      companies={companies}
+      tasks={tasks}
+      sessions={sessions}
+    />
   );
 }

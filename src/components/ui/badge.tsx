@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { TaskStatus, STATUS_LABELS, STATUS_COLORS } from '@/lib/constants';
+import { Status, STATUS_LABELS, STATUS_COLORS } from '@/lib/constants';
 
 export function Badge({
   children,
@@ -20,7 +20,7 @@ export function Badge({
   );
 }
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function StatusBadge({ status }: { status: Status }) {
   return (
     <Badge className={STATUS_COLORS[status]}>
       <span className="w-1.5 h-1.5 rounded-full bg-current" />
