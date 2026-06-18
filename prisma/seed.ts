@@ -6,11 +6,15 @@
  *    0-based (July = 6), so we normalize: stored month = meta.month - 1.
  *  - Dates are parsed as LOCAL midnight to match the app's toISODate() (which
  *    reads local Y/M/D) — avoids off-by-one day shifts across timezones.
- *  - Build-safe idempotency: employees/companies are always upserted; the
- *    month's tasks/sessions are only (re)built when none exist yet, so a Vercel
- *    redeploy never wipes status edits. Set SEED_FORCE=1 to force a rebuild.
+ *  - Authoritative: employees/companies are upserted AND any rows not in the
+ *    dataset are deleted (de-dups a DB seeded twice with different ids).
+ *  - Dataset-change detection: the month's tasks/sessions are rebuilt whenever
+ *    the dataset hash changes (so corrected data actually loads on redeploy),
+ *    and skipped when unchanged (preserving manual status edits). SEED_FORCE=1
+ *    always rebuilds.
  */
 import { PrismaClient } from "@prisma/client";
+import { createHash } from "crypto";
 import data from "./seed-data.json";
 
 const prisma = new PrismaClient();
@@ -92,13 +96,26 @@ async function main() {
   }
   console.log(`✓ companies: ${data.companies.length}`);
 
-  /* ---------- 3) Tasks + 4) Photo sessions (build-safe) ---------- */
+  /* ---------- 3) Tasks + 4) Photo sessions ----------
+   * Reload the month's tasks/sessions whenever the DATASET CHANGES. We hash the
+   * dataset (tasks + sessions + meta) and store it in Setting. If the hash is
+   * unchanged we skip (preserving any manual status edits); if it changed
+   * (corrected data uploaded) we rebuild so the new data actually shows.
+   * SEED_FORCE=1 always rebuilds. */
+  const hash = createHash("sha1")
+    .update(JSON.stringify({ t: data.tasks, s: data.photoSessions, m: data.meta }))
+    .digest("hex");
+  const hashKey = `seedHash:${year}-${month}`;
+  const prev = await prisma.setting.findUnique({ where: { key: hashKey } });
   const existing = await prisma.task.count({ where: { month, year } });
-  if (existing > 0 && !force) {
+  if (existing > 0 && !force && prev?.value === hash) {
     console.log(
-      `↩︎  ${existing} tasks already exist for this month — skipping task/session rebuild (set SEED_FORCE=1 to override).`,
+      `↩︎  dataset unchanged (${existing} tasks) — skipping rebuild (preserving statuses).`,
     );
     return;
+  }
+  if (existing > 0) {
+    console.log(`♻︎  dataset changed — rebuilding ${existing} → ${data.tasks.length} tasks.`);
   }
 
   await prisma.task.deleteMany({ where: { month, year } });
@@ -144,6 +161,12 @@ async function main() {
     })),
   });
   console.log(`✓ photoSessions: ${data.photoSessions.length}`);
+
+  await prisma.setting.upsert({
+    where: { key: hashKey },
+    update: { value: hash },
+    create: { key: hashKey, value: hash },
+  });
   console.log("✅ Seed complete.");
 }
 
