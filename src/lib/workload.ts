@@ -3,7 +3,7 @@
  * Capacity = hoursPerDay × (employee working days in the scheduling period).
  * Only live (non-done) tasks count; REELs don't consume employee hours (§4.2).
  */
-import type { Employee, Task } from "@/types";
+import type { Employee, Task, PhotoSession } from "@/types";
 import { DONE_STATUSES, type Status } from "./constants";
 import { parseWorkDays, periodDays, toISODate } from "./dates";
 
@@ -17,16 +17,25 @@ export type WorkloadEntry = {
   pct: number;
   level: "normal" | "warn" | "over";
   overflowCount: number;
+  itemCount: number; // total live tasks/sessions (for non-hours roles)
+  tracksHours: boolean; // true for roles whose work consumes hours (designers)
   breakdown: { POST: number; AI_REEL: number; STORY: number; ADHOC: number };
 };
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
+/**
+ * Whole-team workload (§6). Designers are measured in hours; the rest (writer,
+ * publisher, photographer) are measured by item/session count since their tasks
+ * don't carry design-hours. Photographer sessions count as their items + busy
+ * days (by shootDate).
+ */
 export function computeWorkload(
   employees: Employee[],
   tasks: Task[],
   year: number,
   month: number,
+  sessions: PhotoSession[] = [],
 ): WorkloadEntry[] {
   const period = periodDays(year, month);
 
@@ -53,6 +62,13 @@ export function computeWorkload(
       if (t.overflow) overflowCount++;
     }
 
+    // Photographer: fold their sessions in as items + busy (shoot) days.
+    const mySessions = emp.isPhotographer
+      ? sessions.filter((s) => s.year === year && s.month === month)
+      : [];
+    for (const s of mySessions) busy.add(toISODate(new Date(s.shootDate)));
+
+    const tracksHours = totalHours > 0;
     const pct = capacityHours > 0 ? Math.round((totalHours / capacityHours) * 100) : 0;
     const level: WorkloadEntry["level"] = pct > 100 ? "over" : pct > 85 ? "warn" : "normal";
 
@@ -66,6 +82,8 @@ export function computeWorkload(
       pct,
       level,
       overflowCount,
+      itemCount: mine.length + mySessions.length,
+      tracksHours,
       breakdown: {
         POST: mine.filter((t) => t.type === "POST").length,
         AI_REEL: mine.filter((t) => t.type === "AI_REEL").length,

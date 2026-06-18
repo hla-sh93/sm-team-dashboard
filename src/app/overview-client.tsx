@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/constants";
+import { PRIORITY_LABELS, ROLE_LABELS, STATUS_LABELS } from "@/lib/constants";
 import { toISODate, formatDateCard } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
 import type { WorkloadEntry } from "@/lib/workload";
@@ -83,7 +83,7 @@ export default function OverviewClient({
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
-          <h2 className="display-font text-lg mb-4">أحمال المصممين</h2>
+          <h2 className="display-font text-lg mb-4">أحمال الفريق</h2>
           <div className="flex flex-col gap-4">
             {workload.map((w) => (
               <div key={w.employee.id}>
@@ -91,6 +91,9 @@ export default function OverviewClient({
                   <div className="flex items-center gap-2">
                     <Avatar name={w.employee.name} color={w.employee.color ?? undefined} size={26} />
                     <span className="text-sm font-medium">{w.employee.name}</span>
+                    <span className="text-[10px] text-fg-muted">
+                      {ROLE_LABELS[w.employee.role] ?? w.employee.role}
+                    </span>
                     {w.overflowCount > 0 && (
                       <span className="text-warning text-xs flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" />
@@ -99,26 +102,34 @@ export default function OverviewClient({
                     )}
                   </div>
                   <span className="text-xs text-fg-dim tabular-nums">
-                    {w.totalHours}/{w.capacityHours}س · {w.busyDays} مشغول · {w.freeDays} فاضي
+                    {w.tracksHours
+                      ? `${w.totalHours}/${w.capacityHours}س · ${w.busyDays} مشغول · ${w.freeDays} فاضي`
+                      : `${w.itemCount} مهمة · ${w.busyDays} يوم مشغول`}
                   </span>
                 </div>
                 <div className="h-2.5 rounded-full bg-bg-elev-2 overflow-hidden">
                   <div
                     className={
                       "h-full rounded-full " +
-                      (w.level === "over"
-                        ? "bg-danger"
-                        : w.level === "warn"
-                          ? "bg-warning"
-                          : "bg-success")
+                      (w.tracksHours
+                        ? w.level === "over"
+                          ? "bg-danger"
+                          : w.level === "warn"
+                            ? "bg-warning"
+                            : "bg-success"
+                        : "bg-info/60")
                     }
-                    style={{ width: `${Math.min(100, w.pct)}%` }}
+                    style={{
+                      width: w.tracksHours
+                        ? `${Math.min(100, w.pct)}%`
+                        : `${Math.min(100, w.itemCount * 8)}%`,
+                    }}
                   />
                 </div>
               </div>
             ))}
             {workload.length === 0 && (
-              <p className="text-sm text-fg-muted">لا يوجد موظفون مجدولون.</p>
+              <p className="text-sm text-fg-muted">لا يوجد موظفون.</p>
             )}
           </div>
         </Card>

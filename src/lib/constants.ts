@@ -110,9 +110,11 @@ export const PHOTO_STATUS_LABELS: Record<PhotoStatus, string> = {
 // ============================================
 // WORK DAYS  (§4.1 — JS getDay(): Sun=0 .. Sat=6)
 // ============================================
-export const WORKDAYS_DEFAULT = [6, 0, 1, 2, 3]; // Sat→Wed
-export const WORKDAYS_AYMAN = [0, 1, 2, 3, 4]; // Sun→Thu
-export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3, 4]; // Sat→Thu
+export const WORKDAYS_DEFAULT = [6, 0, 1, 2, 3]; // Sat→Wed (off Thu+Fri)
+export const WORKDAYS_AYMAN = [0, 1, 2, 3, 4]; // Sun→Thu (off Sat+Fri — exception)
+// Photographer: Sat→Wed. No shooting on Thursday except special cases (user
+// rule); Friday always off.
+export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
 
 // ============================================
 // TASK HOURS  (§4.2 — 4×POST = 1×AI_REEL = 6h; real REEL not counted)

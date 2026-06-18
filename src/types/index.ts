@@ -63,6 +63,8 @@ export type Task = {
   detKey: string | null;
   notes: string | null;
   completedAt: Date | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   companyId: string | null;

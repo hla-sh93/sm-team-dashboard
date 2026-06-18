@@ -20,7 +20,9 @@ import {
 import {
   updateTaskStatus,
   updatePhotoSessionStatus,
+  reassignTask,
 } from "@/server/actions/tasks";
+import { formatDateShort } from "@/lib/dates";
 import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task, PhotoSession } from "@/types";
 import { AlertTriangle, Lock, Plus, Camera } from "lucide-react";
@@ -126,6 +128,23 @@ export default function TasksClient({
         router.refresh();
       } else toast(r.error, "error");
     });
+  const onReassign = (id: string, assigneeId: string) =>
+    startTransition(async () => {
+      const r = await reassignTask(id, assigneeId);
+      if (r.ok) {
+        toast("تم تحويل المهمة");
+        router.refresh();
+      } else toast(r.error, "error");
+    });
+
+  // A task is late if it finished after its deadline, or it's past the deadline
+  // and still not done.
+  const isLate = (t: Task) => {
+    if (!t.readyDate) return false;
+    const due = new Date(t.readyDate).getTime();
+    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
+    return !["READY", "PUBLISHED"].includes(t.status) && Date.now() > due;
+  };
 
   // ---- renderers ----
   const itemLabel = (it: CalItem) =>
@@ -187,17 +206,47 @@ export default function TasksClient({
           )}
         </div>
         {it.kind === "task" ? (
-          <Select
-            className="w-full h-7 text-[11px] py-0.5"
-            value={it.task.status}
-            onChange={(e) => onStatus(it.id, e.target.value)}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Select>
+          <>
+            <div className="flex items-center gap-1.5">
+              <Select
+                className="flex-1 h-7 text-[11px] py-0.5"
+                value={it.task.status}
+                onChange={(e) => onStatus(it.id, e.target.value)}
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+              {/* Reassign to another person */}
+              <Select
+                className="flex-1 h-7 text-[11px] py-0.5"
+                value={it.empId ?? ""}
+                onChange={(e) => onReassign(it.id, e.target.value)}
+                title="تحويل لشخص آخر"
+              >
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {(it.task.startedAt || it.task.finishedAt || isLate(it.task)) && (
+              <div className="flex items-center gap-2 text-[10px] text-fg-muted flex-wrap">
+                {it.task.startedAt && (
+                  <span>بدأ {formatDateShort(new Date(it.task.startedAt))}</span>
+                )}
+                {it.task.finishedAt && (
+                  <span>· انتهى {formatDateShort(new Date(it.task.finishedAt))}</span>
+                )}
+                {isLate(it.task) && (
+                  <span className="text-danger font-medium">⚠ متأخر</span>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <Select
             className="w-full h-7 text-[11px] py-0.5"

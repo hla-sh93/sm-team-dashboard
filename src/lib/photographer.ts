@@ -44,7 +44,7 @@ export type PhotographerResult = {
 };
 
 function photoWorkDaysOf(raw: number[] | undefined): number[] {
-  return raw && raw.length ? raw : [6, 0, 1, 2, 3, 4]; // Sat→Thu default
+  return raw && raw.length ? raw : [6, 0, 1, 2, 3]; // Sat→Wed (no Thu shooting)
 }
 
 export function buildPhotoSessions(

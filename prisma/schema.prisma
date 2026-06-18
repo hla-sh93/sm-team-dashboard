@@ -109,6 +109,8 @@ model Task {
   detKey      String?
   notes       String?
   completedAt DateTime?
+  startedAt   DateTime?                            // when work began (→ IN_PROGRESS)
+  finishedAt  DateTime?                            // when work finished (→ READY/PUBLISHED)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

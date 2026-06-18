@@ -111,26 +111,58 @@ export async function deleteTask(id: string) {
   }
 }
 
-/** Update only the status of a task. Stamps completedAt on first done. */
+/** Update only the status of a task. Stamps start/finish/completed times so
+ *  the lead can see who started, who finished, and who is late (§ user req). */
 export async function updateTaskStatus(id: string, status: string) {
   const parsed = statusSchema.safeParse(status);
   if (!parsed.success) return { ok: false as const, error: "حالة غير صالحة" };
   try {
     const before = await prisma.task.findUnique({ where: { id } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
+    const now = new Date();
+    const next = parsed.data;
+    const done = isDone(next);
+    // startedAt: set on first move out of NOT_STARTED. finishedAt: set when done.
+    // Reverting to NOT_STARTED resets both.
+    let startedAt = before.startedAt;
+    let finishedAt = before.finishedAt;
+    if (next === "NOT_STARTED") {
+      startedAt = null;
+      finishedAt = null;
+    } else {
+      if (!startedAt) startedAt = now;
+      finishedAt = done ? (finishedAt ?? now) : null;
+    }
     await prisma.task.update({
       where: { id },
       data: {
-        status: parsed.data,
-        completedAt: isDone(parsed.data)
-          ? (before.completedAt ?? new Date())
-          : null,
+        status: next,
+        startedAt,
+        finishedAt,
+        completedAt: done ? (before.completedAt ?? now) : null,
       },
     });
     revalidateAll();
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل تحديث الحالة" };
+  }
+}
+
+/** Reassign a task to a different person (e.g. hand off when someone is busy).
+ *  Pins the task so the auto-engine won't move it back. */
+export async function reassignTask(id: string, assigneeId: string) {
+  try {
+    const t = await prisma.task.findUnique({ where: { id } });
+    if (!t) return { ok: false as const, error: "المهمة غير موجودة" };
+    await prisma.task.update({
+      where: { id },
+      data: { assigneeId: assigneeId || null, isPinned: true },
+    });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تحويل المهمة" };
   }
 }
 

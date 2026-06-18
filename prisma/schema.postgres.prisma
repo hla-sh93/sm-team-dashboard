@@ -81,6 +81,8 @@ model Task {
   detKey      String?
   notes       String?
   completedAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

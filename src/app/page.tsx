@@ -9,18 +9,15 @@ export default async function HomePage({
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
-  const [employees, companies, tasks] = await Promise.all([
+  const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({ where: { year, month } }),
+    prisma.photoSession.findMany({ where: { year, month } }),
   ]);
 
-  const workload = computeWorkload(
-    employees.filter((e) => e.isScheduled),
-    tasks,
-    year,
-    month,
-  );
+  // Whole team (everyone with a role on the board), not just designers.
+  const workload = computeWorkload(employees, tasks, year, month, sessions);
 
   return (
     <OverviewClient

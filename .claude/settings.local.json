@@ -42,7 +42,12 @@
       "Bash(npx tsx *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(echo \"TYPECHECK_EXIT=$?\")",
-      "Bash(DATABASE_URL=\"postgresql://u:p@localhost:5432/db\" npx prisma validate --schema=prisma/schema.postgres.prisma)"
+      "Bash(DATABASE_URL=\"postgresql://u:p@localhost:5432/db\" npx prisma validate --schema=prisma/schema.postgres.prisma)",
+      "Bash(rm -f scripts/_sim_dup.ts)",
+      "Bash(cd \"C:/Users/hla2-\" && echo \"=== search seed-data.json ===\" && find . -maxdepth 4 -name \"seed-data.json\" -not -path \"*/node_modules/*\" -not -path \"*/.git/*\" 2>/dev/null | head; echo \"=== search standalone seed.ts in Downloads/root ===\" && find ./Downloads ./Videos/Social/sm-team-dashboard -maxdepth 2 -name \"seed.ts\" 2>/dev/null | head)",
+      "Bash(SEED_FORCE=1 npx tsx prisma/seed.ts)",
+      "WebFetch(domain:socialmediateam.vercel.app)",
+      "Bash(echo \"TYPECHECK=$?\")"
     ]
   }
 }
