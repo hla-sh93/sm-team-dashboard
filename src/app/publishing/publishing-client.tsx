@@ -59,6 +59,29 @@ export default function PublishingClient({
     [pubTasks, company, type],
   );
 
+  // Sequence number per (company, type), ordered by publish date: e.g. the
+  // 1st post of BW is "بوست-1", the 4th story of جدارات is "ستوري-4".
+  const seqOf = useMemo(() => {
+    const m = new Map<string, number>();
+    const groups = new Map<string, Task[]>();
+    for (const t of pubTasks) {
+      const k = `${t.companyId}|${t.type}`;
+      const arr = groups.get(k) ?? [];
+      arr.push(t);
+      groups.set(k, arr);
+    }
+    for (const arr of groups.values()) {
+      arr.sort(
+        (a, b) =>
+          new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime() ||
+          a.id.localeCompare(b.id),
+      );
+      arr.forEach((t, i) => m.set(t.id, i + 1));
+    }
+    return m;
+  }, [pubTasks]);
+  const seqLabel = (t: Task) => `${typeLabel(t)}-${seqOf.get(t.id) ?? "?"}`;
+
   // No-interruption check (§4.4): each managed company must have ≥1 publish in
   // every one of the 4 weeks.
   const gaps = useMemo(() => {
@@ -92,14 +115,14 @@ export default function PublishingClient({
     <div
       className="flex items-center gap-1 text-[10px] rounded px-1 py-0.5 truncate"
       style={{ background: `${typeColor(t)}22`, color: typeColor(t) }}
-      title={`${typeLabel(t)} · ${coName(t.companyId)}`}
+      title={`${seqLabel(t)} · ${coName(t.companyId)}`}
     >
       <span
         className="w-1.5 h-1.5 rounded-full shrink-0"
         style={{ background: typeColor(t) }}
       />
       <span className="truncate">
-        {typeLabel(t)} · {coName(t.companyId)}
+        {seqLabel(t)} · {coName(t.companyId)}
       </span>
     </div>
   );
@@ -117,7 +140,7 @@ export default function PublishingClient({
             className="text-[10px] rounded px-1.5 py-0.5 shrink-0"
             style={{ background: `${color}22`, color }}
           >
-            {typeLabel(t)}
+            {seqLabel(t)}
           </span>
         </div>
         <div className="flex items-center gap-2 text-[10px] text-fg-muted">
