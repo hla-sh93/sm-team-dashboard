@@ -11,7 +11,7 @@ import {
   type Status,
 } from "@/lib/constants";
 import { formatDateShort, toISODate } from "@/lib/dates";
-import { resolveMonth, monthLabel } from "@/lib/month";
+import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { prisma } from "@/lib/db";
 import { CheckCircle2, Trophy } from "lucide-react";
@@ -21,7 +21,7 @@ export default async function ReportsPage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = resolveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(searchParams);
   const label = monthLabel({ year, month });
 
   const [employees, companies, tasks] = await Promise.all([

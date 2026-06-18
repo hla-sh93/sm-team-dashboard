@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { resolveMonth } from "@/lib/month";
+import { resolveActiveMonth } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import OverviewClient from "./overview-client";
 
@@ -8,7 +8,7 @@ export default async function HomePage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = resolveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(searchParams);
   const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),

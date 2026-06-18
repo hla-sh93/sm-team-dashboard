@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
-import { resolveMonth } from "@/lib/month";
+import { resolveActiveMonth } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { AlertTriangle } from "lucide-react";
 
@@ -11,7 +11,7 @@ export default async function WorkloadPage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = resolveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(searchParams);
   const [employees, tasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.task.findMany({ where: { year, month } }),

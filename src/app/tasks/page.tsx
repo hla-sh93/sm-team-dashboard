@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { resolveMonth } from "@/lib/month";
+import { resolveActiveMonth } from "@/lib/month";
 import TasksClient from "./tasks-client";
 
 export default async function TasksPage({
@@ -7,7 +7,7 @@ export default async function TasksPage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = resolveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(searchParams);
   const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
