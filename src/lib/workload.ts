@@ -24,6 +24,10 @@ export type WorkloadEntry = {
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
+// Roles are free-text and may be Arabic ("ناشر + مدير صفحات") or English keys.
+export const isPublisherRole = (role: string) => /ناشر|نشر|publisher/i.test(role);
+export const isWriterRole = (role: string) => /كات|writer/i.test(role);
+
 /**
  * Whole-team workload (§6). Designers are measured in hours; the rest (writer,
  * publisher, photographer) are measured by item/session count since their tasks
@@ -68,6 +72,22 @@ export function computeWorkload(
       : [];
     for (const s of mySessions) busy.add(toISODate(new Date(s.shootDate)));
 
+    // Publisher (عمر): his workload IS the publishing schedule — every content
+    // item with a publishDate is something he publishes on that day.
+    const publishItems =
+      isPublisherRole(emp.role)
+        ? tasks.filter(
+            (t) =>
+              t.publishDate &&
+              !isDone(t.status) &&
+              t.year === year &&
+              t.month === month,
+          )
+        : [];
+    for (const t of publishItems) {
+      if (t.publishDate) busy.add(toISODate(new Date(t.publishDate)));
+    }
+
     const tracksHours = totalHours > 0;
     const pct = capacityHours > 0 ? Math.round((totalHours / capacityHours) * 100) : 0;
     const level: WorkloadEntry["level"] = pct > 100 ? "over" : pct > 85 ? "warn" : "normal";
@@ -82,7 +102,7 @@ export function computeWorkload(
       pct,
       level,
       overflowCount,
-      itemCount: mine.length + mySessions.length,
+      itemCount: mine.length + mySessions.length + publishItems.length,
       tracksHours,
       breakdown: {
         POST: mine.filter((t) => t.type === "POST").length,
