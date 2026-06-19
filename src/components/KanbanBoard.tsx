@@ -16,6 +16,7 @@ import {
   type Stage,
 } from "@/lib/constants";
 import { formatDateShort } from "@/lib/dates";
+import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
@@ -94,6 +95,8 @@ export default function KanbanBoard({
             {columns[col].map((t) => {
               const color = taskColor(t.kind === "PUBLISH" ? "PUBLISH" : t.kind, t.type);
               const pre = blocked(t);
+              const emp = employees.find((e) => e.id === t.assigneeId);
+              const dur = t.stage === "PUBLISH" ? "" : daysLabel(cardDurationDays(emp, t));
               return (
                 <div
                   key={t.id}
@@ -127,6 +130,7 @@ export default function KanbanBoard({
                         <AlertTriangle className="w-3 h-3" /> {PRIORITY_LABELS.URGENT}
                       </span>
                     )}
+                    {dur && <span>· مدة {dur}</span>}
                     {t.readyDate && t.stage !== "PUBLISH" && (
                       <span>· تجهيز {formatDateShort(new Date(t.readyDate))}</span>
                     )}

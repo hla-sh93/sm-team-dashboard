@@ -21,6 +21,7 @@ model Employee {
   isScheduled    Boolean  @default(true)
   isPhotographer Boolean  @default(false)
   color          String?
+  rates          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

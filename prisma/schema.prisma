@@ -32,6 +32,9 @@ model Employee {
   isScheduled    Boolean  @default(true)        // enters the auto content engine
   isPhotographer Boolean  @default(false)
   color          String?
+  // Productivity rates (items per working day), JSON e.g. {"POST":6,"AI_REEL":1}.
+  // Falls back to global defaults (lib/capacity.ts) per type when unset.
+  rates          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

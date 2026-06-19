@@ -80,12 +80,28 @@ export default function TaskForm({
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
     reset,
   } = useForm<TaskInput>({
     resolver: zodResolver(taskSchema),
     defaultValues: defaults as TaskInput,
   });
+
+  // Live expected-duration estimate: hours ÷ assignee's daily capacity.
+  const watchedHours = watch("hours");
+  const watchedAssignee = watch("assigneeId");
+  const estAssignee = employees.find((e) => e.id === watchedAssignee);
+  const estDays =
+    estAssignee && estAssignee.hoursPerDay > 0 && watchedHours
+      ? Number(watchedHours) / estAssignee.hoursPerDay
+      : 0;
+  const estLabel =
+    estDays > 0
+      ? estDays < 1
+        ? "أقل من يوم"
+        : `~${Math.round(estDays * 10) / 10} يوم`
+      : "";
 
   useEffect(() => {
     reset(defaults as TaskInput);
@@ -154,6 +170,9 @@ export default function TaskForm({
             <div className="space-y-1.5">
               <Label>الساعات</Label>
               <Input type="number" step="0.5" min="0" {...register("hours", { valueAsNumber: true })} />
+              {estLabel && (
+                <p className="text-[11px] text-accent">المدة المتوقعة: {estLabel}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>الأولوية</Label>

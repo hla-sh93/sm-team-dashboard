@@ -6,6 +6,7 @@
 import type { Employee, Task, PhotoSession } from "@/types";
 import { DONE_STATUSES, type Status } from "./constants";
 import { parseWorkDays, periodDays, toISODate } from "./dates";
+import { hoursPerItem } from "./capacity";
 
 export type WorkloadEntry = {
   employee: Employee;
@@ -62,7 +63,15 @@ export function computeWorkload(
     const busy = new Set<string>();
     let overflowCount = 0;
     for (const t of mine) {
-      totalHours += t.hours;
+      // Per-person hours: design items use the person's rate; writing uses the
+      // plan rate; ad-hoc uses its entered hours.
+      const q = t.quantity ?? 1;
+      const h = t.type
+        ? hoursPerItem(emp, t.type) * q
+        : t.stage === "WRITE"
+          ? hoursPerItem(emp, "PLAN") * q
+          : t.hours;
+      totalHours += h;
       if (t.workDate) busy.add(toISODate(t.workDate));
       if (t.overflow) overflowCount++;
     }

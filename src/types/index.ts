@@ -20,6 +20,7 @@ export type Employee = {
   isScheduled: boolean;
   isPhotographer: boolean;
   color: string | null;
+  rates: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
