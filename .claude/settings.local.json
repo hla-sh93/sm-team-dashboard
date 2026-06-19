@@ -48,7 +48,10 @@
       "Bash(SEED_FORCE=1 npx tsx prisma/seed.ts)",
       "WebFetch(domain:socialmediateam.vercel.app)",
       "Bash(echo \"TYPECHECK=$?\")",
-      "Bash(node scripts/fix-shoot-days.mjs)"
+      "Bash(node scripts/fix-shoot-days.mjs)",
+      "Bash(node -e ' *)",
+      "Bash(node scripts/fix-noor-tuesday.mjs)",
+      "Bash(rm -rf .next)"
     ]
   }
 }

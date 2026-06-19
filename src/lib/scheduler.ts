@@ -19,18 +19,16 @@ import {
   type TaskKind,
   CONTENT_TYPE_LABELS,
   LEAD,
-  ORDER,
   PRIORITY_RANK,
   hoursForType,
 } from "./constants";
 import {
   backWorkday,
+  getMonthDays,
   parseWorkDays,
   periodDays,
   shiftDays,
-  split4,
   toISODate,
-  weeks,
 } from "./dates";
 import {
   buildPhotoSessions,
@@ -155,7 +153,6 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     return parseWorkDays(e ? (e.workDays as string | number[]) : null);
   };
 
-  const ws = weeks(year, month);
   const tasks: ScheduledTask[] = [];
 
   // -------------------------------------------------------------------------
@@ -176,52 +173,85 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     return co.defaultOwnerId ?? null;
   }
 
+  // Month-wide publishing distribution. Spread each company's items evenly
+  // across ALL month days (7-day canvas), keep FEED items (POST/REEL/AI_REEL)
+  // ≥1 day apart for a company (no same or consecutive day), let stories share
+  // days, and stagger companies (offset) so they don't all publish together.
+  // Smart spacing per plan = monthLen / itemCount.
+  const monthDays = getMonthDays(year, month);
+  const monthLen = monthDays.length;
+  const weekOfMonth = (dayIdx: number) =>
+    Math.min(4, Math.floor(dayIdx / (monthLen / 4)) + 1);
+
+  let coIdx = 0;
   for (const co of managed) {
-    for (const type of TYPE_ORDER) {
-      const n = co[PLAN_KEYS[type]];
-      if (!n || n <= 0) continue;
-      const weekCounts = split4(n);
+    const offset = (coIdx * 2) % monthLen; // rotate companies apart
+    coIdx++;
+    const seqByDay = new Map<string, number>();
+
+    const emit = (type: ContentType, dayIdx: number) => {
       const ownerId = ownerFor(co, type);
-      if (!ownerId) {
+      const publishDate = new Date(monthDays[dayIdx]);
+      const iso = toISODate(publishDate);
+      const k = `${type}|${iso}`;
+      const seq = (seqByDay.get(k) ?? 0) + 1;
+      seqByDay.set(k, seq);
+      tasks.push({
+        detKey: `${co.id}|${type}|${iso}|${seq}`,
+        kind: "CONTENT",
+        type,
+        title: `${CONTENT_TYPE_LABELS[type]} — ${co.name}`,
+        companyId: co.id,
+        assigneeId: ownerId,
+        hours: hoursForType(type),
+        priority: "NORMAL",
+        status: "NOT_STARTED",
+        publishDate,
+        readyDate: null,
+        workDate: null,
+        week: weekOfMonth(dayIdx),
+        overflow: false,
+        month,
+        year,
+        isPinned: false,
+        isAuto: true,
+      });
+    };
+
+    // Missing-owner warnings.
+    for (const type of TYPE_ORDER) {
+      if (co[PLAN_KEYS[type]] > 0 && !ownerFor(co, type)) {
         warnings.push({
           level: "warning",
           message: `${co.name} — ${CONTENT_TYPE_LABELS[type]}: لا يوجد مالك مُحدّد`,
           companyId: co.id,
         });
       }
-      // seq counter per (company, type, day) for the deterministic key.
-      const seqByDay = new Map<string, number>();
-      for (let wi = 0; wi < 4; wi++) {
-        const count = weekCounts[wi];
-        for (let k = 0; k < count; k++) {
-          const dayIndex = ORDER[type][k % 5];
-          const publishDate = new Date(ws[wi][dayIndex]);
-          const iso = toISODate(publishDate);
-          const seq = (seqByDay.get(iso) ?? 0) + 1;
-          seqByDay.set(iso, seq);
-          const detKey = `${co.id}|${type}|${iso}|${seq}`;
-          tasks.push({
-            detKey,
-            kind: "CONTENT",
-            type,
-            title: `${CONTENT_TYPE_LABELS[type]} — ${co.name}`,
-            companyId: co.id,
-            assigneeId: ownerId,
-            hours: hoursForType(type),
-            priority: "NORMAL",
-            status: "NOT_STARTED",
-            publishDate,
-            readyDate: null,
-            workDate: null,
-            week: wi + 1,
-            overflow: false,
-            month,
-            year,
-            isPinned: false,
-            isAuto: true,
-          });
-        }
-      }
+    }
+
+    // FEED — interleave types proportionally, place with a ≥1-day gap.
+    const feedSeq = interleaveTypes({
+      POST: co.posts,
+      REEL: co.reels,
+      AI_REEL: co.aiReels,
+    });
+    const usedFeed = new Set<number>();
+    feedSeq.forEach((type, i) => {
+      const target =
+        Math.round(offset + (i + 0.5) * (monthLen / feedSeq.length)) % monthLen;
+      const slot = placeAvoidingAdjacent(target, usedFeed, monthLen);
+      usedFeed.add(slot);
+      emit(type, slot);
+    });
+
+    // STORIES — even spread, one per day for the company (may share feed days).
+    const usedStory = new Set<number>();
+    for (let i = 0; i < co.stories; i++) {
+      const target =
+        Math.round(offset + (i + 0.5) * (monthLen / co.stories)) % monthLen;
+      const slot = placeUnique(target, usedStory, monthLen);
+      usedStory.add(slot);
+      emit("STORY", slot);
     }
   }
 
@@ -470,4 +500,54 @@ function placeTask(t: ScheduledTask, iso: string, day: Date): void {
   if (t.readyDate && iso > toISODate(t.readyDate)) {
     t.overflow = true;
   }
+}
+
+// --- publishing distribution helpers --------------------------------------
+
+/** Interleave feed types proportionally to their counts so posts and reels
+ *  alternate rather than clustering (e.g. 6 posts + 8 reels → R,P,R,R,P,...). */
+function interleaveTypes(counts: {
+  POST: number;
+  REEL: number;
+  AI_REEL: number;
+}): ContentType[] {
+  const total = counts.POST + counts.REEL + counts.AI_REEL;
+  if (total === 0) return [];
+  const pos: { p: number; t: ContentType }[] = [];
+  (["REEL", "AI_REEL", "POST"] as const).forEach((t, ti) => {
+    const c = counts[t];
+    for (let i = 0; i < c; i++) pos.push({ p: (i + 0.5) * (total / c) + ti * 0.01, t });
+  });
+  pos.sort((a, b) => a.p - b.p);
+  return pos.map((x) => x.t);
+}
+
+/** Nearest free day index to `target` whose neighbours (±1) are also free for
+ *  this company — enforces "no same-day and no consecutive-day" for feed. Falls
+ *  back to same-day-free, then to target, if the canvas is saturated. */
+function placeAvoidingAdjacent(
+  target: number,
+  used: Set<number>,
+  len: number,
+): number {
+  const ok = (i: number) =>
+    i >= 0 && i < len && !used.has(i) && !used.has(i - 1) && !used.has(i + 1);
+  for (let d = 0; d < len; d++) {
+    if (ok(target + d)) return target + d;
+    if (ok(target - d)) return target - d;
+  }
+  for (let d = 0; d < len; d++) {
+    if (target + d < len && !used.has(target + d)) return target + d;
+    if (target - d >= 0 && !used.has(target - d)) return target - d;
+  }
+  return Math.min(len - 1, Math.max(0, target));
+}
+
+/** Nearest free day index to `target` (no two of the same kind on one day). */
+function placeUnique(target: number, used: Set<number>, len: number): number {
+  for (let d = 0; d < len; d++) {
+    if (target + d < len && !used.has(target + d)) return target + d;
+    if (target - d >= 0 && !used.has(target - d)) return target - d;
+  }
+  return Math.min(len - 1, Math.max(0, target));
 }
