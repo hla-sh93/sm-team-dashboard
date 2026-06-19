@@ -131,8 +131,8 @@ export default function PublishingClient({
     const color = typeColor(t);
     return (
       <div
-        className="rounded-lg border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
-        style={{ borderInlineStartColor: color, borderInlineStartWidth: 3 }}
+        className="rounded-sm border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
+        style={{ borderTopColor: color, borderTopWidth: 3 }}
       >
         <div className="flex items-center justify-between gap-1.5">
           <span className="text-xs font-semibold truncate">{coName(t.companyId)}</span>

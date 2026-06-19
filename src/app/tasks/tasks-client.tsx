@@ -178,8 +178,8 @@ export default function TasksClient({
     const color = itemColor(it);
     return (
       <div
-        className="rounded-lg border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
-        style={{ borderInlineStartColor: color, borderInlineStartWidth: 3 }}
+        className="rounded-sm border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
+        style={{ borderTopColor: color, borderTopWidth: 3 }}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           {it.kind === "session" && (

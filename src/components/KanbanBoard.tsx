@@ -79,7 +79,7 @@ export default function KanbanBoard({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
       {BOARDS.map((col) => (
-        <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-xl p-2">
+        <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-md p-2">
           <div className="flex items-center justify-between px-1.5 py-1 mb-2">
             <div className="flex items-center gap-2">
               <span
@@ -97,8 +97,8 @@ export default function KanbanBoard({
               return (
                 <div
                   key={t.id}
-                  className="rounded-lg border border-border-soft bg-bg-card px-2.5 py-2 flex flex-col gap-1.5"
-                  style={{ borderInlineStartColor: color, borderInlineStartWidth: 3 }}
+                  className="rounded-sm border border-border-soft bg-bg-card px-2.5 py-2 flex flex-col gap-1.5"
+                  style={{ borderTopColor: color, borderTopWidth: 3 }}
                 >
                   <div className="flex items-center gap-1.5">
                     <span
