@@ -16,8 +16,58 @@
 import { PrismaClient } from "@prisma/client";
 import { createHash } from "crypto";
 import data from "./seed-data.json";
+import juneActuals from "./actuals-june.json";
 
 const prisma = new PrismaClient();
+
+const DONE = ["READY", "PUBLISHED"];
+
+/** Load the lead-reported June actuals (completed/in-progress work) into June
+ *  (month 5). Idempotent via hash; one task per item with quantity = batch. */
+async function seedJuneActuals() {
+  const jYear = juneActuals.meta.year;
+  const jMonth = juneActuals.meta.month - 1; // 0-based
+  const items = juneActuals.items as any[];
+  const hash = createHash("sha1").update(JSON.stringify(items)).digest("hex");
+  const hashKey = `seedHash:${jYear}-${jMonth}`;
+  const prev = await prisma.setting.findUnique({ where: { key: hashKey } });
+  const existing = await prisma.task.count({ where: { month: jMonth, year: jYear } });
+  if (existing > 0 && process.env.SEED_FORCE !== "1" && prev?.value === hash) {
+    console.log(`↩︎  June actuals unchanged (${existing}) — skipping.`);
+    return;
+  }
+  await prisma.task.deleteMany({ where: { month: jMonth, year: jYear } });
+  const workDate = new Date(jYear, jMonth, 15); // generic "done in June"
+  await prisma.task.createMany({
+    data: items.map((it, i) => ({
+      id: `jun_${String(i + 1).padStart(3, "0")}`,
+      kind: it.kind,
+      type: it.type ?? null,
+      title:
+        it.title ??
+        (it.type ? `${it.type} — ${it.companyId ?? ""}` : "مهمة"),
+      companyId: it.companyId ?? null,
+      assigneeId: it.assignee ?? null,
+      hours: 0,
+      quantity: it.quantity ?? 1,
+      priority: "NORMAL",
+      status: it.status,
+      workDate,
+      overflow: false,
+      isAuto: false,
+      completedAt: DONE.includes(it.status) ? workDate : null,
+      finishedAt: DONE.includes(it.status) ? workDate : null,
+      month: jMonth,
+      year: jYear,
+    })),
+  });
+  await prisma.setting.upsert({
+    where: { key: hashKey },
+    update: { value: hash },
+    create: { key: hashKey, value: hash },
+  });
+  console.log(`✓ June actuals: ${items.length} items`);
+}
 
 /** Parse "YYYY-MM-DD" into a LOCAL Date at midnight (null-safe). */
 const D = (s: string | null | undefined): Date | null => {
@@ -95,6 +145,9 @@ async function main() {
     });
   }
   console.log(`✓ companies: ${data.companies.length}`);
+
+  // June actuals (current-month accomplishments) — independent of July dataset.
+  await seedJuneActuals();
 
   /* ---------- 3) Tasks + 4) Photo sessions ----------
    * Reload the month's tasks/sessions whenever the DATASET CHANGES. We hash the

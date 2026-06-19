@@ -49,6 +49,7 @@ export type Task = {
   type: ContentType | string | null;
   title: string | null;
   hours: number;
+  quantity: number;
   priority: Priority | string;
   status: Status | string;
   publishDate: Date | null;

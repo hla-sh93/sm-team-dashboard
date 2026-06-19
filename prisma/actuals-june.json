@@ -1,0 +1,48 @@
+{
+  "meta": { "month": 6, "year": 2026, "label": "حزيران 2026" },
+  "_note": "June actuals reported by the lead. inPlan=true counts toward the company's monthly plan; ADHOC = out of plan. quantity = batch size.",
+  "items": [
+    { "assignee": "e_ayman", "companyId": "c_jadarat", "kind": "CONTENT", "type": "AI_REEL", "quantity": 3, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_ayman", "companyId": "c_bw", "kind": "CONTENT", "type": "POST", "quantity": 4, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_ayman", "companyId": "c_phoenitech", "kind": "CONTENT", "type": "POST", "quantity": 4, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_ayman", "companyId": "c_bw", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم المونديال" },
+    { "assignee": "e_ayman", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم المونديال" },
+    { "assignee": "e_ayman", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم الشراكة (كاروسيل ٣ بوست) — مشترك مع الكلية الوطنية" },
+
+    { "assignee": "e_sabin", "companyId": "c_training", "kind": "CONTENT", "type": "POST", "quantity": 6, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_sabin", "companyId": "c_noor", "kind": "CONTENT", "type": "POST", "quantity": 6, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_sabin", "companyId": "c_jadarat", "kind": "CONTENT", "type": "POST", "quantity": 6, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_sabin", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم لوغو أوفر (Over)" },
+    { "assignee": "e_sabin", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم لوغو جوبز (Jobs) — مشترك مع حلا" },
+    { "assignee": "e_sabin", "companyId": "c_capriani", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصميم بروفايل كابرياني" },
+
+    { "assignee": "e_nawal", "companyId": null, "kind": "CONTENT_WRITING", "quantity": 1, "status": "PUBLISHED", "title": "إعداد خطط محتوى حزيران لكل الشركات" },
+    { "assignee": "e_nawal", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "محتوى مشروع الوظائف (جوبز)" },
+    { "assignee": "e_nawal", "companyId": "c_jadarat", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تعديلات محتوى جدارات" },
+    { "assignee": "e_nawal", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بروبوزال شركة التداول — مشترك مع عمر" },
+    { "assignee": "e_nawal", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "محتوى بروشور الوظائف" },
+
+    { "assignee": "e_hla", "companyId": "c_capriani", "kind": "ADHOC", "quantity": 15, "status": "PUBLISHED", "title": "بوستات كابرياني (حزيران)" },
+    { "assignee": "e_hla", "companyId": "c_jadarat", "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "تصميم موقع جدارات + الملاحظات" },
+    { "assignee": "e_hla", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة وملاحظات موقع صعب" },
+    { "assignee": "e_hla", "companyId": "c_schools", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تصاميم المدارس: بروفايل + كاتالوغ الشركاء + فلاير + بوستات" },
+    { "assignee": "e_hla", "companyId": "c_schools", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست شهادة ISO 9001" },
+    { "assignee": "e_hla", "companyId": "c_schools", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "تعديلات ويبسايت المدارس" },
+    { "assignee": "e_hla", "companyId": "c_schools", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست RGS للمدارس" },
+    { "assignee": "e_hla", "companyId": "c_jadarat", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست جدارات + التيمبلت المتفق عليه" },
+    { "assignee": "e_hla", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "إعداد خطة الجوبز — مشترك مع نوال وعمر" },
+    { "assignee": "e_hla", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة مهام التصوير والسوشال ميديا" },
+
+    { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "جدولة ونشر بوستات الشركات" },
+    { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة مع العملاء" },
+    { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "إعداد خطة الجوبز — مشترك" },
+    { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بروبوزال شركة التداول — مشترك مع نوال" },
+
+    { "assignee": "e_photo", "companyId": "c_noor", "kind": "CONTENT", "type": "REEL", "quantity": 1, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_photo", "companyId": "c_bw", "kind": "CONTENT", "type": "REEL", "quantity": 3, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_photo", "companyId": "c_phoenitech", "kind": "CONTENT", "type": "REEL", "quantity": 4, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_photo", "companyId": "c_mall", "kind": "CONTENT", "type": "REEL", "quantity": 2, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_photo", "companyId": "c_pro", "kind": "CONTENT", "type": "REEL", "quantity": 6, "status": "PUBLISHED", "inPlan": true, "title": null },
+    { "assignee": "e_photo", "companyId": "c_jadarat", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "مونتاج ريل جدارات" }
+  ]
+}

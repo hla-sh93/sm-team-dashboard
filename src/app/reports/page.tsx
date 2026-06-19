@@ -33,6 +33,38 @@ export default async function ReportsPage({
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
   const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
   const done = tasks.filter((t) => isDone(t.status));
+  const qty = (t: { quantity?: number }) => t.quantity ?? 1;
+  const doneCount = done.reduce((a, t) => a + qty(t), 0);
+
+  // Per-company plan completion (المنجَز مقابل المتبقّي من الخطة).
+  const PLAN_TYPES: { type: string; label: string; key: "posts" | "reels" | "aiReels" | "stories" }[] = [
+    { type: "POST", label: "بوست", key: "posts" },
+    { type: "REEL", label: "ريل", key: "reels" },
+    { type: "AI_REEL", label: "ريل AI", key: "aiReels" },
+    { type: "STORY", label: "ستوري", key: "stories" },
+  ];
+  const companyPlan = companies
+    .filter((c) => c.managed && c.status === "active")
+    .sort((a, b) => a.priority - b.priority)
+    .map((co) => {
+      const rows = PLAN_TYPES.map((pt) => {
+        const plan = co[pt.key] ?? 0;
+        const d = tasks
+          .filter((t) => t.companyId === co.id && t.kind === "CONTENT" && t.type === pt.type && isDone(t.status))
+          .reduce((a, t) => a + qty(t), 0);
+        return { ...pt, plan, done: d, remaining: Math.max(0, plan - d) };
+      }).filter((r) => r.plan > 0 || r.done > 0);
+      const totalPlan = rows.reduce((a, r) => a + r.plan, 0);
+      const totalDone = rows.reduce((a, r) => a + Math.min(r.done, r.plan), 0);
+      const pct = totalPlan > 0 ? Math.round((totalDone / totalPlan) * 100) : 0;
+      return { co, rows, pct, totalPlan, totalDone };
+    })
+    .filter((x) => x.rows.length > 0);
+
+  // Out-of-plan (ad-hoc) done work, grouped lightly for the summary.
+  const outOfPlanDone = done
+    .filter((t) => t.kind === "ADHOC")
+    .reduce((a, t) => a + qty(t), 0);
 
   const workload = computeWorkload(
     employees.filter((e) => e.isScheduled),
@@ -99,8 +131,8 @@ export default async function ReportsPage({
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs text-fg-muted">المهام المنجزة</div>
-              <div className="display-font text-2xl">{done.length}</div>
+              <div className="text-xs text-fg-muted">المنجز (شامل الكميات)</div>
+              <div className="display-font text-2xl">{doneCount}</div>
             </div>
           </div>
         </Card>
@@ -130,6 +162,61 @@ export default async function ReportsPage({
         </Card>
       </div>
 
+      {/* المنجَز مقابل المتبقّي من خطة كل شركة */}
+      {companyPlan.length > 0 && (
+        <Card>
+          <h2 className="display-font text-lg mb-4">إنجاز خطة الشركات — {label}</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {companyPlan.map(({ co, rows, pct }) => (
+              <div key={co.id} className="border border-border-soft rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ background: co.color ?? "#C8A84E" }}
+                    />
+                    <span className="font-semibold">{co.name}</span>
+                  </div>
+                  <span
+                    className={
+                      "text-sm display-font " +
+                      (pct >= 100 ? "text-success" : pct >= 50 ? "text-warning" : "text-danger")
+                    }
+                  >
+                    {pct}%
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden mb-2">
+                  <div
+                    className={"h-full " + (pct >= 100 ? "bg-success" : "bg-accent")}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  {rows.map((r) => (
+                    <div key={r.type} className="flex items-center justify-between">
+                      <span className="text-fg-dim">{r.label}</span>
+                      <span className="tabular-nums">
+                        <span className={r.done >= r.plan ? "text-success" : ""}>{r.done}</span>
+                        <span className="text-fg-muted">/{r.plan}</span>
+                        {r.remaining > 0 && (
+                          <span className="text-warning"> · باقي {r.remaining}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {outOfPlanDone > 0 && (
+            <p className="text-xs text-fg-muted mt-3">
+              + {outOfPlanDone} مهمة منجزة <strong>خارج الخطة</strong> (مفصّلة لكل شخص بالأسفل).
+            </p>
+          )}
+        </Card>
+      )}
+
       <div className="space-y-4">
         {employees.map((e) => {
           const mine = byAssignee.get(e.id) ?? [];
@@ -144,7 +231,9 @@ export default async function ReportsPage({
                     <div className="text-xs text-fg-muted">{ROLE_LABELS[e.role] ?? e.role}</div>
                   </div>
                 </div>
-                <div className="display-font text-2xl text-success">{mine.length}</div>
+                <div className="display-font text-2xl text-success">
+                  {mine.reduce((a, t) => a + qty(t), 0)}
+                </div>
               </div>
               <div className="space-y-1.5">
                 {mine.map((t) => (
@@ -157,6 +246,7 @@ export default async function ReportsPage({
                       {t.kind === "CONTENT" && t.type
                         ? `${CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS]} · ${coName(t.companyId)}`
                         : t.title}
+                      {qty(t) > 1 && <span className="text-accent"> ×{qty(t)}</span>}
                     </span>
                     <span className="text-xs text-fg-muted shrink-0">
                       {t.publishDate ? formatDateShort(new Date(t.publishDate)) : ""}
