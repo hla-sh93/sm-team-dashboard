@@ -213,6 +213,48 @@ export function taskColor(kind: string, type?: string | null): string {
   }
 }
 
+// ============================================
+// PIPELINE / KANBAN (agile workflow)
+// ============================================
+export const STAGES = ["WRITE", "DESIGN", "SHOOT", "PUBLISH"] as const;
+export type Stage = (typeof STAGES)[number];
+export const STAGE_LABELS: Record<Stage, string> = {
+  WRITE: "كتابة",
+  DESIGN: "تصميم",
+  SHOOT: "تصوير",
+  PUBLISH: "نشر",
+};
+
+export const BOARDS = ["TODO", "DOING", "REVIEW", "DONE"] as const;
+export type Board = (typeof BOARDS)[number];
+export const BOARD_LABELS: Record<Board, string> = {
+  TODO: "قيد الانتظار",
+  DOING: "قيد التنفيذ",
+  REVIEW: "للمراجعة",
+  DONE: "منجز",
+};
+export const BOARD_COLORS: Record<Board, string> = {
+  TODO: "#8a94a6",
+  DOING: "#17408E",
+  REVIEW: "#C8A84E",
+  DONE: "#0E9F6E",
+};
+
+/** Map a legacy Status to a kanban Board column (for migration/derivation). */
+export function statusToBoard(status: string): Board {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "DOING";
+    case "AWAITING_APPROVAL":
+      return "REVIEW";
+    case "READY":
+    case "PUBLISHED":
+      return "DONE";
+    default:
+      return "TODO";
+  }
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   lead: "تيم ليدر",
   writer: "كاتب محتوى",

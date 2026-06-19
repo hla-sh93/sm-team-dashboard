@@ -6,6 +6,7 @@
  */
 import { readFileSync, writeFileSync } from "fs";
 import { buildSchedule } from "../src/lib/scheduler";
+import { expandPipeline } from "../src/lib/pipeline";
 
 const PATH = "prisma/seed-data.json";
 const data: any = JSON.parse(readFileSync(PATH, "utf8"));
@@ -43,40 +44,56 @@ const adhocIn = data.tasks
 
 const result = buildSchedule({ year, month, employees, companies, adhoc: adhocIn });
 
-let n = 1;
-const id = () => `t_${String(n++).padStart(3, "0")}`;
+const writerId =
+  data.employees.find((e: any) => /كات|writer/i.test(e.role))?.id ?? null;
+const publisherId =
+  data.employees.find((e: any) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
 
-// Engine CONTENT tasks (sorted for stable ids).
-const content = result.tasks
-  .filter((t) => t.kind === "CONTENT")
-  .sort(
-    (a, b) =>
-      (a.companyId ?? "").localeCompare(b.companyId ?? "") ||
-      (a.type ?? "").localeCompare(b.type ?? "") ||
-      (a.publishDate?.getTime() ?? 0) - (b.publishDate?.getTime() ?? 0),
-  )
+// Build the pipeline (write → design/shoot → publish) from engine content items.
+const items = result.tasks
+  .filter((t) => t.kind === "CONTENT" && t.companyId && t.type)
   .map((t) => ({
-    kind: "CONTENT", type: t.type, title: null,
-    companyId: t.companyId, company: coName[t.companyId ?? ""],
-    assigneeId: t.assigneeId, hours: t.hours || null,
-    priority: t.priority, status: t.status,
-    publishDate: iso(t.publishDate), week: t.week,
-    readyDate: iso(t.readyDate), workDate: iso(t.workDate),
-    overflow: t.overflow,
-    dayName: t.publishDate ? DOW[t.publishDate.getDay()] : null,
-    id: id(), month: data.meta.month, year,
+    companyId: t.companyId!,
+    type: t.type as "POST" | "REEL" | "AI_REEL" | "STORY",
+    assigneeId: t.assigneeId,
+    publishDate: iso(t.publishDate),
+    readyDate: iso(t.readyDate),
+    workDate: iso(t.workDate),
+    week: t.week,
+    status: t.status,
   }));
 
-// Keep manual writer + report tasks as-is (renumbered).
-const manual = data.tasks
-  .filter((t: any) => t.kind === "CONTENT_WRITING" || t.kind === "REPORT")
-  .map((t: any) => ({ ...t, id: id() }));
+const pipe = expandPipeline(items, {
+  writerId,
+  publisherId,
+  year,
+  month,
+  companyName: (cid) => coName[cid] ?? "",
+});
 
-// Ad-hoc from engine (packed workDate).
+const DOW2 = (s: string | null) =>
+  s ? DOW[new Date(s + "T00:00:00").getDay()] : null;
+const pipelineTasks = pipe.map((t) => ({
+  ...t,
+  company: coName[t.companyId ?? ""] ?? "",
+  dayName: DOW2(t.publishDate ?? t.workDate),
+  month: data.meta.month,
+  year,
+}));
+
+let n = 1;
+const id = () => `x_${String(n++).padStart(3, "0")}`;
+
+// Keep the month report (publishing is now per-item PUBLISH cards). Ad-hoc from
+// engine (packed workDate). Writer plan is replaced by per-company WRITE cards.
+const report = data.tasks
+  .filter((t: any) => t.kind === "REPORT")
+  .map((t: any) => ({ ...t, id: id() }));
 const adhoc = result.tasks
   .filter((t) => t.kind === "ADHOC")
   .map((t) => ({
-    kind: "ADHOC", type: null, title: t.title,
+    kind: "ADHOC", stage: null, board: "TODO", blockedById: null, pipelineKey: null,
+    type: null, title: t.title, quantity: 1,
     companyId: t.companyId, company: coName[t.companyId ?? ""],
     assigneeId: t.assigneeId, hours: t.hours, priority: t.priority, status: t.status,
     publishDate: null, week: null,
@@ -92,16 +109,17 @@ const sessions = result.sessions.map((s) => ({
   reelCount: s.reelCount, status: s.status,
 }));
 
-data.tasks = [...content, ...manual, ...adhoc];
+data.tasks = [...pipelineTasks, ...report, ...adhoc];
 data.photoSessions = sessions;
 data.meta.totals = {
-  contentItems: content.length,
+  contentItems: items.length,
   allTasks: data.tasks.length,
   photoSessions: sessions.length,
 };
-data.meta.generatedBy = "engine v2 (month-wide distribution)";
+data.meta.generatedBy = "engine v3 (pipeline/kanban)";
+const content = pipelineTasks; // for the log line below
 
 writeFileSync(PATH, JSON.stringify(data, null, 2) + "\n");
 console.log(
-  `Regenerated: ${content.length} content + ${manual.length} manual + ${adhoc.length} adhoc = ${data.tasks.length} tasks; ${sessions.length} sessions.`,
+  `Regenerated pipeline: ${content.length} stage-cards + ${report.length} report + ${adhoc.length} adhoc = ${data.tasks.length} tasks; ${sessions.length} sessions.`,
 );

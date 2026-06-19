@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
 import Calendar, { type CalendarMode } from "@/components/calendar/Calendar";
+import KanbanBoard from "@/components/KanbanBoard";
 import TaskForm from "@/components/forms/TaskForm";
 import {
   CONTENT_TYPE_LABELS,
@@ -63,7 +64,7 @@ export default function TasksClient({
   sessions: PhotoSession[];
 }) {
   const router = useRouter();
-  const [view, setView] = useState<CalendarMode>("monthly");
+  const [view, setView] = useState<CalendarMode | "board">("board");
   const [person, setPerson] = useState<string>("all");
   const [company, setCompany] = useState<string>("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -304,7 +305,7 @@ export default function TasksClient({
       {/* View toggle + filters */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-1 bg-bg-elev border border-border rounded-lg p-1 w-fit">
-          {(["monthly", "weekly", "daily"] as CalendarMode[]).map((v) => (
+          {(["board", "monthly", "weekly", "daily"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -313,7 +314,13 @@ export default function TasksClient({
                 (view === v ? "bg-info text-bg" : "text-fg-dim hover:text-fg")
               }
             >
-              {v === "monthly" ? "شهري" : v === "weekly" ? "أسبوعي" : "يومي"}
+              {v === "board"
+                ? "بورد"
+                : v === "monthly"
+                  ? "شهري"
+                  : v === "weekly"
+                    ? "أسبوعي"
+                    : "يومي"}
             </button>
           ))}
         </div>
@@ -345,18 +352,31 @@ export default function TasksClient({
         </div>
       </div>
 
-      <Calendar<CalItem>
-        mode={view}
-        year={year}
-        month={month}
-        items={items}
-        getDate={(it) => it.date}
-        renderChip={renderChip}
-        renderCard={renderCard}
-        renderDrawer={renderDrawer}
-        accent="var(--info, #3b82f6)"
-        emptyLabel="لا مهام"
-      />
+      {view === "board" ? (
+        <KanbanBoard
+          tasks={tasks.filter(
+            (t) =>
+              (person === "all" || t.assigneeId === person) &&
+              (company === "all" || t.companyId === company),
+          )}
+          allTasks={tasks}
+          employees={employees}
+          companies={companies}
+        />
+      ) : (
+        <Calendar<CalItem>
+          mode={view}
+          year={year}
+          month={month}
+          items={items}
+          getDate={(it) => it.date}
+          renderChip={renderChip}
+          renderCard={renderCard}
+          renderDrawer={renderDrawer}
+          accent="var(--info, #3b82f6)"
+          emptyLabel="لا مهام"
+        />
+      )}
 
       <TaskForm
         open={formOpen}

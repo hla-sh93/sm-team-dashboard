@@ -51,7 +51,9 @@
       "Bash(node scripts/fix-shoot-days.mjs)",
       "Bash(node -e ' *)",
       "Bash(node scripts/fix-noor-tuesday.mjs)",
-      "Bash(rm -rf .next)"
+      "Bash(rm -rf .next)",
+      "Bash(node -e \"const d=require\\('./prisma/actuals-june.json'\\); const h=d.items.filter\\(i=>i.assignee==='e_hla'\\); console.log\\('hla items:',h.length, '| phoenitech adhoc:', h.filter\\(i=>i.companyId==='c_phoenitech'\\).map\\(i=>i.title\\).join\\(' / '\\)\\);\")",
+      "Bash(perl -0pi -e 's/\\(stage: scope,.*?pipelineKey: pk,\\\\n      \\)quantity: 1,/$1quantity: q,/s; s/\\(stage: \"PUBLISH\",.*?pipelineKey: pk,\\\\n      \\)quantity: 1,/$1quantity: q,/s' src/lib/pipeline.ts)"
     ]
   }
 }

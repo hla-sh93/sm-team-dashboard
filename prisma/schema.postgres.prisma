@@ -79,6 +79,10 @@ model Task {
   year        Int
   isPinned    Boolean   @default(false)
   isAuto      Boolean   @default(false)
+  stage       String?
+  board       String    @default("TODO")
+  blockedById String?
+  pipelineKey String?
   detKey      String?
   notes       String?
   completedAt DateTime?

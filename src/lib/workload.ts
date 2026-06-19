@@ -52,6 +52,7 @@ export function computeWorkload(
       (t) =>
         t.assigneeId === emp.id &&
         t.type !== "REEL" &&
+        t.kind !== "PUBLISH" && // publish cards counted via the publisher branch
         !isDone(t.status) &&
         t.year === year &&
         t.month === month,
@@ -72,13 +73,14 @@ export function computeWorkload(
       : [];
     for (const s of mySessions) busy.add(toISODate(new Date(s.shootDate)));
 
-    // Publisher (عمر): his workload IS the publishing schedule — every content
-    // item with a publishDate is something he publishes on that day.
+    // Publisher (عمر): his workload IS the publishing pipeline — the PUBLISH
+    // stage cards assigned to him.
     const publishItems =
       isPublisherRole(emp.role)
         ? tasks.filter(
             (t) =>
-              t.publishDate &&
+              t.assigneeId === emp.id &&
+              t.kind === "PUBLISH" &&
               !isDone(t.status) &&
               t.year === year &&
               t.month === month,

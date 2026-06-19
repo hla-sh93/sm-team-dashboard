@@ -17,13 +17,16 @@ import { PrismaClient } from "@prisma/client";
 import { createHash } from "crypto";
 import data from "./seed-data.json";
 import juneActuals from "./actuals-june.json";
+import { expandPipeline } from "../src/lib/pipeline";
 
 const prisma = new PrismaClient();
 
 const DONE = ["READY", "PUBLISHED"];
 
-/** Load the lead-reported June actuals (completed/in-progress work) into June
- *  (month 5). Idempotent via hash; one task per item with quantity = batch. */
+/** Load the lead-reported June actuals into June (month 5) as a PIPELINE:
+ *  content that was produced → design/shoot stage DONE, publish stage TO-DO
+ *  (awaiting عمر) — so nothing reads as "published" until عمر actually publishes.
+ *  Ad-hoc / writing items stay as single cards. Idempotent via hash. */
 async function seedJuneActuals() {
   const jYear = juneActuals.meta.year;
   const jMonth = juneActuals.meta.month - 1; // 0-based
@@ -37,36 +40,99 @@ async function seedJuneActuals() {
     return;
   }
   await prisma.task.deleteMany({ where: { month: jMonth, year: jYear } });
-  const workDate = new Date(jYear, jMonth, 15); // generic "done in June"
-  await prisma.task.createMany({
-    data: items.map((it, i) => ({
-      id: `jun_${String(i + 1).padStart(3, "0")}`,
+
+  const emps = data.employees as any[];
+  const cos = data.companies as any[];
+  const writerId = emps.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
+  const publisherId = emps.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
+  const coName = (id: string) => cos.find((c) => c.id === id)?.name ?? "";
+  const wd = new Date(jYear, jMonth, 15); // generic "done in June"
+  const wdISO = "2026-06-15";
+
+  // Content items → pipeline (design DONE, publish TODO, write DONE).
+  const contentItems = items
+    .filter((it) => it.kind === "CONTENT" && it.companyId && it.type)
+    .map((it) => ({
+      companyId: it.companyId,
+      type: it.type,
+      assigneeId: it.assignee,
+      publishDate: null,
+      readyDate: null,
+      workDate: wdISO,
+      week: null,
+      status: "READY", // produced, NOT published
+      quantity: it.quantity ?? 1,
+    }));
+  const pipe = expandPipeline(contentItems, {
+    writerId,
+    publisherId,
+    year: jYear,
+    month: jMonth,
+    companyName: coName,
+    designBoard: () => "DONE",
+    publishBoard: () => "TODO",
+    writeBoard: "DONE",
+    idPrefix: "jun_",
+  });
+
+  const pipeRows = pipe.map((t) => ({
+    id: t.id,
+    kind: t.kind,
+    type: t.type,
+    title: t.title,
+    companyId: t.companyId,
+    assigneeId: t.assigneeId,
+    hours: 0,
+    quantity: t.quantity,
+    priority: t.priority,
+    status: t.status,
+    stage: t.stage,
+    board: t.board,
+    blockedById: t.blockedById,
+    pipelineKey: t.pipelineKey,
+    workDate: D(t.workDate),
+    overflow: false,
+    isAuto: true,
+    completedAt: t.board === "DONE" ? wd : null,
+    finishedAt: t.board === "DONE" ? wd : null,
+    month: jMonth,
+    year: jYear,
+  }));
+
+  // Ad-hoc / writing items → single cards.
+  const otherRows = items
+    .filter((it) => !(it.kind === "CONTENT" && it.companyId && it.type))
+    .map((it, i) => ({
+      id: `jun_x_${String(i + 1).padStart(3, "0")}`,
       kind: it.kind,
       type: it.type ?? null,
-      title:
-        it.title ??
-        (it.type ? `${it.type} — ${it.companyId ?? ""}` : "مهمة"),
+      title: it.title ?? "مهمة",
       companyId: it.companyId ?? null,
       assigneeId: it.assignee ?? null,
       hours: 0,
       quantity: it.quantity ?? 1,
       priority: "NORMAL",
       status: it.status,
-      workDate,
+      stage: null,
+      board: DONE.includes(it.status) ? "DONE" : it.status === "IN_PROGRESS" ? "DOING" : "TODO",
+      blockedById: null,
+      pipelineKey: null,
+      workDate: wd,
       overflow: false,
       isAuto: false,
-      completedAt: DONE.includes(it.status) ? workDate : null,
-      finishedAt: DONE.includes(it.status) ? workDate : null,
+      completedAt: DONE.includes(it.status) ? wd : null,
+      finishedAt: DONE.includes(it.status) ? wd : null,
       month: jMonth,
       year: jYear,
-    })),
-  });
+    }));
+
+  await prisma.task.createMany({ data: [...pipeRows, ...otherRows] as any });
   await prisma.setting.upsert({
     where: { key: hashKey },
     update: { value: hash },
     create: { key: hashKey, value: hash },
   });
-  console.log(`✓ June actuals: ${items.length} items`);
+  console.log(`✓ June actuals: ${pipeRows.length} pipeline + ${otherRows.length} other`);
 }
 
 /** Parse "YYYY-MM-DD" into a LOCAL Date at midnight (null-safe). */
@@ -191,7 +257,12 @@ async function main() {
       week: t.week ?? null,
       overflow: t.overflow ?? false,
       notes: t.note ?? null,
-      isAuto: t.kind === "CONTENT",
+      isAuto: t.kind === "CONTENT" || t.kind === "PUBLISH",
+      quantity: t.quantity ?? 1,
+      stage: t.stage ?? null,
+      board: t.board ?? "TODO",
+      blockedById: t.blockedById ?? null,
+      pipelineKey: t.pipelineKey ?? null,
       month,
       year,
     })),

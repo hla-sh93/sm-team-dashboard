@@ -32,7 +32,10 @@ for (const s of data.photoSessions) {
   }
 }
 for (const t of data.tasks) {
+  // Only the SHOOT stage moves to Tuesday — never the PUBLISH card (its
+  // workDate is the publish day) or other types.
   if (t.companyId !== COMPANY || t.type !== "REEL" || !t.workDate) continue;
+  if (t.stage && t.stage !== "SHOOT") continue;
   const next = snapToTuesday(t.workDate);
   if (next !== t.workDate) {
     changed.push(`${t.id}: reel ${t.workDate} → ${next}`);

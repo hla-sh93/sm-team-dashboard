@@ -11,7 +11,7 @@ import { ARABIC_MONTHS } from "@/lib/dates";
 export function MonthBar({
   year,
   month,
-  showGenerate = true,
+  showGenerate = false, // pipeline regen is script-driven for now (not flat generate)
 }: {
   year: number;
   month: number;

@@ -61,6 +61,10 @@ export type Task = {
   year: number;
   isPinned: boolean;
   isAuto: boolean;
+  stage: string | null;
+  board: string;
+  blockedById: string | null;
+  pipelineKey: string | null;
   detKey: string | null;
   notes: string | null;
   completedAt: Date | null;

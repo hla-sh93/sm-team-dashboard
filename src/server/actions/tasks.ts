@@ -149,6 +149,44 @@ export async function updateTaskStatus(id: string, status: string) {
   }
 }
 
+/** Move a kanban card to a board column (TODO/DOING/REVIEW/DONE). Mirrors the
+ *  legacy status, stamps start/finish times. Handoff is automatic: the next
+ *  stage card unlocks (its blockedBy becomes DONE) — soft gate, no hard block. */
+export async function moveCard(id: string, board: string) {
+  const BOARDS = ["TODO", "DOING", "REVIEW", "DONE"];
+  if (!BOARDS.includes(board)) return { ok: false as const, error: "عمود غير صالح" };
+  try {
+    const t = await prisma.task.findUnique({ where: { id } });
+    if (!t) return { ok: false as const, error: "المهمة غير موجودة" };
+    const now = new Date();
+    const isPublish = t.stage === "PUBLISH";
+    const status =
+      board === "DONE"
+        ? isPublish
+          ? "PUBLISHED"
+          : "READY"
+        : board === "REVIEW"
+          ? "AWAITING_APPROVAL"
+          : board === "DOING"
+            ? "IN_PROGRESS"
+            : "NOT_STARTED";
+    await prisma.task.update({
+      where: { id },
+      data: {
+        board,
+        status,
+        startedAt: board === "TODO" ? null : (t.startedAt ?? now),
+        finishedAt: board === "DONE" ? (t.finishedAt ?? now) : null,
+        completedAt: board === "DONE" ? (t.completedAt ?? now) : null,
+      },
+    });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تحريك المهمة" };
+  }
+}
+
 /** Reassign a task to a different person (e.g. hand off when someone is busy).
  *  Pins the task so the auto-engine won't move it back. */
 export async function reassignTask(id: string, assigneeId: string) {
