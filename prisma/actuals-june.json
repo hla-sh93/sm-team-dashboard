@@ -32,6 +32,8 @@
     { "assignee": "e_hla", "companyId": "c_jadarat", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست جدارات + التيمبلت المتفق عليه" },
     { "assignee": "e_hla", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "إعداد خطة الجوبز — مشترك مع نوال وعمر" },
     { "assignee": "e_hla", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة مهام التصوير والسوشال ميديا" },
+    { "assignee": "e_hla", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست فونيتيك: الدومينات والاستضافة" },
+    { "assignee": "e_hla", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست فونيتيك: الهوية البصرية" },
 
     { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "جدولة ونشر بوستات الشركات" },
     { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة مع العملاء" },
