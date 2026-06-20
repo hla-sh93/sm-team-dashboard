@@ -75,13 +75,23 @@ export function computeWorkload(
       if (t.overflow) overflowCount++;
     }
 
-    // Photographer: reels → days at their reel rate + busy (shoot) days.
-    const mySessions = emp.isPhotographer
-      ? sessions.filter((s) => s.year === year && s.month === month)
+    // Photographer: count their SHOOT cards (REEL) — REMAINING ones drive
+    // needed days; all of them drive busy (shoot) days.
+    const myShoots = emp.isPhotographer
+      ? tasks.filter(
+          (t) =>
+            t.assigneeId === emp.id &&
+            t.type === "REEL" &&
+            t.kind === "CONTENT" &&
+            t.year === year &&
+            t.month === month,
+        )
       : [];
-    for (const s of mySessions) busy.add(toISODate(new Date(s.shootDate)));
-    const reelCount = mySessions.reduce((a, s) => a + (s.reelCount || 0), 0);
-    if (reelCount > 0) neededDays += taskDays(emp, "REEL", reelCount);
+    for (const t of myShoots) if (t.workDate) busy.add(toISODate(t.workDate));
+    const remainingReels = myShoots
+      .filter((t) => !isDone(t.status))
+      .reduce((a, t) => a + (t.quantity ?? 1), 0);
+    if (remainingReels > 0) neededDays += taskDays(emp, "REEL", remainingReels);
 
     // Publisher (عمر): his workload IS the publishing pipeline — the PUBLISH
     // stage cards assigned to him.
@@ -114,7 +124,7 @@ export function computeWorkload(
       pct,
       level,
       overflowCount,
-      itemCount: mine.length + mySessions.length + publishItems.length,
+      itemCount: mine.length + myShoots.length + publishItems.length,
       tracksDays,
       breakdown: {
         POST: mine.filter((t) => t.type === "POST").length,

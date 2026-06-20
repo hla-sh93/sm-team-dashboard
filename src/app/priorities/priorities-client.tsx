@@ -70,7 +70,8 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
     startScheduling(async () => {
       const result = await generateSchedule(today.getFullYear(), today.getMonth());
       if (result.ok) {
-        toast(`تم إعادة الجدولة: ${result.stats.total} مهمة`);
+        const s = result.stages;
+        toast(`تمت إعادة الجدولة: تصميم ${s.design} · تصوير ${s.shoot} · نشر ${s.publish}`);
       } else {
         toast(result.error, 'error');
       }

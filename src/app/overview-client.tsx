@@ -61,7 +61,7 @@ export default function OverviewClient({
           <h1 className="display-font text-2xl">نظرة عامة</h1>
           <p className="text-sm text-fg-dim">لوحة إدارة فريق السوشال ميديا</p>
         </div>
-        <MonthBar year={year} month={month} />
+        <MonthBar year={year} month={month} showGenerate />
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

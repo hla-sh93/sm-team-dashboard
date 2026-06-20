@@ -30,9 +30,10 @@ export function MonthBar({
     start(async () => {
       const r = await generateSchedule(year, month);
       if (r.ok) {
+        const s = r.stages;
         toast(
-          `تم توليد الجدول · ${r.stats.total} مهمة · ${r.stats.overflow} تجاوز`,
-          r.stats.overflow > 0 ? "warning" : "success",
+          `تمت إعادة الجدولة · كتابة ${s.write} · تصميم ${s.design} · تصوير ${s.shoot} · نشر ${s.publish}`,
+          "success",
         );
         router.refresh();
       } else {
