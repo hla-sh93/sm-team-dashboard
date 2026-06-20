@@ -22,7 +22,7 @@ export default async function WorkloadPage({
   // Whole team, designers first (hours), then the rest (by item count).
   const workload = computeWorkload(employees, tasks, year, month, sessions).sort(
     (a, b) =>
-      Number(b.tracksHours) - Number(a.tracksHours) ||
+      Number(b.tracksDays) - Number(a.tracksDays) ||
       b.pct - a.pct ||
       b.itemCount - a.itemCount,
   );
@@ -32,7 +32,7 @@ export default async function WorkloadPage({
       <header className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display-font text-2xl">أحمال العمل</h1>
-          <p className="text-sm text-fg-dim">إجمالي الساعات مقابل السعة لكل موظف</p>
+          <p className="text-sm text-fg-dim">الأيام المطلوبة مقابل المتاحة لكل موظف (حسب الطاقة الإنتاجية)</p>
         </div>
         <MonthBar year={year} month={month} />
       </header>
@@ -59,7 +59,7 @@ export default async function WorkloadPage({
                   </div>
                 </div>
                 <div className="text-left">
-                  {w.tracksHours ? (
+                  {w.tracksDays ? (
                     <div
                       className={
                         "text-2xl display-font " +
@@ -89,7 +89,7 @@ export default async function WorkloadPage({
                 <div
                   className={
                     "h-full rounded-full " +
-                    (w.tracksHours
+                    (w.tracksDays
                       ? w.level === "over"
                         ? "bg-danger"
                         : w.level === "warn"
@@ -98,17 +98,17 @@ export default async function WorkloadPage({
                       : "bg-info/60")
                   }
                   style={{
-                    width: w.tracksHours
+                    width: w.tracksDays
                       ? `${Math.min(100, w.pct)}%`
                       : `${Math.min(100, w.itemCount * 6)}%`,
                   }}
                 />
               </div>
-              {w.tracksHours ? (
+              {w.tracksDays ? (
                 <>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <Stat label="إجمالي" value={`${w.totalHours}س`} />
-                    <Stat label="السعة" value={`${w.capacityHours}س`} />
+                    <Stat label="أيام مطلوبة" value={`${w.neededDays}`} />
+                    <Stat label="أيام متاحة" value={`${w.capacityDays}`} />
                     <Stat label="مشغول" value={`${w.busyDays} يوم`} />
                     <Stat label="فاضي" value={`${w.freeDays} يوم`} />
                   </div>

@@ -5,9 +5,22 @@ import { employeeSchema, type EmployeeInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/team", "/tasks", "/workload", "/companies"]) {
+  for (const p of ["/", "/team", "/tasks", "/workload", "/companies", "/reports"]) {
     revalidatePath(p);
   }
+}
+
+/** Build the rates JSON (items/day). planDays → PLAN rate = 1/planDays. */
+function buildRates(d: EmployeeInput): string | null {
+  const r: Record<string, number> = {};
+  const src = d.rates ?? {};
+  for (const k of ["POST", "STORY", "AI_REEL", "REEL"] as const) {
+    const v = src[k];
+    if (typeof v === "number" && v > 0) r[k] = v;
+  }
+  if (d.planDays && d.planDays > 0) r.PLAN = 1 / d.planDays;
+  else if (typeof src.PLAN === "number" && src.PLAN > 0) r.PLAN = src.PLAN;
+  return Object.keys(r).length ? JSON.stringify(r) : null;
 }
 
 export async function createEmployee(input: EmployeeInput) {
@@ -25,6 +38,7 @@ export async function createEmployee(input: EmployeeInput) {
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
         color: parsed.data.color ?? null,
+        rates: buildRates(parsed.data),
       },
     });
     revalidateAll();
@@ -50,6 +64,7 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
         color: parsed.data.color ?? null,
+        rates: buildRates(parsed.data),
       },
     });
     revalidateAll();

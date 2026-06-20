@@ -7,7 +7,7 @@ import { Download, Printer } from "lucide-react";
 export type ReportRow = {
   employee: string;
   role: string;
-  totalHours: number;
+  neededDays: number;
   busyDays: number;
   freeDays: number;
   done: number;
@@ -35,8 +35,8 @@ export function ReportActions({
 }) {
   const exportTeam = () => {
     const csv = toCSV(
-      ["الموظف", "الدور", "إجمالي الساعات", "أيام مشغولة", "أيام متاحة", "مهام منجزة"],
-      teamRows.map((r) => [r.employee, r.role, r.totalHours, r.busyDays, r.freeDays, r.done]),
+      ["الموظف", "الدور", "أيام مطلوبة", "أيام مشغولة", "أيام متاحة", "مهام منجزة"],
+      teamRows.map((r) => [r.employee, r.role, r.neededDays, r.busyDays, r.freeDays, r.done]),
     );
     downloadCSV(`تقرير-الفريق-${monthLabel}.csv`, csv);
   };

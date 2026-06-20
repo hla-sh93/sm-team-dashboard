@@ -25,6 +25,7 @@ import {
   ROLE_LABELS,
 } from "@/lib/constants";
 import { parseWorkDays } from "@/lib/dates";
+import { parseRates } from "@/lib/capacity";
 import { toast } from "@/components/ui/toaster";
 
 interface Props {
@@ -43,6 +44,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
   const [isPending, start] = useTransition();
   const isEdit = !!employee;
 
+  const er = employee ? parseRates(employee.rates) : {};
   const defaults: Partial<EmployeeInput> = employee
     ? {
         name: employee.name,
@@ -52,6 +54,13 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
         isScheduled: employee.isScheduled,
         isPhotographer: employee.isPhotographer,
         color: employee.color ?? "#C8A84E",
+        rates: {
+          POST: er.POST,
+          STORY: er.STORY,
+          AI_REEL: er.AI_REEL,
+          REEL: er.REEL,
+        },
+        planDays: er.PLAN ? Math.round(1 / er.PLAN) : undefined,
       }
     : {
         name: "",
@@ -61,6 +70,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
         isScheduled: true,
         isPhotographer: false,
         color: "#C8A84E",
+        rates: {},
       };
 
   const {
@@ -126,15 +136,37 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>ساعات/يوم</Label>
-              <Input type="number" step="0.5" min="0.5" {...register("hoursPerDay", { valueAsNumber: true })} />
+          <div className="space-y-2">
+            <Label>الطاقة الإنتاجية (بالقطعة / يوم)</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">بوست</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.POST", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">ستوري</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.STORY", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">ريل AI</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.AI_REEL", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">ريل تصوير</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.REEL", { valueAsNumber: true })} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>اللون</Label>
-              <Input type="color" {...register("color")} className="h-10 p-1" />
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">مدة إعداد الخطة (أيام)</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("planDays", { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">اللون</span>
+                <Input type="color" {...register("color")} className="h-10 p-1" />
+              </div>
             </div>
+            <p className="text-[10px] text-fg-muted">اتركي الخانة فارغة لاستخدام الافتراضي. مثال: سابين 6 بوست/يوم، أيمن 1 ريل AI/يوم، نوال خطة خلال يومين.</p>
           </div>
 
           <div className="space-y-2">

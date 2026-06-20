@@ -54,7 +54,9 @@
       "Bash(rm -rf .next)",
       "Bash(node -e \"const d=require\\('./prisma/actuals-june.json'\\); const h=d.items.filter\\(i=>i.assignee==='e_hla'\\); console.log\\('hla items:',h.length, '| phoenitech adhoc:', h.filter\\(i=>i.companyId==='c_phoenitech'\\).map\\(i=>i.title\\).join\\(' / '\\)\\);\")",
       "Bash(perl -0pi -e 's/\\(stage: scope,.*?pipelineKey: pk,\\\\n      \\)quantity: 1,/$1quantity: q,/s; s/\\(stage: \"PUBLISH\",.*?pipelineKey: pk,\\\\n      \\)quantity: 1,/$1quantity: q,/s' src/lib/pipeline.ts)",
-      "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);p.employee.findMany\\({select:{name:true,rates:true}}\\).then\\(r=>{r.forEach\\(e=>console.log\\(e.name,e.rates||'\\\\''\\(default\\)'\\\\''\\)\\);return p.$disconnect\\(\\);}\\)')"
+      "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);p.employee.findMany\\({select:{name:true,rates:true}}\\).then\\(r=>{r.forEach\\(e=>console.log\\(e.name,e.rates||'\\\\''\\(default\\)'\\\\''\\)\\);return p.$disconnect\\(\\);}\\)')",
+      "Bash(perl -0pi -e 's/w\\\\.tracksHours/w.tracksDays/g; s/\\\\$\\\\{w\\\\.totalHours\\\\}\\\\/\\\\$\\\\{w\\\\.capacityHours\\\\}س/\\\\${w.neededDays}\\\\/\\\\${w.capacityDays} يوم/g' src/app/overview-client.tsx)",
+      "Bash(perl -0pi -e 's/w\\\\.tracksHours/w.tracksDays/g; s/b\\\\.tracksHours/b.tracksDays/g; s/a\\\\.tracksHours/a.tracksDays/g' src/app/workload/page.tsx)"
     ]
   }
 }

@@ -85,7 +85,7 @@ export default async function ReportsPage({
     return {
       employee: e.name,
       role: ROLE_LABELS[e.role] ?? e.role,
-      totalHours: w?.totalHours ?? 0,
+      neededDays: w?.neededDays ?? 0,
       busyDays: w?.busyDays ?? 0,
       freeDays: w?.freeDays ?? 0,
       done: (byAssignee.get(e.id) ?? []).length,

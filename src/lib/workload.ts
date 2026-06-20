@@ -6,20 +6,20 @@
 import type { Employee, Task, PhotoSession } from "@/types";
 import { DONE_STATUSES, type Status } from "./constants";
 import { parseWorkDays, periodDays, toISODate } from "./dates";
-import { hoursPerItem } from "./capacity";
+import { taskDays, adhocDays } from "./capacity";
 
 export type WorkloadEntry = {
   employee: Employee;
-  totalHours: number;
-  capacityHours: number;
+  neededDays: number; // working days of work needed (= Σ quantity / rate)
+  capacityDays: number; // working days available in the period
   busyDays: number;
   workDays: number;
   freeDays: number;
   pct: number;
   level: "normal" | "warn" | "over";
   overflowCount: number;
-  itemCount: number; // total live tasks/sessions (for non-hours roles)
-  tracksHours: boolean; // true for roles whose work consumes hours (designers)
+  itemCount: number; // total live tasks/sessions
+  tracksDays: boolean; // producers (designers/writer/photographer) → days; publisher → count
   breakdown: { POST: number; AI_REEL: number; STORY: number; ADHOC: number };
 };
 
@@ -47,7 +47,7 @@ export function computeWorkload(
   return employees.map((emp) => {
     const wd = parseWorkDays(emp.workDays);
     const empWorkDays = period.filter((d) => wd.includes(d.getDay())).length;
-    const capacityHours = emp.hoursPerDay * empWorkDays;
+    const capacityDays = empWorkDays;
 
     const mine = tasks.filter(
       (t) =>
@@ -59,28 +59,29 @@ export function computeWorkload(
         t.month === month,
     );
 
-    let totalHours = 0;
+    let neededDays = 0;
     const busy = new Set<string>();
     let overflowCount = 0;
     for (const t of mine) {
-      // Per-person hours: design items use the person's rate; writing uses the
-      // plan rate; ad-hoc uses its entered hours.
+      // Days of work: design items by the person's rate; writing by plan rate;
+      // ad-hoc by its hours ÷ daily capacity.
       const q = t.quantity ?? 1;
-      const h = t.type
-        ? hoursPerItem(emp, t.type) * q
+      neededDays += t.type
+        ? taskDays(emp, t.type, q)
         : t.stage === "WRITE"
-          ? hoursPerItem(emp, "PLAN") * q
-          : t.hours;
-      totalHours += h;
+          ? taskDays(emp, "PLAN", q)
+          : adhocDays(emp, t.hours);
       if (t.workDate) busy.add(toISODate(t.workDate));
       if (t.overflow) overflowCount++;
     }
 
-    // Photographer: fold their sessions in as items + busy (shoot) days.
+    // Photographer: reels → days at their reel rate + busy (shoot) days.
     const mySessions = emp.isPhotographer
       ? sessions.filter((s) => s.year === year && s.month === month)
       : [];
     for (const s of mySessions) busy.add(toISODate(new Date(s.shootDate)));
+    const reelCount = mySessions.reduce((a, s) => a + (s.reelCount || 0), 0);
+    if (reelCount > 0) neededDays += taskDays(emp, "REEL", reelCount);
 
     // Publisher (عمر): his workload IS the publishing pipeline — the PUBLISH
     // stage cards assigned to him.
@@ -99,14 +100,14 @@ export function computeWorkload(
       if (t.publishDate) busy.add(toISODate(new Date(t.publishDate)));
     }
 
-    const tracksHours = totalHours > 0;
-    const pct = capacityHours > 0 ? Math.round((totalHours / capacityHours) * 100) : 0;
+    const tracksDays = !isPublisherRole(emp.role);
+    const pct = capacityDays > 0 ? Math.round((neededDays / capacityDays) * 100) : 0;
     const level: WorkloadEntry["level"] = pct > 100 ? "over" : pct > 85 ? "warn" : "normal";
 
     return {
       employee: emp,
-      totalHours: Math.round(totalHours * 10) / 10,
-      capacityHours: Math.round(capacityHours * 10) / 10,
+      neededDays: Math.round(neededDays * 10) / 10,
+      capacityDays,
       busyDays: busy.size,
       workDays: empWorkDays,
       freeDays: Math.max(0, empWorkDays - busy.size),
@@ -114,7 +115,7 @@ export function computeWorkload(
       level,
       overflowCount,
       itemCount: mine.length + mySessions.length + publishItems.length,
-      tracksHours,
+      tracksDays,
       breakdown: {
         POST: mine.filter((t) => t.type === "POST").length,
         AI_REEL: mine.filter((t) => t.type === "AI_REEL").length,

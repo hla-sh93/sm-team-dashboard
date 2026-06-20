@@ -9,6 +9,9 @@ const weekdayArray = z
   .min(1, "اختر يوم عمل واحد على الأقل")
   .transform((v) => Array.from(new Set(v)));
 
+const emptyToUndef = (v: unknown) =>
+  v === "" || v === null || (typeof v === "number" && Number.isNaN(v)) ? undefined : v;
+const rateNum = z.preprocess(emptyToUndef, z.coerce.number().min(0).max(100).optional());
 export const employeeSchema = z.object({
   name: z.string().min(1, "الاسم مطلوب").max(100),
   role: z.string().min(1, "الدور مطلوب"),
@@ -21,6 +24,17 @@ export const employeeSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")
     .nullable()
     .optional(),
+  // Productivity (items per working day). PLAN is derived from planDays.
+  rates: z
+    .object({
+      POST: rateNum,
+      STORY: rateNum,
+      AI_REEL: rateNum,
+      REEL: rateNum,
+      PLAN: rateNum,
+    })
+    .optional(),
+  planDays: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(30).optional()), // days/plan
 });
 export type EmployeeInput = z.infer<typeof employeeSchema>;
 

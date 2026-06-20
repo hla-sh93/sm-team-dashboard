@@ -102,8 +102,8 @@ export default function OverviewClient({
                     )}
                   </div>
                   <span className="text-xs text-fg-dim tabular-nums">
-                    {w.tracksHours
-                      ? `${w.totalHours}/${w.capacityHours}س · ${w.busyDays} مشغول · ${w.freeDays} فاضي`
+                    {w.tracksDays
+                      ? `${w.neededDays}/${w.capacityDays} يوم · ${w.busyDays} مشغول · ${w.freeDays} فاضي`
                       : `${w.itemCount} مهمة · ${w.busyDays} يوم مشغول`}
                   </span>
                 </div>
@@ -111,7 +111,7 @@ export default function OverviewClient({
                   <div
                     className={
                       "h-full rounded-full " +
-                      (w.tracksHours
+                      (w.tracksDays
                         ? w.level === "over"
                           ? "bg-danger"
                           : w.level === "warn"
@@ -120,7 +120,7 @@ export default function OverviewClient({
                         : "bg-info/60")
                     }
                     style={{
-                      width: w.tracksHours
+                      width: w.tracksDays
                         ? `${Math.min(100, w.pct)}%`
                         : `${Math.min(100, w.itemCount * 8)}%`,
                     }}
