@@ -49,8 +49,16 @@ export default async function ReportsPage({
     .map((co) => {
       const rows = PLAN_TYPES.map((pt) => {
         const plan = co[pt.key] ?? 0;
+        // Achievement counts only PUBLISHED content (Omar's PUBLISH stage done),
+        // not merely designed/shot.
         const d = tasks
-          .filter((t) => t.companyId === co.id && t.kind === "CONTENT" && t.type === pt.type && isDone(t.status))
+          .filter(
+            (t) =>
+              t.companyId === co.id &&
+              t.kind === "PUBLISH" &&
+              t.type === pt.type &&
+              t.board === "DONE",
+          )
           .reduce((a, t) => a + qty(t), 0);
         return { ...pt, plan, done: d, remaining: Math.max(0, plan - d) };
       }).filter((r) => r.plan > 0 || r.done > 0);

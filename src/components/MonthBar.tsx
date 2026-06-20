@@ -61,7 +61,7 @@ export function MonthBar({
           ) : (
             <RefreshCw className="w-4 h-4" />
           )}
-          توليد الجدول
+          إعادة الجدولة
         </Button>
       )}
     </div>
