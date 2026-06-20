@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { resolveActiveMonth } from "@/lib/month";
+import { resolvePublishMonth } from "@/lib/month";
 import PublishingClient from "./publishing-client";
 
 export default async function PublishingPage({
@@ -7,7 +7,7 @@ export default async function PublishingPage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = await resolveActiveMonth(searchParams);
+  const { year, month } = await resolvePublishMonth(searchParams);
   const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany(),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),

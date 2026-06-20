@@ -22,10 +22,25 @@ import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
 import { AlertTriangle, Lock } from "lucide-react";
 
+const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
+
+/** A board card is one task, OR a group of posts/stories batched together. */
+type KCard = {
+  key: string;
+  ids: string[];
+  repr: Task; // representative task (carries dates, blockedBy, stage…)
+  board: Board;
+  count: number;
+  label: string;
+  blockedByLabel: string | null;
+  durLabel: string;
+};
+
 /**
- * Per-person (or team) kanban: cards grouped into TODO/DOING/REVIEW/DONE.
- * Cards carry stage, priority, dates, quantity and a soft-lock warning when the
- * predecessor stage (blockedById) isn't DONE yet.
+ * Per-person kanban. Posts and stories are BATCHED into one card per
+ * (company, type, stage); AI-reels and real reels stay as individual numbered
+ * cards (ريل-1, ريل AI-2…) since each can take a working day. Moving a batched
+ * card moves all its underlying tasks together.
  */
 export default function KanbanBoard({
   tasks,
@@ -41,41 +56,126 @@ export default function KanbanBoard({
   const router = useRouter();
   const [, start] = useTransition();
   const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
-  const empName = (id: string | null) => employees.find((e) => e.id === id)?.name ?? "—";
-  const empColor = (id: string | null) => employees.find((e) => e.id === id)?.color ?? undefined;
+  const emp = (id: string | null) => employees.find((e) => e.id === id);
+  const empName = (id: string | null) => emp(id)?.name ?? "—";
+  const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
 
-  const columns = useMemo(() => {
-    const m: Record<Board, Task[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
-    for (const t of tasks) {
-      const b = (BOARDS as readonly string[]).includes(t.board) ? (t.board as Board) : "TODO";
-      m[b].push(t);
+  // Reel numbering per (company, type), by publish order — shared by the
+  // shoot/design card and its publish card (via pipelineKey).
+  const reelSeq = useMemo(() => {
+    const m = new Map<string, number>(); // pipelineKey → number
+    const groups = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if ((t.type === "REEL" || t.type === "AI_REEL") && t.stage !== "PUBLISH") {
+        const k = `${t.companyId}|${t.type}`;
+        const arr = groups.get(k) ?? [];
+        arr.push(t);
+        groups.set(k, arr);
+      }
+    }
+    for (const arr of groups.values()) {
+      arr.sort(
+        (a, b) =>
+          (a.publishDate ? new Date(a.publishDate).getTime() : 0) -
+            (b.publishDate ? new Date(b.publishDate).getTime() : 0) ||
+          a.id.localeCompare(b.id),
+      );
+      arr.forEach((t, i) => t.pipelineKey && m.set(t.pipelineKey, i + 1));
     }
     return m;
-  }, [tasks]);
+  }, [allTasks]);
 
-  const onMove = (id: string, board: string) =>
+  const isGroupable = (t: Task) =>
+    (t.kind === "CONTENT" || t.kind === "PUBLISH") &&
+    (t.type === "POST" || t.type === "STORY");
+
+  const cardLabel = (t: Task, count: number): string => {
+    const co = coName(t.companyId);
+    const publish = t.stage === "PUBLISH";
+    if (t.type === "POST")
+      return `${publish ? "جدولة بوستات" : "بوستات"} · ${co}${count > 1 ? ` (${count})` : ""}`;
+    if (t.type === "STORY")
+      return `${publish ? "جدولة ستوريز" : "ستوريز"} · ${co}${count > 1 ? ` (${count})` : ""}`;
+    if (t.type === "REEL" || t.type === "AI_REEL") {
+      const n = t.pipelineKey ? reelSeq.get(t.pipelineKey) : undefined;
+      const base = t.type === "AI_REEL" ? "ريل AI" : "ريل";
+      const tag = `${base}-${n ?? "?"}`;
+      return `${publish ? "نشر " : ""}${tag} · ${co}`;
+    }
+    return t.title ?? "مهمة";
+  };
+
+  // Build cards: batch posts/stories, keep reels/others individual.
+  const cards = useMemo<KCard[]>(() => {
+    const groups = new Map<string, Task[]>();
+    const singles: Task[] = [];
+    for (const t of tasks) {
+      if (isGroupable(t)) {
+        const k = `${t.assigneeId}|${t.companyId}|${t.type}|${t.stage}`;
+        const arr = groups.get(k) ?? [];
+        arr.push(t);
+        groups.set(k, arr);
+      } else {
+        singles.push(t);
+      }
+    }
+    const out: KCard[] = [];
+    const blockedLabel = (repr: Task): string | null => {
+      if (!repr.blockedById) return null;
+      const pre = byId.get(repr.blockedById);
+      return pre && pre.board !== "DONE" ? cardLabel(pre, 1) : null;
+    };
+    for (const [key, arr] of groups) {
+      const repr = arr[0];
+      const count = arr.reduce((a, t) => a + (t.quantity ?? 1), 0);
+      const board = arr
+        .map((t) => (t.board as Board) ?? "TODO")
+        .reduce((min, b) => (BOARD_RANK[b] < BOARD_RANK[min] ? b : min), "DONE" as Board);
+      out.push({
+        key,
+        ids: arr.map((t) => t.id),
+        repr,
+        board,
+        count,
+        label: cardLabel(repr, count),
+        blockedByLabel: blockedLabel(repr),
+        durLabel:
+          repr.stage === "PUBLISH"
+            ? ""
+            : daysLabel(cardDurationDays(emp(repr.assigneeId), { ...repr, quantity: count })),
+      });
+    }
+    for (const t of singles) {
+      out.push({
+        key: t.id,
+        ids: [t.id],
+        repr: t,
+        board: ((BOARDS as readonly string[]).includes(t.board) ? t.board : "TODO") as Board,
+        count: t.quantity ?? 1,
+        label: cardLabel(t, t.quantity ?? 1),
+        blockedByLabel: blockedLabel(t),
+        durLabel: t.stage === "PUBLISH" ? "" : daysLabel(cardDurationDays(emp(t.assigneeId), t)),
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, byId, reelSeq]);
+
+  const columns = useMemo(() => {
+    const m: Record<Board, KCard[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
+    for (const c of cards) m[c.board].push(c);
+    return m;
+  }, [cards]);
+
+  const onMove = (ids: string[], board: string) =>
     start(async () => {
-      const r = await moveCard(id, board);
-      if (r.ok) {
+      const res = await Promise.all(ids.map((id) => moveCard(id, board)));
+      if (res.every((r) => r.ok)) {
         toast("تم تحريك المهمة");
         router.refresh();
-      } else toast(r.error, "error");
+      } else toast("فشل تحريك بعض المهام", "error");
     });
-
-  const label = (t: Task) =>
-    t.kind === "CONTENT" || t.kind === "PUBLISH"
-      ? t.type
-        ? `${CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS]} · ${coName(t.companyId)}`
-        : coName(t.companyId)
-      : (t.title ?? "مهمة");
-
-  const blocked = (t: Task) => {
-    if (!t.blockedById) return null;
-    const pre = byId.get(t.blockedById);
-    if (pre && pre.board !== "DONE") return pre;
-    return null;
-  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -83,23 +183,18 @@ export default function KanbanBoard({
         <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-md p-2">
           <div className="flex items-center justify-between px-1.5 py-1 mb-2">
             <div className="flex items-center gap-2">
-              <span
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ background: BOARD_COLORS[col] }}
-              />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: BOARD_COLORS[col] }} />
               <span className="text-sm font-semibold">{BOARD_LABELS[col]}</span>
             </div>
             <span className="text-xs text-fg-muted">{columns[col].length}</span>
           </div>
           <div className="flex flex-col gap-2 min-h-[40px]">
-            {columns[col].map((t) => {
+            {columns[col].map((c) => {
+              const t = c.repr;
               const color = taskColor(t.kind === "PUBLISH" ? "PUBLISH" : t.kind, t.type);
-              const pre = blocked(t);
-              const emp = employees.find((e) => e.id === t.assigneeId);
-              const dur = t.stage === "PUBLISH" ? "" : daysLabel(cardDurationDays(emp, t));
               return (
                 <div
-                  key={t.id}
+                  key={c.key}
                   className="rounded-sm border border-border-soft bg-bg-card px-2.5 py-2 flex flex-col gap-1.5"
                   style={{ borderTopColor: color, borderTopWidth: 3 }}
                 >
@@ -110,15 +205,12 @@ export default function KanbanBoard({
                     >
                       {STAGE_LABELS[t.stage as Stage] ?? "مهمة"}
                     </span>
-                    <span className="text-xs font-medium truncate flex-1">{label(t)}</span>
-                    {t.quantity > 1 && (
-                      <span className="text-[10px] text-accent shrink-0">×{t.quantity}</span>
-                    )}
+                    <span className="text-xs font-medium truncate flex-1">{c.label}</span>
                   </div>
 
-                  {pre && (
+                  {c.blockedByLabel && (
                     <div className="flex items-center gap-1 text-[10px] text-warning">
-                      <Lock className="w-3 h-3" /> بانتظار: {label(pre)}
+                      <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
                     </div>
                   )}
 
@@ -130,19 +222,17 @@ export default function KanbanBoard({
                         <AlertTriangle className="w-3 h-3" /> {PRIORITY_LABELS.URGENT}
                       </span>
                     )}
-                    {dur && <span>· مدة {dur}</span>}
+                    {c.durLabel && <span>· مدة {c.durLabel}</span>}
                     {t.readyDate && t.stage !== "PUBLISH" && (
                       <span>· تجهيز {formatDateShort(new Date(t.readyDate))}</span>
                     )}
-                    {t.publishDate && (
-                      <span>· نشر {formatDateShort(new Date(t.publishDate))}</span>
-                    )}
+                    {t.publishDate && <span>· نشر {formatDateShort(new Date(t.publishDate))}</span>}
                   </div>
 
                   <Select
                     className="w-full h-7 text-[11px] py-0.5"
-                    value={t.board}
-                    onChange={(e) => onMove(t.id, e.target.value)}
+                    value={c.board}
+                    onChange={(e) => onMove(c.ids, e.target.value)}
                   >
                     {BOARDS.map((b) => (
                       <option key={b} value={b}>

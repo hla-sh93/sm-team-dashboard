@@ -41,6 +41,32 @@ export async function resolveActiveMonth(searchParams: {
   }
 }
 
+/**
+ * Like resolveActiveMonth but for the publishing calendar: lands on a month
+ * that actually has scheduled publishes (CONTENT tasks with a publishDate), so
+ * it never opens empty on a production-only month (e.g. June actuals).
+ */
+export async function resolvePublishMonth(searchParams: {
+  y?: string;
+  m?: string;
+}): Promise<YM> {
+  if (searchParams.m != null) return resolveMonth(searchParams);
+  const now = new Date();
+  const today = { year: now.getFullYear(), month: now.getMonth() };
+  try {
+    const rows = await prisma.task.findMany({
+      where: { kind: "CONTENT", publishDate: { not: null } },
+      select: { year: true, month: true },
+    });
+    if (rows.length === 0) return today;
+    if (rows.some((r) => r.year === today.year && r.month === today.month)) return today;
+    rows.sort((a, b) => b.year - a.year || b.month - a.month);
+    return { year: rows[0].year, month: rows[0].month };
+  } catch {
+    return today;
+  }
+}
+
 export function monthLabel({ year, month }: YM): string {
   return `${ARABIC_MONTHS[month]} ${year}`;
 }
