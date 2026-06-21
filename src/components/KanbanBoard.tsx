@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants";
 import { formatDateShort } from "@/lib/dates";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
+import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
@@ -61,61 +62,11 @@ export default function KanbanBoard({
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
 
-  // Reel numbering per (company, type), by publish order. A reel's shoot/design
-  // card and its publish card share one number (linked by pipelineKey). We map
-  // EVERY reel task id → number (publish cards included) so the number always
-  // resolves even if a counterpart card is missing/done/filtered — never "?".
-  const reelNum = useMemo(() => {
-    const byId = new Map<string, number>();
-    const groups = new Map<string, Task[]>();
-    for (const t of allTasks) {
-      if (t.type === "REEL" || t.type === "AI_REEL") {
-        const k = `${t.companyId}|${t.type}`;
-        const arr = groups.get(k) ?? [];
-        arr.push(t);
-        groups.set(k, arr);
-      }
-    }
-    const pdOf = (t: Task) =>
-      t.publishDate ? new Date(t.publishDate).getTime() : Number.MAX_SAFE_INTEGER;
-    for (const arr of groups.values()) {
-      // One entry per distinct reel (pipelineKey, falling back to id), ordered
-      // by publish date; shoot + publish of the same reel collapse together.
-      const reels = new Map<string, number>(); // reelKey → earliest publishDate
-      for (const t of arr) {
-        const key = t.pipelineKey ?? t.id;
-        const pd = pdOf(t);
-        if (!reels.has(key) || pd < reels.get(key)!) reels.set(key, pd);
-      }
-      const order = [...reels.entries()].sort(
-        (a, b) => a[1] - b[1] || a[0].localeCompare(b[0]),
-      );
-      const num = new Map<string, number>();
-      order.forEach(([key], i) => num.set(key, i + 1));
-      for (const t of arr) byId.set(t.id, num.get(t.pipelineKey ?? t.id)!);
-    }
-    return byId;
-  }, [allTasks]);
-
-  const isGroupable = (t: Task) =>
-    (t.kind === "CONTENT" || t.kind === "PUBLISH") &&
-    (t.type === "POST" || t.type === "STORY");
-
-  const cardLabel = (t: Task, count: number): string => {
-    const co = coName(t.companyId);
-    const publish = t.stage === "PUBLISH";
-    if (t.type === "POST")
-      return `${publish ? "جدولة بوستات" : "بوستات"} · ${co}${count > 1 ? ` (${count})` : ""}`;
-    if (t.type === "STORY")
-      return `${publish ? "جدولة ستوريز" : "ستوريز"} · ${co}${count > 1 ? ` (${count})` : ""}`;
-    if (t.type === "REEL" || t.type === "AI_REEL") {
-      const n = reelNum.get(t.id);
-      const base = t.type === "AI_REEL" ? "ريل AI" : "ريل";
-      const tag = n ? `${base}-${n}` : base;
-      return `${publish ? "نشر " : ""}${tag} · ${co}`;
-    }
-    return t.title ?? "مهمة";
-  };
+  // Reel numbering + labels are shared with the rest of the app (lib/cards) so
+  // every view shows identical labels.
+  const reelNum = useMemo(() => buildReelNumbers(allTasks), [allTasks]);
+  const isGroupable = isGroupableCard;
+  const cardLabel = (t: Task, count: number) => cardLabelFor(t, count, reelNum, coName);
 
   // Build cards: batch posts/stories, keep reels/others individual.
   const cards = useMemo<KCard[]>(() => {

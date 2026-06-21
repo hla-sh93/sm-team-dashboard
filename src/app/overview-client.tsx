@@ -4,12 +4,14 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
 import {
-  CONTENT_TYPE_LABELS,
+  DONE_STATUSES,
   PRIORITY_LABELS,
   ROLE_LABELS,
   STATUS_LABELS,
   taskColor,
+  type Status,
 } from "@/lib/constants";
+import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
 import { toISODate, fromISODate, formatDateCard, formatDateShort, ARABIC_DAYS } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
@@ -47,17 +49,15 @@ export default function OverviewClient({
     employees.find((e) => e.id === id)?.color ?? undefined;
   const coName = (id: string | null) =>
     companies.find((c) => c.id === id)?.name ?? "";
-  const taskLabel = (t: Task) =>
-    t.title ||
-    `${CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? "مهمة"}${
-      coName(t.companyId) ? ` · ${coName(t.companyId)}` : ""
-    }`;
-
-  // "اليوم" panel: tasks scheduled on a reference day, grouped by person. The
-  // reference day is today if it has work, else the nearest later day in the
-  // month that has work — so it's never blank while the month has data.
+  // "اليوم" panel: LIVE (not done) tasks on a reference day, grouped by person,
+  // using the SAME labels as the task board (batched posts/stories, numbered
+  // reels). Done tasks are excluded — they leave the live schedule. The
+  // reference day is today if it has work, else the nearest later day with work.
+  const reelNum = buildReelNumbers(tasks);
+  const isDone = (t: Task) =>
+    DONE_STATUSES.includes(t.status as Status) || t.board === "DONE";
   const todayISO = toISODate(new Date());
-  const liveDated = tasks.filter((t) => t.workDate && t.status !== "PUBLISHED");
+  const liveDated = tasks.filter((t) => t.workDate && !isDone(t));
   const dayTasks = (iso: string) =>
     liveDated.filter((t) => toISODate(new Date(t.workDate!)) === iso);
   const monthDayISOs = Array.from(
@@ -71,8 +71,11 @@ export default function OverviewClient({
         todayISO;
   const refIsToday = refDay === todayISO;
   const dayByPerson = employees
-    .map((e) => ({ emp: e, items: dayTasks(refDay).filter((t) => t.assigneeId === e.id) }))
-    .filter((g) => g.items.length > 0);
+    .map((e) => ({
+      emp: e,
+      cards: groupTasksIntoCards(dayTasks(refDay).filter((t) => t.assigneeId === e.id)),
+    }))
+    .filter((g) => g.cards.length > 0);
 
   const kpis = [
     { label: "الشركات المُدارة", value: managed.length, icon: Building2 },
@@ -174,26 +177,26 @@ export default function OverviewClient({
             {dayByPerson.length === 0 && (
               <p className="text-sm text-fg-muted">لا توجد مهام مجدولة.</p>
             )}
-            {dayByPerson.map(({ emp, items }) => (
+            {dayByPerson.map(({ emp, cards }) => (
               <div key={emp.id}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <Avatar name={emp.name} color={emp.color ?? undefined} size={22} />
                   <span className="text-sm font-semibold">{emp.name}</span>
-                  <span className="text-[10px] text-fg-muted">
-                    {items.length} مهمة
-                  </span>
+                  <span className="text-[10px] text-fg-muted">{cards.length} مهمة</span>
                 </div>
                 <div className="flex flex-col gap-1.5 pr-1">
-                  {items.map((t) => (
+                  {cards.map((card) => (
                     <div
-                      key={t.id}
+                      key={card.key}
                       className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-1.5 border border-border-soft"
-                      style={{ borderRight: `3px solid ${taskColor(t.kind, t.type)}` }}
+                      style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
                     >
-                      {t.overflow && (
+                      {card.repr.overflow && (
                         <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
                       )}
-                      <span className="text-xs truncate">{taskLabel(t)}</span>
+                      <span className="text-xs truncate">
+                        {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                      </span>
                     </div>
                   ))}
                 </div>
