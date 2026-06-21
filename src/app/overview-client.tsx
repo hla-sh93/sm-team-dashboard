@@ -129,27 +129,27 @@ export default function OverviewClient({
                     )}
                   </div>
                   <span className="text-xs text-fg-dim tabular-nums">
-                    {w.tracksDays
-                      ? `${w.neededDays}/${w.capacityDays} يوم · ${w.busyDays} مشغول · ${w.freeDays} فاضي`
-                      : `${w.itemCount} مهمة · ${w.busyDays} يوم مشغول`}
+                    مطلوب {w.committedDays} · منجز {w.doneDays} ·{" "}
+                    <span className="text-accent font-semibold">{w.freeDays} متاح</span>
                   </span>
                 </div>
-                <div className="h-2.5 rounded-full bg-bg-elev-2 overflow-hidden">
+                <div className="h-2.5 rounded-full bg-bg-elev-2 overflow-hidden flex">
+                  <div
+                    className="h-full bg-success"
+                    style={{
+                      width: `${Math.min(100, (w.doneDays / (w.capacityDays || 1)) * 100)}%`,
+                    }}
+                  />
                   <div
                     className={
-                      "h-full rounded-full " +
-                      (w.tracksDays
-                        ? w.level === "over"
-                          ? "bg-danger"
-                          : w.level === "warn"
-                            ? "bg-warning"
-                            : "bg-success"
-                        : "bg-info/60")
+                      "h-full " +
+                      (w.level === "over" ? "bg-danger" : w.level === "warn" ? "bg-warning" : "bg-accent")
                     }
                     style={{
-                      width: w.tracksDays
-                        ? `${Math.min(100, w.pct)}%`
-                        : `${Math.min(100, w.itemCount * 8)}%`,
+                      width: `${Math.min(
+                        100 - Math.min(100, (w.doneDays / (w.capacityDays || 1)) * 100),
+                        (w.remainingDays / (w.capacityDays || 1)) * 100,
+                      )}%`,
                     }}
                   />
                 </div>

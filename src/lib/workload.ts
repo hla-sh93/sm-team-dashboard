@@ -1,42 +1,54 @@
 /**
- * Workload computation — PLAN-DRIVEN monthly commitment.
+ * Workload computation — capacity-planning BURNDOWN model.
  *
- * A person's monthly load reflects the work they are COMMITTED to this month,
- * derived from the company plans + ownership — NOT from how many tasks are still
- * pending. Completing work therefore never lowers the load; it stays a stable
- * "how loaded is this person this month" figure. Ad-hoc/urgent tasks ADD to that
- * month's load (done or not — finishing them doesn't reduce it). Next month
- * resets to the plan baseline + that month's new ad-hoc.
+ * For each person, per month, we surface four figures so a manager can both plan
+ * and reallocate:
+ *   committed = the month's total commitment (plan + ad-hoc) — stable.
+ *   done      = work already completed.
+ *   remaining = committed − done — shrinks as work gets finished.
+ *   free      = capacity − remaining — GROWS as work gets finished → who to
+ *               hand the next task to.
  *
- *   neededDays = planDays(plans owned by the person) + adhocDays(this month)
+ * `committed` is plan-driven (company plans + ownership) so it's correct even
+ * before the pipeline is generated; `done` is read from task statuses so the
+ * load lightens in real time as people finish. Ad-hoc/urgent tasks add to the
+ * current month only (done or not — done ones move from remaining into done, so
+ * the commitment total stays put while free capacity opens up).
  *
- * - Writer  : managed companies with a plan × plan duration (2 days each).
- * - Designer: Σ owned (posts/6 + stories/6 + aiReels/1) over managed companies.
- * - Photographer: total managed reels ÷ rate.
- * - Publisher: count of all publishes (managed plan totals) + ad-hoc (count, not days).
+ * Rates: POST 6/day, STORY 6/day, AI_REEL 1/day (Ayman). Photographer: reels ÷
+ * rate. Publisher (عمر): schedules/publishes 4 companies/day → company-publish-
+ * days ÷ 4.
  */
 import type { Employee, Task, PhotoSession, Company } from "@/types";
-import { parseWorkDays, periodDays } from "./dates";
+import { DONE_STATUSES, type Status } from "./constants";
+import { parseWorkDays, periodDays, toISODate } from "./dates";
 import { taskDays, adhocDays } from "./capacity";
 
 export type WorkloadEntry = {
   employee: Employee;
-  neededDays: number; // working days of work committed this month
   capacityDays: number; // working days available in the period
-  busyDays: number;
+  committedDays: number; // total committed work (plan + ad-hoc)
+  doneDays: number; // completed work
+  remainingDays: number; // committed − done (live work left)
+  freeDays: number; // capacity − remaining (spare capacity now)
+  neededDays: number; // alias of committedDays (back-compat)
+  busyDays: number; // alias of remainingDays
   workDays: number;
-  freeDays: number;
-  pct: number;
+  pct: number; // committed ÷ capacity (how booked the month is)
+  donePct: number; // done ÷ committed (progress)
   level: "normal" | "warn" | "over";
   overflowCount: number;
   itemCount: number;
-  tracksDays: boolean; // producers (designers/writer/photographer) → days; publisher → count
+  tracksDays: boolean; // producers → days; publisher → also days now
   breakdown: { POST: number; AI_REEL: number; STORY: number; ADHOC: number };
 };
 
 // Roles are free-text and may be Arabic ("ناشر + مدير صفحات") or English keys.
 export const isPublisherRole = (role: string) => /ناشر|نشر|publisher/i.test(role);
 export const isWriterRole = (role: string) => /كات|writer/i.test(role);
+
+// Companies one person can schedule/publish per working day (publisher rate).
+const PUBLISH_COMPANIES_PER_DAY = 4;
 
 type Co = Pick<
   Company,
@@ -60,6 +72,9 @@ function ownerOf(c: Co, type: "POST" | "STORY" | "AI_REEL"): string | null {
   return c.aiReelOwnerId ?? c.defaultOwnerId ?? null;
 }
 
+const isDoneTask = (t: Task) =>
+  DONE_STATUSES.includes(t.status as Status) || t.board === "DONE";
+
 export function computeWorkload(
   employees: Employee[],
   tasks: Task[],
@@ -81,79 +96,121 @@ export function computeWorkload(
     const publisher = isPublisherRole(emp.role);
     const photographer = emp.isPhotographer;
 
-    // --- 1) Base plan load (completion-invariant) ---
-    let planDays = 0;
+    const myTasks = tasks.filter(
+      (t) => t.assigneeId === emp.id && t.year === year && t.month === month,
+    );
+
+    // ---- COMMITTED: plan-driven base (completion-invariant) ----
+    let baseDays = 0;
     let planPosts = 0;
     let planStories = 0;
     let planAiReels = 0;
     let planReels = 0;
-    let publishCount = 0;
 
     if (writer) {
-      // 2 working days per managed company that has any content plan.
       const cos = managed.filter(
         (c) => c.posts + c.reels + c.stories + c.aiReels > 0,
       );
-      planDays += cos.length * taskDays(emp, "PLAN", 1);
+      baseDays = cos.length * taskDays(emp, "PLAN", 1);
     } else if (publisher) {
-      publishCount = managed.reduce(
-        (a, c) => a + c.posts + c.reels + c.stories + c.aiReels,
-        0,
-      );
+      // Company-publish-days ÷ 4. Uses the publish cards when present; else
+      // estimates from the plan (feed items each take a day; stories may share).
+      const pub = myTasks.filter((t) => t.kind === "PUBLISH" && t.publishDate);
+      let companyDays: number;
+      if (pub.length > 0) {
+        companyDays = new Set(
+          pub.map((t) => `${t.companyId}|${toISODate(new Date(t.publishDate!))}`),
+        ).size;
+      } else {
+        companyDays = managed.reduce(
+          (a, c) => a + Math.max(c.posts + c.reels + c.aiReels, c.stories),
+          0,
+        );
+      }
+      baseDays = companyDays / PUBLISH_COMPANIES_PER_DAY;
     } else if (photographer) {
       planReels = managed.reduce((a, c) => a + c.reels, 0);
-      if (planReels > 0) planDays += taskDays(emp, "REEL", planReels);
+      if (planReels > 0) baseDays = taskDays(emp, "REEL", planReels);
     } else {
-      // Designer: sum the content types they own across managed companies.
       for (const c of managed) {
         if (c.posts > 0 && ownerOf(c, "POST") === emp.id) {
-          planDays += taskDays(emp, "POST", c.posts);
+          baseDays += taskDays(emp, "POST", c.posts);
           planPosts += c.posts;
         }
         if (c.stories > 0 && ownerOf(c, "STORY") === emp.id) {
-          planDays += taskDays(emp, "STORY", c.stories);
+          baseDays += taskDays(emp, "STORY", c.stories);
           planStories += c.stories;
         }
         if (c.aiReels > 0 && ownerOf(c, "AI_REEL") === emp.id) {
-          planDays += taskDays(emp, "AI_REEL", c.aiReels);
+          baseDays += taskDays(emp, "AI_REEL", c.aiReels);
           planAiReels += c.aiReels;
         }
       }
     }
 
-    // --- 2) Ad-hoc/urgent tasks this month — ADD to the load (done or not) ---
-    const myAdhoc = tasks.filter(
-      (t) =>
-        t.assigneeId === emp.id &&
-        t.kind === "ADHOC" &&
-        t.year === year &&
-        t.month === month,
-    );
-    const adhocDaysTotal = myAdhoc.reduce((a, t) => a + adhocDays(emp, t.hours), 0);
-    planDays += adhocDaysTotal;
-    if (publisher) publishCount += myAdhoc.length;
+    // Ad-hoc/urgent — adds to the month's commitment (done or not).
+    const myAdhoc = myTasks.filter((t) => t.kind === "ADHOC");
+    const adhocCommitted = myAdhoc.reduce((a, t) => a + adhocDays(emp, t.hours), 0);
+    const committedDays = baseDays + adhocCommitted;
 
-    const tracksDays = !publisher;
-    const neededDays = Math.round(planDays * 10) / 10;
-    const pct = capacityDays > 0 ? Math.round((planDays / capacityDays) * 100) : 0;
+    // ---- DONE: completed work (drives the burndown) ----
+    let doneDays = 0;
+    if (publisher) {
+      const donePub = myTasks.filter(
+        (t) => t.kind === "PUBLISH" && t.publishDate && isDoneTask(t),
+      );
+      const doneCompanyDays = new Set(
+        donePub.map((t) => `${t.companyId}|${toISODate(new Date(t.publishDate!))}`),
+      ).size;
+      doneDays += doneCompanyDays / PUBLISH_COMPANIES_PER_DAY;
+    } else if (writer) {
+      const writeCards = myTasks.filter((t) => t.stage === "WRITE");
+      const ratio = writeCards.length
+        ? writeCards.filter(isDoneTask).length / writeCards.length
+        : 0;
+      doneDays += baseDays * ratio;
+    } else {
+      // Designer / photographer: their completed content cards, by quantity.
+      for (const t of myTasks) {
+        if (
+          t.kind === "CONTENT" &&
+          t.type &&
+          (t.stage === "DESIGN" || t.stage === "SHOOT") &&
+          isDoneTask(t)
+        ) {
+          doneDays += taskDays(emp, t.type, t.quantity ?? 1);
+        }
+      }
+    }
+    // Completed ad-hoc moves from remaining into done (keeps committed stable).
+    doneDays += myAdhoc
+      .filter(isDoneTask)
+      .reduce((a, t) => a + adhocDays(emp, t.hours), 0);
+    doneDays = Math.min(committedDays, doneDays);
+
+    const remainingDays = Math.max(0, committedDays - doneDays);
+    const freeDays = Math.max(0, capacityDays - remainingDays);
+    const pct = capacityDays > 0 ? Math.round((committedDays / capacityDays) * 100) : 0;
+    const donePct = committedDays > 0 ? Math.round((doneDays / committedDays) * 100) : 0;
     const level: WorkloadEntry["level"] = pct > 100 ? "over" : pct > 85 ? "warn" : "normal";
-    const busyDays = Math.min(capacityDays, Math.round(planDays));
-    const itemCount = publisher
-      ? publishCount
-      : planPosts + planStories + planAiReels + planReels + myAdhoc.length;
+    const r1 = (n: number) => Math.round(n * 10) / 10;
 
     return {
       employee: emp,
-      neededDays,
       capacityDays,
-      busyDays,
+      committedDays: r1(committedDays),
+      doneDays: r1(doneDays),
+      remainingDays: r1(remainingDays),
+      freeDays: r1(freeDays),
+      neededDays: r1(committedDays),
+      busyDays: r1(remainingDays),
       workDays: capacityDays,
-      freeDays: Math.max(0, capacityDays - busyDays),
       pct,
+      donePct,
       level,
       overflowCount: myAdhoc.filter((t) => t.overflow).length,
-      itemCount,
-      tracksDays,
+      itemCount: planPosts + planStories + planAiReels + planReels + myAdhoc.length,
+      tracksDays: true,
       breakdown: {
         POST: planPosts,
         AI_REEL: planAiReels,
