@@ -18,6 +18,16 @@ export const DEFAULT_RATES: Record<string, number> = {
   PLAN: 0.5, // a content plan per company → 2 working days
 };
 
+/**
+ * Canonical hours in one WORKING DAY. Ad-hoc effort is stored as `hours`
+ * (= work-days × this), so a "work day" is uniform for everyone regardless of a
+ * person's `hoursPerDay` (e.g. Hla the half-designer is 3h/day, but a task that
+ * occupies 14 of her working days is still 14 days of load, not 28). This keeps
+ * ad-hoc on the same "calendar working days" axis as the rate-based content
+ * model and as workload's `capacityDays`.
+ */
+export const WORK_DAY_HOURS = 6;
+
 export function parseRates(raw: string | null | undefined): Record<string, number> {
   if (!raw) return {};
   try {
@@ -49,10 +59,12 @@ export function taskDays(emp: RateEmp, type: string, quantity = 1): number {
   return rate > 0 ? quantity / rate : quantity;
 }
 
-/** Duration in days for an ad-hoc task estimated by hours ÷ daily capacity. */
-export function adhocDays(emp: RateEmp, hours: number): number {
-  const cap = emp.hoursPerDay ?? 6;
-  return cap > 0 ? hours / cap : hours;
+/** Duration in WORKING DAYS for an ad-hoc task. Effort is stored as
+ *  `hours = days × WORK_DAY_HOURS`, normalized back with the same uniform
+ *  constant (NOT the person's hoursPerDay) so a work-day means one calendar
+ *  working day for everyone. `emp` is kept for signature symmetry with taskDays. */
+export function adhocDays(_emp: RateEmp, hours: number): number {
+  return hours / WORK_DAY_HOURS;
 }
 
 /** Expected duration (days) for a kanban/calendar card, picking the right rate

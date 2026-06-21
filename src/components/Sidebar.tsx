@@ -44,7 +44,7 @@ export default function Sidebar() {
         href="/"
         className="flex items-center gap-3 px-2 pb-6 mb-5 border-b border-border-soft"
       >
-        <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-accent to-accent-dim flex items-center justify-center display-font font-bold text-bg shadow-lg shadow-accent/25">
+        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-accent-dim flex items-center justify-center display-font font-bold text-white shadow-sm shadow-accent/30">
           SM
         </div>
         <div>

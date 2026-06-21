@@ -74,7 +74,11 @@ export const taskSchema = z.object({
   title: z.string().min(1, "عنوان المهمة مطلوب").max(200),
   kind: z.enum(["ADHOC", "CONTENT", "PHOTOSHOOT", "REPORT", "CONTENT_WRITING"]).default("ADHOC"),
   type: z.enum(CONTENT_TYPES).nullable().optional(),
-  hours: z.coerce.number().min(0).max(80).default(0),
+  // Effort in WORKING DAYS (the form's unit). Converted to `hours` (= days × 6)
+  // before persisting, since the engine + workload reason in hours internally.
+  days: z.coerce.number().min(0).max(60).optional(),
+  // Stored effort in hours (= days × daily capacity). Max 60 days × 6h = 360.
+  hours: z.coerce.number().min(0).max(360).default(0),
   priority: z.enum(PRIORITIES).default("NORMAL"),
   status: z.enum(STATUSES).default("NOT_STARTED"),
   assigneeId: optId,

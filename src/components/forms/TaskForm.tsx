@@ -47,11 +47,16 @@ export default function TaskForm({
   const [isPending, startTransition] = useTransition();
   const isEdit = !!task;
 
+  // Effort is entered in WORKING DAYS; `hours` is the stored form (= days × 6).
+  const HPD = 6;
+  const daysFromHours = (h: number) => Math.round(((h || 0) / HPD) * 10) / 10;
+
   const defaults: Partial<TaskInput> = task
     ? {
         title: task.title ?? "",
         kind: "ADHOC",
         hours: task.hours,
+        days: daysFromHours(task.hours),
         status: task.status as TaskInput["status"],
         priority: task.priority as TaskInput["priority"],
         readyDate: task.readyDate ? toISODate(new Date(task.readyDate)) : null,
@@ -65,7 +70,8 @@ export default function TaskForm({
     : {
         title: "",
         kind: "ADHOC",
-        hours: 1,
+        hours: HPD,
+        days: 1,
         status: "NOT_STARTED",
         priority: "NORMAL",
         readyDate: null,
@@ -88,21 +94,6 @@ export default function TaskForm({
     defaultValues: defaults as TaskInput,
   });
 
-  // Live expected-duration estimate: hours ÷ assignee's daily capacity.
-  const watchedHours = watch("hours");
-  const watchedAssignee = watch("assigneeId");
-  const estAssignee = employees.find((e) => e.id === watchedAssignee);
-  const estDays =
-    estAssignee && estAssignee.hoursPerDay > 0 && watchedHours
-      ? Number(watchedHours) / estAssignee.hoursPerDay
-      : 0;
-  const estLabel =
-    estDays > 0
-      ? estDays < 1
-        ? "أقل من يوم"
-        : `~${Math.round(estDays * 10) / 10} يوم`
-      : "";
-
   useEffect(() => {
     reset(defaults as TaskInput);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,7 +101,13 @@ export default function TaskForm({
 
   const onSubmit = (data: TaskInput) => {
     startTransition(async () => {
-      const payload = { ...data, kind: "ADHOC" as const };
+      // Convert work-days → stored hours (= days × 6) before persisting.
+      const days = Number(data.days) || 0;
+      const payload = {
+        ...data,
+        kind: "ADHOC" as const,
+        hours: Math.round(days * HPD * 10) / 10,
+      };
       const result = isEdit
         ? await updateTask(task!.id, payload)
         : await createTask(payload);
@@ -168,11 +165,10 @@ export default function TaskForm({
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label>الساعات</Label>
-              <Input type="number" step="0.5" min="0" {...register("hours", { valueAsNumber: true })} />
-              {estLabel && (
-                <p className="text-[11px] text-accent">المدة المتوقعة: {estLabel}</p>
-              )}
+              <Label>أيام العمل</Label>
+              <Input type="number" step="0.5" min="0" {...register("days", { valueAsNumber: true })} />
+              <p className="text-[11px] text-fg-dim">عدد أيام العمل المتوقعة لإنجاز المهمة</p>
+              {errors.days && <p className="text-xs text-danger">{errors.days.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>الأولوية</Label>

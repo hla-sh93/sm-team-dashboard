@@ -121,7 +121,8 @@
       "postOwnerId": "e_ayman",
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#2563eb"
     },
     {
       "id": "c_phoenitech",
@@ -134,7 +135,8 @@
       "postOwnerId": "e_sabin",
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#7c3aed"
     },
     {
       "id": "c_noor",
@@ -147,7 +149,8 @@
       "postOwnerId": "e_sabin",
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#db2777"
     },
     {
       "id": "c_pro",
@@ -160,7 +163,8 @@
       "postOwnerId": "e_sabin",
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#ea580c"
     },
     {
       "id": "c_mall",
@@ -173,7 +177,8 @@
       "postOwnerId": "e_ayman",
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#ca8a04"
     },
     {
       "id": "c_jadarat",
@@ -186,7 +191,8 @@
       "postOwnerId": "e_sabin",
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": "e_ayman",
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#059669"
     },
     {
       "id": "c_training",
@@ -199,7 +205,8 @@
       "postOwnerId": "e_ayman",
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
-      "defaultOwnerId": null
+      "defaultOwnerId": null,
+      "color": "#dc2626"
     },
     {
       "id": "c_schools",
@@ -212,7 +219,8 @@
       "postOwnerId": null,
       "storyOwnerId": null,
       "aiReelOwnerId": null,
-      "defaultOwnerId": "e_hla"
+      "defaultOwnerId": "e_hla",
+      "color": "#0d9488"
     },
     {
       "id": "c_capriani",
@@ -225,7 +233,8 @@
       "postOwnerId": null,
       "storyOwnerId": null,
       "aiReelOwnerId": null,
-      "defaultOwnerId": "e_hla"
+      "defaultOwnerId": "e_hla",
+      "color": "#6366f1"
     }
   ],
   "tasks": [

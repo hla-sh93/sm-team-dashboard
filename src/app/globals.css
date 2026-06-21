@@ -3,22 +3,22 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
-  --bg: #0a0a0f;
-  --bg-elev: #13131c;
-  --bg-elev-2: #1a1a26;
-  --bg-card: #111118;
-  --border: #2a2a3a;
-  --border-soft: #1f1f2e;
-  --fg: #f4f4f8;
-  --fg-dim: #9090a8;
-  --fg-muted: #5a5a70;
-  --accent: #d4af37;
-  --accent-dim: #a08828;
-  --success: #3fb27f;
-  --warning: #e5a04a;
-  --danger: #e0584a;
-  --info: #5a8fd4;
+  color-scheme: light;
+  --bg: #f5f7fa;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #eceff3;
+  --bg-card: #ffffff;
+  --border: #d8dde4;
+  --border-soft: #e7ebf0;
+  --fg: #1b2733;
+  --fg-dim: #586475;
+  --fg-muted: #929cab;
+  --accent: #0a8fa3;
+  --accent-dim: #07778a;
+  --success: #1e9e68;
+  --warning: #c77e1b;
+  --danger: #d6453b;
+  --info: #2d72c8;
 }
 
 @layer base {
@@ -27,17 +27,11 @@
   }
   body {
     @apply bg-bg text-fg;
-    background-image:
-      radial-gradient(
-        ellipse 80% 60% at 50% -20%,
-        rgba(212, 175, 55, 0.08),
-        transparent
-      ),
-      radial-gradient(
-        ellipse 60% 40% at 100% 100%,
-        rgba(90, 143, 212, 0.05),
-        transparent
-      );
+    background-image: radial-gradient(
+      ellipse 90% 60% at 50% -10%,
+      rgba(10, 143, 163, 0.05),
+      transparent
+    );
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -59,18 +53,19 @@ select optgroup {
     letter-spacing: -0.01em;
   }
   .card {
-    @apply bg-bg-card border border-border-soft rounded-[14px] p-6;
+    @apply bg-bg-card border border-border-soft rounded-lg p-6;
+    box-shadow: 0 2px 6px rgba(27, 39, 51, 0.04);
   }
   .input,
   .select,
   .textarea {
-    @apply bg-bg-elev border border-border rounded-lg px-3 py-2.5 text-fg w-full text-sm transition-colors;
+    @apply bg-bg-elev border border-border rounded-md px-3 py-2.5 text-fg w-full text-sm transition-colors;
   }
   .input:focus,
   .select:focus,
   .textarea:focus {
     @apply outline-none border-accent;
-    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+    box-shadow: 0 0 0 3px rgba(10, 143, 163, 0.16);
   }
   .badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border;

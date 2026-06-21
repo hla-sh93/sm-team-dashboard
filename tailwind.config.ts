@@ -10,35 +10,40 @@ const config: Config = {
         display: ['var(--font-reem)', 'serif'],
       },
       colors: {
+        // Light theme (Vuexy-style): cool light page, white surfaces.
         bg: {
-          DEFAULT: '#0a0a0f',
-          elev: '#13131c',
-          elev2: '#1a1a26',
-          card: '#111118',
+          DEFAULT: '#f5f7fa', // page background
+          elev: '#ffffff', // sidebar / inputs / raised surfaces
+          elev2: '#eceff3', // hover / chip background
+          card: '#ffffff', // cards
         },
         border: {
-          DEFAULT: '#2a2a3a',
-          soft: '#1f1f2e',
+          DEFAULT: '#d8dde4',
+          soft: '#e7ebf0',
         },
         fg: {
-          DEFAULT: '#f4f4f8',
-          dim: '#9090a8',
-          muted: '#5a5a70',
+          DEFAULT: '#1b2733', // strong text / headings
+          dim: '#586475', // secondary text
+          muted: '#929cab', // muted / placeholder
         },
+        // Primary = aqua.
         accent: {
-          DEFAULT: '#d4af37',
-          dim: '#a08828',
-          soft: '#3a2f10',
+          DEFAULT: '#0a8fa3',
+          dim: '#07778a', // darker (hover / gradient end)
+          soft: '#e3f4f7', // light aqua tint
         },
-        success: '#3fb27f',
-        warning: '#e5a04a',
-        danger: '#e0584a',
-        info: '#5a8fd4',
+        success: '#1e9e68',
+        warning: '#c77e1b',
+        danger: '#d6453b',
+        info: '#2d72c8',
       },
       borderRadius: {
-        DEFAULT: '14px',
-        sm: '8px',
-        lg: '20px',
+        // Tighter radii (Vuexy-like).
+        DEFAULT: '6px',
+        sm: '4px',
+        md: '6px',
+        lg: '8px',
+        xl: '10px',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease',

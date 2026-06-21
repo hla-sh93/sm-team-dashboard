@@ -18,6 +18,7 @@ import {
   STATUS_LABELS,
   taskColor,
 } from "@/lib/constants";
+import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
 import {
   updateTaskStatus,
   updatePhotoSessionStatus,
@@ -197,7 +198,7 @@ export default function TasksClient({
           <Avatar name={empName(it.empId)} color={empColor(it.empId)} size={16} />
           <span className="truncate">{empName(it.empId)}</span>
           {it.kind === "task" && it.task.hours > 0 && (
-            <span className="shrink-0">· {it.task.hours}س</span>
+            <span className="shrink-0">· {daysLabel(it.task.hours / WORK_DAY_HOURS)}</span>
           )}
           {it.kind === "session" && (
             <span className="shrink-0">

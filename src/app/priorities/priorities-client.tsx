@@ -120,7 +120,7 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
               setDragOverId(null);
             }}
             className={cn(
-              'bg-bg-card border border-border-soft rounded-[14px] p-4 flex items-center gap-4 cursor-move transition-all',
+              'bg-bg-card border border-border-soft rounded-lg p-4 flex items-center gap-4 cursor-move transition-all',
               draggedId === co.id && 'opacity-40',
               dragOverId === co.id && draggedId !== co.id && 'border-accent bg-accent/5 -translate-y-0.5',
               isPending && 'pointer-events-none opacity-70'

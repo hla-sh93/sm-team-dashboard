@@ -61,29 +61,40 @@ export default function KanbanBoard({
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
 
-  // Reel numbering per (company, type), by publish order — shared by the
-  // shoot/design card and its publish card (via pipelineKey).
-  const reelSeq = useMemo(() => {
-    const m = new Map<string, number>(); // pipelineKey → number
+  // Reel numbering per (company, type), by publish order. A reel's shoot/design
+  // card and its publish card share one number (linked by pipelineKey). We map
+  // EVERY reel task id → number (publish cards included) so the number always
+  // resolves even if a counterpart card is missing/done/filtered — never "?".
+  const reelNum = useMemo(() => {
+    const byId = new Map<string, number>();
     const groups = new Map<string, Task[]>();
     for (const t of allTasks) {
-      if ((t.type === "REEL" || t.type === "AI_REEL") && t.stage !== "PUBLISH") {
+      if (t.type === "REEL" || t.type === "AI_REEL") {
         const k = `${t.companyId}|${t.type}`;
         const arr = groups.get(k) ?? [];
         arr.push(t);
         groups.set(k, arr);
       }
     }
+    const pdOf = (t: Task) =>
+      t.publishDate ? new Date(t.publishDate).getTime() : Number.MAX_SAFE_INTEGER;
     for (const arr of groups.values()) {
-      arr.sort(
-        (a, b) =>
-          (a.publishDate ? new Date(a.publishDate).getTime() : 0) -
-            (b.publishDate ? new Date(b.publishDate).getTime() : 0) ||
-          a.id.localeCompare(b.id),
+      // One entry per distinct reel (pipelineKey, falling back to id), ordered
+      // by publish date; shoot + publish of the same reel collapse together.
+      const reels = new Map<string, number>(); // reelKey → earliest publishDate
+      for (const t of arr) {
+        const key = t.pipelineKey ?? t.id;
+        const pd = pdOf(t);
+        if (!reels.has(key) || pd < reels.get(key)!) reels.set(key, pd);
+      }
+      const order = [...reels.entries()].sort(
+        (a, b) => a[1] - b[1] || a[0].localeCompare(b[0]),
       );
-      arr.forEach((t, i) => t.pipelineKey && m.set(t.pipelineKey, i + 1));
+      const num = new Map<string, number>();
+      order.forEach(([key], i) => num.set(key, i + 1));
+      for (const t of arr) byId.set(t.id, num.get(t.pipelineKey ?? t.id)!);
     }
-    return m;
+    return byId;
   }, [allTasks]);
 
   const isGroupable = (t: Task) =>
@@ -98,9 +109,9 @@ export default function KanbanBoard({
     if (t.type === "STORY")
       return `${publish ? "جدولة ستوريز" : "ستوريز"} · ${co}${count > 1 ? ` (${count})` : ""}`;
     if (t.type === "REEL" || t.type === "AI_REEL") {
-      const n = t.pipelineKey ? reelSeq.get(t.pipelineKey) : undefined;
+      const n = reelNum.get(t.id);
       const base = t.type === "AI_REEL" ? "ريل AI" : "ريل";
-      const tag = `${base}-${n ?? "?"}`;
+      const tag = n ? `${base}-${n}` : base;
       return `${publish ? "نشر " : ""}${tag} · ${co}`;
     }
     return t.title ?? "مهمة";
@@ -160,7 +171,7 @@ export default function KanbanBoard({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, byId, reelSeq]);
+  }, [tasks, byId, reelNum]);
 
   const columns = useMemo(() => {
     const m: Record<Board, KCard[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };

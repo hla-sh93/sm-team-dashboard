@@ -43,14 +43,14 @@ export function ReportActions({
 
   const exportTasks = () => {
     const csv = toCSV(
-      ["التاريخ", "اليوم", "الموظف", "النوع", "الشركة/العنوان", "ساعات", "موعد النشر", "الحالة"],
+      ["التاريخ", "اليوم", "الموظف", "النوع", "الشركة/العنوان", "أيام العمل", "موعد النشر", "الحالة"],
       taskRows.map((r) => [
         r.date,
         r.weekday,
         r.employee,
         r.type,
         r.target,
-        r.hours,
+        r.hours > 0 ? Math.round((r.hours / 6) * 10) / 10 : "",
         r.publishDate,
         r.status,
       ]),

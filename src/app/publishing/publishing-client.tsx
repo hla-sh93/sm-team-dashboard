@@ -80,7 +80,10 @@ export default function PublishingClient({
     }
     return m;
   }, [pubTasks]);
-  const seqLabel = (t: Task) => `${typeLabel(t)}-${seqOf.get(t.id) ?? "?"}`;
+  const seqLabel = (t: Task) => {
+    const n = seqOf.get(t.id);
+    return n ? `${typeLabel(t)}-${n}` : `${typeLabel(t)}`;
+  };
 
   // No-interruption check (§4.4): each managed company must have ≥1 publish in
   // every one of the 4 weeks.

@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
 import { PRIORITY_LABELS, ROLE_LABELS, STATUS_LABELS } from "@/lib/constants";
+import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
 import { toISODate, formatDateCard } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
 import type { WorkloadEntry } from "@/lib/workload";
@@ -165,7 +166,7 @@ export default function OverviewClient({
                 <th className="text-right font-medium pb-2">العنوان</th>
                 <th className="text-right font-medium pb-2">الشركة</th>
                 <th className="text-right font-medium pb-2">المسؤول</th>
-                <th className="text-right font-medium pb-2">الساعات</th>
+                <th className="text-right font-medium pb-2">أيام العمل</th>
                 <th className="text-right font-medium pb-2">الأولوية</th>
                 <th className="text-right font-medium pb-2">الحالة</th>
                 <th className="text-right font-medium pb-2">يوم التنفيذ</th>
@@ -177,7 +178,7 @@ export default function OverviewClient({
                   <td className="py-2">{t.title}</td>
                   <td className="py-2 text-fg-dim">{coName(t.companyId)}</td>
                   <td className="py-2 text-fg-dim">{empName(t.assigneeId)}</td>
-                  <td className="py-2 tabular-nums">{t.hours}س</td>
+                  <td className="py-2 tabular-nums">{t.hours > 0 ? daysLabel(t.hours / WORK_DAY_HOURS) : "—"}</td>
                   <td className="py-2">
                     {PRIORITY_LABELS[t.priority as keyof typeof PRIORITY_LABELS] ?? t.priority}
                   </td>

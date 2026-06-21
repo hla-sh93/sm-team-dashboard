@@ -109,7 +109,9 @@ async function seedJuneActuals() {
       title: it.title ?? "مهمة",
       companyId: it.companyId ?? null,
       assigneeId: it.assignee ?? null,
-      hours: 0,
+      // Effort in working days (× 6h daily capacity). Drives the person's
+      // workload occupancy for ad-hoc/writing tasks. Defaults to 1 day.
+      hours: (it.days ?? 1) * 6,
       quantity: it.quantity ?? 1,
       priority: "NORMAL",
       status: it.status,
@@ -117,7 +119,10 @@ async function seedJuneActuals() {
       board: DONE.includes(it.status) ? "DONE" : it.status === "IN_PROGRESS" ? "DOING" : "TODO",
       blockedById: null,
       pipelineKey: null,
-      workDate: wd,
+      // Per-item placement: a distributed monthly plan can pin tasks to specific
+      // working days (it.workDate); otherwise they fall on the generic June day.
+      workDate: it.workDate ? D(it.workDate) : wd,
+      isPinned: it.isPinned ?? false,
       overflow: false,
       isAuto: false,
       completedAt: DONE.includes(it.status) ? wd : null,
@@ -208,6 +213,7 @@ async function main() {
       reels: c.reels,
       stories: c.stories,
       aiReels: c.aiReels,
+      ...(c.color ? { color: c.color } : {}),
       postOwnerId: c.postOwnerId,
       storyOwnerId: c.storyOwnerId,
       aiReelOwnerId: c.aiReelOwnerId,

@@ -188,10 +188,10 @@ export const PUBLISH_WEEK_DAYS = [6, 0, 1, 2, 3] as const; // Sat,Sun,Mon,Tue,We
 
 // Per-content-type accent colors for calendar chips (hex; design palette).
 export const CONTENT_TYPE_COLORS: Record<ContentType, string> = {
-  POST: "#17408E", // navy-blue
-  REEL: "#AD3D5B", // rose (photographer)
-  AI_REEL: "#7C3AED", // purple
-  STORY: "#C8A84E", // gold
+  POST: "#1d4ed8", // blue
+  REEL: "#be3a5c", // rose (photographer)
+  AI_REEL: "#7c3aed", // purple
+  STORY: "#b07a0e", // deep gold (readable on light)
 };
 
 // Color for any task by kind/type (used to tint calendar cards).
