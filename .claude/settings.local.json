@@ -57,7 +57,30 @@
       "Bash(node -e 'const {PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);const p=new PrismaClient\\(\\);p.employee.findMany\\({select:{name:true,rates:true}}\\).then\\(r=>{r.forEach\\(e=>console.log\\(e.name,e.rates||'\\\\''\\(default\\)'\\\\''\\)\\);return p.$disconnect\\(\\);}\\)')",
       "Bash(perl -0pi -e 's/w\\\\.tracksHours/w.tracksDays/g; s/\\\\$\\\\{w\\\\.totalHours\\\\}\\\\/\\\\$\\\\{w\\\\.capacityHours\\\\}س/\\\\${w.neededDays}\\\\/\\\\${w.capacityDays} يوم/g' src/app/overview-client.tsx)",
       "Bash(perl -0pi -e 's/w\\\\.tracksHours/w.tracksDays/g; s/b\\\\.tracksHours/b.tracksDays/g; s/a\\\\.tracksHours/a.tracksDays/g' src/app/workload/page.tsx)",
-      "Bash(perl -0pi -e 's/import \\\\{ resolveActiveMonth \\\\} from \"\\\\@\\\\/lib\\\\/month\";/import { resolvePublishMonth } from \"\\\\@\\\\/lib\\\\/month\";/; s/await resolveActiveMonth\\\\\\(searchParams\\\\\\)/await resolvePublishMonth\\(searchParams\\)/' src/app/publishing/page.tsx)"
+      "Bash(perl -0pi -e 's/import \\\\{ resolveActiveMonth \\\\} from \"\\\\@\\\\/lib\\\\/month\";/import { resolvePublishMonth } from \"\\\\@\\\\/lib\\\\/month\";/; s/await resolveActiveMonth\\\\\\(searchParams\\\\\\)/await resolvePublishMonth\\(searchParams\\)/' src/app/publishing/page.tsx)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(cd \"C:\\\\Users\\\\hla2-\\\\Videos\\\\Social\\\\sm-team-dashboard\")",
+      "Bash(date +%Y%m%d-%H%M%S)",
+      "Bash(cp prisma/dev.db backups/dev-pre-fulltest-__TRACKED_VAR__.db)",
+      "Bash(ls -la backups/)",
+      "Bash(node scripts/_audit.mjs)",
+      "Bash(node scripts/_audit2.mjs)",
+      "Bash(node scripts/_audit3.mjs)",
+      "Bash(node scripts/_patch-adhoc-days.mjs)",
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const e=await db.employee.findMany\\({select:{name:true,hoursPerDay:true}}\\);console.table\\(e\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
+      "Bash(node scripts/distribute-hla-june.mjs)",
+      "Bash(node scripts/_verify-hla.mjs)",
+      "Bash(wc -l \"C:\\\\Users\\\\hla2-\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-hla2--Videos-Social-sm-team-dashboard\\\\75dc083d-20df-4f2e-9b1e-841772e4edea\\\\tasks\\\\bsxpmx4un.output\")",
+      "Bash(tail -c 400 \"C:\\\\Users\\\\hla2-\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-hla2--Videos-Social-sm-team-dashboard\\\\75dc083d-20df-4f2e-9b1e-841772e4edea\\\\tasks\\\\bsxpmx4un.output\")",
+      "Bash(node -e \"const j=require\\('./prisma/actuals-june.json'\\); const hla=j.items.filter\\(i=>i.assignee==='e_hla'\\); console.log\\('actuals OK, Hla items:', hla.length\\); const live=hla.filter\\(i=>i.isPinned\\); console.log\\('pinned/distributed:', live.length, '| total days:', live.reduce\\(\\(a,i\\)=>a+\\(i.days||0\\),0\\)\\);\")",
+      "Bash(cp prisma/dev.db backups/dev-__TRACKED_VAR__.db)",
+      "Bash(ls -la --time-style=long-iso backups/)",
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const e=await db.employee.findMany\\({select:{name:true,color:true}}\\);const c=await db.company.findMany\\({select:{name:true,color:true}}\\);console.log\\('\\\\''EMP:'\\\\''\\);console.table\\(e\\);console.log\\('\\\\''CO:'\\\\''\\);console.table\\(c\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
+      "Bash(git check-ignore *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const b=await db.task.count\\({where:{year:2026,month:5}}\\);const j=await db.task.count\\({where:{year:2026,month:6}}\\);console.log\\('\\\\''BEFORE: June'\\\\'',b,'\\\\''July'\\\\'',j\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const b=await db.task.count\\({where:{year:2026,month:5}}\\);const j=await db.task.count\\({where:{year:2026,month:6}}\\);console.log\\('\\\\''AFTER: June'\\\\'',b,'\\\\''July'\\\\'',j,'\\\\''\\(unchanged = preserved\\)'\\\\''\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);for\\(const[id,r]of[['\\\\''e_ayman'\\\\'',{POST:6,STORY:6,AI_REEL:1}],['\\\\''e_sabin'\\\\'',{POST:6,STORY:6,AI_REEL:1}],['\\\\''e_hla'\\\\'',{POST:6,STORY:6}]]\\){await db.employee.update\\({where:{id},data:{rates:JSON.stringify\\(r\\)}}\\);}const e=await db.employee.findMany\\({select:{name:true,rates:true}}\\);console.table\\(e\\);await db.$disconnect\\(\\);}\\)\\(\\)')"
     ]
   }
 }
