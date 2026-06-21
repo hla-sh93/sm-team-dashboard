@@ -3,9 +3,15 @@
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
-import { PRIORITY_LABELS, ROLE_LABELS, STATUS_LABELS } from "@/lib/constants";
+import {
+  CONTENT_TYPE_LABELS,
+  PRIORITY_LABELS,
+  ROLE_LABELS,
+  STATUS_LABELS,
+  taskColor,
+} from "@/lib/constants";
 import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
-import { toISODate, formatDateCard } from "@/lib/dates";
+import { toISODate, fromISODate, formatDateCard, formatDateShort, ARABIC_DAYS } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
 import type { WorkloadEntry } from "@/lib/workload";
 import { AlertTriangle, Building2, Send, Users, Zap } from "lucide-react";
@@ -35,18 +41,38 @@ export default function OverviewClient({
       t.status !== "PUBLISHED",
   );
 
-  const todayISO = toISODate(new Date());
-  const todayTasks = tasks.filter(
-    (t) =>
-      t.workDate &&
-      toISODate(new Date(t.workDate)) === todayISO &&
-      t.status !== "PUBLISHED",
-  );
-
   const empName = (id: string | null) =>
     employees.find((e) => e.id === id)?.name ?? "—";
+  const empColor = (id: string | null) =>
+    employees.find((e) => e.id === id)?.color ?? undefined;
   const coName = (id: string | null) =>
     companies.find((c) => c.id === id)?.name ?? "";
+  const taskLabel = (t: Task) =>
+    t.title ||
+    `${CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? "مهمة"}${
+      coName(t.companyId) ? ` · ${coName(t.companyId)}` : ""
+    }`;
+
+  // "اليوم" panel: tasks scheduled on a reference day, grouped by person. The
+  // reference day is today if it has work, else the nearest later day in the
+  // month that has work — so it's never blank while the month has data.
+  const todayISO = toISODate(new Date());
+  const liveDated = tasks.filter((t) => t.workDate && t.status !== "PUBLISHED");
+  const dayTasks = (iso: string) =>
+    liveDated.filter((t) => toISODate(new Date(t.workDate!)) === iso);
+  const monthDayISOs = Array.from(
+    new Set(liveDated.map((t) => toISODate(new Date(t.workDate!)))),
+  ).sort();
+  const refDay =
+    dayTasks(todayISO).length > 0
+      ? todayISO
+      : monthDayISOs.find((d) => d >= todayISO) ??
+        monthDayISOs[monthDayISOs.length - 1] ??
+        todayISO;
+  const refIsToday = refDay === todayISO;
+  const dayByPerson = employees
+    .map((e) => ({ emp: e, items: dayTasks(refDay).filter((t) => t.assigneeId === e.id) }))
+    .filter((g) => g.items.length > 0);
 
   const kpis = [
     { label: "الشركات المُدارة", value: managed.length, icon: Building2 },
@@ -136,21 +162,41 @@ export default function OverviewClient({
         </Card>
 
         <Card>
-          <h2 className="display-font text-lg mb-4">مهام اليوم</h2>
-          <div className="flex flex-col gap-2 max-h-[340px] overflow-y-auto">
-            {todayTasks.length === 0 && (
-              <p className="text-sm text-fg-muted">لا توجد مهام مجدولة لليوم.</p>
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="display-font text-lg">مهام اليوم</h2>
+            <span className="text-xs text-fg-dim">
+              {refIsToday
+                ? "اليوم"
+                : `أقرب يوم عمل · ${ARABIC_DAYS[fromISODate(refDay).getDay()]} ${formatDateShort(fromISODate(refDay))}`}
+            </span>
+          </div>
+          <div className="flex flex-col gap-4 max-h-[340px] overflow-y-auto">
+            {dayByPerson.length === 0 && (
+              <p className="text-sm text-fg-muted">لا توجد مهام مجدولة.</p>
             )}
-            {todayTasks.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between bg-bg-elev rounded-lg px-3 py-2 border border-border-soft"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  {t.overflow && <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />}
-                  <span className="text-sm truncate">{t.title}</span>
+            {dayByPerson.map(({ emp, items }) => (
+              <div key={emp.id}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Avatar name={emp.name} color={emp.color ?? undefined} size={22} />
+                  <span className="text-sm font-semibold">{emp.name}</span>
+                  <span className="text-[10px] text-fg-muted">
+                    {items.length} مهمة
+                  </span>
                 </div>
-                <span className="text-xs text-fg-dim shrink-0">{empName(t.assigneeId)}</span>
+                <div className="flex flex-col gap-1.5 pr-1">
+                  {items.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-1.5 border border-border-soft"
+                      style={{ borderRight: `3px solid ${taskColor(t.kind, t.type)}` }}
+                    >
+                      {t.overflow && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+                      )}
+                      <span className="text-xs truncate">{taskLabel(t)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

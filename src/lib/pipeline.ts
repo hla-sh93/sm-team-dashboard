@@ -52,6 +52,21 @@ export type PipelineTask = {
 const SCOPE_OF = (type: string): "DESIGN" | "SHOOT" =>
   type === "REEL" ? "SHOOT" : "DESIGN";
 
+/** Subtract `n` working days (skip Thu=4/Fri=5) from a YYYY-MM-DD string. */
+function backWorkdays(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  let left = n;
+  while (left > 0) {
+    dt.setDate(dt.getDate() - 1);
+    const g = dt.getDay();
+    if (g !== 4 && g !== 5) left--;
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
+    dt.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 export function expandPipeline(
   items: PipelineContentItem[],
   opts: {
@@ -73,16 +88,30 @@ export function expandPipeline(
   const writeBoard = opts.writeBoard ?? "TODO";
   const pfx = opts.idPrefix ?? "";
 
-  // 1) WRITE cards — 2 per company that has any items, by scope.
+  // 1) WRITE cards — 2 per company that has any items, by scope. Each writing
+  // card is timed BEFORE the design/shoot it gates: end (readyDate) = the
+  // earliest dependent card's start day; start (workDate) = 2 working days
+  // before that. So the writer's plan has a clear start→end and shows up in the
+  // daily/calendar views.
   const scopesByCompany = new Map<string, Set<"DESIGN" | "SHOOT">>();
+  const earliestStart = new Map<string, string>(); // `${co}|${scope}` → min workDate
   for (const it of items) {
+    const scope = SCOPE_OF(it.type);
     const s = scopesByCompany.get(it.companyId) ?? new Set();
-    s.add(SCOPE_OF(it.type));
+    s.add(scope);
     scopesByCompany.set(it.companyId, s);
+    const start = it.workDate ?? it.publishDate;
+    if (start) {
+      const k = `${it.companyId}|${scope}`;
+      const cur = earliestStart.get(k);
+      if (!cur || start < cur) earliestStart.set(k, start);
+    }
   }
   const writeId = (co: string, scope: string) => `${pfx}w_${co}_${scope}`;
   for (const [co, scopes] of scopesByCompany) {
     for (const scope of scopes) {
+      const end = earliestStart.get(`${co}|${scope}`) ?? null;
+      const start = end ? backWorkdays(end, 2) : null;
       out.push({
         id: writeId(co, scope),
         kind: "CONTENT_WRITING",
@@ -96,8 +125,8 @@ export function expandPipeline(
         companyId: co,
         assigneeId: writerId,
         publishDate: null,
-        readyDate: null,
-        workDate: null,
+        readyDate: end,
+        workDate: start,
         week: null,
         blockedById: null,
         pipelineKey: `${co}|${scope}`,
