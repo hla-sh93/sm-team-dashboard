@@ -47,8 +47,8 @@ export type WorkloadEntry = {
 export const isPublisherRole = (role: string) => /ناشر|نشر|publisher/i.test(role);
 export const isWriterRole = (role: string) => /كات|writer/i.test(role);
 
-// Companies one person can schedule/publish per working day (publisher rate).
-const PUBLISH_COMPANIES_PER_DAY = 4;
+// Companies the publisher can schedule/publish in a single day (4–5 as needed).
+const PUBLISH_COMPANIES_PER_DAY = 5;
 
 type Co = Pick<
   Company,
@@ -90,11 +90,15 @@ export function computeWorkload(
 
   return employees.map((emp) => {
     const wd = parseWorkDays(emp.workDays);
-    const capacityDays = period.filter((d) => wd.includes(d.getDay())).length;
-
     const writer = isWriterRole(emp.role);
     const publisher = isPublisherRole(emp.role);
     const photographer = emp.isPhotographer;
+
+    // The publisher works EVERY day (publishing runs 7 days/week, weekends too),
+    // so his capacity counts all calendar days; everyone else only their workdays.
+    const capacityDays = publisher
+      ? period.length
+      : period.filter((d) => wd.includes(d.getDay())).length;
 
     const myTasks = tasks.filter(
       (t) => t.assigneeId === emp.id && t.year === year && t.month === month,
@@ -102,6 +106,7 @@ export function computeWorkload(
 
     // ---- COMMITTED: plan-driven base (completion-invariant) ----
     let baseDays = 0;
+    let baseDone = 0; // completed portion of the base (publisher computes it here)
     let planPosts = 0;
     let planStories = 0;
     let planAiReels = 0;
@@ -113,21 +118,24 @@ export function computeWorkload(
       );
       baseDays = cos.length * taskDays(emp, "PLAN", 1);
     } else if (publisher) {
-      // Company-publish-days ÷ 4. Uses the publish cards when present; else
-      // estimates from the plan (feed items each take a day; stories may share).
+      // Load = the daily publishing schedule. The publisher is on duty EVERY day
+      // that has publishing; a day costs 1 (he covers up to 5 companies) and only
+      // exceeds 1 when a single day has more companies than he can cover. Done is
+      // the per-day share that has actually been published.
       const pub = myTasks.filter((t) => t.kind === "PUBLISH" && t.publishDate);
-      let companyDays: number;
-      if (pub.length > 0) {
-        companyDays = new Set(
-          pub.map((t) => `${t.companyId}|${toISODate(new Date(t.publishDate!))}`),
-        ).size;
-      } else {
-        companyDays = managed.reduce(
-          (a, c) => a + Math.max(c.posts + c.reels + c.aiReels, c.stories),
-          0,
-        );
+      const dayMap = new Map<string, { co: Set<string>; done: Set<string> }>();
+      for (const t of pub) {
+        const d = toISODate(new Date(t.publishDate!));
+        const e = dayMap.get(d) ?? { co: new Set(), done: new Set() };
+        if (t.companyId) e.co.add(t.companyId);
+        if (t.companyId && isDoneTask(t)) e.done.add(t.companyId);
+        dayMap.set(d, e);
       }
-      baseDays = companyDays / PUBLISH_COMPANIES_PER_DAY;
+      for (const { co, done } of dayMap.values()) {
+        const cost = Math.max(1, co.size / PUBLISH_COMPANIES_PER_DAY);
+        baseDays += cost;
+        baseDone += co.size ? cost * (done.size / co.size) : 0;
+      }
     } else if (photographer) {
       planReels = managed.reduce((a, c) => a + c.reels, 0);
       if (planReels > 0) baseDays = taskDays(emp, "REEL", planReels);
@@ -156,13 +164,7 @@ export function computeWorkload(
     // ---- DONE: completed work (drives the burndown) ----
     let doneDays = 0;
     if (publisher) {
-      const donePub = myTasks.filter(
-        (t) => t.kind === "PUBLISH" && t.publishDate && isDoneTask(t),
-      );
-      const doneCompanyDays = new Set(
-        donePub.map((t) => `${t.companyId}|${toISODate(new Date(t.publishDate!))}`),
-      ).size;
-      doneDays += doneCompanyDays / PUBLISH_COMPANIES_PER_DAY;
+      doneDays += baseDone;
     } else if (writer) {
       const writeCards = myTasks.filter((t) => t.stage === "WRITE");
       const ratio = writeCards.length
