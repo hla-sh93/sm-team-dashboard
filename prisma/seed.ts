@@ -33,10 +33,13 @@ async function seedJuneActuals() {
   const items = juneActuals.items as any[];
   const hash = createHash("sha1").update(JSON.stringify(items)).digest("hex");
   const hashKey = `seedHash:${jYear}-${jMonth}`;
-  const prev = await prisma.setting.findUnique({ where: { key: hashKey } });
+  const force = process.env.SEED_FORCE === "1";
   const existing = await prisma.task.count({ where: { month: jMonth, year: jYear } });
-  if (existing > 0 && process.env.SEED_FORCE !== "1" && prev?.value === hash) {
-    console.log(`↩︎  June actuals unchanged (${existing}) — skipping.`);
+  // NON-DESTRUCTIVE: seed June only when it is EMPTY (fresh DB). Never wipe live
+  // data on redeploy — your edits + regenerated pipeline persist. SEED_FORCE=1
+  // forces a full rebuild from this file.
+  if (existing > 0 && !force) {
+    console.log(`↩︎  June already has ${existing} tasks — preserving live data (SEED_FORCE=1 to rebuild).`);
     return;
   }
   await prisma.task.deleteMany({ where: { month: jMonth, year: jYear } });
@@ -158,22 +161,18 @@ async function main() {
   const empIds = (data.employees as any[]).map((e) => e.id);
   const coIds = (data.companies as any[]).map((c) => c.id);
 
-  // AUTHORITATIVE cleanup: remove any employee/company NOT in seed-data. This
-  // de-duplicates a DB that was seeded twice with different id schemes (e.g. an
-  // earlier seed used random cuids, this one uses e_*/c_*). Companies are
-  // deleted FIRST so their unique names are freed before we upsert the canonical
-  // rows (deleting a company cascades its tasks/sessions; deleting an employee
-  // just nulls their task.assignee).
-  const delCo = await prisma.company.deleteMany({
-    where: { id: { notIn: coIds } },
-  });
-  const delEmp = await prisma.employee.deleteMany({
-    where: { id: { notIn: empIds } },
-  });
-  if (delCo.count || delEmp.count) {
-    console.log(
-      `🧹 removed ${delEmp.count} stale employees, ${delCo.count} stale companies`,
-    );
+  // AUTHORITATIVE cleanup (DESTRUCTIVE): remove any employee/company NOT in
+  // seed-data. ONLY runs with SEED_FORCE=1 — on a normal (re)deploy we never
+  // delete companies/employees you may have added in the app (deleting a company
+  // would cascade-delete its tasks). The canonical set is still upserted below.
+  if (force) {
+    const delCo = await prisma.company.deleteMany({ where: { id: { notIn: coIds } } });
+    const delEmp = await prisma.employee.deleteMany({ where: { id: { notIn: empIds } } });
+    if (delCo.count || delEmp.count) {
+      console.log(
+        `🧹 removed ${delEmp.count} stale employees, ${delCo.count} stale companies`,
+      );
+    }
   }
 
   /* ---------- 1) Employees (upsert canonical set) ---------- */
@@ -196,9 +195,12 @@ async function main() {
       color: e.color,
       rates: RATES[e.id] ? JSON.stringify(RATES[e.id]) : null,
     };
+    // Non-destructive: create if missing; only overwrite an existing row's
+    // fields (name/role/rates/color…) on an explicit SEED_FORCE rebuild, so
+    // edits made in the app survive redeploys.
     await prisma.employee.upsert({
       where: { id: e.id },
-      update: payload,
+      update: force ? payload : {},
       create: { id: e.id, ...payload },
     });
   }
@@ -219,9 +221,11 @@ async function main() {
       aiReelOwnerId: c.aiReelOwnerId,
       defaultOwnerId: c.defaultOwnerId,
     };
+    // Non-destructive: create if missing; only overwrite plan/owners/color on an
+    // explicit SEED_FORCE rebuild, so company edits made in the app survive.
     await prisma.company.upsert({
       where: { id: c.id },
-      update: payload,
+      update: force ? payload : {},
       create: { id: c.id, ...payload },
     });
   }
@@ -240,16 +244,14 @@ async function main() {
     .update(JSON.stringify({ t: data.tasks, s: data.photoSessions, m: data.meta }))
     .digest("hex");
   const hashKey = `seedHash:${year}-${month}`;
-  const prev = await prisma.setting.findUnique({ where: { key: hashKey } });
   const existing = await prisma.task.count({ where: { month, year } });
-  if (existing > 0 && !force && prev?.value === hash) {
+  // NON-DESTRUCTIVE: seed this month only when EMPTY (fresh DB). Never wipe live
+  // data on redeploy. SEED_FORCE=1 forces a full rebuild.
+  if (existing > 0 && !force) {
     console.log(
-      `↩︎  dataset unchanged (${existing} tasks) — skipping rebuild (preserving statuses).`,
+      `↩︎  ${data.meta.label} already has ${existing} tasks — preserving live data (SEED_FORCE=1 to rebuild).`,
     );
     return;
-  }
-  if (existing > 0) {
-    console.log(`♻︎  dataset changed — rebuilding ${existing} → ${data.tasks.length} tasks.`);
   }
 
   await prisma.task.deleteMany({ where: { month, year } });
