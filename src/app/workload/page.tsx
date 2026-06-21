@@ -13,14 +13,15 @@ export default async function WorkloadPage({
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
-  const [employees, tasks, sessions] = await Promise.all([
+  const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({ where: { year, month } }),
     prisma.photoSession.findMany({ where: { year, month } }),
   ]);
 
-  // Whole team, designers first (hours), then the rest (by item count).
-  const workload = computeWorkload(employees, tasks, year, month, sessions).sort(
+  // Whole team, designers first (days), then the rest (by item count).
+  const workload = computeWorkload(employees, tasks, year, month, sessions, companies).sort(
     (a, b) =>
       Number(b.tracksDays) - Number(a.tracksDays) ||
       b.pct - a.pct ||

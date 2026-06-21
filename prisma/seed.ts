@@ -178,9 +178,9 @@ async function main() {
   /* ---------- 1) Employees (upsert canonical set) ---------- */
   // Productivity rates (items per working day) per person.
   const RATES: Record<string, Record<string, number>> = {
-    e_ayman: { POST: 6, STORY: 8, AI_REEL: 1 },
-    e_sabin: { POST: 6, STORY: 8, AI_REEL: 1 },
-    e_hla: { POST: 6, STORY: 8 }, // no AI reels
+    e_ayman: { POST: 6, STORY: 6, AI_REEL: 1 },
+    e_sabin: { POST: 6, STORY: 6, AI_REEL: 1 },
+    e_hla: { POST: 6, STORY: 6 }, // no AI reels
     e_nawal: { PLAN: 0.5 }, // a content plan per company = 2 working days
     e_photo: { REEL: 2 / 3 }, // 2 reels per 3 days
   };

@@ -1,16 +1,27 @@
 /**
- * Workload computation — hours model (SOCIAL_SCHEDULER_SPEC.md §4.1/§6).
- * Capacity = hoursPerDay × (employee working days in the scheduling period).
- * Only live (non-done) tasks count; REELs don't consume employee hours (§4.2).
+ * Workload computation — PLAN-DRIVEN monthly commitment.
+ *
+ * A person's monthly load reflects the work they are COMMITTED to this month,
+ * derived from the company plans + ownership — NOT from how many tasks are still
+ * pending. Completing work therefore never lowers the load; it stays a stable
+ * "how loaded is this person this month" figure. Ad-hoc/urgent tasks ADD to that
+ * month's load (done or not — finishing them doesn't reduce it). Next month
+ * resets to the plan baseline + that month's new ad-hoc.
+ *
+ *   neededDays = planDays(plans owned by the person) + adhocDays(this month)
+ *
+ * - Writer  : managed companies with a plan × plan duration (2 days each).
+ * - Designer: Σ owned (posts/6 + stories/6 + aiReels/1) over managed companies.
+ * - Photographer: total managed reels ÷ rate.
+ * - Publisher: count of all publishes (managed plan totals) + ad-hoc (count, not days).
  */
-import type { Employee, Task, PhotoSession } from "@/types";
-import { DONE_STATUSES, type Status } from "./constants";
-import { parseWorkDays, periodDays, toISODate } from "./dates";
+import type { Employee, Task, PhotoSession, Company } from "@/types";
+import { parseWorkDays, periodDays } from "./dates";
 import { taskDays, adhocDays } from "./capacity";
 
 export type WorkloadEntry = {
   employee: Employee;
-  neededDays: number; // working days of work needed (= Σ quantity / rate)
+  neededDays: number; // working days of work committed this month
   capacityDays: number; // working days available in the period
   busyDays: number;
   workDays: number;
@@ -18,151 +29,137 @@ export type WorkloadEntry = {
   pct: number;
   level: "normal" | "warn" | "over";
   overflowCount: number;
-  itemCount: number; // total live tasks/sessions
+  itemCount: number;
   tracksDays: boolean; // producers (designers/writer/photographer) → days; publisher → count
   breakdown: { POST: number; AI_REEL: number; STORY: number; ADHOC: number };
 };
-
-const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
 // Roles are free-text and may be Arabic ("ناشر + مدير صفحات") or English keys.
 export const isPublisherRole = (role: string) => /ناشر|نشر|publisher/i.test(role);
 export const isWriterRole = (role: string) => /كات|writer/i.test(role);
 
-/**
- * Whole-team workload (§6). Designers are measured in hours; the rest (writer,
- * publisher, photographer) are measured by item/session count since their tasks
- * don't carry design-hours. Photographer sessions count as their items + busy
- * days (by shootDate).
- */
+type Co = Pick<
+  Company,
+  | "id"
+  | "managed"
+  | "status"
+  | "posts"
+  | "reels"
+  | "stories"
+  | "aiReels"
+  | "postOwnerId"
+  | "storyOwnerId"
+  | "aiReelOwnerId"
+  | "defaultOwnerId"
+>;
+
+/** Owner of a (company, content-type), falling back to the design-only owner. */
+function ownerOf(c: Co, type: "POST" | "STORY" | "AI_REEL"): string | null {
+  if (type === "POST") return c.postOwnerId ?? c.defaultOwnerId ?? null;
+  if (type === "STORY") return c.storyOwnerId ?? c.defaultOwnerId ?? null;
+  return c.aiReelOwnerId ?? c.defaultOwnerId ?? null;
+}
+
 export function computeWorkload(
   employees: Employee[],
   tasks: Task[],
   year: number,
   month: number,
-  sessions: PhotoSession[] = [],
+  _sessions: PhotoSession[] = [],
+  companies: Co[] = [],
 ): WorkloadEntry[] {
   const period = periodDays(year, month);
+  const managed = companies.filter(
+    (c) => c.managed && (c.status ?? "active") === "active",
+  );
 
   return employees.map((emp) => {
     const wd = parseWorkDays(emp.workDays);
-    const empWorkDays = period.filter((d) => wd.includes(d.getDay())).length;
-    const capacityDays = empWorkDays;
+    const capacityDays = period.filter((d) => wd.includes(d.getDay())).length;
 
-    const mine = tasks.filter(
+    const writer = isWriterRole(emp.role);
+    const publisher = isPublisherRole(emp.role);
+    const photographer = emp.isPhotographer;
+
+    // --- 1) Base plan load (completion-invariant) ---
+    let planDays = 0;
+    let planPosts = 0;
+    let planStories = 0;
+    let planAiReels = 0;
+    let planReels = 0;
+    let publishCount = 0;
+
+    if (writer) {
+      // 2 working days per managed company that has any content plan.
+      const cos = managed.filter(
+        (c) => c.posts + c.reels + c.stories + c.aiReels > 0,
+      );
+      planDays += cos.length * taskDays(emp, "PLAN", 1);
+    } else if (publisher) {
+      publishCount = managed.reduce(
+        (a, c) => a + c.posts + c.reels + c.stories + c.aiReels,
+        0,
+      );
+    } else if (photographer) {
+      planReels = managed.reduce((a, c) => a + c.reels, 0);
+      if (planReels > 0) planDays += taskDays(emp, "REEL", planReels);
+    } else {
+      // Designer: sum the content types they own across managed companies.
+      for (const c of managed) {
+        if (c.posts > 0 && ownerOf(c, "POST") === emp.id) {
+          planDays += taskDays(emp, "POST", c.posts);
+          planPosts += c.posts;
+        }
+        if (c.stories > 0 && ownerOf(c, "STORY") === emp.id) {
+          planDays += taskDays(emp, "STORY", c.stories);
+          planStories += c.stories;
+        }
+        if (c.aiReels > 0 && ownerOf(c, "AI_REEL") === emp.id) {
+          planDays += taskDays(emp, "AI_REEL", c.aiReels);
+          planAiReels += c.aiReels;
+        }
+      }
+    }
+
+    // --- 2) Ad-hoc/urgent tasks this month — ADD to the load (done or not) ---
+    const myAdhoc = tasks.filter(
       (t) =>
         t.assigneeId === emp.id &&
-        t.type !== "REEL" &&
-        t.kind !== "PUBLISH" && // publish cards counted via the publisher branch
-        !isDone(t.status) &&
+        t.kind === "ADHOC" &&
         t.year === year &&
         t.month === month,
     );
+    const adhocDaysTotal = myAdhoc.reduce((a, t) => a + adhocDays(emp, t.hours), 0);
+    planDays += adhocDaysTotal;
+    if (publisher) publishCount += myAdhoc.length;
 
-    let neededDays = 0;
-    const busy = new Set<string>();
-    let overflowCount = 0;
-    for (const t of mine) {
-      // Days of work: design items by the person's rate; writing by plan rate;
-      // ad-hoc by its hours ÷ daily capacity.
-      const q = t.quantity ?? 1;
-      neededDays += t.type
-        ? taskDays(emp, t.type, q)
-        : t.stage === "WRITE"
-          ? taskDays(emp, "PLAN", q)
-          : adhocDays(emp, t.hours);
-      if (t.workDate) busy.add(toISODate(t.workDate));
-      if (t.overflow) overflowCount++;
-    }
-
-    // Photographer: count their SHOOT cards (REEL) — REMAINING ones drive
-    // needed days; all of them drive busy (shoot) days.
-    const myShoots = emp.isPhotographer
-      ? tasks.filter(
-          (t) =>
-            t.assigneeId === emp.id &&
-            t.type === "REEL" &&
-            t.kind === "CONTENT" &&
-            t.year === year &&
-            t.month === month,
-        )
-      : [];
-    for (const t of myShoots) if (t.workDate) busy.add(toISODate(t.workDate));
-    const remainingReels = myShoots
-      .filter((t) => !isDone(t.status))
-      .reduce((a, t) => a + (t.quantity ?? 1), 0);
-    if (remainingReels > 0) neededDays += taskDays(emp, "REEL", remainingReels);
-
-    // Publisher (عمر): his workload IS the publishing pipeline — the PUBLISH
-    // stage cards assigned to him.
-    const publishItems =
-      isPublisherRole(emp.role)
-        ? tasks.filter(
-            (t) =>
-              t.assigneeId === emp.id &&
-              t.kind === "PUBLISH" &&
-              !isDone(t.status) &&
-              t.year === year &&
-              t.month === month,
-          )
-        : [];
-    for (const t of publishItems) {
-      if (t.publishDate) busy.add(toISODate(new Date(t.publishDate)));
-    }
-
-    const tracksDays = !isPublisherRole(emp.role);
-    const pct = capacityDays > 0 ? Math.round((neededDays / capacityDays) * 100) : 0;
+    const tracksDays = !publisher;
+    const neededDays = Math.round(planDays * 10) / 10;
+    const pct = capacityDays > 0 ? Math.round((planDays / capacityDays) * 100) : 0;
     const level: WorkloadEntry["level"] = pct > 100 ? "over" : pct > 85 ? "warn" : "normal";
+    const busyDays = Math.min(capacityDays, Math.round(planDays));
+    const itemCount = publisher
+      ? publishCount
+      : planPosts + planStories + planAiReels + planReels + myAdhoc.length;
 
     return {
       employee: emp,
-      neededDays: Math.round(neededDays * 10) / 10,
+      neededDays,
       capacityDays,
-      busyDays: busy.size,
-      workDays: empWorkDays,
-      freeDays: Math.max(0, empWorkDays - busy.size),
+      busyDays,
+      workDays: capacityDays,
+      freeDays: Math.max(0, capacityDays - busyDays),
       pct,
       level,
-      overflowCount,
-      itemCount: mine.length + myShoots.length + publishItems.length,
+      overflowCount: myAdhoc.filter((t) => t.overflow).length,
+      itemCount,
       tracksDays,
       breakdown: {
-        POST: mine.filter((t) => t.type === "POST").length,
-        AI_REEL: mine.filter((t) => t.type === "AI_REEL").length,
-        STORY: mine.filter((t) => t.type === "STORY").length,
-        ADHOC: mine.filter((t) => t.kind === "ADHOC").length,
+        POST: planPosts,
+        AI_REEL: planAiReels,
+        STORY: planStories,
+        ADHOC: myAdhoc.length,
       },
     };
   });
-}
-
-/** Per-employee per-day hour totals — used to flag days over capacity (§9 #4). */
-export type DayLoad = {
-  iso: string;
-  hours: number;
-  cap: number;
-  over: boolean;
-  tasks: Task[];
-};
-
-export function dayLoadsForEmployee(
-  emp: Employee,
-  tasks: Task[],
-  year: number,
-  month: number,
-): Map<string, DayLoad> {
-  const cap = emp.hoursPerDay;
-  const out = new Map<string, DayLoad>();
-  for (const t of tasks) {
-    if (t.assigneeId !== emp.id || t.type === "REEL") continue;
-    if (isDone(t.status)) continue;
-    if (!t.workDate || t.year !== year || t.month !== month) continue;
-    const iso = toISODate(t.workDate);
-    const cur = out.get(iso) ?? { iso, hours: 0, cap, over: false, tasks: [] };
-    cur.hours += t.hours;
-    cur.tasks.push(t);
-    cur.over = cur.hours > cap + 1e-9;
-    out.set(iso, cur);
-  }
-  return out;
 }

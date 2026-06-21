@@ -12,7 +12,7 @@
  */
 export const DEFAULT_RATES: Record<string, number> = {
   POST: 6, // 6 posts/day
-  STORY: 8, // 8 stories/day
+  STORY: 6, // 6 stories/day
   AI_REEL: 1, // 1 AI reel/day
   REEL: 2 / 3, // photographer: 2 reels per 3 days
   PLAN: 0.5, // a content plan per company → 2 working days

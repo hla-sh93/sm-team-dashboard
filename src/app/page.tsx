@@ -17,7 +17,7 @@ export default async function HomePage({
   ]);
 
   // Whole team (everyone with a role on the board), not just designers.
-  const workload = computeWorkload(employees, tasks, year, month, sessions);
+  const workload = computeWorkload(employees, tasks, year, month, sessions, companies);
 
   return (
     <OverviewClient
