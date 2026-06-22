@@ -36,6 +36,26 @@ export default async function ReportsPage({
   const qty = (t: { quantity?: number }) => t.quantity ?? 1;
   const doneCount = done.reduce((a, t) => a + qty(t), 0);
 
+  // Actual time taken = finishedAt − startedAt (calendar days). Only available
+  // once a task was moved through the board; null for never-started/seed data.
+  const DAY = 86400000;
+  const elapsedDays = (t: { startedAt: Date | null; finishedAt: Date | null }) => {
+    if (!t.startedAt || !t.finishedAt) return null;
+    return Math.max(
+      0,
+      Math.round((new Date(t.finishedAt).getTime() - new Date(t.startedAt).getTime()) / DAY),
+    );
+  };
+  const elapsedLabel = (n: number | null) =>
+    n == null ? "—" : n === 0 ? "نفس اليوم" : n === 1 ? "يوم" : `${n} يوم`;
+  const timedDone = done.filter((t) => elapsedDays(t) != null);
+  const avgElapsed =
+    timedDone.length > 0
+      ? Math.round(
+          (timedDone.reduce((a, t) => a + (elapsedDays(t) ?? 0), 0) / timedDone.length) * 10,
+        ) / 10
+      : null;
+
   // Per-company plan completion (المنجَز مقابل المتبقّي من الخطة).
   const PLAN_TYPES: { type: string; label: string; key: "posts" | "reels" | "aiReels" | "stories" }[] = [
     { type: "POST", label: "بوست", key: "posts" },
@@ -79,6 +99,8 @@ export default async function ReportsPage({
     tasks,
     year,
     month,
+    [],
+    companies,
   );
 
   const byAssignee = new Map<string, typeof tasks>();
@@ -113,6 +135,9 @@ export default async function ReportsPage({
           : t.title ?? "مهمة",
       target: coName(t.companyId) || (t.title ?? ""),
       hours: t.hours,
+      startedAt: t.startedAt ? toISODate(new Date(t.startedAt)) : "",
+      finishedAt: t.finishedAt ? toISODate(new Date(t.finishedAt)) : "",
+      actualDays: elapsedDays(t),
       publishDate: t.publishDate ? toISODate(new Date(t.publishDate)) : "",
       status: STATUS_LABELS[t.status as Status] ?? t.status,
     }));
@@ -132,7 +157,7 @@ export default async function ReportsPage({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
@@ -141,6 +166,19 @@ export default async function ReportsPage({
             <div>
               <div className="text-xs text-fg-muted">المنجز (شامل الكميات)</div>
               <div className="display-font text-2xl">{doneCount}</div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-fg-muted">متوسط مدة الإنجاز الفعلية</div>
+              <div className="display-font text-2xl">
+                {avgElapsed == null ? "—" : `${avgElapsed} يوم`}
+              </div>
             </div>
           </div>
         </Card>
@@ -256,8 +294,16 @@ export default async function ReportsPage({
                         : t.title}
                       {qty(t) > 1 && <span className="text-accent"> ×{qty(t)}</span>}
                     </span>
-                    <span className="text-xs text-fg-muted shrink-0">
-                      {t.publishDate ? formatDateShort(new Date(t.publishDate)) : ""}
+                    {t.startedAt && t.finishedAt && (
+                      <span className="text-[11px] text-fg-muted shrink-0 hidden sm:inline">
+                        {formatDateShort(new Date(t.startedAt))} → {formatDateShort(new Date(t.finishedAt))}
+                      </span>
+                    )}
+                    <span
+                      className="text-[11px] tabular-nums shrink-0 text-accent"
+                      title="المدة الفعلية المستغرقة (من البدء حتى الإنجاز)"
+                    >
+                      {elapsedLabel(elapsedDays(t))}
                     </span>
                     <span className="text-xs text-fg-dim shrink-0">
                       {STATUS_LABELS[t.status as Status] ?? t.status}

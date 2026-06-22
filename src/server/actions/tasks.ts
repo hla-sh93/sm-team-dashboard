@@ -195,11 +195,18 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
   }
 }
 
-/** Delete one or more tasks (a whole card). Does NOT regenerate, so the deletion
- *  is immediate and predictable (the live board reflects it at once). */
+/** Delete one or more tasks (a whole card), then RE-DISTRIBUTE the month so the
+ *  remaining work reorders and the pipeline heals (no orphan publish/design
+ *  cards). Ad-hoc tasks stay deleted; plan-driven content is rebuilt from the
+ *  company plan (to truly remove planned items, lower the plan in /companies). */
 export async function deleteTasks(ids: string[]) {
   try {
+    const first = await prisma.task.findFirst({
+      where: { id: { in: ids } },
+      select: { year: true, month: true },
+    });
     await prisma.task.deleteMany({ where: { id: { in: ids } } });
+    if (first) await generateSchedule(first.year, first.month);
     revalidateAll();
     return { ok: true as const };
   } catch {

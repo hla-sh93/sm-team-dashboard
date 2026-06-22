@@ -20,6 +20,9 @@ export type TaskRow = {
   type: string;
   target: string;
   hours: number;
+  startedAt: string;
+  finishedAt: string;
+  actualDays: number | null;
   publishDate: string;
   status: string;
 };
@@ -43,7 +46,10 @@ export function ReportActions({
 
   const exportTasks = () => {
     const csv = toCSV(
-      ["التاريخ", "اليوم", "الموظف", "النوع", "الشركة/العنوان", "أيام العمل", "موعد النشر", "الحالة"],
+      [
+        "التاريخ", "اليوم", "الموظف", "النوع", "الشركة/العنوان",
+        "أيام مقدّرة", "بدأ", "أُنجز", "المدة الفعلية (يوم)", "موعد النشر", "الحالة",
+      ],
       taskRows.map((r) => [
         r.date,
         r.weekday,
@@ -51,6 +57,9 @@ export function ReportActions({
         r.type,
         r.target,
         r.hours > 0 ? Math.round((r.hours / 6) * 10) / 10 : "",
+        r.startedAt,
+        r.finishedAt,
+        r.actualDays ?? "",
         r.publishDate,
         r.status,
       ]),
