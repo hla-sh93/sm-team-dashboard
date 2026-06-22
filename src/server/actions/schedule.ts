@@ -118,17 +118,38 @@ export async function generateSchedule(year: number, month: number) {
     });
     applyAchievements(pipe, achievementsFor(year, month));
 
-    // Preserve manual board/status edits from a prior run (deterministic keys).
+    // Preserve manual edits from a prior run (matched by pipelineKey+stage).
+    // Board/status are always kept; for cards the user PINNED (manual edit via
+    // the card's تعديل) we also keep their title / dates / owner / priority so
+    // hitting إعادة الجدولة never throws the edit away.
     const existing = await prisma.task.findMany({
       where: { isAuto: true, year, month },
-      select: { pipelineKey: true, stage: true, board: true, status: true },
+      select: {
+        pipelineKey: true,
+        stage: true,
+        board: true,
+        status: true,
+        isPinned: true,
+        title: true,
+        workDate: true,
+        readyDate: true,
+        assigneeId: true,
+        priority: true,
+      },
     });
     const snap = new Map(existing.map((e) => [`${e.pipelineKey}|${e.stage}`, e]));
     for (const c of pipe) {
       const s = snap.get(`${c.pipelineKey}|${c.stage}`);
-      if (s) {
-        c.board = s.board as PipelineTask["board"];
-        c.status = s.status;
+      if (!s) continue;
+      c.board = s.board as PipelineTask["board"];
+      c.status = s.status;
+      if (s.isPinned) {
+        c.isPinned = true;
+        if (s.title != null) c.title = s.title;
+        if (s.workDate) c.workDate = iso(s.workDate);
+        if (s.readyDate) c.readyDate = iso(s.readyDate);
+        if (s.assigneeId) c.assigneeId = s.assigneeId;
+        if (s.priority) c.priority = s.priority;
       }
     }
 
@@ -161,6 +182,7 @@ export async function generateSchedule(year: number, month: number) {
           pipelineKey: t.pipelineKey,
           overflow: false,
           isAuto: true,
+          isPinned: t.isPinned ?? false,
           completedAt: t.board === "DONE" ? new Date() : null,
           month,
           year,

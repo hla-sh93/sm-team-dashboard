@@ -23,11 +23,12 @@ import {
   updateTaskStatus,
   updatePhotoSessionStatus,
   reassignTask,
+  deleteTasks,
 } from "@/server/actions/tasks";
 import { formatDateShort } from "@/lib/dates";
 import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task, PhotoSession } from "@/types";
-import { AlertTriangle, Lock, Plus, Camera } from "lucide-react";
+import { AlertTriangle, Lock, Plus, Camera, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 /** Unified calendar item: a production task OR a photographer session. */
@@ -69,7 +70,28 @@ export default function TasksClient({
   const [person, setPerson] = useState<string>("all");
   const [company, setCompany] = useState<string>("all");
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<{ task: Task; ids: string[]; label: string } | null>(
+    null,
+  );
   const [, startTransition] = useTransition();
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+  const openEdit = (task: Task, ids: string[], label: string) => {
+    setEditing({ task, ids, label });
+    setFormOpen(true);
+  };
+  const onDelete = (ids: string[], label: string) =>
+    startTransition(async () => {
+      if (!window.confirm(`حذف «${label}»؟`)) return;
+      const r = await deleteTasks(ids);
+      if (r.ok) {
+        toast("تم حذف المهمة");
+        router.refresh();
+      } else toast(r.error, "error");
+    });
 
   const photographer = employees.find((e) => e.isPhotographer);
   const empName = (id: string | null) =>
@@ -192,7 +214,27 @@ export default function TasksClient({
           {it.kind === "task" && it.task.isPinned && (
             <Lock className="w-3 h-3 text-accent shrink-0" />
           )}
-          <span className="text-xs font-medium truncate">{itemLabel(it)}</span>
+          <span className="text-xs font-medium truncate flex-1">{itemLabel(it)}</span>
+          {it.kind === "task" && (
+            <>
+              <button
+                type="button"
+                onClick={() => openEdit(it.task, [it.task.id], itemLabel(it))}
+                title="تعديل"
+                className="shrink-0 text-fg-muted hover:text-accent transition"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete([it.task.id], itemLabel(it))}
+                title="حذف"
+                className="shrink-0 text-fg-muted hover:text-danger transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-fg-muted">
           <Avatar name={empName(it.empId)} color={empColor(it.empId)} size={16} />
@@ -271,7 +313,7 @@ export default function TasksClient({
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => setFormOpen(true)}
+        onClick={openCreate}
         className="w-full"
       >
         <Plus className="w-4 h-4" /> إضافة مهمة مستعجلة
@@ -296,7 +338,7 @@ export default function TasksClient({
           <p className="text-sm text-fg-dim">مَن ينفّذ ومتى — حسب يوم التنفيذ (workDate)</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => setFormOpen(true)}>
+          <Button size="sm" onClick={openCreate}>
             <Plus className="w-4 h-4" /> مهمة مستعجلة
           </Button>
           <MonthBar year={year} month={month} />
@@ -363,6 +405,8 @@ export default function TasksClient({
           allTasks={tasks}
           employees={employees}
           companies={companies}
+          onEdit={openEdit}
+          onDelete={onDelete}
         />
       ) : (
         <Calendar<CalItem>
@@ -381,8 +425,13 @@ export default function TasksClient({
 
       <TaskForm
         open={formOpen}
-        onOpenChange={setFormOpen}
-        task={null}
+        onOpenChange={(o) => {
+          setFormOpen(o);
+          if (!o) setEditing(null);
+        }}
+        task={editing?.task ?? null}
+        ids={editing?.ids}
+        displayLabel={editing?.label}
         employees={employees}
         companies={companies}
         year={year}

@@ -45,6 +45,7 @@ export type PipelineTask = {
   quantity: number;
   priority: string;
   status: string;
+  isPinned?: boolean; // set when a prior manual edit is preserved on regen
   month: number; // 0-based
   year: number;
 };

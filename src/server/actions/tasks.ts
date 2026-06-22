@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { fromISODate } from "@/lib/dates";
-import { DONE_STATUSES, type Status } from "@/lib/constants";
+import { DONE_STATUSES, statusToBoard, type Status } from "@/lib/constants";
 import {
   taskSchema,
   statusSchema,
@@ -96,6 +96,114 @@ export async function updateTask(id: string, input: TaskInput) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل تحديث المهمة" };
+  }
+}
+
+export type TaskDetailsInput = {
+  title?: string | null;
+  workDate?: string | null; // YYYY-MM-DD (start)
+  readyDate?: string | null; // YYYY-MM-DD (end / deadline)
+  assigneeId?: string | null;
+  priority?: string;
+  status?: string;
+  days?: number | null; // ad-hoc effort in working days
+  isPinned?: boolean;
+};
+
+/**
+ * Edit a card's task(s) from the board/calendar: name, start/end dates, owner,
+ * priority, status. Shared fields (owner/priority/status) apply to every task in
+ * a batched card; name/dates apply to the primary. The edit is PINNED so it
+ * survives إعادة الجدولة (which preserves pinned fields). When priority/dates/
+ * duration change, the month is rescheduled so workloads + placement update.
+ */
+export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) {
+  const primary = ids[0];
+  if (!primary) return { ok: false as const, error: "لا توجد مهمة" };
+  try {
+    const before = await prisma.task.findUnique({ where: { id: primary } });
+    if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
+
+    const now = new Date();
+    const status = input.status ?? before.status;
+    const done = isDone(status);
+    let startedAt = before.startedAt;
+    let finishedAt = before.finishedAt;
+    if (status === "NOT_STARTED") {
+      startedAt = null;
+      finishedAt = null;
+    } else {
+      if (!startedAt) startedAt = now;
+      finishedAt = done ? (finishedAt ?? now) : null;
+    }
+    const board = statusToBoard(status);
+    // A manual edit is ALWAYS pinned so it survives إعادة الجدولة (the regen
+    // preserves pinned cards' title/dates/owner/priority). The form's checkbox
+    // no longer needs to be ticked for the edit to stick.
+    const pinned = true;
+    const hours =
+      input.days != null && before.kind === "ADHOC"
+        ? Math.round(input.days * 6 * 10) / 10
+        : before.hours;
+    const setDate = (iso: string | null | undefined, cur: Date | null) =>
+      iso === undefined ? cur : iso ? fromISODate(iso) : null;
+
+    await prisma.task.update({
+      where: { id: primary },
+      data: {
+        title: input.title !== undefined ? input.title : before.title,
+        workDate: setDate(input.workDate, before.workDate),
+        readyDate: setDate(input.readyDate, before.readyDate),
+        assigneeId:
+          input.assigneeId !== undefined ? input.assigneeId || null : before.assigneeId,
+        priority: input.priority ?? before.priority,
+        status,
+        board,
+        startedAt,
+        finishedAt,
+        completedAt: done ? (before.completedAt ?? now) : null,
+        hours,
+        isPinned: pinned,
+      },
+    });
+
+    const rest = ids.slice(1);
+    if (rest.length > 0) {
+      await prisma.task.updateMany({
+        where: { id: { in: rest } },
+        data: {
+          ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId || null } : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+          ...(input.status !== undefined ? { status, board } : {}),
+          isPinned: pinned,
+        },
+      });
+    }
+
+    // Reschedule when scheduling-relevant fields changed (pins are preserved).
+    const reschedule =
+      input.priority !== undefined ||
+      input.workDate !== undefined ||
+      input.readyDate !== undefined ||
+      input.days != null;
+    if (reschedule) await generateSchedule(before.year, before.month);
+
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تعديل المهمة" };
+  }
+}
+
+/** Delete one or more tasks (a whole card). Does NOT regenerate, so the deletion
+ *  is immediate and predictable (the live board reflects it at once). */
+export async function deleteTasks(ids: string[]) {
+  try {
+    await prisma.task.deleteMany({ where: { id: { in: ids } } });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل حذف المهمة" };
   }
 }
 

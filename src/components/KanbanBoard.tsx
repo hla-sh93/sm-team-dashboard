@@ -21,7 +21,7 @@ import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
-import { AlertTriangle, Lock } from "lucide-react";
+import { AlertTriangle, Lock, Pencil, Trash2 } from "lucide-react";
 
 const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
 
@@ -48,11 +48,15 @@ export default function KanbanBoard({
   allTasks,
   employees,
   companies,
+  onEdit,
+  onDelete,
 }: {
   tasks: Task[];
   allTasks: Task[];
   employees: Employee[];
   companies: Company[];
+  onEdit?: (repr: Task, ids: string[], label: string) => void;
+  onDelete?: (ids: string[], label: string) => void;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -168,6 +172,26 @@ export default function KanbanBoard({
                       {STAGE_LABELS[t.stage as Stage] ?? "مهمة"}
                     </span>
                     <span className="text-xs font-medium truncate flex-1">{c.label}</span>
+                    {onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(t, c.ids, c.label)}
+                        title="تعديل"
+                        className="shrink-0 text-fg-muted hover:text-accent transition"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(c.ids, c.label)}
+                        title="حذف"
+                        className="shrink-0 text-fg-muted hover:text-danger transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   {c.blockedByLabel && (

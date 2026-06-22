@@ -46,6 +46,8 @@ export function cardLabelFor(
   reelNum: Map<string, number>,
   coName: (id: string | null) => string,
 ): string {
+  // A custom name (set via the card's تعديل) overrides the auto label.
+  if (t.title && t.title.trim()) return t.title;
   const co = coName(t.companyId);
   const publish = t.stage === "PUBLISH";
   if (t.type === "POST")
