@@ -9,8 +9,6 @@ import {
   BOARD_LABELS,
   BOARD_COLORS,
   STAGE_LABELS,
-  CONTENT_TYPE_LABELS,
-  PRIORITY_LABELS,
   taskColor,
   type Board,
   type Stage,
@@ -18,10 +16,11 @@ import {
 import { formatDateShort } from "@/lib/dates";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
+import { Pill, PriorityPill, LatePill } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
-import { AlertTriangle, Lock, Pencil, Trash2 } from "lucide-react";
+import { Clock, CalendarDays, Lock, Pencil, Trash2, Send } from "lucide-react";
 
 const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
 
@@ -65,6 +64,14 @@ export default function KanbanBoard({
   const empName = (id: string | null) => emp(id)?.name ?? "—";
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+
+  // Late = finished after the deadline, or past the deadline and not yet done.
+  const isLate = (t: Task) => {
+    if (!t.readyDate) return false;
+    const due = new Date(t.readyDate).getTime();
+    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
+    return !["READY", "PUBLISHED"].includes(t.status) && Date.now() > due;
+  };
 
   // Reel numbering + labels are shared with the rest of the app (lib/cards) so
   // every view shows identical labels.
@@ -169,7 +176,8 @@ export default function KanbanBoard({
                       className="text-[9px] rounded px-1 py-0.5 shrink-0"
                       style={{ background: `${color}22`, color }}
                     >
-                      {STAGE_LABELS[t.stage as Stage] ?? "مهمة"}
+                      {STAGE_LABELS[t.stage as Stage] ??
+                        (t.kind === "ADHOC" ? "إضافية" : "مهمة")}
                     </span>
                     <span className="text-xs font-medium truncate flex-1">{c.label}</span>
                     {onEdit && (
@@ -200,19 +208,30 @@ export default function KanbanBoard({
                     </div>
                   )}
 
-                  <div className="flex items-center gap-1.5 text-[10px] text-fg-muted flex-wrap">
-                    <Avatar name={empName(t.assigneeId)} color={empColor(t.assigneeId)} size={14} />
-                    <span>{empName(t.assigneeId)}</span>
-                    {t.priority === "URGENT" && (
-                      <span className="text-danger flex items-center gap-0.5">
-                        <AlertTriangle className="w-3 h-3" /> {PRIORITY_LABELS.URGENT}
-                      </span>
+                  {/* owner + priority */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-fg-dim">
+                    <Avatar name={empName(t.assigneeId)} color={empColor(t.assigneeId)} size={16} />
+                    <span className="truncate flex-1">{empName(t.assigneeId)}</span>
+                    <PriorityPill priority={t.priority} />
+                  </div>
+
+                  {/* dates · duration · lateness */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {c.durLabel && <Pill icon={<Clock className="w-3 h-3" />}>{c.durLabel}</Pill>}
+                    {t.stage !== "PUBLISH" && t.workDate && (
+                      <Pill icon={<CalendarDays className="w-3 h-3" />}>
+                        يبدأ {formatDateShort(new Date(t.workDate))}
+                      </Pill>
                     )}
-                    {c.durLabel && <span>· مدة {c.durLabel}</span>}
-                    {t.readyDate && t.stage !== "PUBLISH" && (
-                      <span>· تجهيز {formatDateShort(new Date(t.readyDate))}</span>
+                    {t.stage !== "PUBLISH" && t.readyDate && (
+                      <Pill>تسليم {formatDateShort(new Date(t.readyDate))}</Pill>
                     )}
-                    {t.publishDate && <span>· نشر {formatDateShort(new Date(t.publishDate))}</span>}
+                    {t.publishDate && (
+                      <Pill icon={<Send className="w-3 h-3" />}>
+                        نشر {formatDateShort(new Date(t.publishDate))}
+                      </Pill>
+                    )}
+                    {isLate(t) && <LatePill />}
                   </div>
 
                   <Select

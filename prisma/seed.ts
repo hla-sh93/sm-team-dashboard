@@ -215,6 +215,7 @@ async function main() {
       reels: c.reels,
       stories: c.stories,
       aiReels: c.aiReels,
+      ...(c.contractStartDate ? { contractStartDate: D(c.contractStartDate) } : {}),
       ...(c.color ? { color: c.color } : {}),
       postOwnerId: c.postOwnerId,
       storyOwnerId: c.storyOwnerId,

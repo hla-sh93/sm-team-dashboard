@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Company, Employee } from "@/types";
 import { companySchema, type CompanyInput } from "@/lib/schemas";
 import { createCompany, updateCompany } from "@/server/actions/companies";
+import { toISODate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
 import {
@@ -37,6 +38,9 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         reels: company.reels,
         aiReels: company.aiReels,
         stories: company.stories,
+        contractStartDate: company.contractStartDate
+          ? toISODate(new Date(company.contractStartDate))
+          : "",
         color: company.color ?? "#C8A84E",
         priority: company.priority,
         status: company.status as CompanyInput["status"],
@@ -44,6 +48,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         storyOwnerId: company.storyOwnerId ?? "",
         aiReelOwnerId: company.aiReelOwnerId ?? "",
         defaultOwnerId: company.defaultOwnerId ?? "",
+        photographerId: company.photographerId ?? "",
       }
     : {
         name: "",
@@ -52,6 +57,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         reels: 0,
         aiReels: 0,
         stories: 0,
+        contractStartDate: "",
         color: "#C8A84E",
         priority: 99,
         status: "active",
@@ -59,6 +65,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         storyOwnerId: "",
         aiReelOwnerId: "",
         defaultOwnerId: "",
+        photographerId: "",
       };
 
   const {
@@ -100,6 +107,8 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
     </>
   );
 
+  const photographers = employees.filter((e) => e.isPhotographer);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -129,6 +138,17 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
               شركة مُدارة (لها خطة نشر)
             </label>
           </div>
+
+          {managed && (
+            <div className="space-y-1.5">
+              <Label>تاريخ بداية العقد</Label>
+              <Input type="date" {...register("contractStartDate")} />
+              <p className="text-[11px] text-fg-dim">
+                تُوزَّع الخطة على دورة 30 يوماً من هذا التاريخ (مثال: من 20 لـ 20).
+                اتركيه فارغاً لتوزيع الخطة على الشهر الميلادي.
+              </p>
+            </div>
+          )}
 
           {managed && (
             <div className="grid grid-cols-4 gap-3">
@@ -165,6 +185,19 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
                 <Label>مالك ريل AI</Label>
                 <Select {...register("aiReelOwnerId")}>{ownerOptions}</Select>
               </div>
+              {photographers.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label>المصور (للريلز)</Label>
+                  <Select {...register("photographerId")}>
+                    <option value="">— تلقائي (أول مصور) —</option>
+                    {photographers.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-1.5">

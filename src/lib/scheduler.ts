@@ -24,9 +24,10 @@ import {
 } from "./constants";
 import {
   backWorkday,
-  getMonthDays,
+  companyCycle,
+  contractDayOf,
+  packingWindowDays,
   parseWorkDays,
-  periodDays,
   shiftDays,
   toISODate,
 } from "./dates";
@@ -59,10 +60,15 @@ export type CompanyInput = {
   reels: number;
   stories: number;
   aiReels: number;
+  /** Contract start date — when set, the plan distributes over the company's
+   *  30-day contract cycle (day→day next month) instead of the calendar month. */
+  contractStartDate?: Date | string | null;
   postOwnerId: string | null;
   storyOwnerId: string | null;
   aiReelOwnerId: string | null;
   defaultOwnerId: string | null;
+  /** Photographer who shoots this company's reels. Null → first photographer. */
+  photographerId?: string | null;
 };
 
 export type AdhocInput = {
@@ -162,36 +168,39 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     .filter((c) => c.managed && (c.status ?? "active") === "active")
     .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
 
+  // Photographers — reels route to the company's assigned photographer, falling
+  // back to the first one (so a single-photographer setup is unchanged).
+  const photographers = state.employees.filter((e) => e.isPhotographer);
+  const firstPhotographer = photographers[0];
+  const photographerOf = (co: CompanyInput): string | null =>
+    co.photographerId ?? firstPhotographer?.id ?? null;
+
   function ownerFor(co: CompanyInput, type: ContentType): string | null {
-    if (type === "REEL") {
-      const photographer = state.employees.find((e) => e.isPhotographer);
-      return photographer?.id ?? null;
-    }
+    if (type === "REEL") return photographerOf(co);
     if (type === "POST") return co.postOwnerId ?? co.defaultOwnerId ?? null;
     if (type === "STORY") return co.storyOwnerId ?? co.defaultOwnerId ?? null;
     if (type === "AI_REEL") return co.aiReelOwnerId ?? co.defaultOwnerId ?? null;
     return co.defaultOwnerId ?? null;
   }
 
-  // Month-wide publishing distribution. Spread each company's items evenly
-  // across ALL month days (7-day canvas), keep FEED items (POST/REEL/AI_REEL)
-  // ≥1 day apart for a company (no same or consecutive day), let stories share
-  // days, and stagger companies (offset) so they don't all publish together.
-  // Smart spacing per plan = monthLen / itemCount.
-  const monthDays = getMonthDays(year, month);
-  const monthLen = monthDays.length;
-  const weekOfMonth = (dayIdx: number) =>
-    Math.min(4, Math.floor(dayIdx / (monthLen / 4)) + 1);
-
+  // Publishing distribution. Each company's items spread evenly across its
+  // CONTRACT CYCLE (a 30-day day→day window when a contractStartDate is set,
+  // otherwise the plain calendar month). FEED items (POST/REEL/AI_REEL) stay
+  // ≥1 day apart for a company (no same or consecutive day); stories may share
+  // days; companies are staggered (offset) so they don't all publish together.
   let coIdx = 0;
   for (const co of managed) {
-    const offset = (coIdx * 2) % monthLen; // rotate companies apart
+    const cycleDays = companyCycle(year, month, contractDayOf(co.contractStartDate)).days;
+    const cycleLen = cycleDays.length;
+    const weekOfCycle = (dayIdx: number) =>
+      Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);
+    const offset = (coIdx * 2) % cycleLen; // rotate companies apart
     coIdx++;
     const seqByDay = new Map<string, number>();
 
     const emit = (type: ContentType, dayIdx: number) => {
       const ownerId = ownerFor(co, type);
-      const publishDate = new Date(monthDays[dayIdx]);
+      const publishDate = new Date(cycleDays[dayIdx]);
       const iso = toISODate(publishDate);
       const k = `${type}|${iso}`;
       const seq = (seqByDay.get(k) ?? 0) + 1;
@@ -209,7 +218,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         publishDate,
         readyDate: null,
         workDate: null,
-        week: weekOfMonth(dayIdx),
+        week: weekOfCycle(dayIdx),
         overflow: false,
         month,
         year,
@@ -238,8 +247,8 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     const usedFeed = new Set<number>();
     feedSeq.forEach((type, i) => {
       const target =
-        Math.round(offset + (i + 0.5) * (monthLen / feedSeq.length)) % monthLen;
-      const slot = placeAvoidingAdjacent(target, usedFeed, monthLen);
+        Math.round(offset + (i + 0.5) * (cycleLen / feedSeq.length)) % cycleLen;
+      const slot = placeAvoidingAdjacent(target, usedFeed, cycleLen);
       usedFeed.add(slot);
       emit(type, slot);
     });
@@ -248,8 +257,8 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     const usedStory = new Set<number>();
     for (let i = 0; i < co.stories; i++) {
       const target =
-        Math.round(offset + (i + 0.5) * (monthLen / co.stories)) % monthLen;
-      const slot = placeUnique(target, usedStory, monthLen);
+        Math.round(offset + (i + 0.5) * (cycleLen / co.stories)) % cycleLen;
+      const slot = placeUnique(target, usedStory, cycleLen);
       usedStory.add(slot);
       emit("STORY", slot);
     }
@@ -257,11 +266,19 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 
   // -------------------------------------------------------------------------
   // §5.5 — photographer sessions (real reels) → reel shoot/ready dates.
+  // Reels are grouped by their company's assigned photographer, then each
+  // photographer's sessions are built on HIS OWN working days. This splits the
+  // shoot load across multiple freelance photographers.
   // -------------------------------------------------------------------------
-  const photographer = state.employees.find((e) => e.isPhotographer);
-  const reelsByCompany = managed
-    .filter((co) => co.reels > 0)
-    .map((co) => ({
+  const reelCompanies = managed.filter((co) => co.reels > 0);
+  const reelsByPhotographer = new Map<
+    string,
+    { companyId: string; companyName: string; reels: ReelTask[] }[]
+  >();
+  for (const co of reelCompanies) {
+    const pid = photographerOf(co);
+    if (!pid) continue; // no photographer at all — warned below
+    const entry = {
       companyId: co.id,
       companyName: co.name,
       reels: tasks
@@ -271,28 +288,37 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
           companyId: co.id,
           publishDate: t.publishDate!,
         })),
-    }));
+    };
+    const arr = reelsByPhotographer.get(pid) ?? [];
+    arr.push(entry);
+    reelsByPhotographer.set(pid, arr);
+  }
 
-  let sessions: GeneratedPhotoSession[] = [];
-  if (photographer && reelsByCompany.length > 0) {
+  const sessions: GeneratedPhotoSession[] = [];
+  const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
+  for (const [pid, comps] of reelsByPhotographer) {
+    const emp = empById.get(pid);
+    if (!emp) continue;
     const photo = buildPhotoSessions(
       year,
       month,
-      reelsByCompany,
-      parseWorkDays(photographer.workDays as string | number[]),
+      comps,
+      parseWorkDays(emp.workDays as string | number[]),
     );
-    sessions = photo.sessions;
+    sessions.push(...photo.sessions);
     warnings.push(...photo.warnings);
-    // Stamp reel tasks: workDate = shootDate, readyDate = deliverBy.
-    for (const t of tasks) {
-      if (t.type !== "REEL") continue;
-      const d = photo.reelDates.get(t.detKey);
-      if (d) {
-        t.workDate = d.shootDate;
-        t.readyDate = d.deliverBy;
-      }
+    for (const [k, v] of photo.reelDates) reelDates.set(k, v);
+  }
+  // Stamp reel tasks: workDate = shootDate, readyDate = deliverBy.
+  for (const t of tasks) {
+    if (t.type !== "REEL") continue;
+    const d = reelDates.get(t.detKey);
+    if (d) {
+      t.workDate = d.shootDate;
+      t.readyDate = d.deliverBy;
     }
-  } else if (reelsByCompany.length > 0 && !photographer) {
+  }
+  if (reelCompanies.length > 0 && photographers.length === 0) {
     warnings.push({
       level: "warning",
       message: "لا يوجد مصور في الفريق — ريلات التصوير بلا جدولة",
@@ -348,10 +374,19 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     byEmployee.set(t.assigneeId!, arr);
   }
 
+  // Contract-cycle companies push deadlines past the calendar month, so the
+  // packing canvas must reach the furthest readyDate/publishDate in play.
+  let until = new Date(year, month, 1);
+  for (const t of tasks) {
+    for (const d of [t.readyDate, t.publishDate, t.workDate]) {
+      if (d && d.getTime() > until.getTime()) until = d;
+    }
+  }
+
   for (const [empId, empTasks] of byEmployee) {
     const emp = empById.get(empId);
     if (!emp) continue;
-    packEmployee(emp, empTasks, year, month, warnings);
+    packEmployee(emp, empTasks, year, month, until, warnings);
   }
 
   // Stats.
@@ -382,11 +417,14 @@ function packEmployee(
   empTasks: ScheduledTask[],
   year: number,
   month: number,
+  until: Date,
   warnings: SchedulerWarning[],
 ): void {
   const workDays = parseWorkDays(emp.workDays as string | number[]);
   const cap = emp.hoursPerDay > 0 ? emp.hoursPerDay : 6;
-  const days = periodDays(year, month).filter((d) => workDays.includes(d.getDay()));
+  const days = packingWindowDays(year, month, until).filter((d) =>
+    workDays.includes(d.getDay()),
+  );
   const dayISO = days.map(toISODate);
   const load = new Map<string, number>();
   const loadOf = (iso: string) => load.get(iso) ?? 0;

@@ -54,6 +54,14 @@ export const companySchema = z.object({
   reels: z.coerce.number().int().min(0).max(100).default(0),
   aiReels: z.coerce.number().int().min(0).max(100).default(0),
   stories: z.coerce.number().int().min(0).max(300).default(0),
+  // Contract signing date (YYYY-MM-DD). Drives the 30-day plan cycle; null =
+  // distribute over the calendar month.
+  contractStartDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null)),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")
@@ -64,6 +72,7 @@ export const companySchema = z.object({
   storyOwnerId: optId,
   aiReelOwnerId: optId,
   defaultOwnerId: optId,
+  photographerId: optId,
 });
 export type CompanyInput = z.infer<typeof companySchema>;
 

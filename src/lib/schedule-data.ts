@@ -38,10 +38,12 @@ export async function loadCompanies(): Promise<CompanyInput[]> {
     reels: c.reels,
     stories: c.stories,
     aiReels: c.aiReels,
+    contractStartDate: c.contractStartDate,
     postOwnerId: c.postOwnerId,
     storyOwnerId: c.storyOwnerId,
     aiReelOwnerId: c.aiReelOwnerId,
     defaultOwnerId: c.defaultOwnerId,
+    photographerId: c.photographerId,
   }));
 }
 

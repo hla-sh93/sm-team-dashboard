@@ -10,6 +10,13 @@ function revalidateAll() {
   }
 }
 
+/** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */
+function parseContractDate(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const [y, m, d] = v.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export async function createCompany(input: CompanyInput) {
   const parsed = companySchema.safeParse(input);
   if (!parsed.success) {
@@ -25,6 +32,7 @@ export async function createCompany(input: CompanyInput) {
         reels: d.reels,
         aiReels: d.aiReels,
         stories: d.stories,
+        contractStartDate: parseContractDate(d.contractStartDate),
         color: d.color,
         priority: d.priority,
         status: d.status,
@@ -32,6 +40,7 @@ export async function createCompany(input: CompanyInput) {
         storyOwnerId: d.storyOwnerId,
         aiReelOwnerId: d.aiReelOwnerId,
         defaultOwnerId: d.defaultOwnerId,
+        photographerId: d.photographerId,
       },
     });
     revalidateAll();
@@ -57,6 +66,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
         reels: d.reels,
         aiReels: d.aiReels,
         stories: d.stories,
+        contractStartDate: parseContractDate(d.contractStartDate),
         color: d.color,
         priority: d.priority,
         status: d.status,
@@ -64,6 +74,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
         storyOwnerId: d.storyOwnerId,
         aiReelOwnerId: d.aiReelOwnerId,
         defaultOwnerId: d.defaultOwnerId,
+        photographerId: d.photographerId,
       },
     });
     revalidateAll();

@@ -33,6 +33,7 @@ export type Company = {
   reels: number;
   stories: number;
   aiReels: number;
+  contractStartDate: Date | null;
   color: string | null;
   priority: number;
   status: string;
@@ -40,6 +41,7 @@ export type Company = {
   storyOwnerId: string | null;
   aiReelOwnerId: string | null;
   defaultOwnerId: string | null;
+  photographerId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

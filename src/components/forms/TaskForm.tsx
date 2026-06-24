@@ -137,11 +137,11 @@ export default function TaskForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "تعديل مهمة" : "إضافة مهمة مستعجلة"}</DialogTitle>
+          <DialogTitle>{isEdit ? "تعديل مهمة" : "إضافة مهمة إضافية"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "عدّل الاسم، المسؤول، الأولوية، وتاريخ البداية/النهاية. يُحدَّث الحمل وتُعاد الجدولة تلقائياً."
-              : "تُجدول المهمة المستعجلة في أقرب وقت متاح ضمن سعة الموظف."}
+              : "تُجدول المهمة الإضافية حسب أولويتها (عادي/مهم/مستعجل) ضمن سعة الموظف."}
           </DialogDescription>
         </DialogHeader>
 

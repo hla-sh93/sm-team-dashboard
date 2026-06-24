@@ -43,6 +43,7 @@ model Employee {
   storyCompanies  Company[] @relation("storyOwner")
   aiReelCompanies Company[] @relation("aiReelOwner")
   defaultCompanies Company[] @relation("defaultOwner")
+  photographerCompanies Company[] @relation("photographer")
   tasks           Task[]
 }
 
@@ -59,6 +60,12 @@ model Company {
   reels   Int @default(0)   // real reels → photographer
   stories Int @default(0)
   aiReels Int @default(0)   // AI reels → designer
+
+  // Contract start date. When set, the company's monthly plan is distributed
+  // over its 30-day CONTRACT CYCLE ([contractDay → contractDay next month])
+  // instead of the calendar month. Null = distribute over the calendar month
+  // (default / back-compatible behaviour).
+  contractStartDate DateTime?
 
   // Carried-over UI / deterministic-ordering fields (not part of §3 plan but
   // used by screens and to give the engine a stable company order).
@@ -78,6 +85,10 @@ model Company {
   aiReelOwner   Employee? @relation("aiReelOwner", fields: [aiReelOwnerId], references: [id], onDelete: SetNull)
   defaultOwnerId String?
   defaultOwner   Employee? @relation("defaultOwner", fields: [defaultOwnerId], references: [id], onDelete: SetNull)
+  // Which photographer shoots THIS company's reels. Null → the first/only
+  // photographer. Lets reel work be split across multiple freelance photographers.
+  photographerId String?
+  photographer   Employee? @relation("photographer", fields: [photographerId], references: [id], onDelete: SetNull)
 
   tasks         Task[]
   photoSessions PhotoSession[]

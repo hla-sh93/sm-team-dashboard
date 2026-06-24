@@ -63,6 +63,7 @@ type Co = Pick<
   | "storyOwnerId"
   | "aiReelOwnerId"
   | "defaultOwnerId"
+  | "photographerId"
 >;
 
 /** Owner of a (company, content-type), falling back to the design-only owner. */
@@ -87,6 +88,9 @@ export function computeWorkload(
   const managed = companies.filter(
     (c) => c.managed && (c.status ?? "active") === "active",
   );
+  // A company's reels belong to its assigned photographer, else the first one.
+  const firstPhotographerId = employees.find((e) => e.isPhotographer)?.id ?? null;
+  const photographerOf = (c: Co) => c.photographerId ?? firstPhotographerId;
 
   return employees.map((emp) => {
     const wd = parseWorkDays(emp.workDays);
@@ -137,7 +141,9 @@ export function computeWorkload(
         baseDone += co.size ? cost * (done.size / co.size) : 0;
       }
     } else if (photographer) {
-      planReels = managed.reduce((a, c) => a + c.reels, 0);
+      planReels = managed
+        .filter((c) => photographerOf(c) === emp.id)
+        .reduce((a, c) => a + c.reels, 0);
       if (planReels > 0) baseDays = taskDays(emp, "REEL", planReels);
     } else {
       for (const c of managed) {

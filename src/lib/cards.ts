@@ -50,10 +50,12 @@ export function cardLabelFor(
   if (t.title && t.title.trim()) return t.title;
   const co = coName(t.companyId);
   const publish = t.stage === "PUBLISH";
+  // Posts/stories ALWAYS carry their count — even a single one — so a task is
+  // never shown as a bare "بوستات/ستوريز" without a number.
   if (t.type === "POST")
-    return `${publish ? "جدولة بوستات" : "بوستات"} · ${co}${count > 1 ? ` (${count})` : ""}`;
+    return `${publish ? "جدولة بوستات" : "بوستات"} · ${co} (${count})`;
   if (t.type === "STORY")
-    return `${publish ? "جدولة ستوريز" : "ستوريز"} · ${co}${count > 1 ? ` (${count})` : ""}`;
+    return `${publish ? "جدولة ستوريز" : "ستوريز"} · ${co} (${count})`;
   if (t.type === "REEL" || t.type === "AI_REEL") {
     const n = reelNum.get(t.id);
     const base = t.type === "AI_REEL" ? "ريل AI" : "ريل";

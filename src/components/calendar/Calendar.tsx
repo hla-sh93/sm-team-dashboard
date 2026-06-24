@@ -70,6 +70,17 @@ export default function Calendar<T>({
 
   const dayItems = (d: Date) => byDay.get(toISODate(d)) ?? [];
 
+  // Furthest item date — lets the monthly grid stretch to cover contract cycles
+  // that publish into the next calendar month.
+  const maxItemDate = useMemo(() => {
+    let max: Date | null = null;
+    for (const it of items) {
+      const d = getDate(it);
+      if (d && (!max || d.getTime() > max.getTime())) max = new Date(d);
+    }
+    return max;
+  }, [items, getDate]);
+
   const shiftAnchor = (deltaDays: number) => {
     const d = new Date(anchor);
     d.setDate(d.getDate() + deltaDays);
@@ -82,6 +93,7 @@ export default function Calendar<T>({
         <MonthGrid
           year={year}
           month={month}
+          until={maxItemDate}
           dayItems={dayItems}
           renderChip={renderChip}
           accent={accent}
@@ -182,6 +194,7 @@ function NavBar({
 function MonthGrid<T>({
   year,
   month,
+  until,
   dayItems,
   renderChip,
   accent,
@@ -189,12 +202,13 @@ function MonthGrid<T>({
 }: {
   year: number;
   month: number;
+  until?: Date | null;
   dayItems: (d: Date) => T[];
   renderChip: (item: T) => React.ReactNode;
   accent: string;
   onCellClick: (d: Date) => void;
 }) {
-  const grid = useMemo(() => monthGridDays(year, month), [year, month]);
+  const grid = useMemo(() => monthGridDays(year, month, until), [year, month, until]);
   const todayISO = toISODate(new Date());
 
   return (

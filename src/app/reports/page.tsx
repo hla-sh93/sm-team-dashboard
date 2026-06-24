@@ -13,6 +13,8 @@ import {
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
+import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
+import { LatePill } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
 import { CheckCircle2, Trophy } from "lucide-react";
 
@@ -109,6 +111,28 @@ export default async function ReportsPage({
     arr.push(t);
     byAssignee.set(t.assigneeId ?? "", arr);
   }
+
+  // Per-person LEDGER (all their tasks, batched like the board) for the detailed
+  // breakdown: name · start → end · actual duration · lateness.
+  const reelNum = buildReelNumbers(tasks);
+  const allByAssignee = new Map<string, typeof tasks>();
+  for (const t of tasks) {
+    if (!t.assigneeId) continue;
+    const arr = allByAssignee.get(t.assigneeId) ?? [];
+    arr.push(t);
+    allByAssignee.set(t.assigneeId, arr);
+  }
+  const isLate = (t: (typeof tasks)[number]) => {
+    if (!t.readyDate) return false;
+    const due = new Date(t.readyDate).getTime();
+    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
+    return !isDone(t.status) && Date.now() > due;
+  };
+  // Start = when work began (else planned workDate); End = when finished (else the
+  // deadline / publish date).
+  const startOf = (t: (typeof tasks)[number]) => t.startedAt ?? t.workDate;
+  const endOf = (t: (typeof tasks)[number]) =>
+    t.finishedAt ?? t.readyDate ?? t.publishDate;
 
   const teamRows: ReportRow[] = employees.map((e) => {
     const w = workload.find((x) => x.employee.id === e.id);
@@ -264,9 +288,18 @@ export default async function ReportsPage({
       )}
 
       <div className="space-y-4">
+        <h2 className="display-font text-lg">تفاصيل المهام لكل شخص</h2>
         {employees.map((e) => {
-          const mine = byAssignee.get(e.id) ?? [];
+          const mine = allByAssignee.get(e.id) ?? [];
           if (mine.length === 0) return null;
+          const total = mine.reduce((a, t) => a + qty(t), 0);
+          const doneN = mine.filter((t) => isDone(t.status)).reduce((a, t) => a + qty(t), 0);
+          const cards = groupTasksIntoCards(mine).sort((a, b) => {
+            const la = isLate(a.repr) ? 1 : 0;
+            const lb = isLate(b.repr) ? 1 : 0;
+            if (la !== lb) return lb - la; // late first
+            return (startOf(a.repr)?.getTime() ?? 0) - (startOf(b.repr)?.getTime() ?? 0);
+          });
           return (
             <Card key={e.id}>
               <div className="flex items-center justify-between mb-3">
@@ -277,48 +310,71 @@ export default async function ReportsPage({
                     <div className="text-xs text-fg-muted">{ROLE_LABELS[e.role] ?? e.role}</div>
                   </div>
                 </div>
-                <div className="display-font text-2xl text-success">
-                  {mine.reduce((a, t) => a + qty(t), 0)}
+                <div className="text-left">
+                  <div className="display-font text-2xl">
+                    <span className="text-success">{doneN}</span>
+                    <span className="text-fg-muted text-lg"> / {total}</span>
+                  </div>
+                  <div className="text-[10px] text-fg-muted">منجز / إجمالي المهام</div>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                {mine.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 text-sm py-1.5 border-b border-border-soft last:border-0"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
-                    <span className="flex-1 truncate">
-                      {t.kind === "CONTENT" && t.type
-                        ? `${CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS]} · ${coName(t.companyId)}`
-                        : t.title}
-                      {qty(t) > 1 && <span className="text-accent"> ×{qty(t)}</span>}
-                    </span>
-                    {t.startedAt && t.finishedAt && (
-                      <span className="text-[11px] text-fg-muted shrink-0 hidden sm:inline">
-                        {formatDateShort(new Date(t.startedAt))} → {formatDateShort(new Date(t.finishedAt))}
-                      </span>
-                    )}
-                    <span
-                      className="text-[11px] tabular-nums shrink-0 text-accent"
-                      title="المدة الفعلية المستغرقة (من البدء حتى الإنجاز)"
+
+              {/* column header */}
+              <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-3 text-[10px] text-fg-muted border-b border-border-soft pb-1 mb-1">
+                <span>المهمة</span>
+                <span>البداية ← النهاية</span>
+                <span className="text-center">المدة الفعلية</span>
+                <span className="text-center">الحالة</span>
+              </div>
+
+              <div className="space-y-1">
+                {cards.map((c) => {
+                  const t = c.repr;
+                  const taskDone = isDone(t.status);
+                  const late = isLate(t);
+                  const s = startOf(t);
+                  const en = endOf(t);
+                  return (
+                    <div
+                      key={c.key}
+                      className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center gap-x-3 gap-y-0.5 text-sm py-1.5 border-b border-border-soft last:border-0"
                     >
-                      {elapsedLabel(elapsedDays(t))}
-                    </span>
-                    <span className="text-xs text-fg-dim shrink-0">
-                      {STATUS_LABELS[t.status as Status] ?? t.status}
-                    </span>
-                  </div>
-                ))}
+                      <span className="flex items-center gap-2 min-w-0">
+                        {taskDone ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                        ) : (
+                          <span
+                            className={
+                              "w-2 h-2 rounded-full shrink-0 " +
+                              (late ? "bg-danger" : "bg-border")
+                            }
+                          />
+                        )}
+                        <span className="truncate">
+                          {cardLabelFor(t, c.count, reelNum, coName)}
+                        </span>
+                        {late && <LatePill />}
+                      </span>
+                      <span className="text-[11px] text-fg-muted tabular-nums shrink-0">
+                        {s ? formatDateShort(new Date(s)) : "—"} ←{" "}
+                        {en ? formatDateShort(new Date(en)) : "—"}
+                      </span>
+                      <span
+                        className="text-[11px] tabular-nums shrink-0 text-accent sm:text-center sm:w-20"
+                        title="المدة الفعلية المستغرقة (من البدء حتى الإنجاز)"
+                      >
+                        {elapsedLabel(elapsedDays(t))}
+                      </span>
+                      <span className="text-xs text-fg-dim shrink-0 sm:text-center sm:w-20">
+                        {STATUS_LABELS[t.status as Status] ?? t.status}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           );
         })}
-        {contributors.length === 0 && (
-          <Card className="text-center py-10 text-fg-muted">
-            لا توجد مهام منجزة في {label} بعد.
-          </Card>
-        )}
       </div>
     </div>
   );

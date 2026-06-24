@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Employee } from "@/types";
@@ -91,6 +91,34 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
   }, [employee, open]);
 
   const workDays = watch("workDays") ?? [];
+  const isPhotographer = watch("isPhotographer");
+
+  // Photographer capacity entered the natural way: "X reels every Y days". We
+  // derive the engine's rate = X / Y (reels per working day). Editing an existing
+  // rate shows it back over a 3-day window (e.g. 0.67 → 2 reels / 3 days).
+  const initReel = (): { count: number | ""; days: number | "" } => {
+    const r = er.REEL;
+    if (r && r > 0) return { count: Math.round(r * 3), days: 3 };
+    return { count: "", days: "" };
+  };
+  const [reel, setReel] = useState<{ count: number | ""; days: number | "" }>(initReel);
+  useEffect(() => {
+    setReel(initReel());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee, open]);
+  const reelRate =
+    Number(reel.count) > 0 && Number(reel.days) > 0
+      ? Number(reel.count) / Number(reel.days)
+      : null;
+  const setReelField = (k: "count" | "days", v: string) => {
+    const next = { ...reel, [k]: v === "" ? "" : Number(v) };
+    setReel(next);
+    const c = Number(next.count);
+    const d = Number(next.days);
+    setValue("rates.REEL", c > 0 && d > 0 ? Math.round((c / d) * 1000) / 1000 : undefined, {
+      shouldValidate: true,
+    });
+  };
 
   const toggleDay = (d: number) => {
     const set = new Set(workDays);
@@ -137,25 +165,59 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label>الطاقة الإنتاجية (بالقطعة / يوم)</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="space-y-1">
-                <span className="text-[11px] text-fg-dim">بوست</span>
-                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.POST", { valueAsNumber: true })} />
+            <Label>الطاقة الإنتاجية</Label>
+
+            {isPhotographer ? (
+              /* Photographer: enter shooting speed as "X reels every Y days". */
+              <div className="rounded-lg border border-border-soft p-3 space-y-2">
+                <span className="text-[11px] text-fg-dim">سرعة التصوير</span>
+                <div className="flex items-center gap-2 flex-wrap text-sm">
+                  <span>ينجز</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    placeholder="2"
+                    className="w-16 text-center"
+                    value={reel.count}
+                    onChange={(e) => setReelField("count", e.target.value)}
+                  />
+                  <span>ريل كل</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="1"
+                    placeholder="3"
+                    className="w-16 text-center"
+                    value={reel.days}
+                    onChange={(e) => setReelField("days", e.target.value)}
+                  />
+                  <span>يوم عمل</span>
+                </div>
+                <p className="text-[11px] text-accent">
+                  {reelRate != null
+                    ? `≈ ${Math.round(reelRate * 100) / 100} ريل/يوم — أي نزلة تصوير تُغطّي عدة ريلات`
+                    : "اتركيها فارغة لاستخدام الافتراضي (ريلين كل 3 أيام)."}
+                </p>
               </div>
-              <div className="space-y-1">
-                <span className="text-[11px] text-fg-dim">ستوري</span>
-                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.STORY", { valueAsNumber: true })} />
+            ) : (
+              /* Designer / writer: items per working day. */
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">بوست / يوم</span>
+                  <Input type="number" step="1" min="0" placeholder="—" {...register("rates.POST", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">ستوري / يوم</span>
+                  <Input type="number" step="1" min="0" placeholder="—" {...register("rates.STORY", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">ريل AI / يوم</span>
+                  <Input type="number" step="1" min="0" placeholder="—" {...register("rates.AI_REEL", { valueAsNumber: true })} />
+                </div>
               </div>
-              <div className="space-y-1">
-                <span className="text-[11px] text-fg-dim">ريل AI</span>
-                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.AI_REEL", { valueAsNumber: true })} />
-              </div>
-              <div className="space-y-1">
-                <span className="text-[11px] text-fg-dim">ريل تصوير</span>
-                <Input type="number" step="1" min="0" placeholder="—" {...register("rates.REEL", { valueAsNumber: true })} />
-              </div>
-            </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 pt-1">
               <div className="space-y-1">
                 <span className="text-[11px] text-fg-dim">مدة إعداد الخطة (أيام)</span>
@@ -166,7 +228,9 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                 <Input type="color" {...register("color")} className="h-10 p-1" />
               </div>
             </div>
-            <p className="text-[10px] text-fg-muted">اتركي الخانة فارغة لاستخدام الافتراضي. مثال: سابين 6 بوست/يوم، أيمن 1 ريل AI/يوم، نوال خطة خلال يومين.</p>
+            <p className="text-[10px] text-fg-muted">
+              اتركي الخانة فارغة لاستخدام الافتراضي. مثال: سابين 6 بوست/يوم، أيمن 1 ريل AI/يوم، مصوّر ريلين كل 3 أيام.
+            </p>
           </div>
 
           <div className="space-y-2">

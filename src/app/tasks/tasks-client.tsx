@@ -19,16 +19,24 @@ import {
   taskColor,
 } from "@/lib/constants";
 import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
+import { Pill, PriorityPill, LatePill } from "@/components/ui/pills";
 import {
   updateTaskStatus,
   updatePhotoSessionStatus,
-  reassignTask,
   deleteTasks,
 } from "@/server/actions/tasks";
 import { formatDateShort } from "@/lib/dates";
 import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task, PhotoSession } from "@/types";
-import { AlertTriangle, Lock, Plus, Camera, Pencil, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Lock,
+  Plus,
+  Camera,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
 /** Unified calendar item: a production task OR a photographer session. */
@@ -101,12 +109,14 @@ export default function TasksClient({
   const coName = (id: string | null) =>
     companies.find((c) => c.id === id)?.name ?? "";
 
-  // Build calendar items: production tasks by workDate (REEL excluded — the
-  // photographer's production unit is the shoot session, not the reel itself),
-  // plus photographer sessions by shootDate.
+  // Build calendar items: PRODUCTION tasks by workDate. We exclude:
+  //  - REEL content (the photographer's production unit is the shoot session),
+  //  - PUBLISH cards (publishing runs 7 days/week incl. days off — it lives on
+  //    the النشر calendar, not the production schedule).
+  // …so the production calendar only ever shows real work on people's workdays.
   const allItems = useMemo<CalItem[]>(() => {
     const taskItems: CalItem[] = tasks
-      .filter((t) => t.type !== "REEL")
+      .filter((t) => t.type !== "REEL" && t.kind !== "PUBLISH")
       .map((t) => ({
         kind: "task" as const,
         id: t.id,
@@ -115,16 +125,19 @@ export default function TasksClient({
         companyId: t.companyId,
         task: t,
       }));
-    const sessionItems: CalItem[] = sessions.map((s) => ({
-      kind: "session" as const,
-      id: s.id,
-      date: new Date(s.shootDate),
-      empId: photographer?.id ?? null,
-      companyId: s.companyId,
-      session: s,
-    }));
+    const sessionItems: CalItem[] = sessions.map((s) => {
+      const co = companies.find((c) => c.id === s.companyId);
+      return {
+        kind: "session" as const,
+        id: s.id,
+        date: new Date(s.shootDate),
+        empId: co?.photographerId ?? photographer?.id ?? null,
+        companyId: s.companyId,
+        session: s,
+      };
+    });
     return [...taskItems, ...sessionItems];
-  }, [tasks, sessions, photographer?.id]);
+  }, [tasks, sessions, companies, photographer?.id]);
 
   const items = useMemo(
     () =>
@@ -152,15 +165,6 @@ export default function TasksClient({
         router.refresh();
       } else toast(r.error, "error");
     });
-  const onReassign = (id: string, assigneeId: string) =>
-    startTransition(async () => {
-      const r = await reassignTask(id, assigneeId);
-      if (r.ok) {
-        toast("تم تحويل المهمة");
-        router.refresh();
-      } else toast(r.error, "error");
-    });
-
   // A task is late if it finished after its deadline, or it's past the deadline
   // and still not done.
   const isLate = (t: Task) => {
@@ -199,22 +203,21 @@ export default function TasksClient({
 
   const renderCard = (it: CalItem) => {
     const color = itemColor(it);
+    const t = it.kind === "task" ? it.task : null;
+    const late = t ? isLate(t) : false;
     return (
       <div
-        className="rounded-sm border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
-        style={{ borderTopColor: color, borderTopWidth: 3 }}
+        className="rounded-md border border-border-soft bg-bg-elev px-2.5 py-2 flex flex-col gap-2"
+        style={{ borderRightColor: color, borderRightWidth: 3 }}
       >
+        {/* title row */}
         <div className="flex items-center gap-1.5 min-w-0">
           {it.kind === "session" && (
             <Camera className="w-3.5 h-3.5 shrink-0" style={{ color }} />
           )}
-          {it.kind === "task" && it.task.overflow && (
-            <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
-          )}
-          {it.kind === "task" && it.task.isPinned && (
-            <Lock className="w-3 h-3 text-accent shrink-0" />
-          )}
-          <span className="text-xs font-medium truncate flex-1">{itemLabel(it)}</span>
+          {t?.overflow && <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />}
+          {t?.isPinned && <Lock className="w-3 h-3 text-accent shrink-0" />}
+          <span className="text-xs font-semibold truncate flex-1">{itemLabel(it)}</span>
           {it.kind === "task" && (
             <>
               <button
@@ -236,61 +239,46 @@ export default function TasksClient({
             </>
           )}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-fg-muted">
-          <Avatar name={empName(it.empId)} color={empColor(it.empId)} size={16} />
-          <span className="truncate">{empName(it.empId)}</span>
-          {it.kind === "task" && it.task.hours > 0 && (
-            <span className="shrink-0">· {daysLabel(it.task.hours / WORK_DAY_HOURS)}</span>
+
+        {/* owner (read-only — change it from تعديل) */}
+        <div className="flex items-center gap-1.5 text-[11px]">
+          <Avatar name={empName(it.empId)} color={empColor(it.empId)} size={18} />
+          <span className="truncate text-fg-dim">{empName(it.empId)}</span>
+        </div>
+
+        {/* meta pills: duration · deadline · priority · late */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {t && t.hours > 0 && (
+            <Pill>{daysLabel(t.hours / WORK_DAY_HOURS)}</Pill>
           )}
           {it.kind === "session" && (
-            <span className="shrink-0">
-              · {PHOTO_KIND_LABELS[it.session.kind as keyof typeof PHOTO_KIND_LABELS]}
+            <Pill>
+              {PHOTO_KIND_LABELS[it.session.kind as keyof typeof PHOTO_KIND_LABELS]}
               {it.session.reelCount > 0 ? ` (${it.session.reelCount})` : ""}
-            </span>
+            </Pill>
           )}
+          {t?.readyDate && (
+            <Pill icon={<CalendarDays className="w-3 h-3" />}>
+              تسليم {formatDateShort(new Date(t.readyDate))}
+            </Pill>
+          )}
+          {t && <PriorityPill priority={t.priority} />}
+          {late && <LatePill />}
         </div>
+
+        {/* status quick-control */}
         {it.kind === "task" ? (
-          <>
-            <div className="flex items-center gap-1.5">
-              <Select
-                className="flex-1 h-7 text-[11px] py-0.5"
-                value={it.task.status}
-                onChange={(e) => onStatus(it.id, e.target.value)}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-              {/* Reassign to another person */}
-              <Select
-                className="flex-1 h-7 text-[11px] py-0.5"
-                value={it.empId ?? ""}
-                onChange={(e) => onReassign(it.id, e.target.value)}
-                title="تحويل لشخص آخر"
-              >
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            {(it.task.startedAt || it.task.finishedAt || isLate(it.task)) && (
-              <div className="flex items-center gap-2 text-[10px] text-fg-muted flex-wrap">
-                {it.task.startedAt && (
-                  <span>بدأ {formatDateShort(new Date(it.task.startedAt))}</span>
-                )}
-                {it.task.finishedAt && (
-                  <span>· انتهى {formatDateShort(new Date(it.task.finishedAt))}</span>
-                )}
-                {isLate(it.task) && (
-                  <span className="text-danger font-medium">⚠ متأخر</span>
-                )}
-              </div>
-            )}
-          </>
+          <Select
+            className="w-full h-7 text-[11px] py-0.5"
+            value={it.task.status}
+            onChange={(e) => onStatus(it.id, e.target.value)}
+          >
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </Select>
         ) : (
           <Select
             className="w-full h-7 text-[11px] py-0.5"
@@ -316,7 +304,7 @@ export default function TasksClient({
         onClick={openCreate}
         className="w-full"
       >
-        <Plus className="w-4 h-4" /> إضافة مهمة مستعجلة
+        <Plus className="w-4 h-4" /> إضافة مهمة إضافية
       </Button>
       {dayItems.length === 0 && (
         <p className="text-sm text-fg-muted text-center py-4">لا مهام في هذا اليوم.</p>
@@ -339,7 +327,7 @@ export default function TasksClient({
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={openCreate}>
-            <Plus className="w-4 h-4" /> مهمة مستعجلة
+            <Plus className="w-4 h-4" /> مهمة إضافية
           </Button>
           <MonthBar year={year} month={month} />
         </div>

@@ -335,6 +335,85 @@ export function periodDays(year: number, month: number): Date[] {
   return days;
 }
 
+/** Clamp a day-of-month to a month's real length (e.g. day 31 in a 30-day
+ *  month → 30, day 30 in February → 28/29). */
+export function clampDayToMonth(year: number, month: number, day: number): number {
+  const last = new Date(year, month + 1, 0).getDate();
+  return Math.min(Math.max(1, day), last);
+}
+
+/**
+ * A company's CONTRACT CYCLE for the (year, month) bucket. When `contractDay`
+ * is given, the cycle runs [day of THIS month → day of NEXT month) — e.g. a
+ * company signed on the 20th gets a 20→20 window. When omitted (null), the
+ * cycle is the plain calendar month (back-compatible default).
+ *
+ * Returns the start (inclusive), end (EXCLUSIVE = next cycle's first day), and
+ * the list of calendar days in the window.
+ */
+export function companyCycle(
+  year: number,
+  month: number,
+  contractDay?: number | null,
+): { start: Date; end: Date; days: Date[] } {
+  let start: Date;
+  let end: Date;
+  if (contractDay && contractDay > 1) {
+    const sd = clampDayToMonth(year, month, contractDay);
+    const ed = clampDayToMonth(year, month + 1, contractDay);
+    start = new Date(year, month, sd);
+    end = new Date(year, month + 1, ed);
+  } else {
+    start = new Date(year, month, 1);
+    end = new Date(year, month + 1, 1);
+  }
+  const days: Date[] = [];
+  const cur = new Date(start);
+  while (cur < end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return { start, end, days };
+}
+
+/** The day-of-month a contractStartDate anchors on (1 when null). */
+export function contractDayOf(date: Date | string | null | undefined): number {
+  if (!date) return 1;
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.getDate();
+}
+
+/** Which cycle-week (1..4) a date falls in, given the cycle's day list. */
+export function cycleWeekOf(date: Date, cycleDays: Date[]): number {
+  if (cycleDays.length === 0) return 1;
+  const iso = toISODate(date);
+  const idx = cycleDays.findIndex((d) => toISODate(d) === iso);
+  const i = idx >= 0 ? idx : 0;
+  return Math.min(4, Math.floor(i / (cycleDays.length / 4)) + 1);
+}
+
+/**
+ * Working days available for employee packing across a window that may stretch
+ * past the calendar month — from (firstSaturday − 7) of the bucket month through
+ * `until` (inclusive). Contract-cycle companies push work into the following
+ * month, so the packing canvas must reach far enough to hold it.
+ */
+export function packingWindowDays(year: number, month: number, until: Date): Date[] {
+  const sat0 = firstSaturday(year, month);
+  const start = new Date(sat0);
+  start.setDate(sat0.getDate() - 7);
+  const periodEnd = new Date(sat0);
+  periodEnd.setDate(sat0.getDate() + 3 * 7 + 4); // week 4 Wednesday
+  const end = until.getTime() > periodEnd.getTime() ? new Date(until) : periodEnd;
+  const days: Date[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
 /**
  * Distribute N across 4 weeks: base = floor(N/4); the N%4 remainder goes to the
  * earliest weeks (§4.4). e.g. 6→[2,2,1,1], 10→[3,3,2,2], 15→[4,4,4,3].
@@ -375,11 +454,14 @@ export function batchSizes(n: number): number[] {
  * Full month calendar grid: all days from the Saturday on/before the 1st to the
  * Friday on/after the last day (so every week row has 7 cells, Sat→Fri).
  */
-export function monthGridDays(year: number, month: number): Date[] {
+export function monthGridDays(year: number, month: number, until?: Date | null): Date[] {
   const first = new Date(year, month, 1);
   const start = new Date(first);
   while (start.getDay() !== 6) start.setDate(start.getDate() - 1);
-  const last = new Date(year, month + 1, 0);
+  let last = new Date(year, month + 1, 0);
+  // Extend the grid to cover `until` (e.g. a contract cycle that spills into the
+  // next month) so those days remain visible in the monthly view.
+  if (until && until.getTime() > last.getTime()) last = new Date(until);
   const end = new Date(last);
   while (end.getDay() !== 5) end.setDate(end.getDate() + 1);
   const days: Date[] = [];
