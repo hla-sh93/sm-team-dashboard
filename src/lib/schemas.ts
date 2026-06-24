@@ -19,6 +19,9 @@ export const employeeSchema = z.object({
   workDays: weekdayArray,
   isScheduled: z.boolean().default(true),
   isPhotographer: z.boolean().default(false),
+  // Finance: monthly salary (fixed cost) + optional per-reel cost (freelancer).
+  salary: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(1_000_000).optional()),
+  costPerReel: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(100_000).optional()),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")
@@ -54,6 +57,8 @@ export const companySchema = z.object({
   reels: z.coerce.number().int().min(0).max(100).default(0),
   aiReels: z.coerce.number().int().min(0).max(100).default(0),
   stories: z.coerce.number().int().min(0).max(300).default(0),
+  // Finance: monthly contract value (revenue).
+  contractValue: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(10_000_000).optional()),
   // Contract signing date (YYYY-MM-DD). Drives the 30-day plan cycle; null =
   // distribute over the calendar month.
   contractStartDate: z

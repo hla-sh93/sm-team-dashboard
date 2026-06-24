@@ -5,7 +5,7 @@ import { employeeSchema, type EmployeeInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/team", "/tasks", "/workload", "/companies", "/reports"]) {
+  for (const p of ["/", "/team", "/tasks", "/workload", "/companies", "/reports", "/finance"]) {
     revalidatePath(p);
   }
 }
@@ -37,6 +37,8 @@ export async function createEmployee(input: EmployeeInput) {
         workDays: JSON.stringify(parsed.data.workDays),
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
+        salary: parsed.data.salary ?? 0,
+        costPerReel: parsed.data.costPerReel ?? null,
         color: parsed.data.color ?? null,
         rates: buildRates(parsed.data),
       },
@@ -63,6 +65,8 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
         workDays: JSON.stringify(parsed.data.workDays),
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
+        salary: parsed.data.salary ?? 0,
+        costPerReel: parsed.data.costPerReel ?? null,
         color: parsed.data.color ?? null,
         rates: buildRates(parsed.data),
       },

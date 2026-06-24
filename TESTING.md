@@ -1,330 +1,371 @@
-# sm-team-dashboard — Pre‑Launch QA Test Plan
+# sm-team-dashboard — Pre‑Launch QA Test Plan (full, current system)
 
-A full, block‑by‑block, feature‑by‑feature test plan to run **before going live**.
-Written to catch bugs, errors, regressions, and leftover artifacts. Each case lists
-**steps → expected result → side effects to verify**. Work top‑to‑bottom; do not
-skip the **Side effects** column — most defects in this app hide there
-(re‑schedule, pin preservation, pipeline pairing, workload recompute).
+A complete, block‑by‑block test plan for the **updated** system: pipeline +
+Kanban, **contract cycles**, **multiple photographers**, plan‑driven workload,
+publishing calendar, achievement reports, and the **finance** P&L. Each case lists
+**steps → expected → side effects**. Work top‑to‑bottom; the side‑effect column is
+where most defects hide (re‑schedule, pin preservation, pipeline parity, cycle
+windows, per‑photographer split, cost allocation).
 
-- **System reference**: `PROJECT.md` (architecture, rules). This plan tests that
-  the implemented behavior matches those rules.
-- **Locale**: Arabic, **RTL**. Light theme, aqua primary.
-- **Months are 0‑based internally**; dates are LOCAL midnight.
+- **Reference**: `PROJECT.md` (architecture & rules — wins on conflict).
+- **Locale**: Arabic, **RTL**, light theme, aqua primary. **Months 0‑based
+  internally**, dates LOCAL midnight. Currency **$**.
 
 ## Severity
-- **S1 Blocker** — data loss, crash, wrong numbers a manager would act on, deploy wipes data.
-- **S2 Major** — feature broken or misleading, but a workaround exists.
+- **S1 Blocker** — data loss, crash, wrong numbers a manager acts on, deploy wipes data.
+- **S2 Major** — feature broken/misleading, workaround exists.
 - **S3 Minor** — cosmetic, label, edge case.
 
-## How to record results
-For each case mark **PASS / FAIL / BLOCKED** + note. A case is **PASS only if both
-the expected result AND every listed side effect hold.**
+A case is **PASS only if the expected result AND every listed side effect hold.**
 
 ---
 
-## 0. Test environment & build gate (run first)
+## 0. Build gate (run first)
 
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| ENV‑1 | `npm ci` (clean install) | Installs with no peer/engine errors | `node_modules` present | S2 |
-| ENV‑2 | `npm run typecheck` | No errors except stale `.next/types` (ignore) | — | S1 |
-| ENV‑3 | `npm test` (vitest) | **44/44 pass** | No skipped/only tests | S1 |
-| ENV‑4 | Stop dev server, then `rm -rf .next && npx next build` | "Compiled successfully", 11/11 pages | **Never run `next build` while `npm run dev` is live** (corrupts `.next`) | S1 |
-| ENV‑5 | Fresh DB: delete `prisma/dev.db`, `npm run db:push && npm run db:seed` | Seeds without error; July + June actuals load | `dev.db` created; backups untouched | S1 |
-| ENV‑6 | Take a backup: `cp prisma/dev.db backups/dev-<ts>.db` before any destructive test | Copy exists | — | S2 |
-
----
-
-## 1. Seed & data integrity (the deploy safety net)
-
-> The seed MUST be non‑destructive. This is the #1 production risk.
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| SEED‑1 | On a **populated** DB run `npm run db:seed` again | Logs "already has N tasks — preserving"; **no deletion** | June & July task counts **unchanged**; manual edits intact | **S1** |
-| SEED‑2 | Edit a task in the app, then `npm run db:seed` | Seed preserves it | The edited task still has its new title/date/owner/priority | **S1** |
-| SEED‑3 | Add a company in `/companies`, then `npm run db:seed` | New company **not deleted** | Company still present (no "authoritative cleanup") | **S1** |
-| SEED‑4 | Change an employee's rate in `/team`, then `npm run db:seed` | Rate **not overwritten** | Employee keeps the edited rate | S2 |
-| SEED‑5 | `SEED_FORCE=1 npm run db:seed` | Full rebuild (deletes + recreates) | Months reset to seed dataset; Hla's pinned June plan reproduced | S2 |
-| SEED‑6 | Empty one month's tasks, run seed | That month re‑seeds; other months untouched | Only the empty month repopulates | S2 |
-| SEED‑7 | Inspect `prisma/dev.db` employees/companies | 6 employees, 9 companies, e_* / c_* ids, no duplicates | Hla `hoursPerDay=3`; others 6 | S2 |
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| ENV‑1 | `npm ci` | Installs, no peer/engine errors | S2 |
+| ENV‑2 | `npm run typecheck` | No errors (ignore stale `.next/types`) | S1 |
+| ENV‑3 | `npm test` | **50/50 pass**, no skips | S1 |
+| ENV‑4 | Stop dev, `rm -rf .next && npx next build` | "Compiled successfully", **12/12 pages** (incl. `/finance`). Never build while `dev` runs | S1 |
+| ENV‑5 | Fresh DB: delete `prisma/dev.db`, `npm run db:push && npm run db:seed` | Seeds with no error; July + June actuals load; جدارات/المول carry contract dates | S1 |
+| ENV‑6 | Backup `cp prisma/dev.db backups/dev-<ts>.db` before destructive tests | Copy exists | S2 |
+| ENV‑7 | Stop dev server **before** `prisma generate`/`db push` | No EPERM lock on the query‑engine DLL (Windows) | S3 |
 
 ---
 
-## 2. App shell, navigation, theme (cross‑cutting)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| UI‑1 | Open `/`; click every sidebar link | All 8 routes load (نظرة عامة, المهام, النشر, الأحمال, التقارير, الأولويات, الشركات, الفريق) | Active link highlighted aqua; no 404 | S2 |
-| UI‑2 | Verify direction | Whole UI is **RTL** | Text right‑aligned, sidebar on the right | S2 |
-| UI‑3 | Theme check | **Light** background, **aqua** primary buttons/active state, tight corners | No dark‑theme remnants; cards white | S3 |
-| UI‑4 | Console (every page) | **Zero** runtime errors/warnings (HMR "HotReload" warnings in dev are not real — confirm absent in `next build`/prod) | — | S2 |
-| UI‑5 | Resize to mobile width | Layout reflows, no overflow/clipping | Tables scroll, cards stack | S3 |
-| UI‑6 | Print `/reports` | Sidebar/controls hidden; report full‑width on white | — | S3 |
-
----
-
-## 3. Contrast & color correctness (design)
+## 1. Seed & data integrity (deploy safety net)
 
 | ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| CLR‑1 | `/team` avatars | Each person's initial is **legible** on their color (white/dark auto by luminance) | Distinct color per person | S3 |
-| CLR‑2 | `/companies` cards | **9 distinct** company colors (not all gold), readable names | Color dot/border matches | S3 |
-| CLR‑3 | `/publishing` chips | Type colors readable (story = deep gold, not pale) | Legend matches chips | S3 |
-| CLR‑4 | Workload bars | done=green, remaining=aqua/warn/danger, free=track — visually distinct | Over‑capacity shows red | S3 |
+| SEED‑1 | On a populated DB run `npm run db:seed` | Logs "already has N tasks — preserving"; **no deletion** | June & July counts unchanged; manual edits intact | **S1** |
+| SEED‑2 | Edit a task, then `db:seed` | Edit preserved | Title/date/owner/priority kept | **S1** |
+| SEED‑3 | Add a company/employee, then `db:seed` | Not deleted | Still present (no authoritative cleanup) | **S1** |
+| SEED‑4 | Set a rate/salary/contract value, then `db:seed` | Not overwritten | Edited value kept | S2 |
+| SEED‑5 | `SEED_FORCE=1 npm run db:seed` | Full rebuild | Months reset; Hla's pinned June plan reproduced; جدارات `2026‑05‑15`, المول `2026‑06‑20` | S2 |
+| SEED‑6 | Inspect DB | **6 employees, 9 companies**, `e_*`/`c_*` ids, no duplicates | Hla `hoursPerDay=3`, others 6; 9 distinct colors | S2 |
 
 ---
 
-## 4. Overview / Home (`/`)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| HOME‑1 | Open `/` for a month with data | KPIs: companies, monthly posts, designers, open‑urgent counts are correct | Numbers match DB | S2 |
-| HOME‑2 | **أحمال الفريق** panel | Each person shows مطلوب/منجز/متاح + done/remaining bar | Matches `/workload` exactly | S2 |
-| HOME‑3 | **مهام اليوم** panel | Tasks grouped **per person**; **done tasks excluded**; labels match the board (e.g. `بوستات · BW`, `نشر ريل‑1`) | A task you mark DONE disappears from this panel after refresh | **S2** |
-| HOME‑4 | If today has no scheduled work | Panel shows the **nearest upcoming working day** with a label, not blank | Header reads "أقرب يوم عمل · …" | S3 |
-| HOME‑5 | **المهام المستعجلة** table | Effort shown in **أيام العمل** (days), not hours | Priority/owner/date columns correct | S2 |
-| HOME‑6 | Click **إعادة الجدولة** | Toast success; pipeline rebuilt | See §10 side effects (pins/board moves/ad‑hoc preserved) | **S1** |
-
----
-
-## 5. Tasks — Kanban board (`/tasks`, default tab)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| KAN‑1 | Open board | 4 columns (قيد الانتظار/التنفيذ/للمراجعة/منجز); cards grouped per stage label | Counts per column correct | S2 |
-| KAN‑2 | Batching | Posts & stories **batched** per (owner,company,type,stage) with `(N)` count | Moving the card moves all N underlying tasks | S2 |
-| KAN‑3 | Reel numbering | Reels/AI‑reels **individual & numbered** (`ريل‑1`, `ريل AI‑2`, `نشر ريل‑1`) | **No card shows `؟`** anywhere, any filter, any month | **S2** |
-| KAN‑4 | Reel pair number | A reel's shoot card and its publish card share the **same number** | — | S3 |
-| KAN‑5 | Soft gate | Downstream card shows "بانتظار: …" while predecessor not DONE | Moving predecessor to DONE clears the warning | S3 |
-| KAN‑6 | Move card status dropdown | Status & board update; start/finish timestamps stamped | `/workload` & reports reflect the change after refresh | S2 |
-| KAN‑7 | Reassign (owner change) | Task moves to the new person; gets **pinned** | Survives إعادة الجدولة | S2 |
-| KAN‑8 | Filters person/company | Board narrows; **reel numbers stay correct** (built from full set) | Clearing filter restores all | S2 |
-| KAN‑9 | Late badge | A task past its readyDate and not done shows late indicator | — | S3 |
-
----
-
-## 6. Task EDIT dialog (تعديل ✏️ on every card)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| EDIT‑1 | Click ✏️ on any card | Dialog opens: name, start date, end date, owner, priority, status (work‑days only for ad‑hoc) | Fields pre‑filled from the task | S2 |
-| EDIT‑2 | Change **name** → تحديث | Card label shows the new name | Custom title overrides the auto label | S2 |
-| EDIT‑3 | Change **start/end date** → تحديث | Dates persist on the card | Calendar view shows it on the new start day | S2 |
-| EDIT‑4 | Change **owner** → تحديث | Task moves to that person | `/workload` of both people updates | S2 |
-| EDIT‑5 | Change **priority** to مستعجل → تحديث | URGENT marker on card; month rescheduled | Other tasks may re‑order (priority/date changed) | S2 |
-| EDIT‑6 | **Critical:** edit a card, then click **إعادة الجدولة** | The edit **survives** the regenerate (name/date/owner/priority kept) | Task is pinned; regenerate does NOT revert it | **S1** |
-| EDIT‑7 | Edit a **batched** card (e.g. بوستات·BW(4)) | owner/priority/status apply to **all** items; name/dates to the primary | Batch stays consistent | S2 |
-| EDIT‑8 | Edit work‑days of an ad‑hoc to 14 | Workload for that person increases by 14 days | `/workload` "مطلوب" rises | S2 |
-| EDIT‑9 | Edit company select on a **content** card | Disabled (structural) | Only ad‑hoc may change company | S3 |
-
----
-
-## 7. Task CREATE (مهمة مستعجلة)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| NEW‑1 | Click **مهمة مستعجلة**, fill name/owner/work‑days/priority, save | Task created, scheduled ASAP within capacity | Month rescheduled; appears on board/calendar | S2 |
-| NEW‑2 | Create URGENT ad‑hoc | Placed earliest available day | Other tasks re‑order around it | S2 |
-| NEW‑3 | Work‑days field | Entered in **days**; stored = days×6 internally | Workload reflects the days exactly | S2 |
-| NEW‑4 | Create with empty name | Blocked with "العنوان مطلوب" | No task created | S3 |
-
----
-
-## 8. Task DELETE (حذف 🗑️)
-
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| DEL‑1 | Click 🗑️ on an **ad‑hoc** card → confirm | Task removed; **stays gone** | Month re‑distributed; others re‑pack | S2 |
-| DEL‑2 | Delete then check pipeline integrity | **content cards with publishDate == publish cards** (no orphans) | Count parity holds (e.g. 137 == 137) | **S1** |
-| DEL‑3 | Delete a **content** card | Card removed now; on regenerate it is **rebuilt from the plan** (to truly remove, lower the plan) | Publishing calendar stays consistent | S2 |
-| DEL‑4 | Cancel the confirm dialog | Nothing deleted | — | S3 |
-
----
-
-## 9. Tasks — Calendar views (day / week / month)
+## 2. App shell, navigation, theme
 
 | ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| CAL‑1 | Switch to شهري/أسبوعي/يومي | Items render by `workDate`; reels excluded from the calendar (shoot session is the unit); photographer sessions show by shootDate | Month navigation works | S2 |
-| CAL‑2 | Open a day's Side Drawer | Lists that day's tasks; **+ إضافة مهمة مستعجلة** | Add opens the create dialog for that context | S3 |
-| CAL‑3 | Card in calendar | Shows name, owner, status/reassign selects, **✏️ + 🗑️** | Edit/delete behave as §6/§8 | S2 |
-| CAL‑4 | Labels match board | Same wording/numbers as the Kanban card | — | S3 |
+| UI‑1 | Click every sidebar link | **9 routes** load: نظرة عامة, جدول المهام, جدول النشر, أحمال العمل, تقرير الإنجاز, **المالية** 🆕, الأولويات, الشركات, الفريق | Active link aqua; no 404 | S2 |
+| UI‑2 | Direction | Whole UI **RTL**, sidebar on the right | Text right‑aligned | S2 |
+| UI‑3 | Theme | **Light** bg, **aqua** primary, white cards, tight corners | No dark remnants | S3 |
+| UI‑4 | Console on every page | **Zero** runtime errors (HMR dev warnings excepted; confirm clean in prod build) | — | S2 |
+| UI‑5 | Mobile width (375px) | Layout reflows; tables scroll; **no toast horizontal overflow** | Cards stack | S3 |
+| UI‑6 | Print `/reports` | Sidebar/controls hidden; full‑width on white | — | S3 |
+
+---
+
+## 3. Contrast & color
+
+| ID | Check | Expected | Sev |
+|---|---|---|---|
+| CLR‑1 | `/team` avatars | Initial legible on each color (auto white/dark) | S3 |
+| CLR‑2 | `/companies` cards | 9 distinct colors, readable names | S3 |
+| CLR‑3 | `/publishing` chips | Type colors readable (story = deep gold) | S3 |
+| CLR‑4 | Workload bars | done=green, remaining=aqua/warn/danger, over=red | S3 |
+| CLR‑5 | Finance | profit=green, loss=red, over‑capacity bar=red | S3 |
+
+---
+
+## 4. Home / Overview (`/`) 🆕 — fully reworked
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| HOME‑1 | Open `/` | KPIs: **الشركات المُدارة** (managed active), **منشورات الشهر** (CONTENT count), **المصممون** (scheduled non‑photographer), **مهام مستعجلة مفتوحة** = tasks with **priority URGENT and not done** (NOT all ad‑hoc) | Numbers match DB | S2 |
+| HOME‑2 | **المهام الحرجة** | Not‑done tasks whose deadline (readyDate else publishDate) is **overdue (red)** or **due within ≤2 working days (orange)**; grouped cards, overdue first; owner + due date | A task you complete leaves this section after refresh | **S2** |
+| HOME‑3 | **إنجاز الفريق** | A **donut per person**: % done in centre, **done/total** below, and منجز/متبقّي/الكل. Counts **ALL assigned tasks** (by quantity) | **عمر (publisher) appears** (e.g. 2/141) — not empty | **S2** |
+| HOME‑4 | **مهام اليوم** | **A tab per person** (avatar + count); under the active tab, that person's **live** tasks for the reference day, **board‑matched labels** | Done tasks excluded; reels numbered; posts/stories show count | **S2** |
+| HOME‑5 | Today has no work | Tab strip uses the **nearest upcoming working day**, header reads "أقرب يوم عمل · …" | Not blank | S3 |
+| HOME‑6 | **إنجاز الشركات** | Per managed company: **published ÷ plan over the cycle** (published = PUBLISH stage DONE). June reads **0%** while publishing pending; subtitle states "لا تُحتسب إلا بعد النشر" | نُشر X/plan · باقي | **S2** |
+| HOME‑7 | No team‑workload panel, no urgent table | Both **removed** from home (workload now only on `/workload`) | — | S3 |
+| HOME‑8 | **إعادة الجدولة** | Toast success; pipeline rebuilt | See §10 side effects | **S1** |
+
+---
+
+## 5. Tasks — Kanban board (`/tasks`, default)
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| KAN‑1 | Open board | 4 columns (قيد الانتظار/التنفيذ/للمراجعة/منجز); cards per stage | Counts per column correct | S2 |
+| KAN‑2 | Batching | Posts/stories batched per (owner,company,type,stage) with **count always shown — even (1)** | Moving the card moves all N tasks | **S2** |
+| KAN‑3 | Reel numbering | Reels/AI‑reels individual & numbered (`ريل‑1`, `ريل AI‑2`, `نشر ريل‑1`) | **No `؟`** anywhere; no bare بوست/ستوري/ريل without count/number | **S2** |
+| KAN‑4 | Pair number | A reel's shoot & publish cards share the number | — | S3 |
+| KAN‑5 | Board card meta 🆕 | Each card shows: stage badge, label, **owner + priority pill**, and **pills**: ⏱ duration · 📅 يبدأ (workDate) · تسليم (readyDate) · ✈ نشر (publishDate) · **متأخّر** when late | Lateness = past readyDate & not done, or finished late | **S2** |
+| KAN‑6 | Soft gate | Downstream shows "بانتظار: …" until predecessor DONE | Clears on predecessor DONE | S3 |
+| KAN‑7 | Status move dropdown | Status & board update; start/finish stamped | `/workload`, `/reports`, donuts reflect after refresh | S2 |
+| KAN‑8 | Filters person/company | Board narrows; reel numbers stay correct (built from full set) | Clearing restores all | S2 |
+| KAN‑9 | Ad‑hoc badge | Ad‑hoc card stage badge reads **إضافية** (not "مهمة") | — | S3 |
+
+---
+
+## 6. Tasks — Calendar views (day / week / month) 🆕
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| CAL‑1 | Switch شهري/أسبوعي/يومي | Items render by `workDate`. **REEL excluded** (shoot session is the unit) **and PUBLISH excluded** (production view) → publishing lives on `/publishing` | No "مهمة" rows; **Friday column clear of work** | **S2** |
+| CAL‑2 | Photographer sessions | Shown by `shootDate`, attributed to the **company's photographer** | Multi‑photographer split visible | S2 |
+| CAL‑3 | Calendar card 🆕 | Owner is **read‑only** (avatar + name — change it via ✏️), a **status** select, and pills: duration · تسليم date · priority · **متأخّر** | No owner dropdown on the card | **S2** |
+| CAL‑4 | Cycle spill‑over | Monthly grid **extends past month‑end** to show a 20→20 company's items in the next month | Trailing week dimmed; items visible | S2 |
+| CAL‑5 | Day drawer | Lists day's tasks + **إضافة مهمة إضافية**; cards as CAL‑3 | Add opens create dialog | S3 |
+| CAL‑6 | Labels match board | Same wording/numbers/counts as Kanban | — | S3 |
+
+---
+
+## 7. Task EDIT (✏️ on every card)
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| EDIT‑1 | Click ✏️ | Dialog: name, start, end, owner, priority, status (work‑days only for ad‑hoc); company disabled for content | Pre‑filled from task | S2 |
+| EDIT‑2 | Change **name** → تحديث | Custom title overrides the auto label | — | S2 |
+| EDIT‑3 | Change **start/end** → تحديث | Dates persist; calendar shows it on the new start day | — | S2 |
+| EDIT‑4 | Change **owner** → تحديث | Task moves; both people's workload + donuts update | — | S2 |
+| EDIT‑5 | Change **priority** to مستعجل | URGENT pill on card; month rescheduled | Others may re‑order | S2 |
+| EDIT‑6 | **Edit a card, then إعادة الجدولة** | Edit **survives** (name/date/owner/priority kept); task pinned | Regenerate does NOT revert it | **S1** |
+| EDIT‑7 | Edit a **batched** card | owner/priority/status → all items; name/dates → primary | Batch consistent | S2 |
+| EDIT‑8 | Edit ad‑hoc work‑days to 14 | That person's workload "مطلوب" rises by 14 days | — | S2 |
+
+---
+
+## 8. Task CREATE (مهمة إضافية) 🆕 renamed
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| NEW‑1 | Click **مهمة إضافية**, fill name/owner/work‑days/priority, save | Dialog title is **"إضافة مهمة إضافية"**; task created & scheduled within capacity | Month rescheduled; appears on board/calendar | S2 |
+| NEW‑2 | **قفل يدوي** checkbox checked + a start date | Task **locked to that exact date**; engine never moves it (incl. on regenerate) | Stays put | **S2** |
+| NEW‑3 | قفل يدوي **unchecked** | Engine auto‑places at the earliest day within capacity (may differ from typed date) | Re‑packs with other work | S2 |
+| NEW‑4 | URGENT ad‑hoc | Placed earliest available day; others re‑order | — | S2 |
+| NEW‑5 | Empty name | Blocked "العنوان مطلوب"; no task created | — | S3 |
+
+---
+
+## 9. Task DELETE (🗑️)
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| DEL‑1 | 🗑️ an **ad‑hoc** card → confirm | Removed; **stays gone** | Month re‑packs | S2 |
+| DEL‑2 | Delete then check pipeline parity | content cards (kind=CONTENT, type+publishDate) **== PUBLISH cards** per month, **0 orphans** | e.g. 137 == 137 | **S1** |
+| DEL‑3 | Delete a **content** card | Removed now; on regenerate **rebuilt from plan** (to truly remove, lower the plan) | Publishing stays consistent | S2 |
+| DEL‑4 | Cancel confirm | Nothing deleted | — | S3 |
 
 ---
 
 ## 10. Generate / Regenerate (`إعادة الجدولة`) — SIDE‑EFFECT HEAVY
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| GEN‑1 | Click إعادة الجدولة on an empty month | Full pipeline created (write→design/shoot→publish) from plans | Publish cards = plan totals per company | S1 |
-| GEN‑2 | Regenerate June (has actuals) | Achievements (`JUNE_2026_DONE`) applied (some DESIGN/SHOOT = DONE) | Reports plan % reflects PUBLISHED only | S2 |
-| GEN‑3 | Move a card to a column, regenerate | **Manual board move preserved** (by pipelineKey+stage) | Status/board kept | S1 |
-| GEN‑4 | Pin/edit a card, regenerate | **Pinned title/dates/owner/priority preserved** | Edit not thrown away | **S1** |
-| GEN‑5 | Add ad‑hoc, regenerate | Ad‑hoc **kept** (not deleted); workDate re‑packed | Ad‑hoc still present | S2 |
-| GEN‑6 | Hla's distributed June (pinned) | كابرياني weekly + جدارات stages + follow‑ups stay on their pinned dates | No drift | S2 |
-| GEN‑7 | Regenerate twice in a row | Deterministic — same result | No duplicate cards; ids namespaced per month | S2 |
+| GEN‑1 | On an empty month | Full pipeline (write→design/shoot→publish) from plans, over each company's cycle | Publish cards = plan totals | S1 |
+| GEN‑2 | June (has actuals) | `JUNE_2026_DONE` applied (some DESIGN/SHOOT DONE) | Reports plan % reflects PUBLISHED only | S2 |
+| GEN‑3 | Move a card, regenerate | **Board move preserved** (pipelineKey+stage) | Status/board kept | S1 |
+| GEN‑4 | Pin/edit a card, regenerate | **Pinned title/dates/owner/priority preserved** | Edit not lost | **S1** |
+| GEN‑5 | Add ad‑hoc, regenerate | Ad‑hoc **kept**; workDate re‑packed (unless locked) | Still present | S2 |
+| GEN‑6 | Run twice | **Deterministic** — identical result | No duplicates; ids namespaced per month | S2 |
+| GEN‑7 | Does NOT touch | company/employee/**finance** records, statuses, manual edits | Only auto content cards rebuilt | **S1** |
 
 ---
 
 ## 11. Publishing calendar (`/publishing`)
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
 | PUB‑1 | Open `/publishing` | Calendar by `publishDate`; numbered (`بوست‑1`, `ريل‑1`, `ستوري‑3`) | Defaults to a month with publishes | S2 |
-| PUB‑2 | Distribution | Feed items (post/reel/ai‑reel) **≥1 day apart** per company; **no same/consecutive‑day** feed | Stories may share a day | **S2** |
-| PUB‑3 | Spread | Each company's items spread across the **whole month** (all 7 days incl. Thu/Fri) | No empty publishing week (no‑interruption banner green) | S2 |
-| PUB‑4 | **Match Omar** | Publishing items correspond **one‑to‑one** with Omar's PUBLISH cards | After any delete+regen, count parity holds | **S1** |
-| PUB‑5 | Filters company/type | Calendar narrows correctly | Numbers stable | S3 |
-| PUB‑6 | Plan match | Per company, published‑type counts == plan exactly | Mismatch surfaces a problem note | S2 |
+| PUB‑2 | Distribution | Feed (post/reel/ai‑reel) **≥1 day apart** per company (no same/consecutive day); stories may share | — | **S2** |
+| PUB‑3 | Spread | Each company spread across its **whole cycle**; no empty week → green "لا انقطاع" banner | — | S2 |
+| PUB‑4 | **Match Omar** | Publishing items correspond **1:1** with Omar's PUBLISH cards; parity holds after any delete+regen | — | **S1** |
+| PUB‑5 | Cycle spill | A 20→20 company's chips appear into the next month; **grid extends** to show them | — | S2 |
+| PUB‑6 | Plan match | Per company, scheduled type counts **== plan** | Mismatch flagged | S2 |
 
 ---
 
-## 12. Workload — burndown (`/workload` + home panel)
+## 12. Contract cycles 🆕 (`Company.contractStartDate`)
 
-> Plan‑driven, completion‑invariant. Verify the NUMBERS, not just rendering.
-
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| WL‑1 | Open `/workload` | Each person: **محجوز % · منجز % · مطلوب/منجز/متبقّي/متاح** + segmented bar | Sorted, type breakdown shown | S2 |
-| WL‑2 | **Writer (نوال)** | committed ≈ (managed companies with a plan) × 2 days (+ her ad‑hoc) | 7 companies → 14 base | S2 |
-| WL‑3 | **Designer** | committed = Σ owned posts/6 + stories/6 + aiReels/1 (+ ad‑hoc) | Matches owned plan (Ayman vs Sabin) | S2 |
-| WL‑4 | **Photographer** | committed = Σ managed reels ÷ (2/3) | Can exceed 100% (flagged red) | S3 |
-| WL‑5 | **Publisher (عمر)** | committed = publishing duty‑days (one per publish day, ≤5 companies/day); capacity = **all 7 days/week** | Matches the publishing calendar's day count | **S2** |
+| CYC‑1 | Regenerate June; inspect المول (day 20) | All its publishDates fall in **[June 20 → July 20)** | Tagged month=June (start bucket) | **S2** |
+| CYC‑2 | جدارات (day 15) | publishDates in **[June 15 → July 15)** | — | S2 |
+| CYC‑3 | A company with **no** contract date (e.g. BW) | Stays within the **calendar month** (June 1–30) | Back‑compatible | S2 |
+| CYC‑4 | Cross‑month work packs | Every non‑reel design task gets a workDate (extended packing window) — **none forced to overflow** by a short window | — | **S2** |
+| CYC‑5 | Set/clear a contract date in `/companies` → regenerate | Distribution window shifts accordingly | Calendar/publishing grids follow | S2 |
+| CYC‑6 | `week` (1..4) | Computed **within the cycle**, so no‑interruption check still has weeks 1–4 | — | S3 |
+
+---
+
+## 13. Multiple photographers 🆕 (`Company.photographerId`)
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| PHO‑1 | One photographer only | All reels → that photographer (unchanged behavior) | Determinism preserved | S2 |
+| PHO‑2 | Add a 2nd photographer (`/team`, isPhotographer) + assign some companies' **المصور (للريلز)** → regenerate | Each company's reels routed to **its** photographer; shoot sessions built on **that person's workdays** | Reel tasks' assignee = assigned photographer | **S2** |
+| PHO‑3 | Workload of each photographer | Counts **only their assigned companies' reels** (not all) | No double‑count | **S2** |
+| PHO‑4 | Tasks calendar sessions | Each session attributed to its company's photographer | Filter by person works | S2 |
+| PHO‑5 | Per‑reel freelancer | A photographer with `costPerReel` set (salary 0) shoots normally; cost is variable (§16) | — | S2 |
+
+---
+
+## 14. Workload burndown (`/workload`)
+
+| ID | Steps | Expected | Side effects | Sev |
+|---|---|---|---|---|
+| WL‑1 | Open `/workload` | Per person: محجوز% · منجز% · مطلوب/منجز/متبقّي/متاح + segmented bar + type breakdown | Sorted | S2 |
+| WL‑2 | **Writer (نوال)** | committed ≈ (managed companies with a plan) × 2 days | 7 → ~14 base | S2 |
+| WL‑3 | **Designer** | committed = Σ owned posts/6 + stories/6 + aiReels/1 (+ ad‑hoc) | Ayman vs Sabin differ | S2 |
+| WL‑4 | **Photographer** | committed = Σ reels of **assigned** companies ÷ (2/3) | Can exceed 100% (red) | S3 |
+| WL‑5 | **Publisher (عمر)** | committed = publishing duty‑days (≤5 companies/day); capacity = **all days in the period** | Matches the publishing day count | **S2** |
 | WL‑6 | **Completion‑invariant** | Mark a plan task DONE → **committed unchanged**, منجز↑, متبقّي↓, متاح↑ | Load does NOT drop on completion | **S1** |
-| WL‑7 | **Ad‑hoc adds** | Add an ad‑hoc to a person → committed & remaining rise | Removing it / next month → back to plan baseline | S2 |
-| WL‑8 | **Story rate** | Stories counted at **6/day** (not 8) | Designer days reflect /6 | S3 |
-| WL‑9 | **Hla half‑designer** | Ad‑hoc work‑days count as **calendar days** (not ÷3) — 14‑day task = 14 days | Not doubled to 28 | **S2** |
-| WL‑10 | Ownership change | Change a company owner in `/companies` → workload of both people updates **immediately** (no regen needed) | Plan‑driven read | S2 |
+| WL‑7 | Ad‑hoc | Add → committed & remaining rise; remove / next month → back to plan baseline | — | S2 |
+| WL‑8 | Ownership change | Change an owner in `/companies` → both people's workload updates **immediately** (plan‑driven, no regen) | — | S2 |
+| WL‑9 | Story rate | Stories at **6/day** | — | S3 |
+| WL‑10 | Hla half‑designer | Ad‑hoc work‑days are calendar days (not ÷3); a 14‑day task = 14 days | Not doubled | **S2** |
 
 ---
 
-## 13. Reports (`/reports`)
+## 15. Reports (`/reports`) 🆕
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| REP‑1 | Open `/reports` | KPIs: المنجز, **متوسط مدة الإنجاز الفعلية**, المساهمون, إجمالي المهام | Numbers correct | S2 |
-| REP‑2 | **Plan completion** | Per company % = PUBLISHED‑only achievement vs plan | June reads low while publishing pending | S2 |
-| REP‑3 | **Actual durations** | Per done task shows **start → finish + المدة الفعلية** (`finishedAt−startedAt`); "—" when never started | Move a task through the board (start then done) → its real elapsed shows | **S2** |
-| REP‑4 | Avg duration KPI | = average of timed done tasks; "—" if none timed | Updates as tasks get timed | S3 |
-| REP‑5 | Team workload in report | Uses **plan‑driven** numbers (companies passed) — NOT zero | Designers show real مطلوب days | **S2** |
-| REP‑6 | CSV **تصدير المهام** | Columns incl. أيام مقدّرة, بدأ, أُنجز, **المدة الفعلية**, موعد النشر, الحالة | Opens in Excel, Arabic intact | S3 |
-| REP‑7 | CSV **تصدير الفريق** | Per‑person needed/busy/free days + done count | — | S3 |
+| REP‑1 | Open `/reports` | KPIs: المنجز (with quantities), **متوسط مدة الإنجاز الفعلية**, المساهمون, إجمالي المهام | Numbers correct | S2 |
+| REP‑2 | **إنجاز خطة الشركات** | Per company % = **PUBLISHED‑only** vs plan | June low while publishing pending | S2 |
+| REP‑3 | **تفاصيل المهام لكل شخص** 🆕 | Per person: **every task** (batched), columns **المهمة · البداية ← النهاية · المدة الفعلية · الحالة**, **متأخّر** badge, **late first**; beside the name **منجز / إجمالي المهام** | عمر shows his publish tasks (not empty) | **S2** |
+| REP‑4 | Actual duration | `finishedAt − startedAt`; **"—"** until a task is moved through the board | Updates as tasks get timed | S3 |
+| REP‑5 | CSV **تصدير المهام** | Columns incl. أيام مقدّرة, بدأ, أُنجز, المدة الفعلية, موعد النشر, الحالة; UTF‑8 BOM (Arabic intact in Excel) | — | S3 |
+| REP‑6 | CSV **تصدير الفريق** | Per‑person needed/busy/free days + done count | — | S3 |
 
 ---
 
-## 14. Companies CRUD (`/companies`) + dynamic behavior
+## 16. Finance (`/finance`) 🆕
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| CO‑1 | Create a managed company w/ plan + owners + color | Appears in list & everywhere | After **إعادة الجدولة**, its pipeline + publishing appear | S2 |
-| CO‑2 | Edit plan numbers | Saved | Workload of owners updates immediately; regenerate updates the pipeline | S2 |
-| CO‑3 | Change owners (post/story/aiReel) | Saved | Workload shifts between people immediately | S2 |
-| CO‑4 | Delete a company | Removed | Its tasks/sessions cascade‑deleted; other months/companies intact | S2 |
-| CO‑5 | Unmanaged (design‑only) company | No plan / no publishing generated; design via ad‑hoc only | defaultOwner gets ad‑hoc work | S3 |
-| CO‑6 | Duplicate name | Rejected with error | No partial row | S3 |
+| FIN‑1 | Open with no values | **Empty‑state hint** to enter contract values & salaries; all `$0` | No crash | S2 |
+| FIN‑2 | Set company **contract values** (`/companies`) + employee **salaries** (`/team`) | KPIs: **الإيرادات** (Σ values), **التكاليف** (Σ salaries + variable), **صافي الربح/الخسارة** (green/red), **الهامش %** | Updates immediately (no regen) | **S2** |
+| FIN‑3 | **ربح/خسارة لكل عقد** | Per company: قيمة العقد · التكلفة · ربح/خسارة (±, colored) · الهامش% | Σ per‑contract profit − overhead == net profit | **S2** |
+| FIN‑4 | Cost allocation | Each salary spread across companies **by work‑days consumed** (designers by items, photographer by reels, writer 2/co, publisher by item share) | Allocation roll‑up consistent | S2 |
+| FIN‑5 | Overhead | Salary of a non‑producer (e.g. Hla team‑lead) shows as **"رواتب غير موزّعة على العقود"**, subtracted from net | Not charged to any contract | S2 |
+| FIN‑6 | **نقطة التعادل** | Min contracts to cover wages = ceil(fixed salaries ÷ avg contribution); above/below indicator vs current count | — | **S2** |
+| FIN‑7 | **سعة الفريق** | Max contracts the team can carry (bottleneck role); "fits N more"; per‑producer utilization bars | Excludes publisher from the bottleneck | S2 |
+| FIN‑8 | **Per‑reel photographer** | Set `costPerReel`, salary 0 → his cost is **variable** = costPerReel × reels, charged to the companies he shoots; enters contribution margin for break‑even | Salaried photographer's salary is fixed/allocated instead | **S2** |
+| FIN‑9 | Finance never affected by regenerate | إعادة الجدولة doesn't change values | — | S2 |
 
 ---
 
-## 15. Team CRUD (`/team`)
+## 17. Companies CRUD (`/companies`) 🆕
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| TM‑1 | Create employee w/ role, rates (items/day), workdays | Appears; rates stored as JSON | Eligible for ownership/assignment | S2 |
-| TM‑2 | Edit rates / plan‑days | Saved | Workload recomputes with new rate | S2 |
-| TM‑3 | Edit workdays | Saved | Capacity (working days) changes; over/under‑load recomputes | S2 |
-| TM‑4 | Photographer flag | isPhotographer drives shoot scheduling | Reels route to this person | S3 |
-| TM‑5 | Delete employee | Removed | Their tasks' assignee set to **null** (unassigned) — verify they're reassigned on regenerate | S2 |
-| TM‑6 | Ayman workdays | Sun→Thu (off Sat); others Sat→Wed | Capacity counts match | S3 |
+| CO‑1 | Create managed company w/ plan, owners, color, **contract value**, **contract date**, **photographer** | Appears everywhere; after **إعادة الجدولة** its pipeline + publishing appear over its cycle | Finance picks up its value | S2 |
+| CO‑2 | Edit plan numbers | Workload of owners updates immediately; regenerate updates the pipeline | — | S2 |
+| CO‑3 | Change owners (post/story/aiReel/photographer) | Workload shifts immediately; reels reroute on regenerate | — | S2 |
+| CO‑4 | Delete a company | Its tasks/sessions cascade‑delete; other months/companies intact | Finance/publishing recompute | S2 |
+| CO‑5 | Unmanaged (design‑only) company | No plan/publishing; defaultOwner gets ad‑hoc only | — | S3 |
+| CO‑6 | Duplicate name | Rejected; no partial row | — | S3 |
 
 ---
 
-## 16. Priorities (`/priorities`)
+## 18. Team CRUD (`/team`) 🆕
 
-| ID | Steps | Expected | Side effects to verify | Sev |
+| ID | Steps | Expected | Side effects | Sev |
 |---|---|---|---|---|
-| PRI‑1 | Drag to reorder; set **clients before our companies** | Order saved (priority 1..n) | Publishing distribution favors higher‑priority companies | S2 |
-| PRI‑2 | Regenerate after reorder | Higher‑priority companies' content distributed first | — | S3 |
-| PRI‑3 | NOTE | Per‑designer **daily packing** orders by URGENT then deadline, **not** company priority — confirm this is acceptable (else log as enhancement, not bug) | — | S3 |
+| TM‑1 | Create employee w/ role, rates, workdays, **salary** | Appears; eligible for ownership/assignment; salary feeds finance | — | S2 |
+| TM‑2 | **Photographer rate** | When **مصور** is checked, the rate input becomes **"ينجز X ريل كل Y يوم"** → rate = X/Y (e.g. 2 & 3 → ≈0.67 ريل/يوم) | Designer rate fields hidden for photographers | **S2** |
+| TM‑3 | **Per‑reel cost** | When مصور, a **تكلفة الريل الواحد ($)** field shows | Used as variable cost in finance | S2 |
+| TM‑4 | Edit rates / workdays | Workload + capacity recompute | — | S2 |
+| TM‑5 | Ayman workdays | Sun→Thu (Thursday IS his workday); others Sat→Wed | Capacity counts match | S3 |
+| TM‑6 | Delete employee | Tasks' assignee set null; reassigned on regenerate | — | S2 |
 
 ---
 
-## 17. Capacity / rates correctness (spot‑check the math)
+## 19. Priorities (`/priorities`)
+
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| PRI‑1 | Drag to reorder | Order saved (priority 1..n); publishing favors higher‑priority companies on regenerate | S2 |
+| PRI‑2 | NOTE | Per‑designer daily packing orders by URGENT then deadline, **not** company priority (acceptable, not a bug) | S3 |
+
+---
+
+## 20. Capacity / rates correctness (spot‑check the math)
 
 | ID | Check | Expected |
 |---|---|---|
 | RATE‑1 | Designer posts | 6/day → 6 posts = 1 day |
 | RATE‑2 | Designer stories | **6/day** |
 | RATE‑3 | Ayman AI‑reel | 1/day |
-| RATE‑4 | Photographer reels | 2 reels per 3 days (0.667/day) → 6 reels = 9 days |
+| RATE‑4 | Photographer reels | 2 per 3 days (0.667/day) → 6 reels = 9 days |
 | RATE‑5 | Writer plan | 0.5/day → 1 plan = 2 days |
-| RATE‑6 | Publisher | 4–5 companies/day (PUBLISH_COMPANIES_PER_DAY=5) |
+| RATE‑6 | Publisher | 4–5 companies/day (`PUBLISH_COMPANIES_PER_DAY=5`) |
 | RATE‑7 | Ad‑hoc | work‑days entered directly; 1 day = 6h internal |
 
 ---
 
-## 18. Dates, months, boundaries
+## 21. Dates, months, cycles, boundaries
 
-| ID | Steps | Expected | Side effects | Sev |
-|---|---|---|---|---|
-| DT‑1 | Switch months via MonthBar | Each screen loads the right month's data | 0‑based internally, 1‑based labels correct | S2 |
-| DT‑2 | A reel shoot in late prior month | Shows in the period (prep week) | No off‑by‑one day (local midnight) | S2 |
-| DT‑3 | Thu/Fri | No content **production** on off‑days for designers; **publishing** allowed Thu/Fri | Ayman off Sat instead | S2 |
-| DT‑4 | Month with no data | `resolveActiveMonth`/`resolvePublishMonth` land on a populated month | No blank crash | S3 |
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| DT‑1 | Switch months via MonthBar | Each screen loads the right month; 0‑based internal, 1‑based labels | S2 |
+| DT‑2 | Reel shoot in late prior month | Shows in the period; no off‑by‑one (local midnight) | S2 |
+| DT‑3 | Thu/Fri | No content **production** on a person's off‑days; **publishing** allowed Thu/Fri (on `/publishing` only — production calendar excludes publish) | S2 |
+| DT‑4 | Cycle boundary | A 20→20 company's last items land before the 20th of next month; bucketed by start month | S2 |
+| DT‑5 | Month with no data | `resolveActiveMonth`/`resolvePublishMonth` land on a populated month; no blank crash | S3 |
 
 ---
 
-## 19. Regression / integration scenarios (end‑to‑end)
+## 22. End‑to‑end scenarios
 
-| ID | Scenario | Expected outcome |
+| ID | Scenario | Expected |
 |---|---|---|
-| E2E‑1 | Create ad‑hoc → edit its date → mark DONE → delete it | Each step reschedules; workload tracks add→done(invariant)→remove correctly |
-| E2E‑2 | Reassign a batch → regenerate → check publishing | Owner change kept; publishing unaffected; Omar's cards intact |
-| E2E‑3 | Change نور stories 8→12 in `/companies` → regenerate | 4 extra stories appear, distributed, no feed conflicts; Sabin's load +0.67 day |
-| E2E‑4 | Delete a managed company → regenerate other companies | No orphan tasks; publishing recalculated; workload drops for its owners |
-| E2E‑5 | Full month: regenerate → mark all DESIGN done → mark all PUBLISH done | Reports plan completion → 100%; workload منجز→committed, متاح→full |
-| E2E‑6 | Set priorities clients‑first → regenerate | Clients' content scheduled/published ahead of BW/Phoenitech |
+| E2E‑1 | Create ad‑hoc → edit date → mark DONE → delete | Each step reschedules; workload tracks add→done(invariant)→remove; donuts update |
+| E2E‑2 | Reassign a batch → regenerate → check publishing | Owner change kept; Omar's cards intact; parity holds |
+| E2E‑3 | Change نور stories 8→12 → regenerate | 4 extra stories distributed, no feed conflict; Sabin's load +0.67 day |
+| E2E‑4 | Give a reel company a contract date (e.g. 10) + a 2nd photographer → regenerate | Reels shift to a 10→10 window AND route to the chosen photographer; sessions on his workdays |
+| E2E‑5 | Set all contract values + salaries → open `/finance` | P&L per contract, net profit, break‑even, and team capacity all populate consistently |
+| E2E‑6 | Full month: regenerate → mark all DESIGN done → mark all PUBLISH done | `/reports` plan completion → 100%; `/` إنجاز الشركات → 100%; workload منجز→committed |
 
 ---
 
-## 20. Deployment / production smoke test (Vercel + Neon)
+## 23. Deployment (Vercel + Neon)
 
-| ID | Steps | Expected | Side effects to verify | Sev |
-|---|---|---|---|---|
-| DEP‑1 | Push to `main`, watch Vercel build | Build green; seed runs **non‑destructively** | Existing prod data **not wiped** | **S1** |
-| DEP‑2 | First deploy on empty Neon | Seeds initial state | Click إعادة الجدولة per month for full pipeline | S2 |
-| DEP‑3 | Re‑deploy after a content change | Existing edits/pipeline preserved; only EMPTY months seed | No data loss | **S1** |
-| DEP‑4 | Prod smoke: open every route | All load, no 500s, numbers sane | `DATABASE_URL` = Neon | S1 |
-| DEP‑5 | Prod regenerate a month | Works against Postgres | Pins/board moves preserved | S2 |
-| DEP‑6 | Two Prisma schemas | `schema.prisma` (SQLite) and `schema.postgres.prisma` models **in sync** | Build uses the postgres schema | S2 |
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| DEP‑1 | Push to `main`, watch build | Green; seed runs **non‑destructively**; existing prod data not wiped | **S1** |
+| DEP‑2 | First deploy on empty Neon | Seeds initial state; click إعادة الجدولة per month | S2 |
+| DEP‑3 | Re‑deploy after edits | Edits/pipeline preserved; only EMPTY months seed | **S1** |
+| DEP‑4 | Prod smoke: open every route incl. `/finance` | All load, no 500s, numbers sane | S1 |
+| DEP‑5 | New columns | `contractValue/contractStartDate/photographerId/salary/costPerReel` exist in Postgres (nullable‑safe push) | S2 |
+| DEP‑6 | Two Prisma schemas | Models in sync (incl. the new fields); build uses the postgres schema | S2 |
 
 ---
 
-## 21. Known limitations (do NOT log these as bugs)
+## 24. Known limitations (do NOT log as bugs)
 
 - Auto‑generate on month‑open is intentionally **not** implemented — use **إعادة الجدولة**.
 - `JUNE_2026_DONE` achievements are hard‑coded; other months start empty.
-- Client‑approval is just the **للمراجعة** status (no separate gate) — by design.
-- Dependencies (`blockedById`) are **soft** (warning), not a hard block — by design.
-- Editing a **batched** card sets the name on its primary only; owner/priority/status apply to all.
-- Multi‑day ad‑hoc shows as one card on its start day (not auto‑spread across days).
-- Per‑designer daily packing does not use company priority (publishing distribution does).
-- Reports' "actual duration" is "—" until a task is moved through the board (no start/finish stamp yet).
+- The **photographer engine is calendar‑month‑bound** (week‑4 shoot cap, prior‑month
+  photoshoot) even for cycle companies — safe (cap only pulls shoots earlier).
+- `/reports` "actual duration" is "—" until a task is moved through the board.
+- Editing a **batched** card sets the name on its primary only.
+- Per‑designer daily packing does not use company priority (publishing does).
+- Finance is **monthly, plan‑driven** (not actual invoices/payroll runs); per‑reel
+  cost is the only variable component.
 
 ---
 
-## 22. Pre‑launch sign‑off checklist
+## 25. Pre‑launch sign‑off checklist
 
-- [ ] ENV‑2/3/4 green (typecheck, 44 tests, prod build).
+- [ ] ENV‑2/3/4 green (typecheck, **50** tests, **12/12** prod build).
 - [ ] **SEED‑1..3 PASS** (deploy never wipes data) — S1.
 - [ ] **GEN‑4 / EDIT‑6 PASS** (manual edits survive regenerate) — S1.
-- [ ] **DEL‑2 / PUB‑4 PASS** (no orphan cards; publishing == Omar) — S1.
+- [ ] **DEL‑2 / PUB‑4 PASS** (no orphans; publishing == Omar) — S1.
 - [ ] **WL‑6 PASS** (completion doesn't drop the load) — S1.
-- [ ] HOME‑3 PASS (today excludes done, board‑matched labels).
-- [ ] KAN‑3 PASS (no `؟` reel numbers).
-- [ ] REP‑3/5 PASS (real durations; report workload not zero).
-- [ ] Company plans, owners, priorities reviewed against the signed brief.
-- [ ] DEP‑1/3/4 PASS on a staging Neon before pointing prod.
-- [ ] One DB backup taken and stored **outside** the repo.
+- [ ] **CYC‑1..4 PASS** (contract cycles distribute & pack correctly).
+- [ ] **PHO‑2/3 PASS** (reels split per photographer; workload not double‑counted).
+- [ ] **FIN‑3/6/7 PASS** (P&L rolls up; break‑even & capacity sane).
+- [ ] HOME‑2/3/4/6, KAN‑3, REP‑3 PASS.
+- [ ] Company plans, owners, priorities, contract values/dates, salaries reviewed.
+- [ ] DEP‑1/3/4 PASS on staging Neon before pointing prod.
+- [ ] One DB backup stored **outside** the repo.
 
 **Owner:** _________  **Date:** _________  **Result:** PASS / FAIL

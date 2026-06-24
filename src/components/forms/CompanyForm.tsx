@@ -38,6 +38,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         reels: company.reels,
         aiReels: company.aiReels,
         stories: company.stories,
+        contractValue: company.contractValue || undefined,
         contractStartDate: company.contractStartDate
           ? toISODate(new Date(company.contractStartDate))
           : "",
@@ -140,12 +141,24 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
           </div>
 
           {managed && (
-            <div className="space-y-1.5">
-              <Label>تاريخ بداية العقد</Label>
-              <Input type="date" {...register("contractStartDate")} />
-              <p className="text-[11px] text-fg-dim">
-                تُوزَّع الخطة على دورة 30 يوماً من هذا التاريخ (مثال: من 20 لـ 20).
-                اتركيه فارغاً لتوزيع الخطة على الشهر الميلادي.
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>تاريخ بداية العقد</Label>
+                <Input type="date" {...register("contractStartDate")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>قيمة العقد الشهرية ($)</Label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="0"
+                  placeholder="—"
+                  {...register("contractValue", { valueAsNumber: true })}
+                />
+              </div>
+              <p className="text-[11px] text-fg-dim col-span-2">
+                تُوزَّع الخطة على دورة 30 يوماً من تاريخ العقد (مثال: من 20 لـ 20). قيمة
+                العقد تُستخدم في حساب الربح/الخسارة في صفحة المالية.
               </p>
             </div>
           )}

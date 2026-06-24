@@ -1,0 +1,225 @@
+import { Card } from "@/components/ui/card";
+import { MonthBar } from "@/components/MonthBar";
+import { resolveActiveMonth, monthLabel } from "@/lib/month";
+import { computeFinance } from "@/lib/finance";
+import { prisma } from "@/lib/db";
+import { TrendingUp, TrendingDown, Wallet, DollarSign } from "lucide-react";
+
+const money = (n: number) => {
+  const r = Math.round(n);
+  return `$${r.toLocaleString("en-US")}`;
+};
+
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams: { y?: string; m?: string };
+}) {
+  const { year, month } = await resolveActiveMonth(searchParams);
+  const label = monthLabel({ year, month });
+  const [employees, companies] = await Promise.all([
+    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+  ]);
+  const f = computeFinance(employees, companies, year, month);
+  const profit = f.netProfit >= 0;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="display-font text-2xl">المالية</h1>
+          <p className="text-sm text-fg-dim">ربح/خسارة كل عقد، نقطة التعادل، وسعة الفريق — {label}</p>
+        </div>
+        <MonthBar year={year} month={month} showGenerate={false} />
+      </header>
+
+      {!f.hasData && (
+        <Card className="text-center py-8 text-fg-muted">
+          أدخلي <strong>قيمة العقد الشهرية</strong> لكل شركة (الشركات) و<strong>الراتب الشهري</strong> لكل
+          موظف (الفريق) لتظهر الأرقام هنا.
+        </Card>
+      )}
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Kpi label="الإيرادات الشهرية" value={money(f.totalRevenue)} icon={DollarSign} tone="accent" />
+        <Kpi label="إجمالي التكاليف" value={money(f.totalCost)} icon={Wallet} tone="muted" sub={`أجور ${money(f.totalSalaries)} · متغيّر ${money(f.totalVariable)}`} />
+        <Kpi
+          label={profit ? "صافي الربح" : "صافي الخسارة"}
+          value={money(f.netProfit)}
+          icon={profit ? TrendingUp : TrendingDown}
+          tone={profit ? "success" : "danger"}
+        />
+        <Kpi label="هامش الربح" value={`${Math.round(f.marginPct)}%`} icon={profit ? TrendingUp : TrendingDown} tone={profit ? "success" : "danger"} />
+      </div>
+
+      {/* Per-contract P&L */}
+      <Card>
+        <h2 className="display-font text-lg mb-1">ربح/خسارة لكل عقد</h2>
+        <p className="text-xs text-fg-dim mb-4">
+          التكلفة = حصة العقد من رواتب الفريق (حسب أيام العمل) + تكلفة التصوير بالقطعة إن وُجدت.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-fg-dim text-xs border-b border-border-soft">
+                <th className="text-right font-medium pb-2">الشركة</th>
+                <th className="text-left font-medium pb-2">قيمة العقد</th>
+                <th className="text-left font-medium pb-2">التكلفة</th>
+                <th className="text-left font-medium pb-2">الربح/الخسارة</th>
+                <th className="text-left font-medium pb-2">الهامش</th>
+              </tr>
+            </thead>
+            <tbody>
+              {f.perContract.map((p) => {
+                const win = p.profit >= 0;
+                return (
+                  <tr key={p.company.id} className="border-b border-border-soft/50">
+                    <td className="py-2">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.company.color ?? "#C8A84E" }} />
+                        {p.company.name}
+                      </span>
+                    </td>
+                    <td className="py-2 text-left tabular-nums">{money(p.revenue)}</td>
+                    <td className="py-2 text-left tabular-nums text-fg-dim">{money(p.laborCost)}</td>
+                    <td className={"py-2 text-left tabular-nums font-semibold " + (win ? "text-success" : "text-danger")}>
+                      {win ? "+" : "−"}
+                      {money(Math.abs(p.profit))}
+                    </td>
+                    <td className={"py-2 text-left tabular-nums " + (win ? "text-success" : "text-danger")}>
+                      {Math.round(p.margin)}%
+                    </td>
+                  </tr>
+                );
+              })}
+              {f.perContract.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-fg-muted">لا توجد عقود مُدارة.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {f.overhead > 0 && (
+          <p className="text-[11px] text-fg-muted mt-3">
+            + {money(f.overhead)} رواتب غير موزّعة على العقود (إدارة / طاقة فائضة) — مخصومة من صافي الربح.
+          </p>
+        )}
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Break-even */}
+        <Card>
+          <h2 className="display-font text-lg mb-4">نقطة التعادل</h2>
+          <div className="flex items-end gap-3 mb-4">
+            <div className="display-font text-4xl">
+              {f.breakEvenContracts ?? "—"}
+            </div>
+            <div className="text-sm text-fg-dim mb-1">عقد كحد أدنى لتغطية الأجور</div>
+          </div>
+          <div
+            className={
+              "text-sm rounded-lg px-3 py-2 mb-3 " +
+              (f.aboveBreakEven
+                ? "bg-success/10 text-success border border-success/30"
+                : "bg-danger/10 text-danger border border-danger/30")
+            }
+          >
+            {f.breakEvenContracts == null
+              ? "حدّدي قيم العقود والرواتب أولاً."
+              : f.aboveBreakEven
+                ? `أنتِ فوق التعادل: لديكِ ${f.numContracts} عقد مقابل ${f.breakEvenContracts} مطلوبة.`
+                : `أنتِ تحت التعادل: لديكِ ${f.numContracts} عقد، تحتاجين ${f.breakEvenContracts} لتغطية الأجور.`}
+          </div>
+          <Line label="إجمالي الأجور الثابتة" value={money(f.totalSalaries)} />
+          <Line label="متوسط قيمة العقد" value={money(f.avgContractValue)} />
+          <Line label="متوسط صافي مساهمة العقد" value={money(f.avgContribution)} />
+        </Card>
+
+        {/* Team capacity */}
+        <Card>
+          <h2 className="display-font text-lg mb-1">سعة الفريق</h2>
+          <p className="text-xs text-fg-dim mb-4">
+            كم عقداً يستطيع الفريق الحالي تغطيته إنتاجياً (يحدّه أكثر دور مشغولاً).
+          </p>
+          <div className="flex items-end gap-3 mb-4">
+            <div className="display-font text-4xl">{f.teamMaxContracts || "—"}</div>
+            <div className="text-sm text-fg-dim mb-1">
+              عقد كحد أقصى · لديكِ {f.numContracts}
+              {f.extraContracts > 0 && (
+                <span className="text-success"> · تتسع لـ {f.extraContracts} إضافية</span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {f.capacity.map((c) => (
+              <div key={c.empId}>
+                <div className="flex items-center justify-between mb-1 text-xs">
+                  <span className="font-medium">{c.name}</span>
+                  <span className="text-fg-dim tabular-nums">
+                    {Math.round(c.usedDays)}/{c.capacityDays} يوم · {c.pct}%
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden">
+                  <div
+                    className={"h-full " + (c.pct > 100 ? "bg-danger" : c.pct > 85 ? "bg-warning" : "bg-accent")}
+                    style={{ width: `${Math.min(100, c.pct)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+            {f.capacity.length === 0 && (
+              <p className="text-sm text-fg-muted">لا توجد بيانات إنتاج بعد.</p>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  sub,
+}: {
+  label: string;
+  value: string;
+  icon: typeof Wallet;
+  tone: "accent" | "success" | "danger" | "muted";
+  sub?: string;
+}) {
+  const toneCls =
+    tone === "success"
+      ? "text-success"
+      : tone === "danger"
+        ? "text-danger"
+        : tone === "accent"
+          ? "text-accent"
+          : "text-fg-dim";
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0">
+          <div className={"text-2xl display-font tabular-nums " + toneCls}>{value}</div>
+          <div className="text-xs text-fg-dim mt-1">{label}</div>
+          {sub && <div className="text-[10px] text-fg-muted mt-0.5 truncate">{sub}</div>}
+        </div>
+        <Icon className={"w-8 h-8 shrink-0 opacity-40 " + toneCls} />
+      </div>
+    </Card>
+  );
+}
+
+function Line({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between text-sm py-1.5 border-b border-border-soft last:border-0">
+      <span className="text-fg-dim">{label}</span>
+      <span className="tabular-nums font-medium">{value}</span>
+    </div>
+  );
+}

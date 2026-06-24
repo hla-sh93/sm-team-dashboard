@@ -10,6 +10,7 @@ import {
   Send,
   TrendingUp,
   Users,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,6 +24,7 @@ const navSections = [
       { href: "/publishing", label: "جدول النشر", icon: Send },
       { href: "/workload", label: "أحمال العمل", icon: TrendingUp },
       { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
+      { href: "/finance", label: "المالية", icon: Wallet },
     ],
   },
   {

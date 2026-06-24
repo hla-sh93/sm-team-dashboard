@@ -53,6 +53,8 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
         workDays: parseWorkDays(employee.workDays),
         isScheduled: employee.isScheduled,
         isPhotographer: employee.isPhotographer,
+        salary: employee.salary || undefined,
+        costPerReel: employee.costPerReel ?? undefined,
         color: employee.color ?? "#C8A84E",
         rates: {
           POST: er.POST,
@@ -231,6 +233,28 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
             <p className="text-[10px] text-fg-muted">
               اتركي الخانة فارغة لاستخدام الافتراضي. مثال: سابين 6 بوست/يوم، أيمن 1 ريل AI/يوم، مصوّر ريلين كل 3 أيام.
             </p>
+          </div>
+
+          {/* Finance: monthly salary (+ per-reel cost for a freelance photographer) */}
+          <div className="space-y-2">
+            <Label>التكلفة (للمالية)</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">الراتب الشهري ($)</span>
+                <Input type="number" step="1" min="0" placeholder="—" {...register("salary", { valueAsNumber: true })} />
+              </div>
+              {isPhotographer && (
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">تكلفة الريل الواحد ($)</span>
+                  <Input type="number" step="1" min="0" placeholder="—" {...register("costPerReel", { valueAsNumber: true })} />
+                </div>
+              )}
+            </div>
+            {isPhotographer && (
+              <p className="text-[10px] text-fg-muted">
+                للمصوّر المدفوع بالقطعة: اتركي الراتب فارغاً واملئي تكلفة الريل. وللمصوّر براتب ثابت: العكس.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

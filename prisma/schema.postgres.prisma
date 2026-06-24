@@ -20,6 +20,8 @@ model Employee {
   workDays       String   @default("[6,0,1,2,3]")
   isScheduled    Boolean  @default(true)
   isPhotographer Boolean  @default(false)
+  salary         Float    @default(0)
+  costPerReel    Float?
   color          String?
   rates          String?
   createdAt      DateTime @default(now())
@@ -42,6 +44,8 @@ model Company {
   reels   Int @default(0)
   stories Int @default(0)
   aiReels Int @default(0)
+
+  contractValue Float @default(0)
 
   // Contract start date. When set, the company's monthly plan is distributed
   // over its 30-day CONTRACT CYCLE ([contractDay → contractDay next month])

@@ -31,6 +31,10 @@ model Employee {
   workDays       String   @default("[6,0,1,2,3]") // JSON Int[] getDay() values
   isScheduled    Boolean  @default(true)        // enters the auto content engine
   isPhotographer Boolean  @default(false)
+  // Finance: monthly salary/cost (fixed). costPerReel = per-reel variable cost
+  // for freelance photographers paid by the job (null = paid by salary).
+  salary         Float    @default(0)
+  costPerReel    Float?
   color          String?
   // Productivity rates (items per working day), JSON e.g. {"POST":6,"AI_REEL":1}.
   // Falls back to global defaults (lib/capacity.ts) per type when unset.
@@ -60,6 +64,9 @@ model Company {
   reels   Int @default(0)   // real reels → photographer
   stories Int @default(0)
   aiReels Int @default(0)   // AI reels → designer
+
+  // Finance: monthly contract value (revenue) — used by the /finance P&L.
+  contractValue Float @default(0)
 
   // Contract start date. When set, the company's monthly plan is distributed
   // over its 30-day CONTRACT CYCLE ([contractDay → contractDay next month])

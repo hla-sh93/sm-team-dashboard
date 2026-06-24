@@ -5,7 +5,7 @@ import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/companies", "/publishing", "/tasks", "/priorities"]) {
+  for (const p of ["/", "/companies", "/publishing", "/tasks", "/priorities", "/finance"]) {
     revalidatePath(p);
   }
 }
@@ -32,6 +32,7 @@ export async function createCompany(input: CompanyInput) {
         reels: d.reels,
         aiReels: d.aiReels,
         stories: d.stories,
+        contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
         color: d.color,
         priority: d.priority,
@@ -66,6 +67,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
         reels: d.reels,
         aiReels: d.aiReels,
         stories: d.stories,
+        contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
         color: d.color,
         priority: d.priority,

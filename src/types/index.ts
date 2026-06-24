@@ -19,6 +19,8 @@ export type Employee = {
   workDays: string; // JSON Int[]
   isScheduled: boolean;
   isPhotographer: boolean;
+  salary: number;
+  costPerReel: number | null;
   color: string | null;
   rates: string | null;
   createdAt: Date;
@@ -33,6 +35,7 @@ export type Company = {
   reels: number;
   stories: number;
   aiReels: number;
+  contractValue: number;
   contractStartDate: Date | null;
   color: string | null;
   priority: number;
