@@ -5,9 +5,7 @@ import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/companies", "/publishing", "/tasks", "/priorities", "/finance"]) {
-    revalidatePath(p);
-  }
+  revalidatePath("/", "layout");
 }
 
 /** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */

@@ -59,6 +59,7 @@ type CalItem =
     };
 
 export default function TasksClient({
+  admin = false,
   year,
   month,
   employees,
@@ -66,6 +67,7 @@ export default function TasksClient({
   tasks,
   sessions,
 }: {
+  admin?: boolean;
   year: number;
   month: number;
   employees: Employee[];
@@ -218,7 +220,7 @@ export default function TasksClient({
           {t?.overflow && <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />}
           {t?.isPinned && <Lock className="w-3 h-3 text-accent shrink-0" />}
           <span className="text-xs font-semibold truncate flex-1">{itemLabel(it)}</span>
-          {it.kind === "task" && (
+          {admin && it.kind === "task" && (
             <>
               <button
                 type="button"
@@ -298,14 +300,11 @@ export default function TasksClient({
 
   const renderDrawer = (date: Date, dayItems: CalItem[]) => (
     <div className="flex flex-col gap-3">
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={openCreate}
-        className="w-full"
-      >
-        <Plus className="w-4 h-4" /> إضافة مهمة إضافية
-      </Button>
+      {admin && (
+        <Button size="sm" variant="ghost" onClick={openCreate} className="w-full">
+          <Plus className="w-4 h-4" /> إضافة مهمة إضافية
+        </Button>
+      )}
       {dayItems.length === 0 && (
         <p className="text-sm text-fg-muted text-center py-4">لا مهام في هذا اليوم.</p>
       )}
@@ -326,9 +325,11 @@ export default function TasksClient({
           <p className="text-sm text-fg-dim">مَن ينفّذ ومتى — حسب يوم التنفيذ (workDate)</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="w-4 h-4" /> مهمة إضافية
-          </Button>
+          {admin && (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="w-4 h-4" /> مهمة إضافية
+            </Button>
+          )}
           <MonthBar year={year} month={month} />
         </div>
       </header>
@@ -393,8 +394,8 @@ export default function TasksClient({
           allTasks={tasks}
           employees={employees}
           companies={companies}
-          onEdit={openEdit}
-          onDelete={onDelete}
+          onEdit={admin ? openEdit : undefined}
+          onDelete={admin ? onDelete : undefined}
         />
       ) : (
         <Calendar<CalItem>

@@ -5,9 +5,7 @@ import { employeeSchema, type EmployeeInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/team", "/tasks", "/workload", "/companies", "/reports", "/finance"]) {
-    revalidatePath(p);
-  }
+  revalidatePath("/", "layout");
 }
 
 /** Build the rates JSON (items/day). planDays → PLAN rate = 1/planDays. */

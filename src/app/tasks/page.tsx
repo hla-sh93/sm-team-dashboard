@@ -1,28 +1,9 @@
-import { prisma } from "@/lib/db";
-import { resolveActiveMonth } from "@/lib/month";
-import TasksClient from "./tasks-client";
+import TasksView from "./TasksView";
 
-export default async function TasksPage({
+export default function TasksPage({
   searchParams,
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  const { year, month } = await resolveActiveMonth(searchParams);
-  const [employees, companies, tasks, sessions] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month } }),
-    prisma.photoSession.findMany({ where: { year, month } }),
-  ]);
-
-  return (
-    <TasksClient
-      year={year}
-      month={month}
-      employees={employees}
-      companies={companies}
-      tasks={tasks}
-      sessions={sessions}
-    />
-  );
+  return <TasksView admin={false} searchParams={searchParams} />;
 }

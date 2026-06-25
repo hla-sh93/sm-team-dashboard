@@ -15,35 +15,57 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navSections = [
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
+type NavSection = { title: string; items: NavItem[] };
+
+// Employees (root URLs) — view + update task status only. No finance/team/etc.
+const employeeNav: NavSection[] = [
   {
     title: "العمل اليومي",
     items: [
       { href: "/", label: "نظرة عامة", icon: LayoutDashboard },
       { href: "/tasks", label: "جدول المهام", icon: CheckSquare },
       { href: "/publishing", label: "جدول النشر", icon: Send },
-      { href: "/workload", label: "أحمال العمل", icon: TrendingUp },
       { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
-      { href: "/finance", label: "المالية", icon: Wallet },
+    ],
+  },
+];
+
+// Admin — sees everything, including finance & team. The admin URL is an
+// obscure, unguessable path (NO login): keep ADMIN_BASE private. To change it,
+// rename src/app/<base> AND this constant.
+const ADMIN_BASE = "/edara-9x2k";
+const adminNav: NavSection[] = [
+  {
+    title: "العمل اليومي",
+    items: [
+      { href: ADMIN_BASE, label: "نظرة عامة", icon: LayoutDashboard },
+      { href: `${ADMIN_BASE}/tasks`, label: "جدول المهام", icon: CheckSquare },
+      { href: `${ADMIN_BASE}/publishing`, label: "جدول النشر", icon: Send },
+      { href: `${ADMIN_BASE}/workload`, label: "أحمال العمل", icon: TrendingUp },
+      { href: `${ADMIN_BASE}/reports`, label: "تقرير الإنجاز", icon: FileBarChart },
+      { href: `${ADMIN_BASE}/finance`, label: "المالية", icon: Wallet },
     ],
   },
   {
     title: "الإعدادات",
     items: [
-      { href: "/priorities", label: "الأولويات", icon: ListOrdered },
-      { href: "/companies", label: "الشركات", icon: Building2 },
-      { href: "/team", label: "الفريق", icon: Users },
+      { href: `${ADMIN_BASE}/priorities`, label: "الأولويات", icon: ListOrdered },
+      { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
+      { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
     ],
   },
 ];
 
 export default function Sidebar() {
   const path = usePathname();
+  const isAdmin = path === ADMIN_BASE || path.startsWith(`${ADMIN_BASE}/`);
+  const navSections = isAdmin ? adminNav : employeeNav;
 
   return (
     <aside className="w-[260px] flex-shrink-0 bg-bg-elev border-l border-border-soft sticky top-0 h-screen overflow-y-auto px-4 py-6">
       <Link
-        href="/"
+        href={isAdmin ? ADMIN_BASE : "/"}
         className="flex items-center gap-3 px-2 pb-6 mb-5 border-b border-border-soft"
       >
         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-accent-dim flex items-center justify-center display-font font-bold text-white shadow-sm shadow-accent/30">
@@ -52,7 +74,7 @@ export default function Sidebar() {
         <div>
           <div className="display-font text-base">إدارة الفريق</div>
           <div className="text-[10px] text-fg-muted tracking-widest">
-            SOCIAL MEDIA OPS
+            {isAdmin ? "ADMIN · لوحة الإدارة" : "SOCIAL MEDIA OPS"}
           </div>
         </div>
       </Link>

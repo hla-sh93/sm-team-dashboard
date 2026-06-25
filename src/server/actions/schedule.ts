@@ -7,9 +7,7 @@ import { loadState } from "@/lib/schedule-data";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
-  for (const p of ["/", "/tasks", "/publishing", "/workload", "/reports"]) {
-    revalidatePath(p);
-  }
+  revalidatePath("/", "layout");
 }
 
 const D = (s: string | null): Date | null => {
