@@ -17,6 +17,7 @@ import {
   fromISODate,
   formatDateShort,
   addWorkdaysFor,
+  parseWorkDays,
   ARABIC_DAYS,
 } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
@@ -98,16 +99,21 @@ export default function OverviewClient({
         monthDayISOs[monthDayISOs.length - 1] ??
         todayISO;
   const refIsToday = refDay === todayISO;
-  const dayByPerson = employees
-    .map((e) => ({
-      emp: e,
-      cards: groupTasksIntoCards(dayTasks(refDay).filter((t) => t.assigneeId === e.id)),
-    }))
-    .filter((g) => g.cards.length > 0);
+  // ALL employees are always listed. Per person on the reference day:
+  //  - off (refDay not a working day)  → عطلة
+  //  - working with no tasks           → متفرّغ لعمل إضافي
+  //  - working with tasks              → the cards
+  const refDayObj = fromISODate(refDay);
+  const dayByPerson = employees.map((e) => ({
+    emp: e,
+    isOff: !parseWorkDays(e.workDays).includes(refDayObj.getDay()),
+    cards: groupTasksIntoCards(dayTasks(refDay).filter((t) => t.assigneeId === e.id)),
+  }));
+  // Default tab: first person who actually has work today, else the first person.
+  const defaultId =
+    (dayByPerson.find((g) => g.cards.length > 0) ?? dayByPerson[0])?.emp.id ?? null;
   const activeId =
-    activeTab && dayByPerson.some((g) => g.emp.id === activeTab)
-      ? activeTab
-      : dayByPerson[0]?.emp.id ?? null;
+    activeTab && dayByPerson.some((g) => g.emp.id === activeTab) ? activeTab : defaultId;
   const activeGroup = dayByPerson.find((g) => g.emp.id === activeId) ?? null;
 
   // ---- المهام الحرجة: not-done tasks whose deadline is overdue or within ≤2
@@ -256,13 +262,26 @@ export default function OverviewClient({
           </div>
 
           {dayByPerson.length === 0 ? (
-            <p className="text-sm text-fg-muted">لا توجد مهام مجدولة.</p>
+            <p className="text-sm text-fg-muted">لا يوجد موظفون.</p>
           ) : (
             <>
-              {/* tab per person */}
+              {/* a tab for EVERY employee, always */}
               <div className="flex gap-1 flex-wrap border-b border-border-soft mb-3">
-                {dayByPerson.map(({ emp, cards }) => {
+                {dayByPerson.map(({ emp, isOff, cards }) => {
                   const active = emp.id === activeId;
+                  // Tasks take precedence (someone may publish on a day their
+                  // workDays mark off): tasks → عطلة → متفرّغ.
+                  const resting = isOff && cards.length === 0;
+                  const badge =
+                    cards.length > 0 ? String(cards.length) : isOff ? "عطلة" : "متفرّغ";
+                  const badgeCls =
+                    cards.length > 0
+                      ? active
+                        ? "bg-accent/15 text-accent"
+                        : "bg-bg-elev-2 text-fg-muted"
+                      : isOff
+                        ? "bg-bg-elev-2 text-fg-muted"
+                        : "bg-success/10 text-success";
                   return (
                     <button
                       key={emp.id}
@@ -271,40 +290,46 @@ export default function OverviewClient({
                         "flex items-center gap-1.5 px-2.5 py-1.5 -mb-px border-b-2 text-xs font-medium transition " +
                         (active
                           ? "border-accent text-fg"
-                          : "border-transparent text-fg-dim hover:text-fg")
+                          : "border-transparent text-fg-dim hover:text-fg") +
+                        (resting ? " opacity-70" : "")
                       }
                     >
                       <Avatar name={emp.name} color={emp.color ?? undefined} size={18} />
                       {emp.name}
-                      <span
-                        className={
-                          "rounded-full px-1.5 text-[10px] " +
-                          (active ? "bg-accent/15 text-accent" : "bg-bg-elev-2 text-fg-muted")
-                        }
-                      >
-                        {cards.length}
-                      </span>
+                      <span className={"rounded-full px-1.5 text-[10px] " + badgeCls}>{badge}</span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* active person's daily tasks */}
+              {/* active person's state: عطلة / متفرّغ / tasks */}
               <div className="flex flex-col gap-1.5 max-h-[320px] overflow-y-auto pr-1">
-                {activeGroup?.cards.map((card) => (
-                  <div
-                    key={card.key}
-                    className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft"
-                    style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
-                  >
-                    {card.repr.overflow && (
-                      <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
-                    )}
-                    <span className="text-xs truncate">
-                      {cardLabelFor(card.repr, card.count, reelNum, coName)}
-                    </span>
-                  </div>
-                ))}
+                {activeGroup && activeGroup.cards.length === 0 ? (
+                  activeGroup.isOff ? (
+                    <div className="text-center py-8 text-sm text-fg-muted">
+                      عطلة اليوم — {activeGroup.emp.name} في يوم إجازته.
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-sm text-success">
+                      متفرّغ — جاهز لعمل إضافي.
+                    </div>
+                  )
+                ) : (
+                  activeGroup?.cards.map((card) => (
+                    <div
+                      key={card.key}
+                      className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft"
+                      style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
+                    >
+                      {card.repr.overflow && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+                      )}
+                      <span className="text-xs truncate">
+                        {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </>
           )}
