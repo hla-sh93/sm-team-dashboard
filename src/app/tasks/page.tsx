@@ -5,5 +5,5 @@ export default function TasksPage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  return <TasksView admin={false} searchParams={searchParams} />;
+  return <TasksView searchParams={searchParams} />;
 }

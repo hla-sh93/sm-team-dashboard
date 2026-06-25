@@ -24,14 +24,12 @@ import type { Employee, Company, Task } from "@/types";
 import { AlertTriangle, Building2, CalendarClock, Send, Users, Zap } from "lucide-react";
 
 export default function OverviewClient({
-  admin = false,
   year,
   month,
   employees,
   companies,
   tasks,
 }: {
-  admin?: boolean;
   year: number;
   month: number;
   employees: Employee[];
@@ -159,7 +157,7 @@ export default function OverviewClient({
           <h1 className="display-font text-2xl">نظرة عامة</h1>
           <p className="text-sm text-fg-dim">لوحة إدارة فريق السوشال ميديا</p>
         </div>
-        <MonthBar year={year} month={month} showGenerate={admin} />
+        <MonthBar year={year} month={month} showGenerate />
       </header>
 
       {/* KPIs */}

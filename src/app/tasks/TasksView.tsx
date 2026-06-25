@@ -2,12 +2,10 @@ import { prisma } from "@/lib/db";
 import { resolveActiveMonth } from "@/lib/month";
 import TasksClient from "./tasks-client";
 
-/** Shared tasks view — `/tasks` (admin=false) and `/admin/tasks` (admin=true). */
+/** Shared tasks view — identical at `/tasks` (employees) and `/admin/tasks`. */
 export default async function TasksView({
-  admin,
   searchParams,
 }: {
-  admin: boolean;
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
@@ -20,7 +18,6 @@ export default async function TasksView({
 
   return (
     <TasksClient
-      admin={admin}
       year={year}
       month={month}
       employees={employees}

@@ -31,10 +31,9 @@ const employeeNav: NavSection[] = [
   },
 ];
 
-// Admin — sees everything, including finance & team. The admin URL is an
-// obscure, unguessable path (NO login): keep ADMIN_BASE private. To change it,
-// rename src/app/<base> AND this constant.
-const ADMIN_BASE = "/edara-9x2k";
+// Admin — sees everything, including finance & team. Admin lives under this base
+// path (NO login). To change it, rename src/app/<base> AND this constant.
+const ADMIN_BASE = "/admin";
 const adminNav: NavSection[] = [
   {
     title: "العمل اليومي",

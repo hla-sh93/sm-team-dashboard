@@ -2,12 +2,11 @@ import { prisma } from "@/lib/db";
 import { resolveActiveMonth } from "@/lib/month";
 import OverviewClient from "./overview-client";
 
-/** Shared overview — rendered at `/` (admin=false) and `/admin` (admin=true). */
+/** Shared overview — identical at `/` (employees) and `/admin` (admin). The only
+ *  difference between the two areas is the sidebar + the admin-only routes. */
 export default async function OverviewView({
-  admin,
   searchParams,
 }: {
-  admin: boolean;
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
@@ -19,7 +18,6 @@ export default async function OverviewView({
 
   return (
     <OverviewClient
-      admin={admin}
       year={year}
       month={month}
       employees={employees}

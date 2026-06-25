@@ -5,5 +5,5 @@ export default function HomePage({
 }: {
   searchParams: { y?: string; m?: string };
 }) {
-  return <OverviewView admin={false} searchParams={searchParams} />;
+  return <OverviewView searchParams={searchParams} />;
 }
