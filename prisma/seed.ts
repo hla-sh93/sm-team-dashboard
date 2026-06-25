@@ -178,9 +178,9 @@ async function main() {
   /* ---------- 1) Employees (upsert canonical set) ---------- */
   // Productivity rates (items per working day) per person.
   const RATES: Record<string, Record<string, number>> = {
-    e_ayman: { POST: 6, STORY: 6, AI_REEL: 1 },
-    e_sabin: { POST: 6, STORY: 6, AI_REEL: 1 },
-    e_hla: { POST: 6, STORY: 6 }, // no AI reels
+    e_ayman: { POST: 6, STORY: 8, AI_REEL: 1 },
+    e_sabin: { POST: 6, STORY: 8, AI_REEL: 1 },
+    e_hla: { POST: 6, STORY: 8 }, // no AI reels
     e_nawal: { PLAN: 0.5 }, // a content plan per company = 2 working days
     e_photo: { REEL: 2 / 3 }, // 2 reels per 3 days
   };
@@ -205,6 +205,24 @@ async function main() {
     });
   }
   console.log(`✓ employees: ${data.employees.length}`);
+
+  // One-time rate correction: designers now do 8 stories/day (was 6). Idempotent
+  // and SAFE — only updates an employee still on the old value (STORY=6), so a
+  // custom rate set in /admin/team is never clobbered.
+  for (const id of ["e_ayman", "e_sabin", "e_hla"]) {
+    const emp = await prisma.employee.findUnique({ where: { id } });
+    if (!emp?.rates) continue;
+    try {
+      const r = JSON.parse(emp.rates) as Record<string, number>;
+      if (r.STORY === 6) {
+        r.STORY = 8;
+        await prisma.employee.update({ where: { id }, data: { rates: JSON.stringify(r) } });
+        console.log(`↻ ${id}: STORY rate 6 → 8`);
+      }
+    } catch {
+      /* ignore malformed rates */
+    }
+  }
 
   /* ---------- 2) Companies (upsert canonical set) ---------- */
   for (const c of data.companies as any[]) {

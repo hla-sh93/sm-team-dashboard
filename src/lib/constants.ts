@@ -117,12 +117,15 @@ export const WORKDAYS_AYMAN = [0, 1, 2, 3, 4]; // Sun→Thu (off Sat+Fri — exc
 export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
 
 // ============================================
-// TASK HOURS  (§4.2 — 4×POST = 1×AI_REEL = 6h; real REEL not counted)
+// TASK HOURS  — drives the schedule packing (placement per day).
+// Designer day = 6h → 6 posts/day (1h), 8 stories/day (0.75h), 1 AI-reel/day (6h).
+// KEEP IN SYNC with DEFAULT_RATES (lib/capacity.ts) so the schedule and the
+// workload screen agree on the same per-day output.
 // ============================================
 export const TYPE_HOURS: Record<Exclude<ContentType, "REEL">, number> = {
-  POST: 1.5,
+  POST: 1,
   AI_REEL: 6,
-  STORY: 0.5,
+  STORY: 0.75,
 };
 
 /** Hours an employee spends on a content task. Real REELs are the
