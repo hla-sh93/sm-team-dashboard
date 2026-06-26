@@ -19,7 +19,7 @@ import {
   taskColor,
 } from "@/lib/constants";
 import { WORK_DAY_HOURS, daysLabel } from "@/lib/capacity";
-import { Pill, PriorityPill, LatePill } from "@/components/ui/pills";
+import { Pill, PriorityPill, LatePill, daysLateOf } from "@/components/ui/pills";
 import {
   updateTaskStatus,
   updatePhotoSessionStatus,
@@ -263,7 +263,7 @@ export default function TasksClient({
             </Pill>
           )}
           {t && <PriorityPill priority={t.priority} />}
-          {late && <LatePill />}
+          {late && t && <LatePill days={daysLateOf(t)} />}
         </div>
 
         {/* status quick-control */}

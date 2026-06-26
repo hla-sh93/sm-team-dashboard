@@ -6,17 +6,19 @@ import {
   CONTENT_TYPE_LABELS,
   DONE_STATUSES,
   ROLE_LABELS,
+  STAGE_LABELS,
   STATUS_LABELS,
   WEEKDAY_LABELS,
+  type Stage,
   type Status,
 } from "@/lib/constants";
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
-import { LatePill } from "@/components/ui/pills";
+import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
-import { CheckCircle2, Trophy } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
 
 export default async function ReportsPage({
   searchParams,
@@ -133,6 +135,28 @@ export default async function ReportsPage({
   const startOf = (t: (typeof tasks)[number]) => t.startedAt ?? t.workDate;
   const endOf = (t: (typeof tasks)[number]) =>
     t.finishedAt ?? t.readyDate ?? t.publishDate;
+
+  // ---- تشخيص التأخيرات: WHERE (stage) + WHO (person) + HOW MUCH (days) ----
+  const stageLabelOf = (t: (typeof tasks)[number]) =>
+    t.stage ? STAGE_LABELS[t.stage as Stage] : t.kind === "ADHOC" ? "إضافية" : "أخرى";
+  const lateTasks = tasks.filter((t) => isLate(t));
+  const lateByStage = new Map<string, number>();
+  for (const t of lateTasks) {
+    const s = stageLabelOf(t);
+    lateByStage.set(s, (lateByStage.get(s) ?? 0) + 1);
+  }
+  const STAGE_ORDER = ["كتابة", "تصميم", "تصوير", "نشر", "إضافية", "أخرى"];
+  const lateStages = [...lateByStage.entries()].sort(
+    (a, b) => STAGE_ORDER.indexOf(a[0]) - STAGE_ORDER.indexOf(b[0]),
+  );
+  const lateByPerson = employees
+    .map((e) => {
+      const mine = lateTasks.filter((t) => t.assigneeId === e.id);
+      const maxDays = mine.reduce((a, t) => Math.max(a, daysLateOf(t)), 0);
+      return { e, count: mine.length, maxDays };
+    })
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.count - a.count || b.maxDays - a.maxDays);
 
   const teamRows: ReportRow[] = employees.map((e) => {
     const w = workload.find((x) => x.employee.id === e.id);
@@ -287,6 +311,51 @@ export default async function ReportsPage({
         </Card>
       )}
 
+      {/* تشخيص التأخيرات: أين (المرحلة) ومَن (الشخص) وكم (الأيام) */}
+      <Card className={lateTasks.length > 0 ? "border-r-4 border-danger" : undefined}>
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle className={"w-5 h-5 " + (lateTasks.length ? "text-danger" : "text-success")} />
+          <h2 className="display-font text-lg">تشخيص التأخيرات</h2>
+          <span className="text-xs text-fg-muted">{lateTasks.length} مهمة متأخرة</span>
+        </div>
+        {lateTasks.length === 0 ? (
+          <p className="text-sm text-success">لا تأخيرات — كل المهام ضمن مواعيدها. 👏</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4 mt-3">
+            <div>
+              <div className="text-xs text-fg-dim mb-2">أين التأخير (حسب المرحلة)</div>
+              <div className="flex flex-wrap gap-2">
+                {lateStages.map(([stage, n]) => (
+                  <span
+                    key={stage}
+                    className="text-xs rounded-md px-2 py-1 bg-danger/10 text-danger font-medium"
+                  >
+                    {stage}: {n}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-fg-dim mb-2">عند مَن (حسب الشخص)</div>
+              <div className="flex flex-col gap-1.5">
+                {lateByPerson.map(({ e, count, maxDays }) => (
+                  <div key={e.id} className="flex items-center gap-2 text-sm">
+                    <Avatar name={e.name} color={e.color ?? undefined} size={18} />
+                    <span className="flex-1 truncate">{e.name}</span>
+                    <span className="text-danger font-semibold tabular-nums">{count} متأخرة</span>
+                    {maxDays > 0 && (
+                      <span className="text-[11px] text-fg-muted tabular-nums">
+                        أقصى {maxDays === 1 ? "يوم" : `${maxDays} يوم`}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <div className="space-y-4">
         <h2 className="display-font text-lg">تفاصيل المهام لكل شخص</h2>
         {employees.map((e) => {
@@ -353,7 +422,7 @@ export default async function ReportsPage({
                         <span className="truncate">
                           {cardLabelFor(t, c.count, reelNum, coName)}
                         </span>
-                        {late && <LatePill />}
+                        {late && <LatePill days={daysLateOf(t)} />}
                       </span>
                       <span className="text-[11px] text-fg-muted tabular-nums shrink-0">
                         {s ? formatDateShort(new Date(s)) : "—"} ←{" "}

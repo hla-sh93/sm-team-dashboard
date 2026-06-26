@@ -16,7 +16,7 @@ import {
 import { formatDateShort } from "@/lib/dates";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
-import { Pill, PriorityPill, LatePill } from "@/components/ui/pills";
+import { Pill, PriorityPill, LatePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
@@ -231,7 +231,7 @@ export default function KanbanBoard({
                         نشر {formatDateShort(new Date(t.publishDate))}
                       </Pill>
                     )}
-                    {isLate(t) && <LatePill />}
+                    {isLate(t) && <LatePill days={daysLateOf(t)} />}
                   </div>
 
                   <Select

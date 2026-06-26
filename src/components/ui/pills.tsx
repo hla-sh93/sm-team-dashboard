@@ -35,10 +35,27 @@ export function PriorityPill({ priority }: { priority: string }) {
 }
 
 /** Overdue / late badge. */
-export function LatePill() {
+export function LatePill({ days }: { days?: number }) {
+  const label =
+    days && days > 0 ? `متأخّر ${days === 1 ? "يوم" : `${days} يوم`}` : "متأخّر";
   return (
     <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-danger/10 text-danger font-semibold whitespace-nowrap">
-      <AlertTriangle className="w-3 h-3" /> متأخّر
+      <AlertTriangle className="w-3 h-3" /> {label}
     </span>
   );
+}
+
+/** Calendar days a task is late (0 if not late). Deadline = readyDate else
+ *  publishDate; reference = finishedAt (finished late) else now. */
+export function daysLateOf(
+  t: { readyDate: Date | null; publishDate: Date | null; finishedAt: Date | null; status: string; board?: string },
+): number {
+  const done = t.status === "READY" || t.status === "PUBLISHED" || t.board === "DONE";
+  const dl = t.readyDate ?? t.publishDate;
+  if (!dl) return 0;
+  const due = new Date(dl).getTime();
+  const ref = t.finishedAt ? new Date(t.finishedAt).getTime() : Date.now();
+  if (t.finishedAt) return ref > due ? Math.ceil((ref - due) / 86400000) : 0;
+  if (done) return 0;
+  return ref > due ? Math.ceil((ref - due) / 86400000) : 0;
 }
