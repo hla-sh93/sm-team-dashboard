@@ -217,14 +217,25 @@ export async function generateSchedule(year: number, month: number) {
         });
       }
 
-      for (const a of adhocTasks) {
-        if (!a.sourceId) continue;
-        await tx.task.update({
-          where: { id: a.sourceId },
-          data: { workDate: a.workDate, overflow: a.overflow },
-        });
-      }
+    }, {
+      // The atomic replace above is only a few queries (deleteMany + createMany),
+      // but give it generous head-room so a slow connection (e.g. Neon) can't trip
+      // Prisma's default 5s interactive-transaction limit → "Transaction not found".
+      maxWait: 15000,
+      timeout: 30000,
     });
+
+    // Stamp ad-hoc tasks' computed workDate/overflow AFTER the transaction. These
+    // are independent best-effort updates (ad-hoc rows are isAuto=false, untouched
+    // by the replace); keeping the per-row loop OUT of the interactive transaction
+    // is what prevents it from timing out when there are many of them.
+    for (const a of adhocTasks) {
+      if (!a.sourceId) continue;
+      await prisma.task.update({
+        where: { id: a.sourceId },
+        data: { workDate: a.workDate, overflow: a.overflow },
+      });
+    }
 
     revalidateAll();
     const stages = {

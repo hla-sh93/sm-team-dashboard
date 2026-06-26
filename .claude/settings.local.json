@@ -111,7 +111,12 @@
       "PowerShell(npx next build 2>&1)",
       "PowerShell(npx next build 2>&1 | Select-String -Pattern \"Compiled successfully|Failed|error\" | Select-Object -First 5; \"build_exit=$LASTEXITCODE\")",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx next start -p 3100)",
-      "PowerShell($p = Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue; \"stopped 3100 \\(pid $p\\)\" } else { \"nothing on 3100\" })"
+      "PowerShell($p = Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue; \"stopped 3100 \\(pid $p\\)\" } else { \"nothing on 3100\" })",
+      "Bash(DATABASE_URL=file:./prisma/dev.db npx tsx -e ' *)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx \"C:\\\\Users\\\\hla2-\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-hla2--Videos-Social-sm-team-dashboard\\\\23e3faa9-c434-436f-a0f9-7394e20b56ce\\\\scratchpad\\\\check-regen.ts\" 2>&1)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
+      "PowerShell(Start-Sleep -Seconds 12; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
+      "PowerShell(Start-Sleep -Seconds 18; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)"
     ]
   }
 }
