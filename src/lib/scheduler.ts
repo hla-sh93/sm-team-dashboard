@@ -185,12 +185,16 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 
   // Publishing distribution. Each company's items spread evenly across its
   // CONTRACT CYCLE (a 30-day day→day window when a contractStartDate is set,
-  // otherwise the plain calendar month). FEED items (POST/REEL/AI_REEL) stay
-  // ≥1 day apart for a company (no same or consecutive day); stories may share
-  // days; companies are staggered (offset) so they don't all publish together.
+  // otherwise the plain calendar month). NO PUBLISHING ON FRIDAY (getDay()===5).
+  // FEED items (POST/REEL/AI_REEL) stay ≥1 day apart for a company (no same or
+  // consecutive day); stories may share days; companies are staggered (offset)
+  // so they don't all publish together.
   let coIdx = 0;
   for (const co of managed) {
-    const cycleDays = companyCycle(year, month, contractDayOf(co.contractStartDate)).days;
+    // Publishing days = the cycle window minus Fridays (no Friday publishing).
+    const cycleDays = companyCycle(year, month, contractDayOf(co.contractStartDate)).days.filter(
+      (d) => d.getDay() !== 5,
+    );
     const cycleLen = cycleDays.length;
     const weekOfCycle = (dayIdx: number) =>
       Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);

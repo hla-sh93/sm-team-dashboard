@@ -98,10 +98,10 @@ export function computeWorkload(
     const publisher = isPublisherRole(emp.role);
     const photographer = emp.isPhotographer;
 
-    // The publisher works EVERY day (publishing runs 7 days/week, weekends too),
-    // so his capacity counts all calendar days; everyone else only their workdays.
+    // The publisher works every publishing day — that's all days EXCEPT Friday
+    // (no Friday publishing); everyone else only their own workdays.
     const capacityDays = publisher
-      ? period.length
+      ? period.filter((d) => d.getDay() !== 5).length
       : period.filter((d) => wd.includes(d.getDay())).length;
 
     const myTasks = tasks.filter(
