@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   ListOrdered,
   Send,
-  ShieldCheck,
   TrendingUp,
   UserCog,
   Users,
@@ -109,26 +108,24 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Area switch — makes the (login-less) jump between the team view and the
-          admin dashboard explicit instead of requiring a manual /admin URL. */}
-      <div className="mt-6 pt-4 border-t border-border-soft">
-        <Link
-          href={isAdmin ? "/" : ADMIN_BASE}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition border border-transparent"
-        >
-          {isAdmin ? (
+      {/* Area switch — ONLY rendered INSIDE the admin area (admin → team view).
+          There is no login, so anything shown in the employee sidebar is visible
+          to employees. The employee view must NEVER link to, or hint at, the
+          admin dashboard. The owner reaches /admin via a manual URL/bookmark. */}
+      {isAdmin && (
+        <div className="mt-6 pt-4 border-t border-border-soft">
+          <Link
+            href="/"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition border border-transparent"
+          >
             <UserCog className="w-[18px] h-[18px] flex-shrink-0 opacity-85" />
-          ) : (
-            <ShieldCheck className="w-[18px] h-[18px] flex-shrink-0 opacity-85" />
-          )}
-          <span>{isAdmin ? "واجهة الموظفين" : "لوحة الإدارة"}</span>
-        </Link>
-        <p className="text-[10px] text-fg-muted px-3 pt-2 leading-relaxed">
-          {isAdmin
-            ? "أنت في لوحة الإدارة — المالية والفريق والإعدادات."
-            : "واجهة الفريق — المهام والنشر فقط. الإدارة في لوحة منفصلة."}
-        </p>
-      </div>
+            <span>واجهة الموظفين</span>
+          </Link>
+          <p className="text-[10px] text-fg-muted px-3 pt-2 leading-relaxed">
+            أنت في لوحة الإدارة — المالية والفريق والإعدادات.
+          </p>
+        </div>
+      )}
     </aside>
   );
 }
