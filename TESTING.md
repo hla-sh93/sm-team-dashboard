@@ -21,15 +21,32 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **52/52 pass** | S1 |
+| ENV‑3 | `npm test` | **66/66 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; designers STORY=8 | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
+### 0.1 Automated test suite (`npm test`, Vitest) — 9 files / 66 tests
+| File | Tests | Covers |
+|---|---|---|
+| `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
+| `tests/acceptance.test.ts` | 15 | SPEC acceptance (scheduling, ownership, photographer…) |
+| `tests/schemas.test.ts` | 9 | Zod validation (employee / company / task) |
+| `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
+| `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
+| `tests/cycles.test.ts` | 6 | contract-cycle plan distribution (20→20, 15→15) |
+| `tests/persistence.test.ts` | 3 | manual edits survive a regen |
+| `tests/csv.test.ts` | 3 | report CSV export |
+| `tests/db-integration.test.ts` | 1 | DB integration (self-skips if Prisma absent) |
+
 ---
 
 ## 1. Access split (employee vs admin) 🆕 — S1 (privacy)
+> ACC‑1/6/7 are also enforced automatically by `tests/access-control.test.ts`,
+> which reads the nav config in `src/lib/nav.ts` and fails CI if the employee
+> area ever links to `/admin`.
+
 | ID | Steps | Expected | Sev |
 |---|---|---|---|
 | ACC‑1 | Open `/` (employee) | sidebar shows only: نظرة عامة, جدول المهام, جدول النشر, تقرير الإنجاز | S2 |
@@ -37,6 +54,9 @@ A case PASSES only if the expected result AND every side effect hold.
 | ACC‑3 | Open `/admin` | full sidebar (+ المالية, الشركات, الفريق, الأحمال, الأولويات); brand “ADMIN”; nav links are `/admin/*` | S2 |
 | ACC‑4 | Shared pages identical | `/tasks` and `/admin/tasks` both have full add/edit/delete + status moves | **S2** |
 | ACC‑5 | Edit reflects in both | a change on `/admin/...` shows on `/...` after refresh (one data source) | S2 |
+| ACC‑6 | Employee sidebar has **no admin link/hint** | no “لوحة الإدارة” link, no footer mentioning الإدارة; nothing points at `/admin` | **S1** |
+| ACC‑7 | Admin sidebar area‑switch | a single “واجهة الموظفين” link back to `/`; never the reverse on the employee side | S2 |
+| ACC‑8 | Employee `/reports` carries no money | shows task ledger + workload only; **no salary / contract value / P&L** | **S1** |
 
 ---
 
@@ -55,12 +75,13 @@ A case PASSES only if the expected result AND every side effect hold.
 | ID | Steps | Expected | Sev |
 |---|---|---|---|
 | HOME‑1 | KPIs | managed companies · monthly content · designers · open URGENT | S2 |
-| HOME‑2 | **المهام الحرجة** | not‑done tasks overdue or due ≤2 working days; days‑late; owner | S2 |
+| HOME‑2 | **المهام الحرجة حسب الفريق** | not‑done tasks overdue or due ≤2 working days, **grouped per person**; each block: counters متأخرة/اليوم/الأسبوع, top‑6 cards (overflow “+N مهمة أخرى”), and a “عرض في البورد ←” link | S2 |
+| HOME‑2b | critical card link | “عرض في البورد” opens the board pre‑filtered to that person (`?person=<id>`), in the same area (`/` or `/admin`) | S2 |
 | HOME‑3 | **إنجاز الفريق** | a donut per person (done/total/remaining), counts ALL assigned tasks — **عمر appears** | **S2** |
 | HOME‑4 | **مهام اليوم** | a **tab per employee, always all of them**; active tab shows: their tasks, or **عطلة** (day off), or **متفرّغ لعمل إضافي** (working, no tasks) | **S2** |
 | HOME‑5 | publisher on a Thursday | عمر shows his publish tasks (tasks take precedence over an “off” weekday) | S2 |
 | HOME‑6 | **إنجاز الشركات** | published ÷ plan over the cycle; counts only PUBLISH=DONE; 0% while publishing pending | S2 |
-| HOME‑7 | إعادة الجدولة | success toast; pipeline rebuilt (admin overview) | S1 |
+| HOME‑7 | إعادة الجدولة | success toast (stage counts); pipeline rebuilt. On failure → error toast with the real reason. If the run has gaps (missing writer/designer/photographer) → a **warning** toast lists them | S1 |
 
 ---
 
@@ -72,6 +93,10 @@ A case PASSES only if the expected result AND every side effect hold.
 | KAN‑3 | same number across stages | design `بوست-3` ↔ publish `جدولة بوست-3` ↔ publishing `بوست-3` = same piece | S2 |
 | KAN‑4 | board card meta | stage badge · owner · priority pill · pills ⏱ duration / 📅 يبدأ / تسليم / ✈ نشر · **متأخّر N يوم** when late | S2 |
 | KAN‑5 | status/board move | updates; reflects in workload/donuts after refresh | S2 |
+| KAN‑6 | **grouping (default شركة)** | within each status column, cards grouped by company (color dot + name + count), companies by priority, cards by nearest deadline then stage | S2 |
+| KAN‑7 | **تجميع toggle** | switch شركة / نوع / شخص / بدون regroups the columns; default is شركة | S2 |
+| KAN‑8 | **deep‑link filter** | open `/tasks?person=<id>` (or `?company=`) → the person/company filter is pre‑selected | S2 |
+| KAN‑9 | **خطة دورة label** | نوال’s write cards read “كتابة بوستات وستوريز — <company> · دورة <start> – <end>” for the cycle they cover (e.g. المول 20 حزيران – 19 تموز) after إعادة الجدولة | S2 |
 | CAL‑1 | calendar (شهري/أسبوعي/يومي) | items by workDate; **REEL & PUBLISH excluded** (production view); Friday column clear of work | **S2** |
 | CAL‑2 | calendar card | owner read‑only (edit via ✏️); status select; pills incl. متأخّر N يوم | S2 |
 | CAL‑3 | cycle spill | monthly grid extends to show a 20→20 company’s next‑month days | S2 |
@@ -209,8 +234,8 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 52 tests · build).
-- [ ] **ACC‑2 PASS** (employees can’t reach finance/team) — S1.
+- [ ] ENV‑2/3/4 green (typecheck · 66 tests · build).
+- [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
 - [ ] SEED‑1..3, GEN‑2/5, DEL‑2/PUB‑4, WL‑5 PASS — S1.
 - [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, REP‑3 PASS.
 - [ ] One DB backup stored outside the repo.

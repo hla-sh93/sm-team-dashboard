@@ -1,66 +1,21 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import {
-  Building2,
-  CheckSquare,
-  FileBarChart,
-  LayoutDashboard,
-  ListOrdered,
-  Send,
-  TrendingUp,
-  UserCog,
-  Users,
-  Wallet,
-} from "lucide-react";
+import { UserCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
-type NavSection = { title: string; items: NavItem[] };
-
-// Employees (root URLs) — view + update task status only. No finance/team/etc.
-const employeeNav: NavSection[] = [
-  {
-    title: "العمل اليومي",
-    items: [
-      { href: "/", label: "نظرة عامة", icon: LayoutDashboard },
-      { href: "/tasks", label: "جدول المهام", icon: CheckSquare },
-      { href: "/publishing", label: "جدول النشر", icon: Send },
-      { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
-    ],
-  },
-];
-
-// Admin — sees everything, including finance & team. Admin lives under this base
-// path (NO login). To change it, rename src/app/<base> AND this constant.
-const ADMIN_BASE = "/admin";
-const adminNav: NavSection[] = [
-  {
-    title: "العمل اليومي",
-    items: [
-      { href: ADMIN_BASE, label: "نظرة عامة", icon: LayoutDashboard },
-      { href: `${ADMIN_BASE}/tasks`, label: "جدول المهام", icon: CheckSquare },
-      { href: `${ADMIN_BASE}/publishing`, label: "جدول النشر", icon: Send },
-      { href: `${ADMIN_BASE}/workload`, label: "أحمال العمل", icon: TrendingUp },
-      { href: `${ADMIN_BASE}/reports`, label: "تقرير الإنجاز", icon: FileBarChart },
-      { href: `${ADMIN_BASE}/finance`, label: "المالية", icon: Wallet },
-    ],
-  },
-  {
-    title: "الإعدادات",
-    items: [
-      { href: `${ADMIN_BASE}/priorities`, label: "الأولويات", icon: ListOrdered },
-      { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
-      { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
-    ],
-  },
-];
+import {
+  ADMIN_BASE,
+  adminNav,
+  areaSwitchHref,
+  employeeNav,
+} from "@/lib/nav";
 
 export default function Sidebar() {
   const path = usePathname();
   const isAdmin = path === ADMIN_BASE || path.startsWith(`${ADMIN_BASE}/`);
   const navSections = isAdmin ? adminNav : employeeNav;
+  const switchHref = areaSwitchHref(isAdmin);
 
   return (
     <aside className="w-[260px] flex-shrink-0 bg-bg-elev border-l border-border-soft sticky top-0 h-screen overflow-y-auto px-4 py-6">
@@ -108,14 +63,14 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Area switch — ONLY rendered INSIDE the admin area (admin → team view).
-          There is no login, so anything shown in the employee sidebar is visible
-          to employees. The employee view must NEVER link to, or hint at, the
-          admin dashboard. The owner reaches /admin via a manual URL/bookmark. */}
-      {isAdmin && (
+      {/* Area switch — rendered ONLY when areaSwitchHref returns a destination,
+          i.e. inside the admin area (admin → team view). For employees it returns
+          null, so the employee sidebar shows no admin link or hint. There is no
+          login; the owner reaches /admin via a manual URL/bookmark. */}
+      {switchHref && (
         <div className="mt-6 pt-4 border-t border-border-soft">
           <Link
-            href="/"
+            href={switchHref}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition border border-transparent"
           >
             <UserCog className="w-[18px] h-[18px] flex-shrink-0 opacity-85" />

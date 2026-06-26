@@ -104,7 +104,11 @@
       "PowerShell(npm test 2>&1)",
       "Bash(git ls-remote *)",
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 4; \"exit=$LASTEXITCODE\")",
-      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |failed\" | Select-Object -Last 3)"
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |failed\" | Select-Object -Last 3)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\")",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |access-control|fail\" | Select-Object -Last 8)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail\" | Select-Object -Last 3)",
+      "PowerShell(npx next build 2>&1)"
     ]
   }
 }
