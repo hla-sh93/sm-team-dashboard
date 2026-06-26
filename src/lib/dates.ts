@@ -5,18 +5,18 @@
  */
 
 export const ARABIC_MONTHS = [
-  'يناير',
-  'فبراير',
-  'مارس',
-  'أبريل',
-  'مايو',
-  'يونيو',
-  'يوليو',
-  'أغسطس',
-  'سبتمبر',
-  'أكتوبر',
-  'نوفمبر',
-  'ديسمبر',
+  'كانون الثاني',
+  'شباط',
+  'آذار',
+  'نيسان',
+  'أيار',
+  'حزيران',
+  'تموز',
+  'آب',
+  'أيلول',
+  'تشرين الأول',
+  'تشرين الثاني',
+  'كانون الأول',
 ];
 
 export const ARABIC_DAYS = [
@@ -62,7 +62,7 @@ export function fromISODate(iso: string): Date {
 }
 
 /**
- * Format date in Arabic short form: "5 مايو".
+ * Format date in Arabic short form: "5 أيار".
  */
 export function formatDateShort(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -70,7 +70,7 @@ export function formatDateShort(date: Date | string): string {
 }
 
 /**
- * Format date in Arabic long form: "السبت 5 مايو 2026".
+ * Format date in Arabic long form: "السبت 5 أيار 2026".
  */
 export function formatDateLong(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -78,7 +78,7 @@ export function formatDateLong(date: Date | string): string {
 }
 
 /**
- * Format date for cards: "5 مايو · السبت".
+ * Format date for cards: "5 أيار · السبت".
  */
 export function formatDateCard(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -205,14 +205,14 @@ export function shiftDays(date: Date, days: number): Date {
 }
 
 /**
- * Format month label: "مايو 2026"
+ * Format month label: "أيار 2026"
  */
 export function formatMonthLabel(date: Date): string {
   return `${ARABIC_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 /**
- * Format week label: "12 - 18 مايو"
+ * Format week label: "12 - 18 أيار"
  */
 export function formatWeekLabel(date: Date): string {
   const days = getWeekDays(date);

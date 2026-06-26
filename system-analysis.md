@@ -280,9 +280,9 @@ pct = consumed_days / working_days_in_month × 100
 - `getMonthDays(yr, mo)` → كل أيام الشهر
 - `getWorkingDaysInMonth(yr, mo)` → فقط أيام العمل
 - `getWeekDays(anchor)` → 7 أيام بترتيب عربي (السبت أولاً)
-- `formatDateLong(d)` → "السبت 12 مايو 2026"
-- `formatMonthLabel(d)` → "مايو 2026"
-- `formatWeekLabel(d)` → "12 - 18 مايو"
+- `formatDateLong(d)` → "السبت 12 أيار 2026"
+- `formatMonthLabel(d)` → "أيار 2026"
+- `formatWeekLabel(d)` → "12 - 18 أيار"
 
 ---
 

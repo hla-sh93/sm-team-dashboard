@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  ARABIC_MONTHS,
   backWorkday,
   forwardWorkday,
   addWorkdaysFor,
   batchSizes,
   firstSaturday,
+  formatDateShort,
+  formatMonthLabel,
+  formatWeekLabel,
   parseWorkDays,
   periodDays,
   split4,
@@ -15,6 +19,31 @@ import {
 
 const SAT_WED = [6, 0, 1, 2, 3];
 const SUN_THU = [0, 1, 2, 3, 4];
+
+describe("Arabic month labels", () => {
+  it("uses Levantine Arabic month names", () => {
+    expect(ARABIC_MONTHS).toEqual([
+      "كانون الثاني",
+      "شباط",
+      "آذار",
+      "نيسان",
+      "أيار",
+      "حزيران",
+      "تموز",
+      "آب",
+      "أيلول",
+      "تشرين الأول",
+      "تشرين الثاني",
+      "كانون الأول",
+    ]);
+  });
+
+  it("formats dates with the configured month names", () => {
+    expect(formatDateShort(new Date(2026, 6, 1))).toBe("1 تموز");
+    expect(formatMonthLabel(new Date(2026, 7, 1))).toBe("آب 2026");
+    expect(formatWeekLabel(new Date(2026, 5, 15))).toBe("13 - 19 حزيران");
+  });
+});
 
 describe("split4 (§4.4)", () => {
   it("distributes remainder to earliest weeks", () => {

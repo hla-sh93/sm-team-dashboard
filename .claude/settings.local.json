@@ -93,7 +93,18 @@
       "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const t=await db.task.findFirst\\({where:{year:2026,month:5,status:{in:['\\\\''READY'\\\\'','\\\\''PUBLISHED'\\\\'']},assigneeId:{not:null}}}\\);if\\(t\\){await db.task.update\\({where:{id:t.id},data:{startedAt:new Date\\(2026,5,10\\),finishedAt:new Date\\(2026,5,12\\)}}\\);console.log\\('\\\\''stamped task'\\\\'',t.title||t.type,'\\\\''assignee'\\\\'',t.assigneeId,'\\\\''→ started Jun10, finished Jun12 \\(2 days\\)'\\\\''\\);}await db.$disconnect\\(\\);}\\)\\(\\)')",
       "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const c=await db.task.count\\({where:{year:2026,month:5,kind:'\\\\''CONTENT'\\\\'',type:{not:null},publishDate:{not:null}}}\\);const p=await db.task.count\\({where:{year:2026,month:5,kind:'\\\\''PUBLISH'\\\\'',publishDate:{not:null}}}\\);console.log\\('\\\\''BEFORE delete — content:'\\\\'',c,'\\\\''publish:'\\\\'',p,c===p?'\\\\''\\(matched\\)'\\\\'':'\\\\''\\(ORPHAN -'\\\\''+\\(p-c\\)+'\\\\''\\)'\\\\''\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
       "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);const c=await db.task.count\\({where:{year:2026,month:5,kind:'\\\\''CONTENT'\\\\'',type:{not:null},publishDate:{not:null}}}\\);const p=await db.task.count\\({where:{year:2026,month:5,kind:'\\\\''PUBLISH'\\\\'',publishDate:{not:null}}}\\);console.log\\('\\\\''AFTER delete+regen — content:'\\\\'',c,'\\\\''publish:'\\\\'',p,c===p?'\\\\''\\(HEALED ✓\\)'\\\\'':'\\\\''\\(orphan\\)'\\\\''\\);const tr=await db.task.findMany\\({where:{year:2026,month:5,companyId:'\\\\''c_training'\\\\'',type:'\\\\''POST'\\\\'',stage:'\\\\''DESIGN'\\\\''},select:{assigneeId:true},take:1}\\);console.log\\('\\\\''التدريب POST design owner now:'\\\\'',tr[0]?.assigneeId\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
-      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);await db.task.updateMany\\({where:{year:2026,month:5,title:'\\\\''تصميم المونديال'\\\\''},data:{startedAt:null,finishedAt:null}}\\);console.log\\('\\\\''reverted test stamp'\\\\''\\);await db.$disconnect\\(\\);}\\)\\(\\)')"
+      "Bash(node -e 'const{PrismaClient}=require\\('\\\\''@prisma/client'\\\\''\\);\\(async\\(\\)=>{const db=new PrismaClient\\(\\);await db.task.updateMany\\({where:{year:2026,month:5,title:'\\\\''تصميم المونديال'\\\\''},data:{startedAt:null,finishedAt:null}}\\);console.log\\('\\\\''reverted test stamp'\\\\''\\);await db.$disconnect\\(\\);}\\)\\(\\)')",
+      "PowerShell(npm run typecheck)",
+      "PowerShell($before = npx tsx -e \"import {PrismaClient} from '@prisma/client'; const d=new PrismaClient\\(\\); \\(async\\(\\)=>{console.log\\(JSON.stringify\\({t:await d.task.count\\(\\),c:await d.company.count\\(\\),e:await d.employee.count\\(\\),ps:await d.photoSession.count\\(\\)}\\)\\); await d.$disconnect\\(\\);}\\)\\(\\)\"; Write-Output \"BEFORE: $before\"; Write-Output \"---- running db:seed ----\"; npm run db:seed 2>&1 | Select-Object -Last 20)",
+      "Bash(rm -f scripts/qa-inspect.ts scripts/qa-fingerprint.ts scripts/qa-wl6.ts)",
+      "Bash(ls scripts/)",
+      "Bash(git restore *)",
+      "Bash(git commit *)",
+      "PowerShell(npm run typecheck 2>&1)",
+      "PowerShell(npm test 2>&1)",
+      "Bash(git ls-remote *)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 4; \"exit=$LASTEXITCODE\")",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |failed\" | Select-Object -Last 3)"
     ]
   }
 }
