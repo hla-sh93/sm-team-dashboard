@@ -279,15 +279,25 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   const reelCompanies = managed.filter((co) => co.reels > 0);
   const reelsByPhotographer = new Map<
     string,
-    { companyId: string; companyName: string; preferredShootDay: number | null; reels: ReelTask[] }[]
+    {
+      companyId: string;
+      companyName: string;
+      preferredShootDay: number | null;
+      cycleStart: Date;
+      cycleEnd: Date;
+      reels: ReelTask[];
+    }[]
   >();
   for (const co of reelCompanies) {
     const pid = photographerOf(co);
     if (!pid) continue; // no photographer at all — warned below
+    const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
     const entry = {
       companyId: co.id,
       companyName: co.name,
       preferredShootDay: co.preferredShootDay ?? null,
+      cycleStart: cyc.start,
+      cycleEnd: cyc.end,
       reels: tasks
         .filter((t) => t.type === "REEL" && t.companyId === co.id)
         .map<ReelTask>((t) => ({

@@ -55,6 +55,8 @@ export function buildPhotoSessions(
     companyName: string;
     reels: ReelTask[];
     preferredShootDay?: number | null;
+    cycleStart?: Date | null;
+    cycleEnd?: Date | null;
   }[],
   photographerWorkDays: number[],
 ): PhotographerResult {
@@ -63,12 +65,28 @@ export function buildPhotoSessions(
   const warnings: PhotographerWarning[] = [];
   const photoWork = photoWorkDaysOf(photographerWorkDays);
 
-  // SHOOT_CAP = last working day of week 3 (the last Wednesday before week 4).
-  // No shooting in week 4 (§4.6 rule 4).
+  // "No shooting in the LAST WEEK" cutoff — computed PER COMPANY on its contract
+  // CYCLE (the last quarter of the cycle is off-limits), falling back to the
+  // calendar month's week 3/4 when the company has no contract cycle.
+  const DAY = 86400000;
   const ws = weeks(year, month);
-  const SHOOT_CAP = backWorkday(ws[2][4], photoWork); // week 3, Wed
-
-  const week4Set = new Set(ws[3].map((d) => d.toDateString()));
+  const calCap = backWorkday(ws[2][4], photoWork); // calendar week 3, Wed
+  const calWeek4 = new Set(ws[3].map((d) => d.toDateString()));
+  const shootCapFor = (co: { cycleStart?: Date | null; cycleEnd?: Date | null }) => {
+    if (!co.cycleStart || !co.cycleEnd) {
+      return { cap: calCap, inLastWeek: (d: Date) => calWeek4.has(d.toDateString()) };
+    }
+    const len = Math.round((co.cycleEnd.getTime() - co.cycleStart.getTime()) / DAY);
+    const w4Start = new Date(co.cycleStart);
+    w4Start.setDate(co.cycleStart.getDate() + Math.floor((3 * len) / 4)); // last quarter
+    const capDay = new Date(w4Start);
+    capDay.setDate(w4Start.getDate() - 1); // last day before the final quarter
+    return {
+      cap: backWorkday(capDay, photoWork),
+      inLastWeek: (d: Date) =>
+        d.getTime() >= w4Start.getTime() && d.getTime() < co.cycleEnd!.getTime(),
+    };
+  };
 
   // Photoshoot dates: stagger across the last photographer-working days of the
   // PRIOR month, ≤2 photoshoots per day (§5.5 note).
@@ -86,6 +104,8 @@ export function buildPhotoSessions(
       const t = a.publishDate.getTime() - b.publishDate.getTime();
       return t !== 0 ? t : a.detKey.localeCompare(b.detKey);
     });
+    // No shooting in the company's last cycle-week (calendar fallback otherwise).
+    const { cap: SHOOT_CAP, inLastWeek } = shootCapFor(co);
 
     let sessionNo = 1;
 
@@ -151,8 +171,8 @@ export function buildPhotoSessions(
       const deliver = backWorkday(deliverTarget, photoWork);
 
       // Invariants (§4.6 rule 5 / §9): shoot ≤ deliver ≤ shoot+3, deliver < epub,
-      // shoot not in week 4.
-      if (week4Set.has(shoot.toDateString())) {
+      // shoot not in the last cycle-week.
+      if (inLastWeek(shoot)) {
         warnings.push({
           level: "error",
           message: `${co.companyName}: نزلة تصوير وقعت في الأسبوع الأخير — تحقّق من المواعيد`,
