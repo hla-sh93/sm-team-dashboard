@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { loadState } from "@/lib/schedule-data";
+import { companyCycle, contractDayOf, formatDateShort } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -88,6 +89,16 @@ export async function generateSchedule(year: number, month: number) {
     const publisherId =
       state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
+    // Contract-cycle label for the writer's plan card (e.g. "دورة 20 حزيران – 19
+    // تموز"). end is exclusive, so the last shown day is end − 1.
+    const cycleLabel = (id: string) => {
+      const co = state.companies.find((c) => c.id === id);
+      if (!co) return null;
+      const { start, end } = companyCycle(year, month, contractDayOf(co.contractStartDate));
+      const last = new Date(end);
+      last.setDate(last.getDate() - 1);
+      return `دورة ${formatDateShort(start)} – ${formatDateShort(last)}`;
+    };
     const iso = (d: Date | null) =>
       d
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -112,6 +123,7 @@ export async function generateSchedule(year: number, month: number) {
       year,
       month,
       companyName: coName,
+      cycleLabel,
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
     });
     applyAchievements(pipe, achievementsFor(year, month));
@@ -224,7 +236,8 @@ export async function generateSchedule(year: number, month: number) {
     return { ok: true as const, stages, warnings: result.warnings };
   } catch (e) {
     console.error(e);
-    return { ok: false as const, error: "فشل توليد الجدول" };
+    const detail = e instanceof Error ? e.message : String(e);
+    return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };
   }
 }
 

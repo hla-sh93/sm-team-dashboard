@@ -21,7 +21,9 @@ import {
   ARABIC_DAYS,
 } from "@/lib/dates";
 import type { Employee, Company, Task } from "@/types";
-import { AlertTriangle, Building2, CalendarClock, Send, Users, Zap } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, Send, Users, Zap, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function OverviewClient({
   year,
@@ -37,6 +39,9 @@ export default function OverviewClient({
   tasks: Task[];
 }) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const pathname = usePathname();
+  // The overview is shared at `/` and `/admin`; keep board links in the same area.
+  const base = pathname.startsWith("/admin") ? "/admin" : "";
   const managed = companies.filter((c) => c.managed && c.status === "active");
   const designers = employees.filter((e) => e.isScheduled && !e.isPhotographer);
   const content = tasks.filter((t) => t.kind === "CONTENT");
@@ -143,6 +148,30 @@ export default function OverviewClient({
         (a.dl?.getTime() ?? 0) - (b.dl?.getTime() ?? 0),
     );
 
+  // Group the critical cards by the person responsible so the home page reads as
+  // a daily ops board ("who owns what's on fire") instead of one flat list. Each
+  // person block carries counters: متأخرة / اليوم / هذا الأسبوع.
+  const bucketOf = (dl: Date | null): "overdue" | "today" | "soon" => {
+    if (!dl) return "soon";
+    const iso = toISODate(dl);
+    if (iso < todayISO) return "overdue";
+    if (iso === todayISO) return "today";
+    return "soon";
+  };
+  const criticalByPerson = employees
+    .map((e) => {
+      const items = criticalCards.filter((c) => c.card.repr.assigneeId === e.id);
+      const counts = { overdue: 0, today: 0, soon: 0 };
+      for (const it of items) counts[bucketOf(it.dl)]++;
+      return { emp: e, items, counts };
+    })
+    .filter((g) => g.items.length > 0)
+    .sort(
+      (a, b) =>
+        b.counts.overdue - a.counts.overdue ||
+        (a.items[0]?.dl?.getTime() ?? 0) - (b.items[0]?.dl?.getTime() ?? 0),
+    );
+
   const kpis = [
     { label: "الشركات المُدارة", value: managed.length, icon: Building2 },
     { label: "منشورات الشهر", value: content.length, icon: Send },
@@ -178,43 +207,95 @@ export default function OverviewClient({
         })}
       </div>
 
-      {/* المهام الحرجة */}
-      {criticalCards.length > 0 && (
+      {/* المهام الحرجة حسب الفريق */}
+      {criticalByPerson.length > 0 && (
         <Card className="border-r-4 border-danger">
           <div className="flex items-center gap-2 mb-4">
             <CalendarClock className="w-5 h-5 text-danger" />
-            <h2 className="display-font text-lg">المهام الحرجة</h2>
+            <h2 className="display-font text-lg">المهام الحرجة حسب الفريق</h2>
             <span className="text-xs text-fg-muted">
               متأخرة أو تستحق خلال يومَي عمل · {criticalCards.length}
             </span>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {criticalCards.map(({ card, dl, overdue }) => (
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {criticalByPerson.map(({ emp, items, counts }) => (
               <div
-                key={card.key}
-                className={
-                  "flex items-start gap-2 min-w-0 rounded-md px-2.5 py-2 border " +
-                  (overdue
-                    ? "bg-danger/10 border-danger/40"
-                    : "bg-warning/10 border-warning/40")
-                }
+                key={emp.id}
+                className="flex flex-col gap-2 border border-border-soft rounded-lg p-3 bg-bg-elev/40"
               >
-                <AlertTriangle
-                  className={"w-4 h-4 mt-0.5 shrink-0 " + (overdue ? "text-danger" : "text-warning")}
-                />
-                <div className="min-w-0 flex flex-col gap-0.5">
-                  <span className="text-xs font-medium truncate">
-                    {cardLabelFor(card.repr, card.count, reelNum, coName)}
-                  </span>
-                  <span className="text-[10px] text-fg-dim flex items-center gap-1.5">
-                    <span>{empName(card.repr.assigneeId)}</span>
-                    {dl && (
-                      <span className={overdue ? "text-danger font-semibold" : "text-warning"}>
-                        · {overdue ? "تأخّرت" : "تستحق"} {formatDateShort(dl)}
+                {/* person header: avatar + name + counters + quick link to board */}
+                <div className="flex items-center gap-2">
+                  <Avatar name={emp.name} color={emp.color ?? undefined} size={22} />
+                  <span className="text-sm font-semibold flex-1 truncate">{emp.name}</span>
+                  <div className="flex items-center gap-1 text-[10px] tabular-nums">
+                    {counts.overdue > 0 && (
+                      <span className="rounded-full px-1.5 py-0.5 bg-danger/15 text-danger font-semibold">
+                        متأخرة {counts.overdue}
                       </span>
                     )}
-                  </span>
+                    {counts.today > 0 && (
+                      <span className="rounded-full px-1.5 py-0.5 bg-warning/15 text-warning font-semibold">
+                        اليوم {counts.today}
+                      </span>
+                    )}
+                    {counts.soon > 0 && (
+                      <span className="rounded-full px-1.5 py-0.5 bg-bg-elev-2 text-fg-muted">
+                        الأسبوع {counts.soon}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* this person's critical cards (overdue first, then nearest).
+                    Capped so a heavy backlog doesn't make the home page endless —
+                    counters above give the totals, the board link shows the rest. */}
+                <div className="flex flex-col gap-1.5">
+                  {items.slice(0, 6).map(({ card, dl, overdue }) => (
+                    <div
+                      key={card.key}
+                      className={
+                        "flex items-start gap-2 min-w-0 rounded-md px-2 py-1.5 border " +
+                        (overdue
+                          ? "bg-danger/10 border-danger/40"
+                          : "bg-warning/10 border-warning/40")
+                      }
+                    >
+                      <AlertTriangle
+                        className={
+                          "w-3.5 h-3.5 mt-0.5 shrink-0 " +
+                          (overdue ? "text-danger" : "text-warning")
+                        }
+                      />
+                      <div className="min-w-0 flex flex-col gap-0.5">
+                        <span className="text-xs font-medium truncate">
+                          {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                        </span>
+                        {dl && (
+                          <span
+                            className={
+                              "text-[10px] " +
+                              (overdue ? "text-danger font-semibold" : "text-warning")
+                            }
+                          >
+                            {overdue ? "تأخّرت" : "تستحق"} {formatDateShort(dl)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {items.length > 6 && (
+                    <span className="text-[10px] text-fg-muted text-center pt-0.5">
+                      +{items.length - 6} مهمة أخرى
+                    </span>
+                  )}
+                </div>
+
+                <Link
+                  href={`${base}/tasks?person=${emp.id}`}
+                  className="flex items-center justify-center gap-1 text-[11px] text-accent hover:underline mt-0.5"
+                >
+                  عرض في البورد <ArrowLeft className="w-3 h-3" />
+                </Link>
               </div>
             ))}
           </div>

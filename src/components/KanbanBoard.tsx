@@ -9,6 +9,8 @@ import {
   BOARD_LABELS,
   BOARD_COLORS,
   STAGE_LABELS,
+  CONTENT_TYPE_LABELS,
+  TASK_KIND_LABELS,
   taskColor,
   type Board,
   type Stage,
@@ -24,7 +26,8 @@ import { Clock, CalendarDays, Lock, Pencil, Trash2, Send } from "lucide-react";
 
 const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
 
-/** A board card is one task, OR a group of posts/stories batched together. */
+/** A board card. Each content piece is its own card (no batching); the shape is
+ *  kept generic (`ids` is an array) so a card can still act on >1 task at once. */
 type KCard = {
   key: string;
   ids: string[];
@@ -37,16 +40,19 @@ type KCard = {
 };
 
 /**
- * Per-person kanban. Posts and stories are BATCHED into one card per
- * (company, type, stage); AI-reels and real reels stay as individual numbered
- * cards (ريل-1, ريل AI-2…) since each can take a working day. Moving a batched
- * card moves all its underlying tasks together.
+ * Per-person kanban. Every content piece is its own numbered card (بوست-1،
+ * ستوري-2، ريل-1، ريل AI-3) — no batching. Columns are the workflow status
+ * (قيد الانتظار → قيد التنفيذ → للمراجعة → منجز); within each column the cards
+ * are grouped by `groupBy` (شركة افتراضياً) and sorted by nearest deadline.
  */
+export type BoardGroupBy = "company" | "type" | "person" | "none";
+
 export default function KanbanBoard({
   tasks,
   allTasks,
   employees,
   companies,
+  groupBy = "company",
   onEdit,
   onDelete,
 }: {
@@ -54,6 +60,7 @@ export default function KanbanBoard({
   allTasks: Task[];
   employees: Employee[];
   companies: Company[];
+  groupBy?: BoardGroupBy;
   onEdit?: (repr: Task, ids: string[], label: string) => void;
   onDelete?: (ids: string[], label: string) => void;
 }) {
@@ -141,6 +148,66 @@ export default function KanbanBoard({
     return m;
   }, [cards]);
 
+  // Within each status column, optionally group cards (by company / type /
+  // person) so daily follow-up reads "where is company X" — not just a flat
+  // pile. Inside a group, cards sort by nearest deadline then pipeline stage.
+  type CardGroup = { key: string; label: string; color?: string; cards: KCard[] };
+  const coById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
+  const empOrder = useMemo(() => new Map(employees.map((e, i) => [e.id, i])), [employees]);
+  const deadlineMs = (t: Task) => {
+    const d = t.readyDate ?? t.publishDate;
+    return d ? new Date(d).getTime() : Number.MAX_SAFE_INTEGER;
+  };
+  const STAGE_RANK: Record<string, number> = { WRITE: 0, DESIGN: 1, SHOOT: 1, PUBLISH: 2 };
+  const TYPE_RANK: Record<string, number> = { POST: 0, STORY: 1, AI_REEL: 2, REEL: 3 };
+
+  const groupInfo = (c: KCard): { key: string; label: string; color?: string; sort: number } => {
+    const t = c.repr;
+    if (groupBy === "company") {
+      const co = t.companyId ? coById.get(t.companyId) : null;
+      return { key: t.companyId ?? "__none", label: co?.name ?? "بدون شركة", color: co?.color ?? undefined, sort: co?.priority ?? 999 };
+    }
+    if (groupBy === "person") {
+      const e = t.assigneeId ? emp(t.assigneeId) : null;
+      const ord = t.assigneeId ? empOrder.get(t.assigneeId) : undefined;
+      return { key: t.assigneeId ?? "__none", label: e?.name ?? "غير مُسند", color: e?.color ?? undefined, sort: ord ?? 999 };
+    }
+    const label =
+      (t.type && CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS]) ||
+      TASK_KIND_LABELS[t.kind as keyof typeof TASK_KIND_LABELS] ||
+      "أخرى";
+    return { key: t.type ?? t.kind ?? "OTHER", label, color: taskColor(t.kind === "PUBLISH" ? "PUBLISH" : t.kind, t.type), sort: TYPE_RANK[t.type ?? ""] ?? 9 };
+  };
+
+  const columnGroups = useMemo(() => {
+    const out: Record<Board, CardGroup[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
+    for (const board of BOARDS) {
+      if (groupBy === "none") {
+        out[board] = [{ key: "__all", label: "", cards: columns[board] }];
+        continue;
+      }
+      const groups = new Map<string, CardGroup & { sort: number }>();
+      for (const c of columns[board]) {
+        const gi = groupInfo(c);
+        const g = groups.get(gi.key) ?? { ...gi, cards: [] };
+        g.cards.push(c);
+        groups.set(gi.key, g);
+      }
+      const arr = [...groups.values()].sort(
+        (a, b) => a.sort - b.sort || a.label.localeCompare(b.label, "ar"),
+      );
+      for (const g of arr)
+        g.cards.sort(
+          (a, b) =>
+            deadlineMs(a.repr) - deadlineMs(b.repr) ||
+            (STAGE_RANK[a.repr.stage ?? ""] ?? 3) - (STAGE_RANK[b.repr.stage ?? ""] ?? 3),
+        );
+      out[board] = arr;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, groupBy, coById, empOrder]);
+
   const onMove = (ids: string[], board: string) =>
     start(async () => {
       const res = await Promise.all(ids.map((id) => moveCard(id, board)));
@@ -149,6 +216,92 @@ export default function KanbanBoard({
         router.refresh();
       } else toast("فشل تحريك بعض المهام", "error");
     });
+
+  const renderKCard = (c: KCard) => {
+    const t = c.repr;
+    const color = taskColor(t.kind === "PUBLISH" ? "PUBLISH" : t.kind, t.type);
+    return (
+      <div
+        key={c.key}
+        className="rounded-sm border border-border-soft bg-bg-card px-2.5 py-2 flex flex-col gap-1.5"
+        style={{ borderTopColor: color, borderTopWidth: 3 }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span
+            className="text-[9px] rounded px-1 py-0.5 shrink-0"
+            style={{ background: `${color}22`, color }}
+          >
+            {STAGE_LABELS[t.stage as Stage] ?? (t.kind === "ADHOC" ? "إضافية" : "مهمة")}
+          </span>
+          <span className="text-xs font-medium truncate flex-1">{c.label}</span>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(t, c.ids, c.label)}
+              title="تعديل"
+              className="shrink-0 text-fg-muted hover:text-accent transition"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(c.ids, c.label)}
+              title="حذف"
+              className="shrink-0 text-fg-muted hover:text-danger transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {c.blockedByLabel && (
+          <div className="flex items-center gap-1 text-[10px] text-warning">
+            <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
+          </div>
+        )}
+
+        {/* owner + priority */}
+        <div className="flex items-center gap-1.5 text-[11px] text-fg-dim">
+          <Avatar name={empName(t.assigneeId)} color={empColor(t.assigneeId)} size={16} />
+          <span className="truncate flex-1">{empName(t.assigneeId)}</span>
+          <PriorityPill priority={t.priority} />
+        </div>
+
+        {/* dates · duration · lateness */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {c.durLabel && <Pill icon={<Clock className="w-3 h-3" />}>{c.durLabel}</Pill>}
+          {t.stage !== "PUBLISH" && t.workDate && (
+            <Pill icon={<CalendarDays className="w-3 h-3" />}>
+              يبدأ {formatDateShort(new Date(t.workDate))}
+            </Pill>
+          )}
+          {t.stage !== "PUBLISH" && t.readyDate && (
+            <Pill>تسليم {formatDateShort(new Date(t.readyDate))}</Pill>
+          )}
+          {t.publishDate && (
+            <Pill icon={<Send className="w-3 h-3" />}>
+              نشر {formatDateShort(new Date(t.publishDate))}
+            </Pill>
+          )}
+          {isLate(t) && <LatePill days={daysLateOf(t)} />}
+        </div>
+
+        <Select
+          className="w-full h-7 text-[11px] py-0.5"
+          value={c.board}
+          onChange={(e) => onMove(c.ids, e.target.value)}
+        >
+          {BOARDS.map((b) => (
+            <option key={b} value={b}>
+              {BOARD_LABELS[b]}
+            </option>
+          ))}
+        </Select>
+      </div>
+    );
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -161,93 +314,23 @@ export default function KanbanBoard({
             </div>
             <span className="text-xs text-fg-muted">{columns[col].length}</span>
           </div>
-          <div className="flex flex-col gap-2 min-h-[40px]">
-            {columns[col].map((c) => {
-              const t = c.repr;
-              const color = taskColor(t.kind === "PUBLISH" ? "PUBLISH" : t.kind, t.type);
-              return (
-                <div
-                  key={c.key}
-                  className="rounded-sm border border-border-soft bg-bg-card px-2.5 py-2 flex flex-col gap-1.5"
-                  style={{ borderTopColor: color, borderTopWidth: 3 }}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="text-[9px] rounded px-1 py-0.5 shrink-0"
-                      style={{ background: `${color}22`, color }}
-                    >
-                      {STAGE_LABELS[t.stage as Stage] ??
-                        (t.kind === "ADHOC" ? "إضافية" : "مهمة")}
+          <div className="flex flex-col gap-3 min-h-[40px]">
+            {columnGroups[col].map((g) => (
+              <div key={g.key} className="flex flex-col gap-2">
+                {g.label && (
+                  <div className="flex items-center gap-1.5 px-0.5 border-b border-border-soft pb-1">
+                    {g.color && (
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: g.color }} />
+                    )}
+                    <span className="text-[11px] font-semibold text-fg-dim truncate flex-1">
+                      {g.label}
                     </span>
-                    <span className="text-xs font-medium truncate flex-1">{c.label}</span>
-                    {onEdit && (
-                      <button
-                        type="button"
-                        onClick={() => onEdit(t, c.ids, c.label)}
-                        title="تعديل"
-                        className="shrink-0 text-fg-muted hover:text-accent transition"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {onDelete && (
-                      <button
-                        type="button"
-                        onClick={() => onDelete(c.ids, c.label)}
-                        title="حذف"
-                        className="shrink-0 text-fg-muted hover:text-danger transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <span className="text-[10px] text-fg-muted">{g.cards.length}</span>
                   </div>
-
-                  {c.blockedByLabel && (
-                    <div className="flex items-center gap-1 text-[10px] text-warning">
-                      <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
-                    </div>
-                  )}
-
-                  {/* owner + priority */}
-                  <div className="flex items-center gap-1.5 text-[11px] text-fg-dim">
-                    <Avatar name={empName(t.assigneeId)} color={empColor(t.assigneeId)} size={16} />
-                    <span className="truncate flex-1">{empName(t.assigneeId)}</span>
-                    <PriorityPill priority={t.priority} />
-                  </div>
-
-                  {/* dates · duration · lateness */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {c.durLabel && <Pill icon={<Clock className="w-3 h-3" />}>{c.durLabel}</Pill>}
-                    {t.stage !== "PUBLISH" && t.workDate && (
-                      <Pill icon={<CalendarDays className="w-3 h-3" />}>
-                        يبدأ {formatDateShort(new Date(t.workDate))}
-                      </Pill>
-                    )}
-                    {t.stage !== "PUBLISH" && t.readyDate && (
-                      <Pill>تسليم {formatDateShort(new Date(t.readyDate))}</Pill>
-                    )}
-                    {t.publishDate && (
-                      <Pill icon={<Send className="w-3 h-3" />}>
-                        نشر {formatDateShort(new Date(t.publishDate))}
-                      </Pill>
-                    )}
-                    {isLate(t) && <LatePill days={daysLateOf(t)} />}
-                  </div>
-
-                  <Select
-                    className="w-full h-7 text-[11px] py-0.5"
-                    value={c.board}
-                    onChange={(e) => onMove(c.ids, e.target.value)}
-                  >
-                    {BOARDS.map((b) => (
-                      <option key={b} value={b}>
-                        {BOARD_LABELS[b]}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              );
-            })}
+                )}
+                {g.cards.map((c) => renderKCard(c))}
+              </div>
+            ))}
             {columns[col].length === 0 && (
               <p className="text-[10px] text-fg-muted text-center py-3">—</p>
             )}

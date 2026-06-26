@@ -37,7 +37,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 /** Unified calendar item: a production task OR a photographer session. */
 type CalItem =
@@ -74,9 +74,13 @@ export default function TasksClient({
   sessions: PhotoSession[];
 }) {
   const router = useRouter();
+  // Initial person/company filter can be deep-linked (e.g. the home page's
+  // "عرض في البورد" links to /tasks?person=<id>).
+  const sp = useSearchParams();
   const [view, setView] = useState<CalendarMode | "board">("board");
-  const [person, setPerson] = useState<string>("all");
-  const [company, setCompany] = useState<string>("all");
+  const [person, setPerson] = useState<string>(sp.get("person") ?? "all");
+  const [company, setCompany] = useState<string>(sp.get("company") ?? "all");
+  const [groupBy, setGroupBy] = useState<"company" | "type" | "person" | "none">("company");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<{ task: Task; ids: string[]; label: string } | null>(
     null,
@@ -351,6 +355,19 @@ export default function TasksClient({
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {view === "board" && (
+            <Select
+              className="h-9 w-36 text-sm"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
+              title="تجميع كروت البورد"
+            >
+              <option value="company">تجميع: شركة</option>
+              <option value="type">تجميع: نوع</option>
+              <option value="person">تجميع: شخص</option>
+              <option value="none">بدون تجميع</option>
+            </Select>
+          )}
           <Select
             className="h-9 w-40 text-sm"
             value={person}
@@ -388,6 +405,7 @@ export default function TasksClient({
           allTasks={tasks}
           employees={employees}
           companies={companies}
+          groupBy={groupBy}
           onEdit={openEdit}
           onDelete={onDelete}
         />

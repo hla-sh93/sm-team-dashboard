@@ -35,6 +35,14 @@ export function MonthBar({
           `تمت إعادة الجدولة · كتابة ${s.write} · تصميم ${s.design} · تصوير ${s.shoot} · نشر ${s.publish}`,
           "success",
         );
+        // Surface any scheduling warnings (e.g. missing writer/designer/photographer)
+        // so a "successful" regen doesn't silently hide gaps.
+        if (r.warnings && r.warnings.length > 0) {
+          toast(
+            `تنبيهات (${r.warnings.length}): ${r.warnings.map((w) => w.message).join(" · ")}`,
+            "warning",
+          );
+        }
         router.refresh();
       } else {
         toast(r.error, "error");

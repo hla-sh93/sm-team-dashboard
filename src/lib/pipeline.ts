@@ -76,6 +76,11 @@ export function expandPipeline(
     year: number;
     month: number; // 0-based
     companyName: (id: string) => string;
+    // Optional: label of a company's CONTRACT CYCLE for this bucket (e.g.
+    // "دورة 20 حزيران – 19 تموز"). Appended to the writer's plan card so it's
+    // clear which execution cycle the plan covers — important for companies whose
+    // cycle doesn't start on the 1st. Null/omitted → no cycle suffix.
+    cycleLabel?: (id: string) => string | null;
     // board override for the design/shoot stage and publish stage (June actuals
     // need design=DONE, publish=TODO regardless of legacy status).
     designBoard?: (it: PipelineContentItem) => Board;
@@ -119,10 +124,11 @@ export function expandPipeline(
         stage: "WRITE",
         board: writeBoard,
         type: null,
-        title:
-          scope === "SHOOT"
-            ? `سيناريو تصوير — ${companyName(co)}`
-            : `كتابة بوستات وستوريز — ${companyName(co)}`,
+        title: (() => {
+          const work = scope === "SHOOT" ? "سيناريو تصوير" : "كتابة بوستات وستوريز";
+          const cyc = opts.cycleLabel?.(co);
+          return `${work} — ${companyName(co)}${cyc ? ` · ${cyc}` : ""}`;
+        })(),
         companyId: co,
         assigneeId: writerId,
         publishDate: null,
