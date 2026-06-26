@@ -37,7 +37,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 /** Unified calendar item: a production task OR a photographer session. */
 type CalItem =
@@ -65,6 +65,8 @@ export default function TasksClient({
   companies,
   tasks,
   sessions,
+  initialPerson = "all",
+  initialCompany = "all",
 }: {
   year: number;
   month: number;
@@ -72,14 +74,16 @@ export default function TasksClient({
   companies: Company[];
   tasks: Task[];
   sessions: PhotoSession[];
+  // Deep-linked initial filter from the server page's searchParams (e.g. the home
+  // page's "عرض في البورد" → /tasks?person=<id>). Passed as props rather than read
+  // via useSearchParams to avoid opting the whole route into a client bail-out.
+  initialPerson?: string;
+  initialCompany?: string;
 }) {
   const router = useRouter();
-  // Initial person/company filter can be deep-linked (e.g. the home page's
-  // "عرض في البورد" links to /tasks?person=<id>).
-  const sp = useSearchParams();
   const [view, setView] = useState<CalendarMode | "board">("board");
-  const [person, setPerson] = useState<string>(sp.get("person") ?? "all");
-  const [company, setCompany] = useState<string>(sp.get("company") ?? "all");
+  const [person, setPerson] = useState<string>(initialPerson);
+  const [company, setCompany] = useState<string>(initialCompany);
   const [groupBy, setGroupBy] = useState<"company" | "type" | "person" | "none">("company");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<{ task: Task; ids: string[]; label: string } | null>(

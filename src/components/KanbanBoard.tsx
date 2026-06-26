@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/badge";
 import { Select } from "@/components/ui/input";
@@ -22,7 +22,18 @@ import { Pill, PriorityPill, LatePill, daysLateOf } from "@/components/ui/pills"
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
-import { Clock, CalendarDays, Lock, Pencil, Trash2, Send } from "lucide-react";
+import {
+  Clock,
+  CalendarDays,
+  Lock,
+  Pencil,
+  Trash2,
+  Send,
+  ChevronDown,
+  ChevronLeft,
+  ChevronsDownUp,
+  ChevronsUpDown,
+} from "lucide-react";
 
 const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
 
@@ -66,6 +77,16 @@ export default function KanbanBoard({
 }) {
   const router = useRouter();
   const [, start] = useTransition();
+  // Collapsed groups, keyed `${board}|${groupKey}`, so a heavy column can be
+  // folded down to its group headers — less clutter, less scroll.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const groupId = (board: Board, key: string) => `${board}|${key}`;
+  const toggleGroup = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
   const emp = (id: string | null) => employees.find((e) => e.id === id);
   const empName = (id: string | null) => emp(id)?.name ?? "—";
@@ -303,40 +324,78 @@ export default function KanbanBoard({
     );
   };
 
+  // Collapse-all / expand-all across every group currently on the board.
+  const allGroupIds = BOARDS.flatMap((b) => columnGroups[b].map((g) => groupId(b, g.key)));
+  const grouped = groupBy !== "none";
+  const allCollapsed =
+    grouped && allGroupIds.length > 0 && allGroupIds.every((id) => collapsed.has(id));
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-      {BOARDS.map((col) => (
-        <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-md p-2">
-          <div className="flex items-center justify-between px-1.5 py-1 mb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: BOARD_COLORS[col] }} />
-              <span className="text-sm font-semibold">{BOARD_LABELS[col]}</span>
-            </div>
-            <span className="text-xs text-fg-muted">{columns[col].length}</span>
-          </div>
-          <div className="flex flex-col gap-3 min-h-[40px]">
-            {columnGroups[col].map((g) => (
-              <div key={g.key} className="flex flex-col gap-2">
-                {g.label && (
-                  <div className="flex items-center gap-1.5 px-0.5 border-b border-border-soft pb-1">
-                    {g.color && (
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: g.color }} />
-                    )}
-                    <span className="text-[11px] font-semibold text-fg-dim truncate flex-1">
-                      {g.label}
-                    </span>
-                    <span className="text-[10px] text-fg-muted">{g.cards.length}</span>
-                  </div>
-                )}
-                {g.cards.map((c) => renderKCard(c))}
-              </div>
-            ))}
-            {columns[col].length === 0 && (
-              <p className="text-[10px] text-fg-muted text-center py-3">—</p>
+    <div className="flex flex-col gap-3">
+      {grouped && allGroupIds.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(allGroupIds))}
+            className="flex items-center gap-1.5 text-[11px] text-fg-dim hover:text-fg border border-border-soft rounded-md px-2 py-1 transition"
+          >
+            {allCollapsed ? (
+              <ChevronsUpDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronsDownUp className="w-3.5 h-3.5" />
             )}
-          </div>
+            {allCollapsed ? "فتح الكل" : "طيّ الكل"}
+          </button>
         </div>
-      ))}
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {BOARDS.map((col) => (
+          <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-md p-2">
+            <div className="flex items-center justify-between px-1.5 py-1 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: BOARD_COLORS[col] }} />
+                <span className="text-sm font-semibold">{BOARD_LABELS[col]}</span>
+              </div>
+              <span className="text-xs text-fg-muted">{columns[col].length}</span>
+            </div>
+            <div className="flex flex-col gap-3 min-h-[40px]">
+              {columnGroups[col].map((g) => {
+                const gid = groupId(col, g.key);
+                const isCollapsed = !!g.label && collapsed.has(gid);
+                return (
+                  <div key={g.key} className="flex flex-col gap-2">
+                    {g.label && (
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(gid)}
+                        title={isCollapsed ? "فتح المجموعة" : "طيّ المجموعة"}
+                        className="flex items-center gap-1.5 px-0.5 border-b border-border-soft pb-1 w-full hover:text-fg transition"
+                      >
+                        {isCollapsed ? (
+                          <ChevronLeft className="w-3.5 h-3.5 text-fg-muted shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 text-fg-muted shrink-0" />
+                        )}
+                        {g.color && (
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: g.color }} />
+                        )}
+                        <span className="text-[11px] font-semibold text-fg-dim truncate flex-1 text-start">
+                          {g.label}
+                        </span>
+                        <span className="text-[10px] text-fg-muted">{g.cards.length}</span>
+                      </button>
+                    )}
+                    {!isCollapsed && g.cards.map((c) => renderKCard(c))}
+                  </div>
+                );
+              })}
+              {columns[col].length === 0 && (
+                <p className="text-[10px] text-fg-muted text-center py-3">—</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import TasksClient from "./tasks-client";
 export default async function TasksView({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: { y?: string; m?: string; person?: string; company?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
   const [employees, companies, tasks, sessions] = await Promise.all([
@@ -24,6 +24,8 @@ export default async function TasksView({
       companies={companies}
       tasks={tasks}
       sessions={sessions}
+      initialPerson={searchParams.person ?? "all"}
+      initialCompany={searchParams.company ?? "all"}
     />
   );
 }

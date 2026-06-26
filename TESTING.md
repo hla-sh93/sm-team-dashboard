@@ -97,6 +97,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | KAN‑7 | **تجميع toggle** | switch شركة / نوع / شخص / بدون regroups the columns; default is شركة | S2 |
 | KAN‑8 | **deep‑link filter** | open `/tasks?person=<id>` (or `?company=`) → the person/company filter is pre‑selected | S2 |
 | KAN‑9 | **خطة دورة label** | نوال’s write cards read “كتابة بوستات وستوريز — <company> · دورة <start> – <end>” for the cycle they cover (e.g. المول 20 حزيران – 19 تموز) after إعادة الجدولة | S2 |
+| KAN‑10 | **collapse groups** | click a group header → its cards fold away (chevron flips), header + count stay; click again → expand. “طيّ الكل / فتح الكل” folds/unfolds every group at once. Reduces clutter/scroll on heavy columns | S2 |
 | CAL‑1 | calendar (شهري/أسبوعي/يومي) | items by workDate; **REEL & PUBLISH excluded** (production view); Friday column clear of work | **S2** |
 | CAL‑2 | calendar card | owner read‑only (edit via ✏️); status select; pills incl. متأخّر N يوم | S2 |
 | CAL‑3 | cycle spill | monthly grid extends to show a 20→20 company’s next‑month days | S2 |

@@ -108,7 +108,10 @@
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\")",
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |access-control|fail\" | Select-Object -Last 8)",
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail\" | Select-Object -Last 3)",
-      "PowerShell(npx next build 2>&1)"
+      "PowerShell(npx next build 2>&1)",
+      "PowerShell(npx next build 2>&1 | Select-String -Pattern \"Compiled successfully|Failed|error\" | Select-Object -First 5; \"build_exit=$LASTEXITCODE\")",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx next start -p 3100)",
+      "PowerShell($p = Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue; \"stopped 3100 \\(pid $p\\)\" } else { \"nothing on 3100\" })"
     ]
   }
 }
