@@ -67,6 +67,11 @@ export const companySchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
+  // Soft preferred shoot weekday (getDay 0..6); "" / null = no preference.
+  preferredShootDay: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z.number().int().min(0).max(6).nullable(),
+  ),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")

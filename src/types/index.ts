@@ -37,6 +37,7 @@ export type Company = {
   aiReels: number;
   contractValue: number;
   contractStartDate: Date | null;
+  preferredShootDay: number | null;
   color: string | null;
   priority: number;
   status: string;

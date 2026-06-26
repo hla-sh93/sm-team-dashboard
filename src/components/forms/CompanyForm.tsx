@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Company, Employee } from "@/types";
@@ -80,16 +80,27 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
     defaultValues: defaults as CompanyInput,
   });
 
+  // Preferred shoot weekday is numeric → kept as controlled state (string in the
+  // select), merged into the payload on submit. "" = no preference.
+  const [shootDay, setShootDay] = useState<string>(
+    company?.preferredShootDay != null ? String(company.preferredShootDay) : "",
+  );
+
   useEffect(() => {
     reset(defaults as CompanyInput);
+    setShootDay(company?.preferredShootDay != null ? String(company.preferredShootDay) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company, open]);
 
   const managed = watch("managed");
 
   const onSubmit = (data: CompanyInput) => {
+    const payload = {
+      ...data,
+      preferredShootDay: shootDay === "" ? null : Number(shootDay),
+    };
     start(async () => {
-      const r = isEdit ? await updateCompany(company!.id, data) : await createCompany(data);
+      const r = isEdit ? await updateCompany(company!.id, payload) : await createCompany(payload);
       if (r.ok) {
         toast(isEdit ? "تم تحديث الشركة" : "تمت إضافة الشركة");
         onOpenChange(false);
@@ -211,6 +222,21 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
                   </Select>
                 </div>
               )}
+              <div className="space-y-1.5">
+                <Label>يوم التصوير المفضّل (اختياري)</Label>
+                <Select value={shootDay} onChange={(e) => setShootDay(e.target.value)}>
+                  <option value="">— بدون تفضيل —</option>
+                  <option value="6">السبت</option>
+                  <option value="0">الأحد</option>
+                  <option value="1">الاثنين</option>
+                  <option value="2">الثلاثاء</option>
+                  <option value="3">الأربعاء</option>
+                  <option value="4">الخميس</option>
+                </Select>
+                <p className="text-[11px] text-fg-dim">
+                  تفضيل فقط — يحاول النظام التصوير بهذا اليوم، ويمكنكِ تعديل أي نزلة يدوياً.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-1.5">

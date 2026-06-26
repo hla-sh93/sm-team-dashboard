@@ -51,6 +51,8 @@ model Company {
   // over its 30-day CONTRACT CYCLE ([contractDay → contractDay next month])
   // instead of the calendar month. Null = calendar-month (default).
   contractStartDate DateTime?
+  // Soft preferred shoot weekday (getDay 0..6) for reels; null = none.
+  preferredShootDay Int?
 
   color    String? @default("#C8A84E")
   priority Int     @default(99)

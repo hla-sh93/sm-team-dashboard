@@ -74,6 +74,11 @@ model Company {
   // (default / back-compatible behaviour).
   contractStartDate DateTime?
 
+  // Preferred shoot weekday (getDay 0=Sun..6=Sat) for this company's reels — a
+  // SOFT preference: the photographer snaps to it when possible, but it's not
+  // mandatory and any shoot can be edited manually. Null = no preference.
+  preferredShootDay Int?
+
   // Carried-over UI / deterministic-ordering fields (not part of §3 plan but
   // used by screens and to give the engine a stable company order).
   color    String? @default("#C8A84E")

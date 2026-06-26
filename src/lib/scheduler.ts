@@ -63,6 +63,8 @@ export type CompanyInput = {
   /** Contract start date — when set, the plan distributes over the company's
    *  30-day contract cycle (day→day next month) instead of the calendar month. */
   contractStartDate?: Date | string | null;
+  /** Soft preferred shoot weekday (getDay 0..6) for reels; null = none. */
+  preferredShootDay?: number | null;
   postOwnerId: string | null;
   storyOwnerId: string | null;
   aiReelOwnerId: string | null;
@@ -277,7 +279,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   const reelCompanies = managed.filter((co) => co.reels > 0);
   const reelsByPhotographer = new Map<
     string,
-    { companyId: string; companyName: string; reels: ReelTask[] }[]
+    { companyId: string; companyName: string; preferredShootDay: number | null; reels: ReelTask[] }[]
   >();
   for (const co of reelCompanies) {
     const pid = photographerOf(co);
@@ -285,6 +287,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     const entry = {
       companyId: co.id,
       companyName: co.name,
+      preferredShootDay: co.preferredShootDay ?? null,
       reels: tasks
         .filter((t) => t.type === "REEL" && t.companyId === co.id)
         .map<ReelTask>((t) => ({

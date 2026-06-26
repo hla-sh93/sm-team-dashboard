@@ -50,7 +50,12 @@ function photoWorkDaysOf(raw: number[] | undefined): number[] {
 export function buildPhotoSessions(
   year: number,
   month: number,
-  reelsByCompany: { companyId: string; companyName: string; reels: ReelTask[] }[],
+  reelsByCompany: {
+    companyId: string;
+    companyName: string;
+    reels: ReelTask[];
+    preferredShootDay?: number | null;
+  }[],
   photographerWorkDays: number[],
 ): PhotographerResult {
   const sessions: GeneratedPhotoSession[] = [];
@@ -123,6 +128,20 @@ export function buildPhotoSessions(
       let shoot = backWorkday(shiftCal(epub, -3), photoWork);
       if (shoot.getTime() > SHOOT_CAP.getTime()) {
         shoot = backWorkday(SHOOT_CAP, photoWork);
+      }
+      // SOFT preference: nudge the shoot back to the company's preferred weekday
+      // (on/before the computed day, within a week) if it's a working day. Moving
+      // earlier only adds lead time, so invariants stay safe. Not mandatory — the
+      // shoot can be edited manually afterwards.
+      const pref = co.preferredShootDay;
+      if (pref != null && photoWork.includes(pref)) {
+        const d = new Date(shoot);
+        let moved = 0;
+        while (d.getDay() !== pref && moved < 6) {
+          d.setDate(d.getDate() - 1);
+          moved++;
+        }
+        if (d.getDay() === pref) shoot = d;
       }
       // deliver = backWorkday(min(epub − 1, shoot + 3))
       const deliverTarget =
