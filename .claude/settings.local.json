@@ -128,7 +128,11 @@
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\")",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx scripts/reconcile-june-2026.ts 2>&1 | Select-String -Pattern \"broPlanPosts|cleared|capriani\" ; Write-Output \"---verify برو story---\"; npx tsx -e \"import {PrismaClient} from '@prisma/client'; const db=new PrismaClient\\(\\); \\(async\\(\\)=>{ const t=await db.task.findMany\\({where:{companyId:'c_pro',type:'STORY',year:2026,month:5,stage:'PUBLISH'},select:{board:true}}\\); const done=t.filter\\(x=>x.board==='DONE'\\).length; console.log\\('برو STORY publish DONE:',done,'of',t.length\\); await db.\\\\$disconnect\\(\\); }\\)\\(\\);\")",
       "Bash(DATABASE_URL=file:./dev.db npx tsx -e ' *)",
-      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _v.ts 2>&1)"
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _v.ts 2>&1)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail|✗|FAIL\" | Select-Object -Last 10)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npm run db:seed 2>&1 | Select-String -Pattern \"rates|hoursPerDay|↻|preserv\" | Select-Object -First 10)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx scripts/reconcile-june-2026.ts 2>&1 | Select-String -Pattern \"broPlanPosts|cleared|capriani|manualTasks\")",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _cap.ts 2>&1)"
     ]
   }
 }

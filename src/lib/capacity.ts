@@ -6,27 +6,26 @@
  * we derive: hours-per-item (for the hours-based workload) and the expected
  * duration of a task in working days (quantity ÷ rate).
  *
- * User-set rates (items/day): Ayman 4 posts | 1 ai-reel · Sabin 6 posts ·
- * Hla 3 posts · Nawal 0.5 plans (= 2 days/company) · photographer 2 reels/day
+ * Designer capacity (items/day): 8 posts OR 10 stories OR 1 AI-reel on an
+ * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 2 reels/day
  * (a session shoots 2–3 reels and delivers within 3 days).
  */
 export const DEFAULT_RATES: Record<string, number> = {
-  POST: 6, // 6 posts/day
-  STORY: 8, // 8 stories/day
+  POST: 8, // 8 posts/day
+  STORY: 10, // 10 stories/day
   AI_REEL: 1, // 1 AI reel/day
   REEL: 2 / 3, // photographer: 2 reels per 3 days
   PLAN: 0.5, // a content plan per company → 2 working days
 };
 
 /**
- * Canonical hours in one WORKING DAY. Ad-hoc effort is stored as `hours`
- * (= work-days × this), so a "work day" is uniform for everyone regardless of a
- * person's `hoursPerDay` (e.g. Hla the half-designer is 3h/day, but a task that
- * occupies 14 of her working days is still 14 days of load, not 28). This keeps
- * ad-hoc on the same "calendar working days" axis as the rate-based content
- * model and as workload's `capacityDays`.
+ * Canonical hours in one WORKING DAY (now 8h). Ad-hoc effort is stored as
+ * `hours` (= work-days × this), so a "work day" is uniform for everyone: a task
+ * that occupies N of someone's working days is N days of load. This keeps ad-hoc
+ * on the same "calendar working days" axis as the rate-based content model and
+ * as workload's `capacityDays`.
  */
-export const WORK_DAY_HOURS = 6;
+export const WORK_DAY_HOURS = 8;
 
 export function parseRates(raw: string | null | undefined): Record<string, number> {
   if (!raw) return {};

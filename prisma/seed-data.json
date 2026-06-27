@@ -16,7 +16,7 @@
       "id": "e_ayman",
       "name": "أيمن",
       "role": "مصمم",
-      "hoursPerDay": 6,
+      "hoursPerDay": 8,
       "workDays": [
         0,
         1,
@@ -32,7 +32,7 @@
       "id": "e_sabin",
       "name": "سابين",
       "role": "مصمم",
-      "hoursPerDay": 6,
+      "hoursPerDay": 8,
       "workDays": [
         6,
         0,
@@ -48,7 +48,7 @@
       "id": "e_hla",
       "name": "حلا",
       "role": "تيم ليدر + نص مصمم",
-      "hoursPerDay": 3,
+      "hoursPerDay": 8,
       "workDays": [
         6,
         0,
@@ -64,7 +64,7 @@
       "id": "e_nawal",
       "name": "نوال",
       "role": "كاتبة محتوى",
-      "hoursPerDay": 6,
+      "hoursPerDay": 8,
       "workDays": [
         6,
         0,
@@ -80,7 +80,7 @@
       "id": "e_omar",
       "name": "عمر",
       "role": "ناشر + مدير صفحات",
-      "hoursPerDay": 6,
+      "hoursPerDay": 8,
       "workDays": [
         6,
         0,
@@ -96,7 +96,7 @@
       "id": "e_photo",
       "name": "المصور",
       "role": "مصور فريلانسر",
-      "hoursPerDay": 6,
+      "hoursPerDay": 8,
       "workDays": [
         6,
         0,

@@ -35,7 +35,7 @@ interface TaskFormProps {
   month: number;
 }
 
-const HPD = 6; // hours per working day (effort conversion)
+const HPD = 8; // hours per working day (effort conversion)
 
 export default function TaskForm({
   open,

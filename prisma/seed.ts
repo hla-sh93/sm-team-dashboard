@@ -178,9 +178,9 @@ async function main() {
   /* ---------- 1) Employees (upsert canonical set) ---------- */
   // Productivity rates (items per working day) per person.
   const RATES: Record<string, Record<string, number>> = {
-    e_ayman: { POST: 6, STORY: 8, AI_REEL: 1 },
-    e_sabin: { POST: 6, STORY: 8, AI_REEL: 1 },
-    e_hla: { POST: 6, STORY: 8 }, // no AI reels
+    e_ayman: { POST: 8, STORY: 10, AI_REEL: 1 },
+    e_sabin: { POST: 8, STORY: 10, AI_REEL: 1 },
+    e_hla: { POST: 8, STORY: 10 }, // no AI reels
     e_nawal: { PLAN: 0.5 }, // a content plan per company = 2 working days
     e_photo: { REEL: 2 / 3 }, // 2 reels per 3 days
   };
@@ -206,23 +206,35 @@ async function main() {
   }
   console.log(`✓ employees: ${data.employees.length}`);
 
-  // One-time rate correction: designers now do 8 stories/day (was 6). Idempotent
-  // and SAFE — only updates an employee still on the old value (STORY=6), so a
-  // custom rate set in /admin/team is never clobbered.
+  // Capacity update: designers do 8 posts/day & 10 stories/day on an 8-hour day.
+  // Idempotent and SAFE — only bumps the KNOWN prior values (POST 6→8, STORY
+  // 6/8→10), so a custom rate set in /admin/team is never clobbered. Runs on
+  // every (re)deploy, so production updates automatically without a force seed.
   for (const id of ["e_ayman", "e_sabin", "e_hla"]) {
     const emp = await prisma.employee.findUnique({ where: { id } });
-    if (!emp?.rates) continue;
+    if (!emp) continue;
+    let r: Record<string, number> = {};
     try {
-      const r = JSON.parse(emp.rates) as Record<string, number>;
-      if (r.STORY === 6) {
-        r.STORY = 8;
-        await prisma.employee.update({ where: { id }, data: { rates: JSON.stringify(r) } });
-        console.log(`↻ ${id}: STORY rate 6 → 8`);
-      }
+      r = emp.rates ? (JSON.parse(emp.rates) as Record<string, number>) : {};
     } catch {
-      /* ignore malformed rates */
+      r = {};
+    }
+    let changed = false;
+    if (r.POST === 6) { r.POST = 8; changed = true; }
+    if (r.STORY === 6 || r.STORY === 8) { r.STORY = 10; changed = true; }
+    if (changed) {
+      await prisma.employee.update({ where: { id }, data: { rates: JSON.stringify(r) } });
+      console.log(`↻ ${id}: rates → 8 posts/day, 10 stories/day`);
     }
   }
+
+  // Standard 8-hour workday for the whole team (only the old defaults 6h/3h are
+  // bumped, so a custom hoursPerDay is preserved).
+  const toEight = await prisma.employee.updateMany({
+    where: { hoursPerDay: { in: [3, 6] } },
+    data: { hoursPerDay: 8 },
+  });
+  if (toEight.count) console.log(`↻ hoursPerDay → 8 for ${toEight.count} employees`);
 
   /* ---------- 2) Companies (upsert canonical set) ---------- */
   for (const c of data.companies as any[]) {
