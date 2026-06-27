@@ -116,7 +116,8 @@
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx \"C:\\\\Users\\\\hla2-\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-hla2--Videos-Social-sm-team-dashboard\\\\23e3faa9-c434-436f-a0f9-7394e20b56ce\\\\scratchpad\\\\check-regen.ts\" 2>&1)",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
       "PowerShell(Start-Sleep -Seconds 12; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
-      "PowerShell(Start-Sleep -Seconds 18; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)"
+      "PowerShell(Start-Sleep -Seconds 18; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail|workload|priority\" | Select-Object -Last 10)"
     ]
   }
 }

@@ -21,13 +21,13 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **66/66 pass** | S1 |
+| ENV‑3 | `npm test` | **74/74 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; designers STORY=8 | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 9 files / 66 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 11 files / 74 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
@@ -36,8 +36,10 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
 | `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
 | `tests/cycles.test.ts` | 6 | contract-cycle plan distribution (20→20, 15→15) |
+| `tests/workload.test.ts` | 5 | required‑vs‑capacity load; over ⇒ 0 free; publisher; month window |
 | `tests/persistence.test.ts` | 3 | manual edits survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
+| `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
 | `tests/db-integration.test.ts` | 1 | DB integration (self-skips if Prisma absent) |
 
 ---
@@ -124,6 +126,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | GEN‑3 | ad‑hoc kept | ad‑hoc preserved; re‑packed (unless locked) | S2 |
 | GEN‑4 | run twice | deterministic — identical result | S2 |
 | GEN‑5 | does NOT touch | company/employee/finance records, statuses, edits | **S1** |
+| GEN‑6 | priority tiebreak | among routine tasks with the **same deadline**, the higher‑priority company is placed first; **different deadlines are unaffected** (publish‑driven) | S2 |
 
 ---
 
@@ -174,11 +177,12 @@ A case PASSES only if the expected result AND every side effect hold.
 ## 11. Workload (`/admin/workload`)
 | ID | Steps | Expected | Sev |
 |---|---|---|---|
-| WL‑1 | per person | محجوز% · منجز% · مطلوب/منجز/متبقّي/متاح + bar | S2 |
-| WL‑2 | designer | committed = Σ posts/6 + stories/8 + aiReels/1 | S2 |
-| WL‑3 | photographer | committed = **assigned** companies’ reels ÷ rate | S2 |
-| WL‑4 | publisher | capacity = period days **excluding Friday**; load = duty‑days (≤5 co/day) | **S2** |
-| WL‑5 | completion‑invariant | mark a task DONE → committed unchanged; منجز↑, متبقّي↓, متاح↑ | **S1** |
+| WL‑1 | per person | **الحمل% = مطلوب ÷ الطاقة** · منجز% · مطلوب/منجز/متبقّي/متاح + bar | S2 |
+| WL‑2 | designer | committed = dated task effort inside calendar month, not company plan totals | S2 |
+| WL‑3 | photographer | committed = dated shoot/reel task effort inside calendar month | S2 |
+| WL‑4 | publisher | capacity = calendar month days excluding Friday; load = publish duty‑days dated inside month (≤5 co/day) | **S2** |
+| WL‑5 | required‑based & consistent | متاح = الطاقة − المطلوب (**لا يتأثر بالمنجز**); **over ⇒ متاح = 0** (لا "تجاوز مع وجود أيام متاحة"); تعليم مهمة منجزة يحرّك منجز/متبقّي فقط | **S1** |
+| WL‑6 | publisher over | عمر يتجاوز فقط لو المطلوب (أيام نشر + مستعجلة) > أيام الشهر بلا جُمَع — وإلا يبقى ≤100% | S2 |
 
 ---
 
@@ -235,7 +239,7 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 66 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 74 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
 - [ ] SEED‑1..3, GEN‑2/5, DEL‑2/PUB‑4, WL‑5 PASS — S1.
 - [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, REP‑3 PASS.

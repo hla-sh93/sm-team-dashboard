@@ -400,10 +400,15 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     }
   }
 
+  // Company priority (lower number = higher priority). Used ONLY as a tiebreaker
+  // when routine tasks contend for the same scarce day — publish-driven deadlines
+  // dominate; priority just decides who wins a genuine conflict.
+  const coPriority = new Map(state.companies.map((c) => [c.id, c.priority]));
+
   for (const [empId, empTasks] of byEmployee) {
     const emp = empById.get(empId);
     if (!emp) continue;
-    packEmployee(emp, empTasks, year, month, until, warnings);
+    packEmployee(emp, empTasks, year, month, until, warnings, coPriority);
   }
 
   // Stats.
@@ -425,6 +430,29 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 }
 
 /**
+ * Routine placement order: EARLIEST DEADLINE first (publish-driven), then —
+ * only as a tiebreaker — the HIGHER-PRIORITY company (lower priority number),
+ * then the bigger task, then a stable id. So priority never reorders work across
+ * different deadlines; it only decides who wins when two tasks compete for the
+ * same scarce day.
+ */
+export function compareRoutineTasks(
+  a: { readyDate: Date | null; companyId: string | null; hours: number; detKey: string },
+  b: { readyDate: Date | null; companyId: string | null; hours: number; detKey: string },
+  lastISO: string,
+  priorityOf: (companyId: string | null) => number,
+): number {
+  const dl = (t: { readyDate: Date | null }) =>
+    t.readyDate ? toISODate(t.readyDate) : lastISO;
+  return (
+    dl(a).localeCompare(dl(b)) ||
+    priorityOf(a.companyId) - priorityOf(b.companyId) ||
+    b.hours - a.hours ||
+    a.detKey.localeCompare(b.detKey)
+  );
+}
+
+/**
  * §5.4 packing for one employee. URGENT/ADHOC → ASAP (earliest day ≤ deadline
  * within hours capacity). ROUTINE → JIT (latest day ≤ deadline). Pinned tasks
  * reserve their workDate first. Overflow marks any task that can't fit cleanly.
@@ -436,7 +464,10 @@ function packEmployee(
   month: number,
   until: Date,
   warnings: SchedulerWarning[],
+  coPriority: Map<string, number>,
 ): void {
+  const priorityOf = (companyId: string | null) =>
+    companyId != null ? (coPriority.get(companyId) ?? 99) : 99;
   const workDays = parseWorkDays(emp.workDays as string | number[]);
   const cap = emp.hoursPerDay > 0 ? emp.hoursPerDay : 6;
   const days = packingWindowDays(year, month, until).filter((d) =>
@@ -501,13 +532,8 @@ function packEmployee(
     }
   }
 
-  // ROUTINE → JIT.
-  routine.sort(
-    (a, b) =>
-      deadlineISO(a).localeCompare(deadlineISO(b)) ||
-      b.hours - a.hours ||
-      a.detKey.localeCompare(b.detKey),
-  );
+  // ROUTINE → JIT. Order: deadline, then higher-priority company (tiebreak only).
+  routine.sort((a, b) => compareRoutineTasks(a, b, lastISO, priorityOf));
   for (const t of routine) {
     const dl = deadlineISO(t);
     // Candidate indices: days ≤ deadline.
