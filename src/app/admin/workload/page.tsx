@@ -13,11 +13,23 @@ export default async function WorkloadPage({
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 1);
   const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month } }),
-    prisma.photoSession.findMany({ where: { year, month } }),
+    prisma.task.findMany({
+      where: {
+        OR: [
+          { workDate: { gte: monthStart, lt: monthEnd } },
+          { readyDate: { gte: monthStart, lt: monthEnd } },
+          { publishDate: { gte: monthStart, lt: monthEnd } },
+        ],
+      },
+    }),
+    prisma.photoSession.findMany({
+      where: { shootDate: { gte: monthStart, lt: monthEnd } },
+    }),
   ]);
 
   // Whole team, designers first (days), then the rest (by item count).
@@ -33,7 +45,7 @@ export default async function WorkloadPage({
       <header className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display-font text-2xl">أحمال العمل</h1>
-          <p className="text-sm text-fg-dim">الأيام المطلوبة مقابل المتاحة لكل موظف (حسب الطاقة الإنتاجية)</p>
+          <p className="text-sm text-fg-dim">الأيام المطلوبة مقابل المتاحة داخل الشهر التقويمي</p>
         </div>
         <MonthBar year={year} month={month} />
       </header>
@@ -59,7 +71,7 @@ export default async function WorkloadPage({
                 </div>
                 <div className="text-left">
                   <div className={"text-2xl display-font " + pctColor}>{w.pct}%</div>
-                  <div className="text-[10px] text-fg-muted">محجوز من الطاقة</div>
+                  <div className="text-[10px] text-fg-muted">الحمل من الطاقة (مطلوب ÷ متاح)</div>
                   {w.overflowCount > 0 && (
                     <div className="text-xs text-warning flex items-center gap-1 justify-end mt-0.5">
                       <AlertTriangle className="w-3 h-3" /> {w.overflowCount} تجاوز
@@ -96,6 +108,7 @@ export default async function WorkloadPage({
                 <span>· ستوري: {w.breakdown.STORY}</span>
                 <span>· مستعجلة: {w.breakdown.ADHOC}</span>
                 <span>· الطاقة: {w.capacityDays} يوم</span>
+                <span>· منجز: {w.donePct}%</span>
               </div>
             </Card>
           );
