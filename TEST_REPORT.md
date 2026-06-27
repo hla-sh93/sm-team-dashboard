@@ -1,7 +1,7 @@
 # تقرير الفحص الشامل — Test Report
 
-**التاريخ**: حزيران 2026
-**النتيجة الإجمالية**: ✅ **59/59 tests passed** + TypeScript نظيف (0 errors)
+**التاريخ**: 27 حزيران 2026  
+**النتيجة الإجمالية**: ✅ **85/85 tests passed** + TypeScript نظيف (0 errors)
 
 > يُحدَّث هذا الملف يدوياً. عدد الاختبارات الموثَّق هنا يجب أن يطابق ناتج
 > `npm test`. لإعادة التوليد: شغّلي `npm test` و`npm run typecheck` وحدّثي الأرقام.
@@ -13,19 +13,37 @@
 | الملف | عدد التيستات | المجال |
 |------|-------|---------|
 | `tests/dates.test.ts` | 15 | أيام العمل، تخطّي الخميس/الجمعة، تنسيقات التواريخ |
-| `tests/acceptance.test.ts` | 15 | قواعد القبول من SPEC (الجدولة، الملكية، المصوّر…) |
-| `tests/schemas.test.ts` | 9 | تحقق Zod للمدخلات (موظف/شركة/مهمة) |
-| `tests/cycles.test.ts` | 6 | دورات العقود (توزيع الخطة على 30 يوماً من تاريخ العقد) |
+| `tests/acceptance.test.ts` | 15 | قواعد القبول من SPEC: الجدولة، الملكية، المصوّر، الثبات |
+| `tests/schemas.test.ts` | 9 | تحقق Zod للمدخلات: موظف/شركة/مهمة |
+| `tests/access-control.test.ts` | 7 | منع واجهة الموظفين من كشف أي رابط `/admin` |
+| `tests/schema-sync.test.ts` | 7 | تزامن schema الـ SQLite وPostgres |
+| `tests/cycles.test.ts` | 7 | دورات العقود 20→20 و15→15 والعمل العابر للشهر |
+| `tests/workload.test.ts` | 5 | الحمل المطلوب مقابل الطاقة، و`over ⇒ freeDays=0` |
+| `tests/task-state.test.ts` | 4 | حالات الإنجاز، تاريخ الإنجاز التاريخي، والتأخير لغير المنجز فقط |
+| `tests/task-filters.test.ts` | 3 | فلترة عرض `يومي` حسب تواريخ المهمة |
+| `tests/progress.test.ts` | 3 | إنجاز الشركة لا يحتسب إلا إنتاج منجز + نشر منجز |
 | `tests/persistence.test.ts` | 3 | حفظ التعديلات اليدوية عبر إعادة الجدولة |
 | `tests/csv.test.ts` | 3 | تصدير CSV للتقارير |
-| `tests/schema-sync.test.ts` | 7 | تزامن schema الـ SQLite وPostgres (نفس الموديلات/الحقول) |
-| `tests/db-integration.test.ts` | 1 | تكامل قاعدة البيانات (يتخطّى نفسه إن لم تتوفّر Prisma) |
-| **الإجمالي** | **59** | **8 ملفات** |
+| `tests/priority.test.ts` | 3 | أولوية الشركة تكسر التعادل فقط، ولا تتجاوز الموعد الأقرب |
+| `tests/db-integration.test.ts` | 1 | تكامل قاعدة البيانات مع Prisma |
+| **الإجمالي** | **85** | **14 ملف** |
 
 | الفحص | النتيجة |
 |------|---------|
-| `npm test` | ✅ 59/59 passed (8 files) |
+| `npm test` | ✅ 85/85 passed (14 files) |
 | `npm run typecheck` | ✅ 0 errors |
+| `next build` | ✅ production build passed; required network access for Google Fonts |
+
+---
+
+## القواعد المثبتة حالياً
+
+- **التأخير**: فقط المهام غير المنجزة والتي تجاوزت `readyDate` أو `publishDate`.
+- **المنجز لا يظهر كمتأخر**: `READY`, `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, أو `finishedAt`.
+- **إنجاز الشركات**: لا تُحتسب القطعة إلا إذا كانت مرحلة الإنتاج ومرحلة النشر منجزتين لنفس `pipelineKey`.
+- **عرض `يومي`**: يستخدم نفس البورد، مع فلترة المهام حسب `workDate` أو `readyDate` أو `publishDate` لليوم الحالي.
+- **أحمال العمل**: `freeDays` مبنية على المطلوب لا على المتبقي؛ عند التجاوز تصبح `0`.
+- **تزامن الـ schema**: SQLite المحلي وPostgres الإنتاجي يجب أن يبقيا بنفس الموديلات والحقول.
 
 ---
 
@@ -37,29 +55,29 @@ cd sm-team-dashboard
 # تشغيل كل التيستات مرة واحدة
 npm test
 
-# وضع watch (يعيد التشغيل عند التعديل)
+# وضع watch
 npm run test:watch
 
 # واجهة UI تفاعلية
 npm run test:ui
 
-# فحص الـ types
+# فحص TypeScript
 npm run typecheck
 ```
 
 ---
 
-## ملاحظات تقنية
+## ملاحظات تشغيلية
 
-- بعض اختبارات التكامل (`db-integration`) تتخطّى نفسها تلقائياً إذا لم تكن
-  Prisma/قاعدة البيانات متاحة في البيئة، فلا تفشل البناء بسببها.
-- بنية الجدولة الأساسية مغطّاة عبر `acceptance` و`cycles` و`persistence`؛
-  أي تعديل على `lib/schedule.ts` أو `lib/workload.ts` يجب أن يبقي هذه الملفات خضراء.
+- `next build` يحتاج اتصالاً بـ Google Fonts بسبب `next/font` في `src/app/layout.tsx`.
+- بعض اختبارات التكامل (`db-integration`) تعتمد على قاعدة البيانات المحلية وتفشل فقط عند وجود كسر فعلي في التكامل.
+- لتوحيد بيانات حزيران بين المحلي والإنتاج استخدمي `scripts/sync-june-current-fixes.ts` مع `DATABASE_URL` الصحيح للهدف.
+- سكربت المزامنة idempotent: تشغيله أكثر من مرة لا يكرر المهام اليدوية ولا يحوّل المنجز إلى غير منجز.
 
 ---
 
 ## الخلاصة
 
-✅ كل الاختبارات الحالية تمر (52/52)
-✅ TypeScript strict mode بدون أخطاء
-✅ منطق التواريخ ودورات العقود وحفظ التعديلات اليدوية مُغطّى باختبارات
+✅ كل الاختبارات الحالية تمر  
+✅ TypeScript بدون أخطاء  
+✅ قواعد التأخير، الإنجاز، إنجاز الشركات، عرض اليوم، الأحمال، ودورات العقود مغطاة باختبارات

@@ -6,12 +6,12 @@ import { Avatar } from "@/components/ui/badge";
 import { Donut } from "@/components/ui/Donut";
 import { MonthBar } from "@/components/MonthBar";
 import {
-  DONE_STATUSES,
   ROLE_LABELS,
+  isTaskDoneState,
   taskColor,
-  type Status,
 } from "@/lib/constants";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
+import { completedCompanyPlanCount } from "@/lib/progress";
 import {
   toISODate,
   fromISODate,
@@ -46,8 +46,7 @@ export default function OverviewClient({
   const designers = employees.filter((e) => e.isScheduled && !e.isPhotographer);
   const content = tasks.filter((t) => t.kind === "CONTENT");
   const qty = (t: Task) => t.quantity ?? 1;
-  const isDone = (t: Task) =>
-    DONE_STATUSES.includes(t.status as Status) || t.board === "DONE";
+  const isDone = isTaskDoneState;
   const openUrgent = tasks.filter((t) => t.priority === "URGENT" && !isDone(t));
 
   const empName = (id: string | null) =>
@@ -69,17 +68,15 @@ export default function OverviewClient({
     })
     .filter((x) => x.total > 0);
 
-  // ---- إنجاز الشركات: a company's task is "done" ONLY once PUBLISHED (Omar's
-  // PUBLISH card = DONE), not when designed/shot. % = published ÷ plan over the
-  // company's contract cycle (the bucket's tasks already span that cycle).
+  // ---- إنجاز الشركات: a piece counts only when production is done AND publish
+  // is done. A published-looking card whose design/shoot stage is still open
+  // should not inflate the company percentage.
   const companyDone = managed
     .map((co) => {
       const plan = co.posts + co.reels + co.stories + co.aiReels;
-      const published = tasks
-        .filter((t) => t.companyId === co.id && t.kind === "PUBLISH" && t.board === "DONE")
-        .reduce((a, t) => a + qty(t), 0);
-      const pct = plan > 0 ? Math.round(Math.min(100, (published / plan) * 100)) : 0;
-      return { co, plan, published, remaining: Math.max(0, plan - published), pct };
+      const done = completedCompanyPlanCount(tasks, co.id);
+      const pct = plan > 0 ? Math.round(Math.min(100, (done / plan) * 100)) : 0;
+      return { co, plan, done, remaining: Math.max(0, plan - done), pct };
     })
     .filter((x) => x.plan > 0)
     .sort((a, b) => a.co.priority - b.co.priority || b.pct - a.pct);
@@ -87,13 +84,22 @@ export default function OverviewClient({
   // "اليوم" panel: LIVE (not done) tasks on a reference day, grouped per person,
   // using the SAME labels as the task board. The reference day is today if it has
   // work, else the nearest later working day with work.
+  const deadlineOf = (t: Task): Date | null =>
+    t.readyDate ? new Date(t.readyDate) : t.publishDate ? new Date(t.publishDate) : null;
   const reelNum = buildReelNumbers(tasks);
   const todayISO = toISODate(new Date());
-  const liveDated = tasks.filter((t) => t.workDate && !isDone(t));
+  const dayISOSetOf = (t: Task) => {
+    const deadline = deadlineOf(t);
+    return [
+      t.workDate ? toISODate(new Date(t.workDate)) : null,
+      deadline ? toISODate(deadline) : null,
+    ].filter((value): value is string => !!value);
+  };
+  const liveDated = tasks.filter((t) => dayISOSetOf(t).length > 0 && !isDone(t));
   const dayTasks = (iso: string) =>
-    liveDated.filter((t) => toISODate(new Date(t.workDate!)) === iso);
+    liveDated.filter((t) => dayISOSetOf(t).includes(iso));
   const monthDayISOs = Array.from(
-    new Set(liveDated.map((t) => toISODate(new Date(t.workDate!)))),
+    new Set(liveDated.flatMap(dayISOSetOf)),
   ).sort();
   const refDay =
     dayTasks(todayISO).length > 0
@@ -121,8 +127,6 @@ export default function OverviewClient({
 
   // ---- المهام الحرجة: not-done tasks whose deadline is overdue or within ≤2
   // working days. Deadline = readyDate (design/adhoc) else publishDate.
-  const deadlineOf = (t: Task): Date | null =>
-    t.readyDate ? new Date(t.readyDate) : t.publishDate ? new Date(t.publishDate) : null;
   const soonISO = toISODate(addWorkdaysFor(new Date(), 2, [6, 0, 1, 2, 3]));
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const criticalSource = tasks.filter((t) => {
@@ -424,7 +428,7 @@ export default function OverviewClient({
           نسبة النشر الفعلي من الخطة خلال دورة العقد — المهمة لا تُحتسب للشركة إلا بعد نشرها.
         </p>
         <div className="grid md:grid-cols-2 gap-3">
-          {companyDone.map(({ co, plan, published, remaining, pct }) => (
+          {companyDone.map(({ co, plan, done, remaining, pct }) => (
             <div key={co.id} className="border border-border-soft rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -450,7 +454,7 @@ export default function OverviewClient({
                 />
               </div>
               <div className="text-[11px] text-fg-dim tabular-nums">
-                <span className="text-success">نُشر {published}</span>
+                <span className="text-success">منجز {done}</span>
                 <span className="text-fg-muted"> / {plan}</span>
                 {remaining > 0 && <span className="text-warning"> · باقي {remaining}</span>}
               </div>

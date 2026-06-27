@@ -132,7 +132,7 @@ describe("workload", () => {
       id: "e_omar",
       name: "عمر",
       role: "publisher",
-      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]),
     });
     const tasks = [
       baseTask({

@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { PRIORITY_LABELS, type Priority } from "@/lib/constants";
+import { daysLateOfState, PRIORITY_LABELS, type Priority } from "@/lib/constants";
 
 /** Subtle neutral meta pill (duration, dates…). */
 export function Pill({
@@ -48,14 +48,14 @@ export function LatePill({ days }: { days?: number }) {
 /** Calendar days a task is late (0 if not late). Deadline = readyDate else
  *  publishDate; reference = finishedAt (finished late) else now. */
 export function daysLateOf(
-  t: { readyDate: Date | null; publishDate: Date | null; finishedAt: Date | null; status: string; board?: string },
+  t: {
+    readyDate: Date | null;
+    publishDate: Date | null;
+    finishedAt: Date | null;
+    completedAt?: Date | null;
+    status: string;
+    board?: string;
+  },
 ): number {
-  const done = t.status === "READY" || t.status === "PUBLISHED" || t.board === "DONE";
-  const dl = t.readyDate ?? t.publishDate;
-  if (!dl) return 0;
-  const due = new Date(dl).getTime();
-  const ref = t.finishedAt ? new Date(t.finishedAt).getTime() : Date.now();
-  if (t.finishedAt) return ref > due ? Math.ceil((ref - due) / 86400000) : 0;
-  if (done) return 0;
-  return ref > due ? Math.ceil((ref - due) / 86400000) : 0;
+  return daysLateOfState(t);
 }

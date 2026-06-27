@@ -76,6 +76,7 @@ async function seedJuneActuals() {
     publishBoard: () => "TODO",
     writeBoard: "DONE",
     idPrefix: "jun_",
+    writerWorkDays: [6, 0, 1, 2, 3],
   });
 
   const pipeRows = pipe.map((t) => ({

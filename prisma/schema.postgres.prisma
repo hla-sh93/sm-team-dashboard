@@ -16,7 +16,7 @@ model Employee {
   id             String   @id @default(cuid())
   name           String
   role           String
-  hoursPerDay    Float    @default(6)
+  hoursPerDay    Float    @default(8)
   workDays       String   @default("[6,0,1,2,3]")
   isScheduled    Boolean  @default(true)
   isPhotographer Boolean  @default(false)

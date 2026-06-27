@@ -86,6 +86,69 @@ export const STATUS_COLORS: Record<Status, string> = {
  *  Mirrors the long-standing rule that completed work leaves the live board. */
 export const DONE_STATUSES: Status[] = ["READY", "PUBLISHED"];
 
+export type TaskDoneState = {
+  status?: string | null;
+  board?: string | null;
+  completedAt?: Date | string | null;
+  finishedAt?: Date | string | null;
+  readyDate?: Date | string | null;
+  workDate?: Date | string | null;
+  publishDate?: Date | string | null;
+};
+
+const DONE_STATE_VALUES = new Set<string>([...DONE_STATUSES, "DONE", "DELIVERED"]);
+
+export function isTaskDoneState(t: TaskDoneState): boolean {
+  return (
+    (t.status != null && DONE_STATE_VALUES.has(t.status)) ||
+    t.board === "DONE" ||
+    t.completedAt != null ||
+    t.finishedAt != null
+  );
+}
+
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
+export function inferHistoricalCompletionDate(t: TaskDoneState, fallback: Date): Date {
+  return (
+    toDate(t.finishedAt) ??
+    toDate(t.completedAt) ??
+    toDate(t.readyDate) ??
+    toDate(t.workDate) ??
+    fallback
+  );
+}
+
+function dateKey(value: Date): string {
+  return [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, "0"),
+    String(value.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+export function taskDeadline(t: TaskDoneState): Date | null {
+  return toDate(t.readyDate) ?? toDate(t.publishDate);
+}
+
+export function isTaskLateState(t: TaskDoneState, now = new Date()): boolean {
+  if (isTaskDoneState(t)) return false;
+  const deadline = taskDeadline(t);
+  return deadline != null && dateKey(deadline) < dateKey(now);
+}
+
+export function daysLateOfState(t: TaskDoneState, now = new Date()): number {
+  if (!isTaskLateState(t, now)) return 0;
+  const deadline = taskDeadline(t);
+  if (!deadline) return 0;
+  const dueDay = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.ceil((nowDay.getTime() - dueDay.getTime()) / 86400000));
+}
+
 // Photo session enums (§3)
 export const PHOTO_KINDS = ["PHOTOSHOOT", "REELS"] as const;
 export type PhotoKind = (typeof PHOTO_KINDS)[number];
@@ -118,14 +181,14 @@ export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
 
 // ============================================
 // TASK HOURS  — drives the schedule packing (placement per day).
-// Designer day = 6h → 6 posts/day (1h), 8 stories/day (0.75h), 1 AI-reel/day (6h).
+// Designer day = 8h → 8 posts/day (1h), 10 stories/day (0.8h), 1 AI-reel/day (8h).
 // KEEP IN SYNC with DEFAULT_RATES (lib/capacity.ts) so the schedule and the
 // workload screen agree on the same per-day output.
 // ============================================
 export const TYPE_HOURS: Record<Exclude<ContentType, "REEL">, number> = {
   POST: 1,
-  AI_REEL: 6,
-  STORY: 0.75,
+  AI_REEL: 8,
+  STORY: 0.8,
 };
 
 /** Hours an employee spends on a content task. Real REELs are the

@@ -11,7 +11,8 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 > `SOCIAL_SCHEDULER_SPEC.md`; many rules below override it — **this file wins on
 > conflict.** Reflects the code on branch `main` (production) after the access
 > split, per‑piece cards, 6/8 capacity, no‑Friday publishing, preferred shoot
-> day, and delay diagnosis.
+> day, strict unfinished-only lateness, production+publish company progress, and
+> daily-board task filtering.
 
 ---
 
@@ -19,7 +20,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**52**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**85**). Enums stored as **String**; `Int[]` (workDays) as JSON.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -28,7 +29,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (52)
+npm test             # vitest (85)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -43,6 +44,10 @@ Stop the dev server before `next build` AND before `prisma generate`/`db push`
 - Build runs `prisma db push --accept-data-loss` (additive columns are safe) +
   non‑destructive seed + `next build`. After deploy, click **إعادة الجدولة** per
   month to (re)build the pipeline with the latest rules.
+- Local and production databases are separate. To apply the current targeted
+  June data fixes to either one, set `DATABASE_URL` to that target and run
+  `tsx scripts/sync-june-current-fixes.ts`. The production Neon URL must never be
+  committed; paste it only in the shell/session that runs the sync.
 
 ---
 
@@ -209,6 +214,12 @@ salary + per‑reel cost).
   pins) / `deleteTasks`. **companies.ts** / **employees.ts** CRUD (persist the new
   finance + cycle + photographer + preferredShootDay fields). All revalidate the
   whole tree.
+- **scripts/sync-june-current-fixes.ts**: idempotent targeted June 2026 data
+  reconciliation for the currently reported reality. It reopens Nawal's unfinished
+  writing cards, reopens the remaining Phoenitech reel production pieces, adds the
+  late-June manual tasks, and records Alber's completed University/Tishreen and
+  National College shoots with historical completion dates. `DATABASE_URL`
+  chooses local SQLite vs production Postgres.
 - **Seed is NON‑destructive** (`prisma/seed.ts`): seeds a month only when empty;
   upserts employees/companies without overwriting edits (full rebuild =
   `SEED_FORCE=1`). Includes a **safe idempotent rate correction** (designers
@@ -230,11 +241,11 @@ Root = employee area; `/admin/*` = admin area (same shared pages + the rest).
 
 | Route (employee `/` · admin `/admin/…`) | Shows |
 |---|---|
-| `/` , `/admin` | KPIs · **المهام الحرجة** (overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (published ÷ plan over the cycle) · إعادة الجدولة |
-| `/tasks` | Kanban board (default) + calendar (day/week/month). One numbered card per piece; full add/edit/delete; status/board moves. Calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days**. |
+| `/` , `/admin` | KPIs · **المهام الحرجة** (only not-done tasks overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (production done + publish done ÷ plan over the cycle) · إعادة الجدولة |
+| `/tasks` | Kanban board (default) + **daily view using the same KanbanBoard filtered to today only** + weekly/monthly production calendars. One numbered card per piece; full add/edit/delete; status/board moves. Weekly/monthly calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days** only for unfinished overdue cards. |
 | `/publishing` | Publishing calendar by publishDate (no Fridays); numbered chips; no‑interruption banner |
 | `/admin/workload` | Whole‑team burndown |
-| `/reports`, `/admin/reports` | KPIs · إنجاز خطة الشركات (PUBLISHED‑only) · **تشخيص التأخيرات** (overdue grouped by stage + by person, with days) · per‑person ledger (every task: start→end · actual duration · lateness days) · CSV |
+| `/reports`, `/admin/reports` | KPIs · إنجاز خطة الشركات (production done + publish done) · **تشخيص التأخيرات** (unfinished overdue grouped by stage + by person, with days) · per‑person ledger (every task: start→end · actual duration · lateness days) · CSV |
 | `/admin/finance` | P&L per contract, break‑even, team capacity |
 | `/admin/companies` | CRUD + plan + owners + color + contract value + contract date + photographer + **preferred shoot day** |
 | `/admin/team` | CRUD + rates (designers items/day; photographer “X reels every Y days”) + workdays + salary + per‑reel cost |
@@ -261,11 +272,18 @@ forms `{Task,Member,Company}Form`.
 - **Cards**: one numbered card per piece (no batching); writing per company.
 - **Multiple photographers**: assign reels per company; optional **soft preferred
   shoot day** per company (editable).
-- **Achievement = PUBLISHED only** (a piece counts for a company once its PUBLISH
-  card is DONE) — used by reports % and home «إنجاز الشركات».
-- **Lateness** is surfaced (days + stage + person via «تشخيص التأخيرات»); the
-  scheduler does NOT auto‑move late work — handle manually (edit date / mark done)
-  or via a future recovery action.
+- **Company achievement = production DONE + publish DONE**. A reel/photoshoot or
+  design piece does not count toward company progress just because the publish
+  card is done; both the production stage and the publish stage for the same
+  `pipelineKey` must be done.
+- **Lateness = unfinished + deadline before today**. Done states are `READY`,
+  `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
+  Completed historical June tasks keep their real task date as completion date,
+  not the date they were entered into the system. The scheduler does NOT auto‑move
+  late work — handle manually (edit date / mark done) or via a future recovery
+  action.
+- **Daily task view** on `/tasks` is the same Kanban board as the main board, but
+  filtered to tasks whose `workDate`, `readyDate`, or `publishDate` is today.
 - **Finance**: revenue = contract values; cost = salaries (fixed) + per‑reel
   (variable); per‑contract cost allocated by work‑days; break‑even on fixed ÷ avg
   contribution.

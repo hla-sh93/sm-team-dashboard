@@ -53,15 +53,14 @@ export type PipelineTask = {
 const SCOPE_OF = (type: string): "DESIGN" | "SHOOT" =>
   type === "REEL" ? "SHOOT" : "DESIGN";
 
-/** Subtract `n` working days (skip Thu=4/Fri=5) from a YYYY-MM-DD string. */
-function backWorkdays(iso: string, n: number): string {
+/** Subtract `n` working days from a YYYY-MM-DD string according to the given workDays array. */
+function backWorkdays(iso: string, n: number, workDays: number[]): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   let left = n;
   while (left > 0) {
     dt.setDate(dt.getDate() - 1);
-    const g = dt.getDay();
-    if (g !== 4 && g !== 5) left--;
+    if (workDays.includes(dt.getDay())) left--;
   }
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
     dt.getDate(),
@@ -87,6 +86,7 @@ export function expandPipeline(
     publishBoard?: (it: PipelineContentItem) => Board;
     writeBoard?: Board;
     idPrefix?: string;
+    writerWorkDays: number[];
   },
 ): PipelineTask[] {
   const out: PipelineTask[] = [];
@@ -117,7 +117,7 @@ export function expandPipeline(
   for (const [co, scopes] of scopesByCompany) {
     for (const scope of scopes) {
       const end = earliestStart.get(`${co}|${scope}`) ?? null;
-      const start = end ? backWorkdays(end, 2) : null;
+      const start = end ? backWorkdays(end, 2, opts.writerWorkDays) : null;
       out.push({
         id: writeId(co, scope),
         kind: "CONTENT_WRITING",

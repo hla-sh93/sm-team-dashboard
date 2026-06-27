@@ -132,7 +132,8 @@
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail|✗|FAIL\" | Select-Object -Last 10)",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npm run db:seed 2>&1 | Select-String -Pattern \"rates|hoursPerDay|↻|preserv\" | Select-Object -First 10)",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx scripts/reconcile-june-2026.ts 2>&1 | Select-String -Pattern \"broPlanPosts|cleared|capriani|manualTasks\")",
-      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _cap.ts 2>&1)"
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _cap.ts 2>&1)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"typecheck_exit=$LASTEXITCODE\")"
     ]
   }
 }

@@ -4,10 +4,11 @@ import { ReportActions, type ReportRow, type TaskRow } from "@/components/Report
 import { MonthBar } from "@/components/MonthBar";
 import {
   CONTENT_TYPE_LABELS,
-  DONE_STATUSES,
   ROLE_LABELS,
   STAGE_LABELS,
   STATUS_LABELS,
+  isTaskDoneState,
+  isTaskLateState,
   WEEKDAY_LABELS,
   type Stage,
   type Status,
@@ -16,6 +17,7 @@ import { formatDateShort, toISODate } from "@/lib/dates";
 import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
+import { completedCompanyPlanCount } from "@/lib/progress";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
 import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
@@ -35,8 +37,8 @@ export default async function ReportsPage({
   ]);
 
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
-  const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
-  const done = tasks.filter((t) => isDone(t.status));
+  const isDone = isTaskDoneState;
+  const done = tasks.filter((t) => isDone(t));
   const qty = (t: { quantity?: number }) => t.quantity ?? 1;
   const doneCount = done.reduce((a, t) => a + qty(t), 0);
 
@@ -73,17 +75,7 @@ export default async function ReportsPage({
     .map((co) => {
       const rows = PLAN_TYPES.map((pt) => {
         const plan = co[pt.key] ?? 0;
-        // Achievement counts only PUBLISHED content (Omar's PUBLISH stage done),
-        // not merely designed/shot.
-        const d = tasks
-          .filter(
-            (t) =>
-              t.companyId === co.id &&
-              t.kind === "PUBLISH" &&
-              t.type === pt.type &&
-              t.board === "DONE",
-          )
-          .reduce((a, t) => a + qty(t), 0);
+        const d = completedCompanyPlanCount(tasks, co.id, pt.type);
         return { ...pt, plan, done: d, remaining: Math.max(0, plan - d) };
       }).filter((r) => r.plan > 0 || r.done > 0);
       const totalPlan = rows.reduce((a, r) => a + r.plan, 0);
@@ -124,12 +116,7 @@ export default async function ReportsPage({
     arr.push(t);
     allByAssignee.set(t.assigneeId, arr);
   }
-  const isLate = (t: (typeof tasks)[number]) => {
-    if (!t.readyDate) return false;
-    const due = new Date(t.readyDate).getTime();
-    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
-    return !isDone(t.status) && Date.now() > due;
-  };
+  const isLate = isTaskLateState;
   // Start = when work began (else planned workDate); End = when finished (else the
   // deadline / publish date).
   const startOf = (t: (typeof tasks)[number]) => t.startedAt ?? t.workDate;
@@ -362,7 +349,7 @@ export default async function ReportsPage({
           const mine = allByAssignee.get(e.id) ?? [];
           if (mine.length === 0) return null;
           const total = mine.reduce((a, t) => a + qty(t), 0);
-          const doneN = mine.filter((t) => isDone(t.status)).reduce((a, t) => a + qty(t), 0);
+          const doneN = mine.filter((t) => isDone(t)).reduce((a, t) => a + qty(t), 0);
           const cards = groupTasksIntoCards(mine).sort((a, b) => {
             const la = isLate(a.repr) ? 1 : 0;
             const lb = isLate(b.repr) ? 1 : 0;
@@ -399,7 +386,7 @@ export default async function ReportsPage({
               <div className="space-y-1">
                 {cards.map((c) => {
                   const t = c.repr;
-                  const taskDone = isDone(t.status);
+                  const taskDone = isDone(t);
                   const late = isLate(t);
                   const s = startOf(t);
                   const en = endOf(t);

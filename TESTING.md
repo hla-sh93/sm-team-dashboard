@@ -21,13 +21,13 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **74/74 pass** | S1 |
+| ENV‑3 | `npm test` | **85/85 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; designers STORY=8 | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 11 files / 74 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 14 files / 85 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
@@ -35,12 +35,22 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/schemas.test.ts` | 9 | Zod validation (employee / company / task) |
 | `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
 | `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
-| `tests/cycles.test.ts` | 6 | contract-cycle plan distribution (20→20, 15→15) |
+| `tests/cycles.test.ts` | 7 | contract-cycle plan distribution (20→20, 15→15), cross-month packing |
 | `tests/workload.test.ts` | 5 | required‑vs‑capacity load; over ⇒ 0 free; publisher; month window |
+| `tests/task-state.test.ts` | 4 | done-state markers, historical completion date, unfinished-only lateness |
+| `tests/task-filters.test.ts` | 3 | daily board task filtering by work/deadline/publish date |
+| `tests/progress.test.ts` | 3 | company progress requires production + publish done |
 | `tests/persistence.test.ts` | 3 | manual edits survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
 | `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
 | `tests/db-integration.test.ts` | 1 | DB integration (self-skips if Prisma absent) |
+
+### 0.2 Current locked logic rules
+- **Late means exactly**: not done + `readyDate`/`publishDate` is before today. A done task is never late.
+- **Done markers**: `READY`, `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
+- **Company progress**: a content piece counts only when its production stage and publish stage are both done.
+- **Daily tasks view**: `يومي` on `/tasks` renders the same Kanban board as `بورد`, filtered to today's task dates.
+- **Local/production DB parity**: use one idempotent data-fix script against the chosen `DATABASE_URL`; no manual divergent local-only edits.
 
 ---
 
@@ -70,6 +80,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | SEED‑3 | add company/employee → `db:seed` | not deleted | **S1** |
 | SEED‑4 | rate migration | designers still on STORY=6 → become 8; a custom rate is NOT touched | S2 |
 | SEED‑5 | `SEED_FORCE=1` | full rebuild | S2 |
+| SEED‑6 | run `tsx scripts/sync-june-current-fixes.ts` with local SQLite `DATABASE_URL` | idempotent; Nawal unfinished writing remains open; remaining Phoenitech reel production remains open; Alber completed tasks stay completed with 12/06 and 21/06 dates | **S1** |
+| SEED‑7 | run same script with production Postgres `DATABASE_URL` | production DB receives the same targeted June fixes as local; no code or env secret committed | **S1** |
 
 ---
 
@@ -82,7 +94,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | HOME‑3 | **إنجاز الفريق** | a donut per person (done/total/remaining), counts ALL assigned tasks — **عمر appears** | **S2** |
 | HOME‑4 | **مهام اليوم** | a **tab per employee, always all of them**; active tab shows: their tasks, or **عطلة** (day off), or **متفرّغ لعمل إضافي** (working, no tasks) | **S2** |
 | HOME‑5 | publisher on a Thursday | عمر shows his publish tasks (tasks take precedence over an “off” weekday) | S2 |
-| HOME‑6 | **إنجاز الشركات** | published ÷ plan over the cycle; counts only PUBLISH=DONE; 0% while publishing pending | S2 |
+| HOME‑6 | **إنجاز الشركات** | done ÷ plan over the cycle; counts a piece only when production stage and PUBLISH stage are both DONE | S2 |
 | HOME‑7 | إعادة الجدولة | success toast (stage counts); pipeline rebuilt. On failure → error toast with the real reason. If the run has gaps (missing writer/designer/photographer) → a **warning** toast lists them | S1 |
 
 ---
@@ -100,7 +112,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | KAN‑8 | **deep‑link filter** | open `/tasks?person=<id>` (or `?company=`) → the person/company filter is pre‑selected | S2 |
 | KAN‑9 | **خطة دورة label** | نوال’s write cards read “كتابة بوستات وستوريز — <company> · دورة <start> – <end>” for the cycle they cover (e.g. المول 20 حزيران – 19 تموز) after إعادة الجدولة | S2 |
 | KAN‑10 | **collapse groups** | click a group header → its cards fold away (chevron flips), header + count stay; click again → expand. “طيّ الكل / فتح الكل” folds/unfolds every group at once. Reduces clutter/scroll on heavy columns | S2 |
-| CAL‑1 | calendar (شهري/أسبوعي/يومي) | items by workDate; **REEL & PUBLISH excluded** (production view); Friday column clear of work | **S2** |
+| KAN‑11 | **يومي** | renders the exact same Kanban board UI/grouping/actions as `بورد`, but only cards whose `workDate`/`readyDate`/`publishDate` is today | **S2** |
+| CAL‑1 | calendar (شهري/أسبوعي) | items by workDate; **REEL & PUBLISH excluded** (production view); Friday column clear of work | **S2** |
 | CAL‑2 | calendar card | owner read‑only (edit via ✏️); status select; pills incl. متأخّر N يوم | S2 |
 | CAL‑3 | cycle spill | monthly grid extends to show a 20→20 company’s next‑month days | S2 |
 
@@ -115,6 +128,18 @@ A case PASSES only if the expected result AND every side effect hold.
 | NEW‑2 | **قفل يدوي** checked + date | locked to that exact date (incl. across regenerate) | S2 |
 | DEL‑1 | 🗑️ ad‑hoc | removed, stays gone | S2 |
 | DEL‑2 | parity | CONTENT (type+publishDate) == PUBLISH per month; 0 orphans | **S1** |
+
+---
+
+## 5.1 Completion, lateness, and daily-board rules — S1/S2
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| STATE‑1 | set a past-due task to `READY`/`DONE` | disappears from late/critical lists; no late badge | **S1** |
+| STATE‑2 | create a not-started task with yesterday `readyDate` | appears as late by exactly calendar-day difference | **S1** |
+| STATE‑3 | create a not-started task due today | appears in today/daily board but **not** as late | **S2** |
+| STATE‑4 | enter historical completed June work today | `completedAt`/`finishedAt` uses the task date; it is still done and not late | **S1** |
+| STATE‑5 | `/tasks` → `يومي` | same board columns/actions/grouping as `بورد`; dataset is today's tasks only | **S2** |
+| STATE‑6 | company has publish card DONE but production card TODO | company progress does not count that piece | **S1** |
 
 ---
 
@@ -190,8 +215,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | ID | Steps | Expected | Sev |
 |---|---|---|---|
 | REP‑1 | KPIs | المنجز · متوسط المدة الفعلية · المساهمون · إجمالي المهام | S2 |
-| REP‑2 | إنجاز خطة الشركات | per company % = PUBLISHED‑only vs plan | S2 |
-| REP‑3 | **تشخيص التأخيرات** | overdue undone grouped by **stage** (كتابة/تصميم/تصوير/نشر) + by **person** (count + worst delay) | **S2** |
+| REP‑2 | إنجاز خطة الشركات | per company % = pieces with production DONE + publish DONE vs plan | S2 |
+| REP‑3 | **تشخيص التأخيرات** | overdue unfinished tasks grouped by **stage** (كتابة/تصميم/تصوير/نشر) + by **person** (count + worst delay); completed tasks never appear | **S2** |
 | REP‑4 | per‑person ledger | every task: البداية ← النهاية · المدة الفعلية · **متأخّر N يوم** · الحالة; done/total by name | S2 |
 | REP‑5 | CSV export | columns incl. dates/actual‑duration; UTF‑8 BOM (Arabic in Excel) | S3 |
 
@@ -234,15 +259,16 @@ A case PASSES only if the expected result AND every side effect hold.
 - No login — `/admin` URL is the only gate; keep it private.
 - Photographer week‑4 no‑shoot is calendar‑month based (safe); preferred shoot day is soft.
 - Late tasks are diagnosed but not auto‑rescheduled (recovery action is a planned, separate step).
+- The production/local DB parity script needs an explicit target `DATABASE_URL`; without the production URL only local can be verified.
 - Actual duration “—” until a task moves through the board. June achievements hard‑coded.
 
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 74 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 85 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
-- [ ] SEED‑1..3, GEN‑2/5, DEL‑2/PUB‑4, WL‑5 PASS — S1.
-- [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, REP‑3 PASS.
+- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6 PASS — S1.
+- [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, KAN‑11, REP‑2/3 PASS.
 - [ ] One DB backup stored outside the repo.
 
 **Owner:** ____  **Date:** ____  **Result:** PASS / FAIL

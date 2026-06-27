@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,23 @@ export default function CompaniesClient({
   const empName = (id: string | null) => employees.find((e) => e.id === id)?.name ?? "—";
 
   const onDelete = (c: Company) => {
-    if (!confirm(`حذف ${c.name}؟`)) return;
-    start(async () => {
-      const r = await deleteCompany(c.id);
-      if (r.ok) {
-        toast("تم الحذف");
-        router.refresh();
-      } else toast(r.error, "error");
+    Swal.fire({
+      title: "تأكيد الحذف",
+      text: `حذف ${c.name}؟`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "نعم، احذف",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#ef4444",
+    }).then((result) => {
+      if (!result.isConfirmed) return;
+      start(async () => {
+        const r = await deleteCompany(c.id);
+        if (r.ok) {
+          toast("تم الحذف");
+          router.refresh();
+        } else toast(r.error, "error");
+      });
     });
   };
 

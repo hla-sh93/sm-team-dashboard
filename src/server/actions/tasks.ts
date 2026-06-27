@@ -2,7 +2,12 @@
 
 import { prisma } from "@/lib/db";
 import { fromISODate } from "@/lib/dates";
-import { DONE_STATUSES, statusToBoard, type Status } from "@/lib/constants";
+import {
+  DONE_STATUSES,
+  inferHistoricalCompletionDate,
+  statusToBoard,
+  type Status,
+} from "@/lib/constants";
 import {
   taskSchema,
   statusSchema,
@@ -29,6 +34,15 @@ export async function createTask(input: TaskInput) {
   }
   try {
     const d = parsed.data;
+    const now = new Date();
+    const readyDate = d.readyDate ? fromISODate(d.readyDate) : null;
+    const workDate = d.workDate ? fromISODate(d.workDate) : null;
+    const done = isDone(d.status);
+    const doneAt = done
+      ? inferHistoricalCompletionDate({ readyDate, workDate }, now)
+      : null;
+    const startedAt =
+      d.status === "NOT_STARTED" ? null : done ? (workDate ?? doneAt) : now;
     await prisma.task.create({
       data: {
         kind: d.kind,
@@ -37,8 +51,9 @@ export async function createTask(input: TaskInput) {
         hours: d.hours,
         priority: d.priority,
         status: d.status,
-        readyDate: d.readyDate ? fromISODate(d.readyDate) : null,
-        workDate: d.workDate ? fromISODate(d.workDate) : null,
+        board: statusToBoard(d.status),
+        readyDate,
+        workDate,
         isPinned: d.isPinned,
         notes: d.notes ?? null,
         month: d.month,
@@ -46,7 +61,9 @@ export async function createTask(input: TaskInput) {
         isAuto: false,
         assigneeId: d.assigneeId,
         companyId: d.companyId,
-        completedAt: isDone(d.status) ? new Date() : null,
+        startedAt,
+        finishedAt: doneAt,
+        completedAt: doneAt,
       },
     });
     // Re-schedule the month so the new task lands in the right slot.
@@ -67,6 +84,22 @@ export async function updateTask(id: string, input: TaskInput) {
     const d = parsed.data;
     const before = await prisma.task.findUnique({ where: { id } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
+    const now = new Date();
+    const readyDate = d.readyDate ? fromISODate(d.readyDate) : null;
+    const workDate = d.workDate ? fromISODate(d.workDate) : null;
+    const done = isDone(d.status);
+    const doneAt = done
+      ? inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
+      : null;
+    let startedAt = before.startedAt;
+    let finishedAt = before.finishedAt;
+    if (d.status === "NOT_STARTED") {
+      startedAt = null;
+      finishedAt = null;
+    } else {
+      if (!startedAt) startedAt = done ? (workDate ?? doneAt) : now;
+      finishedAt = done ? doneAt : null;
+    }
     await prisma.task.update({
       where: { id },
       data: {
@@ -76,17 +109,18 @@ export async function updateTask(id: string, input: TaskInput) {
         hours: d.hours,
         priority: d.priority,
         status: d.status,
-        readyDate: d.readyDate ? fromISODate(d.readyDate) : null,
-        workDate: d.workDate ? fromISODate(d.workDate) : null,
+        board: statusToBoard(d.status),
+        readyDate,
+        workDate,
         isPinned: d.isPinned,
         notes: d.notes ?? null,
         month: d.month,
         year: d.year,
         assigneeId: d.assigneeId,
         companyId: d.companyId,
-        completedAt: isDone(d.status)
-          ? (before.completedAt ?? new Date())
-          : null,
+        startedAt,
+        finishedAt,
+        completedAt: doneAt,
       },
     });
     if (before.kind === "ADHOC" || d.kind === "ADHOC") {
@@ -127,14 +161,21 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     const now = new Date();
     const status = input.status ?? before.status;
     const done = isDone(status);
+    const setDate = (iso: string | null | undefined, cur: Date | null) =>
+      iso === undefined ? cur : iso ? fromISODate(iso) : null;
+    const workDate = setDate(input.workDate, before.workDate);
+    const readyDate = setDate(input.readyDate, before.readyDate);
+    const doneAt = done
+      ? inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
+      : null;
     let startedAt = before.startedAt;
     let finishedAt = before.finishedAt;
     if (status === "NOT_STARTED") {
       startedAt = null;
       finishedAt = null;
     } else {
-      if (!startedAt) startedAt = now;
-      finishedAt = done ? (finishedAt ?? now) : null;
+      if (!startedAt) startedAt = done ? (workDate ?? doneAt) : now;
+      finishedAt = done ? doneAt : null;
     }
     const board = statusToBoard(status);
     // A manual edit is ALWAYS pinned so it survives إعادة الجدولة (the regen
@@ -143,17 +184,15 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     const pinned = true;
     const hours =
       input.days != null && before.kind === "ADHOC"
-        ? Math.round(input.days * 6 * 10) / 10
+        ? Math.round(input.days * 8 * 10) / 10
         : before.hours;
-    const setDate = (iso: string | null | undefined, cur: Date | null) =>
-      iso === undefined ? cur : iso ? fromISODate(iso) : null;
 
     await prisma.task.update({
       where: { id: primary },
       data: {
         title: input.title !== undefined ? input.title : before.title,
-        workDate: setDate(input.workDate, before.workDate),
-        readyDate: setDate(input.readyDate, before.readyDate),
+        workDate,
+        readyDate,
         assigneeId:
           input.assigneeId !== undefined ? input.assigneeId || null : before.assigneeId,
         priority: input.priority ?? before.priority,
@@ -161,7 +200,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
         board,
         startedAt,
         finishedAt,
-        completedAt: done ? (before.completedAt ?? now) : null,
+        completedAt: doneAt,
         hours,
         isPinned: pinned,
       },

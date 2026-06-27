@@ -11,6 +11,7 @@ import {
   STAGE_LABELS,
   CONTENT_TYPE_LABELS,
   TASK_KIND_LABELS,
+  isTaskLateState,
   taskColor,
   type Board,
   type Stage,
@@ -93,13 +94,7 @@ export default function KanbanBoard({
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
 
-  // Late = finished after the deadline, or past the deadline and not yet done.
-  const isLate = (t: Task) => {
-    if (!t.readyDate) return false;
-    const due = new Date(t.readyDate).getTime();
-    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
-    return !["READY", "PUBLISHED"].includes(t.status) && Date.now() > due;
-  };
+  const isLate = isTaskLateState;
 
   // Reel numbering + labels are shared with the rest of the app (lib/cards) so
   // every view shows identical labels.

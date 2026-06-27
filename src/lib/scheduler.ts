@@ -354,7 +354,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // -------------------------------------------------------------------------
   for (const t of tasks) {
     if (t.type === "REEL" || !t.type || !t.publishDate) continue;
-    const lead = t.type === "STORY" ? LEAD.STORY : LEAD.POST; // post/ai_reel = 2
+    const lead = LEAD[t.type as keyof typeof LEAD] ?? LEAD.POST;
     const owWork = workDaysOf(t.assigneeId);
     t.readyDate = backWorkday(shiftDays(t.publishDate, -lead), owWork);
   }
@@ -476,7 +476,7 @@ function packEmployee(
   const priorityOf = (companyId: string | null) =>
     companyId != null ? (coPriority.get(companyId) ?? 99) : 99;
   const workDays = parseWorkDays(emp.workDays as string | number[]);
-  const cap = emp.hoursPerDay > 0 ? emp.hoursPerDay : 6;
+  const cap = emp.hoursPerDay > 0 ? emp.hoursPerDay : 8;
   const days = packingWindowDays(year, month, until).filter((d) =>
     workDays.includes(d.getDay()),
   );
@@ -503,7 +503,7 @@ function packEmployee(
 
   const free = empTasks.filter((t) => !(t.isPinned && t.workDate));
   const urgent = free.filter(
-    (t) => t.priority === "URGENT" || t.kind === "ADHOC",
+    (t) => t.priority === "URGENT",
   );
   const routine = free.filter(
     (t) => !(t.priority === "URGENT" || t.kind === "ADHOC"),

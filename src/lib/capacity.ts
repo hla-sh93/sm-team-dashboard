@@ -47,7 +47,7 @@ export function ratePerDay(emp: RateEmp, type: string): number {
 
 /** Hours one item of `type` costs this person (hoursPerDay ÷ rate). */
 export function hoursPerItem(emp: RateEmp, type: string): number {
-  const cap = emp.hoursPerDay ?? 6;
+  const cap = emp.hoursPerDay ?? 8;
   const rate = ratePerDay(emp, type);
   return rate > 0 ? cap / rate : cap;
 }

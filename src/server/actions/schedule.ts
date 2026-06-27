@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { loadState } from "@/lib/schedule-data";
-import { companyCycle, contractDayOf, formatDateShort } from "@/lib/dates";
+import { companyCycle, contractDayOf, formatDateShort, parseWorkDays } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -25,7 +25,7 @@ const D = (s: string | null): Date | null => {
 type JuneState = { published?: number; review?: number; doing?: number };
 const JUNE_2026: Record<string, JuneState> = {
   "c_phoenitech|POST": { published: 4 }, // فوني تيك — كله منجز
-  "c_phoenitech|REEL": { published: 4 },
+  "c_phoenitech|REEL": { published: 2 }, // 2 منشورة · 2 بانتظار التصوير
   "c_training|POST": { published: 7 }, // التدريب — منجز
   "c_noor|POST": { published: 6 }, // المخبر — كل البوستات منشورة
   "c_noor|REEL": { published: 3 }, // 3 ريل منشورة · 3 بانتظار التصوير (TODO)
@@ -47,7 +47,7 @@ function achievementsFor(year: number, month: number): Record<string, JuneState>
  * Stamp reported reality onto the pipeline: for each (company,type), the first
  * `published` pieces become DONE (and their PUBLISH card PUBLISHED), the next
  * `review` go to REVIEW (awaiting approval), the next `doing` go to DOING
- * (in progress). The writer's plan card for any touched scope is marked DONE.
+ * (in progress). Writer cards stay independent and must be completed explicitly.
  */
 function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState>) {
   const publishByKey = new Map<string, PipelineTask>();
@@ -63,9 +63,6 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
       groups.set(k, arr);
     }
   }
-  const startedScopes = new Set<string>();
-  const scopeOf = (c: PipelineTask) =>
-    `${c.companyId}|${c.stage === "SHOOT" ? "SHOOT" : "DESIGN"}`;
   for (const [k, arr] of groups) {
     const st = state[k];
     if (!st) continue;
@@ -83,26 +80,14 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
         p.board = "DONE";
         p.status = "PUBLISHED";
       }
-      startedScopes.add(scopeOf(c));
     }
     for (let n = st.review ?? 0; n > 0 && i < arr.length; n--, i++) {
       arr[i].board = "REVIEW";
       arr[i].status = "AWAITING_APPROVAL";
-      startedScopes.add(scopeOf(arr[i]));
     }
     for (let n = st.doing ?? 0; n > 0 && i < arr.length; n--, i++) {
       arr[i].board = "DOING";
       arr[i].status = "IN_PROGRESS";
-      startedScopes.add(scopeOf(arr[i]));
-    }
-  }
-  for (const c of pipe) {
-    if (c.stage === "WRITE") {
-      const scope = (c.pipelineKey ?? "").split("|")[1];
-      if (startedScopes.has(`${c.companyId}|${scope}`)) {
-        c.board = "DONE";
-        c.status = "READY";
-      }
     }
   }
 }
@@ -120,6 +105,9 @@ export async function generateSchedule(year: number, month: number) {
     const result = buildSchedule(state);
 
     const writerId = state.employees.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
+    const writerWorkDays = parseWorkDays(
+      state.employees.find((e) => e.id === writerId)?.workDays as string | number[]
+    );
     const publisherId =
       state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
@@ -158,6 +146,7 @@ export async function generateSchedule(year: number, month: number) {
       month,
       companyName: coName,
       cycleLabel,
+      writerWorkDays,
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
     });
     applyAchievements(pipe, achievementsFor(year, month));

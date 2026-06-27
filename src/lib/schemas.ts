@@ -15,7 +15,7 @@ const rateNum = z.preprocess(emptyToUndef, z.coerce.number().min(0).max(100).opt
 export const employeeSchema = z.object({
   name: z.string().min(1, "الاسم مطلوب").max(100),
   role: z.string().min(1, "الدور مطلوب"),
-  hoursPerDay: z.coerce.number().min(0.5).max(16).default(6),
+  hoursPerDay: z.coerce.number().min(0.5).max(16).default(8),
   workDays: weekdayArray,
   isScheduled: z.boolean().default(true),
   isPhotographer: z.boolean().default(false),
@@ -93,11 +93,11 @@ export const taskSchema = z.object({
   title: z.string().min(1, "عنوان المهمة مطلوب").max(200),
   kind: z.enum(["ADHOC", "CONTENT", "PHOTOSHOOT", "REPORT", "CONTENT_WRITING"]).default("ADHOC"),
   type: z.enum(CONTENT_TYPES).nullable().optional(),
-  // Effort in WORKING DAYS (the form's unit). Converted to `hours` (= days × 6)
+  // Effort in WORKING DAYS (the form's unit). Converted to `hours` (= days × 8)
   // before persisting, since the engine + workload reason in hours internally.
   days: z.coerce.number().min(0).max(60).optional(),
-  // Stored effort in hours (= days × daily capacity). Max 60 days × 6h = 360.
-  hours: z.coerce.number().min(0).max(360).default(0),
+  // Stored effort in hours (= days × daily capacity). Max 60 days × 8h = 480.
+  hours: z.coerce.number().min(0).max(480).default(0),
   priority: z.enum(PRIORITIES).default("NORMAL"),
   status: z.enum(STATUSES).default("NOT_STARTED"),
   assigneeId: optId,

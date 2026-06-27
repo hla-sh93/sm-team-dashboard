@@ -23,7 +23,7 @@
  * to 5 companies, but only publish cards dated inside the month are counted.
  */
 import type { Employee, Task, PhotoSession, Company } from "@/types";
-import { DONE_STATUSES, type Status } from "./constants";
+import { isTaskDoneState } from "./constants";
 import { getMonthDays, parseWorkDays, toISODate } from "./dates";
 import { taskDays, adhocDays } from "./capacity";
 
@@ -54,8 +54,7 @@ export const isWriterRole = (role: string) => /كات|writer/i.test(role);
 // Companies the publisher can schedule/publish in a single day.
 const PUBLISH_COMPANIES_PER_DAY = 5;
 
-const isDoneTask = (t: Task) =>
-  DONE_STATUSES.includes(t.status as Status) || t.board === "DONE";
+const isDoneTask = isTaskDoneState;
 
 function isInMonth(date: Date | null | undefined, year: number, month: number): boolean {
   return !!date && date.getFullYear() === year && date.getMonth() === month;
@@ -91,9 +90,7 @@ export function computeWorkload(
   return employees.map((emp) => {
     const wd = parseWorkDays(emp.workDays);
     const publisher = isPublisherRole(emp.role);
-    const capacityDays = publisher
-      ? monthDays.filter((d) => d.getDay() !== 5).length
-      : monthDays.filter((d) => wd.includes(d.getDay())).length;
+    const capacityDays = monthDays.filter((d) => wd.includes(d.getDay())).length;
 
     const myTasks = tasks.filter((task) => {
       if (task.assigneeId !== emp.id) return false;

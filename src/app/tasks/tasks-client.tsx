@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/badge";
@@ -99,15 +100,49 @@ export default function TasksClient({
     setEditing({ task, ids, label });
     setFormOpen(true);
   };
-  const onDelete = (ids: string[], label: string) =>
-    startTransition(async () => {
-      if (!window.confirm(`حذف «${label}»؟`)) return;
-      const r = await deleteTasks(ids);
-      if (r.ok) {
-        toast("تم حذف المهمة");
-        router.refresh();
-      } else toast(r.error, "error");
+  const onDelete = (ids: string[], label: string) => {
+    const isAuto = tasks.some((t) => ids.includes(t.id) && t.isAuto);
+
+    if (isAuto) {
+      Swal.fire({
+        title: "مهام مجدولة آلياً",
+        text: "هذه المهمة مضافة تلقائياً من خطة الشركة. إذا حذفتها ستعود عند إعادة الجدولة. إذا أردت تغييرها لتصوير بدلاً من تصميم، يرجى تعديل المهمة وتغيير (الموكل إليه) إلى المصور.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "احذفها مؤقتاً",
+        cancelButtonText: "تراجع",
+      }).then((result) => {
+        if (!result.isConfirmed) return;
+        startTransition(async () => {
+          const r = await deleteTasks(ids);
+          if (r.ok) {
+            toast("تم حذف المهمة");
+            router.refresh();
+          } else toast(r.error, "error");
+        });
+      });
+      return;
+    }
+
+    Swal.fire({
+      title: "تأكيد الحذف",
+      text: `حذف «${label}»؟`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "نعم، احذف",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#ef4444",
+    }).then((result) => {
+      if (!result.isConfirmed) return;
+      startTransition(async () => {
+        const r = await deleteTasks(ids);
+        if (r.ok) {
+          toast("تم حذف المهمة");
+          router.refresh();
+        } else toast(r.error, "error");
+      });
     });
+  };
 
   const photographer = employees.find((e) => e.isPhotographer);
   const empName = (id: string | null) =>

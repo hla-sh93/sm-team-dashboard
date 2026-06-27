@@ -69,6 +69,7 @@ const pipe = expandPipeline(items, {
   year,
   month,
   companyName: (cid) => coName[cid] ?? "",
+  writerWorkDays: [6, 0, 1, 2, 3],
 });
 
 const DOW2 = (s: string | null) =>

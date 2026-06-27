@@ -35,13 +35,7 @@ export const ARABIC_DAYS_SHORT = ['أحد', 'اثنين', 'ثلاثاء', 'أر�
 export const ARABIC_WEEK_ORDER = [6, 0, 1, 2, 3, 4, 5];
 export const ARABIC_WEEK_LABELS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
 
-/**
- * Returns true if date is a weekend day (Thursday or Friday).
- */
-export function isWeekend(date: Date): boolean {
-  const d = date.getDay();
-  return d === 4 || d === 5;
-}
+
 
 /**
  * Format a date as ISO YYYY-MM-DD (UTC-safe local date).
@@ -90,14 +84,14 @@ export function formatDateCard(date: Date | string): string {
  * If N=0, returns the same date.
  * If start is a weekend, first move forward to nearest workday.
  */
-export function addWorkingDays(start: Date, days: number): Date {
+export function addWorkingDays(start: Date, days: number, workDays: number[] = [6, 0, 1, 2, 3]): Date {
   const d = new Date(start);
   if (days === 0) return d;
   let added = 0;
   const target = Math.ceil(days);
   while (added < target) {
     d.setDate(d.getDate() + 1);
-    if (!isWeekend(d)) added++;
+    if (isWorkDay(d, workDays)) added++;
   }
   return d;
 }
@@ -108,17 +102,17 @@ export function addWorkingDays(start: Date, days: number): Date {
  * addWorkingDaysInclusive(Mon, 1) = Mon (1-day task)
  * addWorkingDaysInclusive(Mon, 2) = Tue (2-day task)
  */
-export function addWorkingDaysInclusive(start: Date, days: number): Date {
+export function addWorkingDaysInclusive(start: Date, days: number, workDays: number[] = [6, 0, 1, 2, 3]): Date {
   if (days <= 1) return new Date(start);
-  return addWorkingDays(start, days - 1);
+  return addWorkingDays(start, days - 1, workDays);
 }
 
 /**
  * Skip forward to the next workday if the date is a weekend.
  */
-export function nextWorkday(date: Date): Date {
+export function nextWorkday(date: Date, workDays: number[] = [6, 0, 1, 2, 3]): Date {
   const d = new Date(date);
-  while (isWeekend(d)) d.setDate(d.getDate() + 1);
+  while (!isWorkDay(d, workDays)) d.setDate(d.getDate() + 1);
   return d;
 }
 
@@ -133,10 +127,10 @@ export function getMonthDays(year: number, month: number): Date[] {
 }
 
 /**
- * Get only working days (Sat-Wed) in a month.
+ * Get only working days in a month.
  */
-export function getWorkingDaysInMonth(year: number, month: number): Date[] {
-  return getMonthDays(year, month).filter((d) => !isWeekend(d));
+export function getWorkingDaysInMonth(year: number, month: number, workDays: number[] = [6, 0, 1, 2, 3]): Date[] {
+  return getMonthDays(year, month).filter((d) => isWorkDay(d, workDays));
 }
 
 /**
@@ -157,10 +151,10 @@ export function getWeekDays(anchor: Date): Date[] {
 }
 
 /**
- * Get the working days (5 days, Sat-Wed) of the week containing the date.
+ * Get the working days of the week containing the date.
  */
-export function getWorkingWeekDays(anchor: Date): Date[] {
-  return getWeekDays(anchor).filter((d) => !isWeekend(d));
+export function getWorkingWeekDays(anchor: Date, workDays: number[] = [6, 0, 1, 2, 3]): Date[] {
+  return getWeekDays(anchor).filter((d) => isWorkDay(d, workDays));
 }
 
 /**
@@ -360,9 +354,9 @@ export function companyCycle(
   let end: Date;
   if (contractDay && contractDay > 1) {
     const sd = clampDayToMonth(year, month, contractDay);
-    const ed = clampDayToMonth(year, month + 1, contractDay);
     start = new Date(year, month, sd);
-    end = new Date(year, month + 1, ed);
+    end = new Date(start);
+    end.setDate(end.getDate() + 30);
   } else {
     start = new Date(year, month, 1);
     end = new Date(year, month + 1, 1);
