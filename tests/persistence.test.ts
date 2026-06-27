@@ -63,6 +63,28 @@ describe("§9 criterion 10 — persistence via deterministic key", () => {
     expect(row.workDate!.getTime()).toBe(lockedDate.getTime());
   });
 
+  it("preserves soft-deleted (CANCELED) state for auto-generated tasks", () => {
+    const first = buildSchedule(specState(2026, 6));
+    const target = first.tasks.find((t) => t.kind === "CONTENT" && t.isAuto)!;
+    const preserved = indexPreservedTasks([
+      {
+        detKey: target.detKey,
+        status: "CANCELED",
+        completedAt: null,
+        isPinned: true,
+        workDate: target.workDate,
+      },
+    ]);
+    const second = buildSchedule(specState(2026, 6));
+    const merged = applyPreservedTasks(
+      second.tasks.filter((t) => t.kind === "CONTENT"),
+      preserved,
+    );
+    const row = merged.find((t) => t.detKey === target.detKey)!;
+    expect(row.isPinned).toBe(true);
+    expect(row.status).toBe("CANCELED");
+  });
+
   it("preserves photo session status by detKey", () => {
     const first = buildSchedule(specState(2026, 6));
     const sess = first.sessions[0];

@@ -179,6 +179,10 @@ extends calendar grids to show the spill‑over. Seeded: جدارات 15→15, �
 Wrapped by **`generateSchedule`** (server action) which expands the pipeline and
 persists, preserving board/status + pinned edits + ad‑hoc.
 
+### 6.1 Task Deletion Rules
+- **Manual/Ad-hoc Tasks (`isAuto: false`)**: Deleted permanently from the database.
+- **Auto-generated Tasks (`isAuto: true`)**: Soft-deleted (set to `status: "CANCELED"`, pinned). This hides them from the current month's cycle but preserves the underlying company plan, ensuring they regenerate fresh in the following month.
+
 ---
 
 ## 7. Workload — plan‑driven burndown (`lib/workload.ts`)

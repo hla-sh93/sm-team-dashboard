@@ -50,6 +50,7 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Done markers**: `READY`, `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
 - **Company progress**: a content piece counts only when its production stage and publish stage are both done.
 - **Daily tasks view**: `يومي` on `/tasks` renders the same Kanban board as `بورد`, filtered to today's task dates.
+- **Task Deletion**: Manual tasks (`isAuto=false`) are permanently deleted. Auto-generated tasks (`isAuto=true`) are soft-deleted (`status="CANCELED"`, pinned) for the current month only and hidden from views, but regenerate in the next month's cycle.
 - **Local/production DB parity**: use one idempotent data-fix script against the chosen `DATABASE_URL`; no manual divergent local-only edits.
 
 ---
