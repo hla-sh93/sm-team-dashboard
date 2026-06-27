@@ -105,21 +105,10 @@ export default function TasksClient({
 
     if (isAuto) {
       Swal.fire({
-        title: "مهام مجدولة آلياً",
-        text: "هذه المهمة مضافة تلقائياً من خطة الشركة. إذا حذفتها ستعود عند إعادة الجدولة. إذا أردت تغييرها لتصوير بدلاً من تصميم، يرجى تعديل المهمة وتغيير (الموكل إليه) إلى المصور.",
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonText: "احذفها مؤقتاً",
-        cancelButtonText: "تراجع",
-      }).then((result) => {
-        if (!result.isConfirmed) return;
-        startTransition(async () => {
-          const r = await deleteTasks(ids);
-          if (r.ok) {
-            toast("تم حذف المهمة");
-            router.refresh();
-          } else toast(r.error, "error");
-        });
+        title: "لا يمكن الحذف المباشر",
+        text: "هذه المهمة مجدولة آلياً بناءً على خطة الشركة وستعود تلقائياً إذا تم حذفها. إذا أردت تحويلها إلى (تصوير)، قم بتعديل المهمة (من أيقونة القلم ✏️) وتغيير الموكل إليه إلى المصور، وسيقوم النظام بحفظ تعديلك ونقلها للوحة المصور.",
+        icon: "info",
+        confirmButtonText: "حسناً، فهمت",
       });
       return;
     }
