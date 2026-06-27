@@ -15,7 +15,7 @@ export const DEFAULT_RATES: Record<string, number> = {
   STORY: 10, // 10 stories/day
   AI_REEL: 1, // 1 AI reel/day
   REEL: 2 / 3, // photographer: 2 reels per 3 days
-  PLAN: 0.5, // a content plan per company → 2 working days
+  PLAN: 1, // 1 scope per day → since a company has 2 scopes (DESIGN/SHOOT), the total plan = 2 days
 };
 
 /**

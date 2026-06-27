@@ -60,14 +60,39 @@ function isInMonth(date: Date | null | undefined, year: number, month: number): 
   return !!date && date.getFullYear() === year && date.getMonth() === month;
 }
 
-function workloadDate(task: Task): Date | null {
-  if (task.stage === "PUBLISH" || task.kind === "PUBLISH") {
-    return task.publishDate ?? task.workDate ?? task.readyDate;
+function fractionOfEffortInMonth(
+  task: Task,
+  year: number,
+  month: number,
+  empWorkDays: number[]
+): number {
+  const t1 = task.workDate ?? task.readyDate ?? task.publishDate;
+  const t2 = task.readyDate ?? task.publishDate ?? task.workDate;
+  if (!t1 || !t2) return 0;
+  
+  const cur = new Date(t1); cur.setHours(0, 0, 0, 0);
+  const last = new Date(t2); last.setHours(0, 0, 0, 0);
+  const s = cur <= last ? cur : last;
+  const e = cur <= last ? last : cur;
+  
+  let totalDays = 0;
+  let inMonth = 0;
+  const d = new Date(s);
+  
+  while (d <= e) {
+    if (empWorkDays.includes(d.getDay())) {
+      totalDays++;
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        inMonth++;
+      }
+    }
+    d.setDate(d.getDate() + 1);
   }
-  if (task.kind === "ADHOC") {
-    return task.workDate ?? task.readyDate ?? task.publishDate;
+  
+  if (totalDays === 0) {
+    return isInMonth(s, year, month) ? 1 : 0;
   }
-  return task.workDate ?? task.readyDate ?? task.publishDate;
+  return inMonth / totalDays;
 }
 
 function taskEffortDays(emp: Employee, task: Task): number {
@@ -94,7 +119,10 @@ export function computeWorkload(
 
     const myTasks = tasks.filter((task) => {
       if (task.assigneeId !== emp.id) return false;
-      return isInMonth(workloadDate(task), year, month);
+      if (publisher && task.kind === "PUBLISH") {
+        return isInMonth(task.publishDate, year, month);
+      }
+      return fractionOfEffortInMonth(task, year, month, wd) > 0;
     });
 
     let committedDays = 0;
@@ -116,17 +144,18 @@ export function computeWorkload(
         dayMap.set(day, entry);
       }
       for (const entry of dayMap.values()) {
-        const companyCount = Math.max(1, entry.companies.size);
-        const cost = Math.max(1, companyCount / PUBLISH_COMPANIES_PER_DAY);
+        const cost = 1;
         committedDays += cost;
         doneDays += entry.count > 0 ? cost * (entry.done / entry.count) : 0;
       }
+      committedDays = Math.min(committedDays, capacityDays);
       itemCount += publishTasks.length;
     }
 
     for (const task of myTasks) {
       if (publisher && task.kind === "PUBLISH") continue;
-      const effort = taskEffortDays(emp, task);
+      const fraction = fractionOfEffortInMonth(task, year, month, wd);
+      const effort = taskEffortDays(emp, task) * fraction;
       committedDays += effort;
       if (isDoneTask(task)) doneDays += effort;
       itemCount += task.quantity ?? 1;
