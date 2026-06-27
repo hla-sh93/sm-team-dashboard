@@ -118,7 +118,10 @@
       "PowerShell(Start-Sleep -Seconds 12; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
       "PowerShell(Start-Sleep -Seconds 18; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_regen.ts 2>&1)",
       "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail|workload|priority\" | Select-Object -Last 10)",
-      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail\" | Select-Object -Last 3)"
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 3; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail\" | Select-Object -Last 3)",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern \"Test Files|Tests |fail|cycle\" | Select-Object -Last 6)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_co.ts 2>&1)",
+      "PowerShell(Start-Sleep -Seconds 16; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_co.ts 2>&1)"
     ]
   }
 }

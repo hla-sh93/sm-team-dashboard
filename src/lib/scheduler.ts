@@ -193,10 +193,17 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // so they don't all publish together.
   let coIdx = 0;
   for (const co of managed) {
+    const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
+    // Contract not started yet for this bucket: if the whole cycle window ends
+    // on/before the contractStartDate, this client's execution cycle begins in a
+    // LATER month — emit nothing now (no phantom "late" tasks before day one).
+    if (co.contractStartDate) {
+      const cs = new Date(co.contractStartDate);
+      const csMidnight = new Date(cs.getFullYear(), cs.getMonth(), cs.getDate());
+      if (cyc.end.getTime() <= csMidnight.getTime()) continue;
+    }
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
-    const cycleDays = companyCycle(year, month, contractDayOf(co.contractStartDate)).days.filter(
-      (d) => d.getDay() !== 5,
-    );
+    const cycleDays = cyc.days.filter((d) => d.getDay() !== 5);
     const cycleLen = cycleDays.length;
     const weekOfCycle = (dayIdx: number) =>
       Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);

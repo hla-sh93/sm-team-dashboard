@@ -71,6 +71,26 @@ describe("scheduler distributes over the contract cycle", () => {
     }
   });
 
+  it("a company whose contract starts NEXT month emits nothing this month", () => {
+    const startsJuly = co({ contractStartDate: new Date(2026, 6, 1) }); // 1 July
+    // June bucket — contract not started yet → zero tasks (no phantom "late" cards)
+    const june = buildSchedule({
+      year: 2026,
+      month: 5,
+      employees: [emp()],
+      companies: [startsJuly],
+    });
+    expect(june.tasks.filter((t) => t.companyId === "c1").length).toBe(0);
+    // July bucket — contract active → its plan appears
+    const july = buildSchedule({
+      year: 2026,
+      month: 6,
+      employees: [emp()],
+      companies: [startsJuly],
+    });
+    expect(july.tasks.filter((t) => t.kind === "CONTENT" && t.companyId === "c1").length).toBe(16);
+  });
+
   it("a calendar-month company stays within June", () => {
     const r = buildSchedule({
       year: 2026,
