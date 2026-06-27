@@ -34,6 +34,7 @@ const JUNE_2026: Record<string, JuneState> = {
   "c_mall|POST": { published: 2 }, // المول — 2 بوست منجز
   "c_mall|REEL": { published: 2 }, // 2 ريل منجز
   "c_pro|POST": { published: 1 }, // برو — بوست 1 منشور · 2 متبقّي (TODO)
+  "c_pro|STORY": { published: 1 }, // ستوري 1 منشور · 11 متبقّي (TODO)
   "c_pro|REEL": { published: 6, doing: 1 }, // 6 منشورة · 1 مصوّر لم يُسلّم · 1 بانتظار
   "c_jadarat|POST": { review: 6 }, // جدارات — التصاميم بانتظار المراجعة
   "c_jadarat|AI_REEL": { review: 3 }, // أول 3 ريلات بانتظار المراجعة

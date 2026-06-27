@@ -124,7 +124,11 @@
       "PowerShell(Start-Sleep -Seconds 16; $env:DATABASE_URL=\"file:./dev.db\"; npx tsx _check_co.ts 2>&1)",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _inspect.ts 2>&1)",
       "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx scripts/reconcile-june-2026.ts 2>&1 | Select-Object -Last 10)",
-      "Bash(DATABASE_URL=file:./dev.db npx tsx -e 'import {PrismaClient} from '\\\\''@prisma/client'\\\\''; const db=new PrismaClient\\(\\); \\(async\\(\\)=>{ const t=await db.task.findMany\\({where:{companyId:'\\\\''c_capriani'\\\\'',year:2026,month:5},select:{title:true,quantity:true,status:true,board:true,assigneeId:true}}\\); const total=t.reduce\\(\\(a,x\\)=>a+\\(x.quantity||1\\),0\\); console.log\\(JSON.stringify\\({count:t.length,totalPosts:total,rows:t},null,1\\)\\); await db.$disconnect\\(\\); }\\)\\(\\);')"
+      "Bash(DATABASE_URL=file:./dev.db npx tsx -e 'import {PrismaClient} from '\\\\''@prisma/client'\\\\''; const db=new PrismaClient\\(\\); \\(async\\(\\)=>{ const t=await db.task.findMany\\({where:{companyId:'\\\\''c_capriani'\\\\'',year:2026,month:5},select:{title:true,quantity:true,status:true,board:true,assigneeId:true}}\\); const total=t.reduce\\(\\(a,x\\)=>a+\\(x.quantity||1\\),0\\); console.log\\(JSON.stringify\\({count:t.length,totalPosts:total,rows:t},null,1\\)\\); await db.$disconnect\\(\\); }\\)\\(\\);')",
+      "PowerShell(npm run typecheck 2>&1 | Select-Object -Last 2; \"tc=$LASTEXITCODE\")",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx scripts/reconcile-june-2026.ts 2>&1 | Select-String -Pattern \"broPlanPosts|cleared|capriani\" ; Write-Output \"---verify برو story---\"; npx tsx -e \"import {PrismaClient} from '@prisma/client'; const db=new PrismaClient\\(\\); \\(async\\(\\)=>{ const t=await db.task.findMany\\({where:{companyId:'c_pro',type:'STORY',year:2026,month:5,stage:'PUBLISH'},select:{board:true}}\\); const done=t.filter\\(x=>x.board==='DONE'\\).length; console.log\\('برو STORY publish DONE:',done,'of',t.length\\); await db.\\\\$disconnect\\(\\); }\\)\\(\\);\")",
+      "Bash(DATABASE_URL=file:./dev.db npx tsx -e ' *)",
+      "PowerShell($env:DATABASE_URL=\"file:./dev.db\"; npx tsx _v.ts 2>&1)"
     ]
   }
 }
