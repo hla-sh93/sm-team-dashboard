@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Company, Employee } from "@/types";
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export default function CompanyForm({ open, onOpenChange, company, employees }: Props) {
+  const router = useRouter();
   const [isPending, start] = useTransition();
   const isEdit = !!company;
 
@@ -104,6 +106,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
       if (r.ok) {
         toast(isEdit ? "تم تحديث الشركة" : "تمت إضافة الشركة");
         onOpenChange(false);
+        router.refresh(); // show the updated company immediately (no stale snapshot)
       } else toast(r.error, "error");
     });
   };

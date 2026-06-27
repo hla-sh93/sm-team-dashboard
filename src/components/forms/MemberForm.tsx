@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Employee } from "@/types";
@@ -41,6 +42,7 @@ const PRESETS = [
 ];
 
 export default function MemberForm({ open, onOpenChange, employee }: Props) {
+  const router = useRouter();
   const [isPending, start] = useTransition();
   const isEdit = !!employee;
 
@@ -135,6 +137,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
       if (r.ok) {
         toast(isEdit ? "تم تحديث الموظف" : "تمت إضافة الموظف");
         onOpenChange(false);
+        router.refresh(); // reflect the change immediately
       } else toast(r.error, "error");
     });
   };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { Task, Employee, Company } from "@/types";
 import { createTask, updateTaskDetails } from "@/server/actions/tasks";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ export default function TaskForm({
   year,
   month,
 }: TaskFormProps) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const isEdit = !!task;
   const isAdhoc = !task || task.kind === "ADHOC";
@@ -106,6 +108,7 @@ export default function TaskForm({
         if (result.ok) {
           toast("تم تحديث المهمة");
           onOpenChange(false);
+          router.refresh(); // pull the fresh server view so the edit shows immediately
         } else toast(result.error, "error");
       } else {
         const days = Number(form.days) || 0;
@@ -128,6 +131,7 @@ export default function TaskForm({
         if (result.ok) {
           toast("تم إنشاء المهمة");
           onOpenChange(false);
+          router.refresh();
         } else toast(result.error, "error");
       }
     });

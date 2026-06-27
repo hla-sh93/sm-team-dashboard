@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Company } from '@/types';
 import { GripVertical, Wand2, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function PrioritiesClient({ companies: initialCompanies }: Props) {
+  const router = useRouter();
   const [companies, setCompanies] = useState(initialCompanies);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -57,8 +59,10 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
 
     startTransition(async () => {
       const result = await reorderCompanies(newOrder.map((c) => c.id));
-      if (result.ok) toast('تم تحديث الترتيب');
-      else {
+      if (result.ok) {
+        toast('تم تحديث الترتيب');
+        router.refresh();
+      } else {
         toast(result.error, 'error');
         setCompanies(initialCompanies);
       }
@@ -72,6 +76,7 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
       if (result.ok) {
         const s = result.stages;
         toast(`تمت إعادة الجدولة: تصميم ${s.design} · تصوير ${s.shoot} · نشر ${s.publish}`);
+        router.refresh();
       } else {
         toast(result.error, 'error');
       }
