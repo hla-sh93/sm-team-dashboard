@@ -11,6 +11,8 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
+    "db:reconcile-june": "tsx scripts/reconcile-june-2026.ts",
+    "db:reconcile-june:prod": "prisma generate --schema=prisma/schema.postgres.prisma && tsx scripts/reconcile-june-2026.ts && prisma generate",
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
