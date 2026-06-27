@@ -20,6 +20,7 @@ export default async function WorkloadPage({
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({
       where: {
+        status: { not: "CANCELED" },
         OR: [
           { workDate: { gte: monthStart, lt: monthEnd } },
           { readyDate: { gte: monthStart, lt: monthEnd } },

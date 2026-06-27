@@ -33,7 +33,7 @@ export default async function ReportsPage({
   const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany(),
-    prisma.task.findMany({ where: { year, month } }),
+    prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
   ]);
 
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";

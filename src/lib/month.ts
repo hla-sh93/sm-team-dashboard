@@ -55,7 +55,7 @@ export async function resolvePublishMonth(searchParams: {
   const today = { year: now.getFullYear(), month: now.getMonth() };
   try {
     const rows = await prisma.task.findMany({
-      where: { kind: "CONTENT", publishDate: { not: null } },
+      where: { kind: "CONTENT", publishDate: { not: null }, status: { not: "CANCELED" } },
       select: { year: true, month: true },
     });
     if (rows.length === 0) return today;

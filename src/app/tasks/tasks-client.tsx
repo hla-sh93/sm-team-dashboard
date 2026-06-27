@@ -105,10 +105,21 @@ export default function TasksClient({
 
     if (isAuto) {
       Swal.fire({
-        title: "لا يمكن الحذف المباشر",
-        text: "هذه المهمة مجدولة آلياً بناءً على خطة الشركة وستعود تلقائياً إذا تم حذفها. إذا أردت تحويلها إلى (تصوير)، قم بتعديل المهمة (من أيقونة القلم ✏️) وتغيير الموكل إليه إلى المصور، وسيقوم النظام بحفظ تعديلك ونقلها للوحة المصور.",
-        icon: "info",
-        confirmButtonText: "حسناً، فهمت",
+        title: "حذف من الشهر الجاري",
+        text: "هذه المهمة مضافة تلقائياً من خطة الشركة. الموافقة ستحذفها من دورة هذا الشهر فقط. لإزالتها نهائياً من كل الشهور، يرجى تعديل خطة الشركة في صفحة الشركات.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "نعم، احذفها هذا الشهر",
+        cancelButtonText: "تراجع",
+      }).then((result) => {
+        if (!result.isConfirmed) return;
+        startTransition(async () => {
+          const r = await deleteTasks(ids);
+          if (r.ok) {
+            toast("تم حذف المهمة");
+            router.refresh();
+          } else toast(r.error, "error");
+        });
       });
       return;
     }

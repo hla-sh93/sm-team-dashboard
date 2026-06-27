@@ -240,11 +240,26 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
  *  company plan (to truly remove planned items, lower the plan in /companies). */
 export async function deleteTasks(ids: string[]) {
   try {
-    const first = await prisma.task.findFirst({
+    const tasks = await prisma.task.findMany({
       where: { id: { in: ids } },
-      select: { year: true, month: true },
+      select: { id: true, isAuto: true, year: true, month: true },
     });
-    await prisma.task.deleteMany({ where: { id: { in: ids } } });
+    if (tasks.length === 0) return { ok: true as const };
+
+    const first = tasks[0];
+    const manualIds = tasks.filter((t) => !t.isAuto).map((t) => t.id);
+    const autoIds = tasks.filter((t) => t.isAuto).map((t) => t.id);
+
+    if (manualIds.length > 0) {
+      await prisma.task.deleteMany({ where: { id: { in: manualIds } } });
+    }
+    if (autoIds.length > 0) {
+      await prisma.task.updateMany({
+        where: { id: { in: autoIds } },
+        data: { status: "CANCELED", isPinned: true },
+      });
+    }
+
     if (first) await generateSchedule(first.year, first.month);
     revalidateAll();
     return { ok: true as const };
@@ -254,15 +269,7 @@ export async function deleteTasks(ids: string[]) {
 }
 
 export async function deleteTask(id: string) {
-  try {
-    const before = await prisma.task.findUnique({ where: { id } });
-    await prisma.task.delete({ where: { id } });
-    if (before) await generateSchedule(before.year, before.month);
-    revalidateAll();
-    return { ok: true as const };
-  } catch {
-    return { ok: false as const, error: "فشل حذف المهمة" };
-  }
+  return deleteTasks([id]);
 }
 
 /** Update only the status of a task. Stamps start/finish/completed times so

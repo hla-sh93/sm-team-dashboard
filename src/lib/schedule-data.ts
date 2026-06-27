@@ -50,7 +50,7 @@ export async function loadCompanies(): Promise<CompanyInput[]> {
 
 export async function loadAdhoc(year: number, month: number): Promise<AdhocInput[]> {
   const rows = await prisma.task.findMany({
-    where: { kind: "ADHOC", year, month },
+    where: { kind: "ADHOC", year, month, status: { not: "CANCELED" } },
     orderBy: { createdAt: "asc" },
   });
   return rows.map((t) => ({

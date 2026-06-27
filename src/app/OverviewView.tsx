@@ -13,7 +13,7 @@ export default async function OverviewView({
   const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month } }),
+    prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
   ]);
 
   return (

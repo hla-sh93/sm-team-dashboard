@@ -12,7 +12,7 @@ export default async function TasksView({
   const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month } }),
+    prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
     prisma.photoSession.findMany({ where: { year, month } }),
   ]);
 
