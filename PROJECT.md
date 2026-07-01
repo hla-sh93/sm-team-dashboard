@@ -238,6 +238,11 @@ salary + per‑reel cost).
   late-June manual tasks, and records Alber's completed University/Tishreen and
   National College shoots with historical completion dates. `DATABASE_URL`
   chooses local SQLite vs production Postgres.
+- **scripts/clean-orphan-writes.ts** (`db:clean-orphans[:prod]`): idempotent —
+  removes legacy pre-cycle WRITE cards (ids `w_c_*`, `isAuto=false`) that the
+  seed/regenerate never clear and that duplicate the engine's per-cycle write
+  cards (the phantom mis-dated "كتابة …" card). Nothing depends on them; stray
+  `blockedById` refs are nulled first. Run against the prod URL after deploy.
 - **Seed is NON‑destructive** (`prisma/seed.ts`): seeds a month only when empty;
   upserts employees/companies without overwriting edits (full rebuild =
   `SEED_FORCE=1`). Includes **safe idempotent rate corrections** (designers POST
