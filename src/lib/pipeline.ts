@@ -1,8 +1,9 @@
 /**
  * Pipeline / agile workflow (kanban) — SOCIAL_SCHEDULER iteration.
  *
- * Each content item flows through stages, each a card on one person's board:
- *   كتابة (نوال) → تصميم/تصوير (مصمم/مصور) → نشر (عمر)
+ * Each content item usually flows through stages, each a card on one person's
+ * board: كتابة (نوال) → تصميم/تصوير (مصمم/مصور) → نشر (عمر). Some companies
+ * can skip writing when the content is supplied externally.
  *
  * Writing is per-company with TWO cards: one gating posts+stories+aiReels
  * (DESIGN scope), one gating reels (SHOOT scope). The gate is SOFT — downstream
@@ -24,7 +25,14 @@ export type PipelineContentItem = {
   workDate: string | null;
   week: number | null;
   status: string; // legacy status of the design/shoot stage
+  /** Legacy quantity. When production/publish quantities are omitted, this is
+   *  used for both to preserve old batched actuals. */
   quantity?: number;
+  /** Work units for the production card. For a carousel post, this is the
+   *  slide/design count while the publish quantity can remain one post. */
+  productionQuantity?: number;
+  /** Client-facing published units. For one carousel post, keep this at 1. */
+  publishQuantity?: number;
 };
 
 export type PipelineTask = {
@@ -87,6 +95,7 @@ export function expandPipeline(
     writeBoard?: Board;
     idPrefix?: string;
     writerWorkDays: number[];
+    skipWritingForCompany?: (companyId: string) => boolean;
   },
 ): PipelineTask[] {
   const out: PipelineTask[] = [];
@@ -102,6 +111,7 @@ export function expandPipeline(
   const scopesByCompany = new Map<string, Set<"DESIGN" | "SHOOT">>();
   const earliestStart = new Map<string, string>(); // `${co}|${scope}` → min workDate
   for (const it of items) {
+    if (opts.skipWritingForCompany?.(it.companyId)) continue;
     const scope = SCOPE_OF(it.type);
     const s = scopesByCompany.get(it.companyId) ?? new Set();
     s.add(scope);
@@ -153,8 +163,10 @@ export function expandPipeline(
     const scope = SCOPE_OF(it.type);
     const designId = `${pfx}d_${it.companyId}_${it.type}_${seq}`;
     const publishId = `${pfx}p_${it.companyId}_${it.type}_${seq}`;
-    const q = it.quantity ?? 1;
-    const pk = `${it.companyId}|${it.type}|${it.publishDate ?? seq}`;
+    const legacyQuantity = it.quantity ?? 1;
+    const productionQuantity = it.productionQuantity ?? legacyQuantity;
+    const publishQuantity = it.publishQuantity ?? legacyQuantity;
+    const pk = it.id ?? `${it.companyId}|${it.type}|${it.publishDate ?? seq}`;
     const designBoard = opts.designBoard?.(it) ?? statusToBoard(it.status);
     const publishBoard =
       opts.publishBoard?.(it) ?? (it.status === "PUBLISHED" ? "DONE" : "TODO");
@@ -172,9 +184,9 @@ export function expandPipeline(
       readyDate: it.readyDate,
       workDate: it.workDate,
       week: it.week,
-      blockedById: writeId(it.companyId, scope),
+      blockedById: opts.skipWritingForCompany?.(it.companyId) ? null : writeId(it.companyId, scope),
       pipelineKey: pk,
-      quantity: q,
+      quantity: productionQuantity,
       priority: "NORMAL",
       status: it.status,
       month,
@@ -196,7 +208,7 @@ export function expandPipeline(
       week: it.week,
       blockedById: designId,
       pipelineKey: pk,
-      quantity: q,
+      quantity: publishQuantity,
       priority: "NORMAL",
       status: publishBoard === "DONE" ? "PUBLISHED" : "NOT_STARTED",
       month,

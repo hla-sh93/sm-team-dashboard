@@ -41,7 +41,6 @@
     { "assignee": "e_hla", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست فونيتيك: الدومينات والاستضافة" },
     { "assignee": "e_hla", "companyId": "c_phoenitech", "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بوست فونيتيك: الهوية البصرية" },
 
-    { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "جدولة ونشر بوستات الشركات" },
     { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "IN_PROGRESS", "title": "متابعة مع العملاء" },
     { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "إعداد خطة الجوبز — مشترك" },
     { "assignee": "e_omar", "companyId": null, "kind": "ADHOC", "quantity": 1, "status": "PUBLISHED", "title": "بروبوزال شركة التداول — مشترك مع نوال" },

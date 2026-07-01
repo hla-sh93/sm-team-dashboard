@@ -12,6 +12,8 @@ import {
 } from "@/lib/constants";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount } from "@/lib/progress";
+import { selectDailyWorkTasks } from "@/lib/daily-work";
+import { personDayState } from "@/lib/person-day-state";
 import {
   toISODate,
   fromISODate,
@@ -68,9 +70,9 @@ export default function OverviewClient({
     })
     .filter((x) => x.total > 0);
 
-  // ---- إنجاز الشركات: a piece counts only when production is done AND publish
-  // is done. A published-looking card whose design/shoot stage is still open
-  // should not inflate the company percentage.
+  // ---- إنجاز الشركات: company progress is publish progress. Once the PUBLISH
+  // card is done, the item counts for the company even if an upstream production
+  // card was not manually closed.
   const companyDone = managed
     .map((co) => {
       const plan = co.posts + co.reels + co.stories + co.aiReels;
@@ -81,46 +83,48 @@ export default function OverviewClient({
     .filter((x) => x.plan > 0)
     .sort((a, b) => a.co.priority - b.co.priority || b.pct - a.pct);
 
-  // "اليوم" panel: LIVE (not done) tasks on a reference day, grouped per person,
-  // using the SAME labels as the task board. The reference day is today if it has
-  // work, else the nearest later working day with work.
+  // "اليوم" panel: active daily queue per person. It is NOT a date filter: if a
+  // person has unfinished work, we show the next cards they should work on now,
+  // sorted by priority/precedence and capped by their daily production capacity.
   const deadlineOf = (t: Task): Date | null =>
     t.readyDate ? new Date(t.readyDate) : t.publishDate ? new Date(t.publishDate) : null;
   const reelNum = buildReelNumbers(tasks);
-  const todayISO = toISODate(new Date());
-  const dayISOSetOf = (t: Task) => {
-    const deadline = deadlineOf(t);
-    return [
-      t.workDate ? toISODate(new Date(t.workDate)) : null,
-      deadline ? toISODate(deadline) : null,
-    ].filter((value): value is string => !!value);
-  };
-  const liveDated = tasks.filter((t) => dayISOSetOf(t).length > 0 && !isDone(t));
-  const dayTasks = (iso: string) =>
-    liveDated.filter((t) => dayISOSetOf(t).includes(iso));
-  const monthDayISOs = Array.from(
-    new Set(liveDated.flatMap(dayISOSetOf)),
-  ).sort();
-  const refDay =
-    dayTasks(todayISO).length > 0
-      ? todayISO
-      : monthDayISOs.find((d) => d >= todayISO) ??
-        monthDayISOs[monthDayISOs.length - 1] ??
-        todayISO;
-  const refIsToday = refDay === todayISO;
-  // ALL employees are always listed. Per person on the reference day:
-  //  - off (refDay not a working day)  → عطلة
-  //  - working with no tasks           → متفرّغ لعمل إضافي
-  //  - working with tasks              → the cards
-  const refDayObj = fromISODate(refDay);
+  const today = new Date();
+  const todayISO = toISODate(today);
+  const openByPerson = new Map(
+    employees.map((e) => [
+      e.id,
+      groupTasksIntoCards(tasks.filter((t) => t.assigneeId === e.id && !isDone(t))),
+    ]),
+  );
+  // ALL employees are always listed. Per person state:
+  //  - daily queue from open work      → the cards
+  //  - open work that cannot be queued → متبقّي
+  //  - off with no open work           → عطلة
+  //  - no open work at all             → متفرّغ لعمل إضافي
+  const refDayObj = fromISODate(todayISO);
   const dayByPerson = employees.map((e) => ({
     emp: e,
     isOff: !parseWorkDays(e.workDays).includes(refDayObj.getDay()),
-    cards: groupTasksIntoCards(dayTasks(refDay).filter((t) => t.assigneeId === e.id)),
+    cards: groupTasksIntoCards(
+      selectDailyWorkTasks({
+        employee: e,
+        tasks,
+        allTasks: tasks,
+        companies,
+        today,
+      }),
+    ),
+    openCards: openByPerson.get(e.id) ?? [],
   }));
-  // Default tab: first person who actually has work today, else the first person.
+  // Default tab: first person with reference-day work, then open backlog, else
+  // the first person.
   const defaultId =
-    (dayByPerson.find((g) => g.cards.length > 0) ?? dayByPerson[0])?.emp.id ?? null;
+    (
+      dayByPerson.find((g) => g.cards.length > 0) ??
+      dayByPerson.find((g) => g.openCards.length > 0) ??
+      dayByPerson[0]
+    )?.emp.id ?? null;
   const activeId =
     activeTab && dayByPerson.some((g) => g.emp.id === activeTab) ? activeTab : defaultId;
   const activeGroup = dayByPerson.find((g) => g.emp.id === activeId) ?? null;
@@ -338,9 +342,7 @@ export default function OverviewClient({
           <div className="flex items-baseline justify-between mb-3">
             <h2 className="display-font text-lg">مهام اليوم</h2>
             <span className="text-xs text-fg-dim">
-              {refIsToday
-                ? "اليوم"
-                : `أقرب يوم عمل · ${ARABIC_DAYS[fromISODate(refDay).getDay()]} ${formatDateShort(fromISODate(refDay))}`}
+              اليوم · {ARABIC_DAYS[refDayObj.getDay()]} {formatDateShort(refDayObj)}
             </span>
           </div>
 
@@ -350,19 +352,32 @@ export default function OverviewClient({
             <>
               {/* a tab for EVERY employee, always */}
               <div className="flex gap-1 flex-wrap border-b border-border-soft mb-3">
-                {dayByPerson.map(({ emp, isOff, cards }) => {
+                {dayByPerson.map(({ emp, isOff, cards, openCards }) => {
                   const active = emp.id === activeId;
-                  // Tasks take precedence (someone may publish on a day their
-                  // workDays mark off): tasks → عطلة → متفرّغ.
-                  const resting = isOff && cards.length === 0;
+                  // Tasks take precedence, then any unfinished backlog. A
+                  // person is "متفرّغ" only when they have no open cards at all.
+                  const state = personDayState({
+                    dayCardCount: cards.length,
+                    openCardCount: openCards.length,
+                    isOff,
+                  });
+                  const resting = state === "OFF";
                   const badge =
-                    cards.length > 0 ? String(cards.length) : isOff ? "عطلة" : "متفرّغ";
+                    state === "TASKS"
+                      ? String(cards.length)
+                      : state === "BACKLOG"
+                        ? `متبقّي ${openCards.length}`
+                        : state === "OFF"
+                          ? "عطلة"
+                          : "متفرّغ";
                   const badgeCls =
-                    cards.length > 0
+                    state === "TASKS"
                       ? active
                         ? "bg-accent/15 text-accent"
                         : "bg-bg-elev-2 text-fg-muted"
-                      : isOff
+                      : state === "BACKLOG"
+                        ? "bg-warning/10 text-warning"
+                      : state === "OFF"
                         ? "bg-bg-elev-2 text-fg-muted"
                         : "bg-success/10 text-success";
                   return (
@@ -385,10 +400,24 @@ export default function OverviewClient({
                 })}
               </div>
 
-              {/* active person's state: عطلة / متفرّغ / tasks */}
+              {/* active person's state: tasks / backlog / عطلة / متفرّغ */}
               <div className="flex flex-col gap-1.5 max-h-[320px] overflow-y-auto pr-1">
                 {activeGroup && activeGroup.cards.length === 0 ? (
-                  activeGroup.isOff ? (
+                  personDayState({
+                    dayCardCount: activeGroup.cards.length,
+                    openCardCount: activeGroup.openCards.length,
+                    isOff: activeGroup.isOff,
+                  }) === "BACKLOG" ? (
+                    <div className="text-center py-8 text-sm text-warning">
+                      لدى {activeGroup.emp.name} {activeGroup.openCards.length} مهمة غير منجزة.
+                      <Link
+                        href={`${base}/tasks?person=${activeGroup.emp.id}`}
+                        className="block text-accent hover:underline mt-2"
+                      >
+                        عرض مهامه المفتوحة
+                      </Link>
+                    </div>
+                  ) : activeGroup.isOff ? (
                     <div className="text-center py-8 text-sm text-fg-muted">
                       عطلة اليوم — {activeGroup.emp.name} في يوم إجازته.
                     </div>

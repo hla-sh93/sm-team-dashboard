@@ -62,6 +62,7 @@ export default function TaskForm({
     status: "NOT_STARTED",
     workDate: "",
     readyDate: "",
+    quantity: 1,
     isPinned: false,
     notes: "",
   });
@@ -74,6 +75,7 @@ export default function TaskForm({
     status: t.status,
     workDate: t.workDate ? toISODate(new Date(t.workDate)) : "",
     readyDate: t.readyDate ? toISODate(new Date(t.readyDate)) : "",
+    quantity: t.quantity ?? 1,
     isPinned: t.isPinned,
     notes: t.notes ?? "",
   });
@@ -86,6 +88,9 @@ export default function TaskForm({
 
   const set = (k: keyof ReturnType<typeof blank>, v: unknown) =>
     setForm((f) => ({ ...f, [k]: v }));
+  const isDesignUnitEditable =
+    isEdit && task?.kind === "CONTENT" && task.stage !== "PUBLISH" && task.type === "POST";
+  const postFormat = Number(form.quantity) > 1 ? "CAROUSEL" : "SINGLE";
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,6 +108,7 @@ export default function TaskForm({
           priority: form.priority,
           status: form.status,
           days: isAdhoc ? Number(form.days) || 0 : undefined,
+          quantity: isDesignUnitEditable ? Math.max(1, Math.round(Number(form.quantity) || 1)) : undefined,
           isPinned: form.isPinned,
         });
         if (result.ok) {
@@ -211,6 +217,35 @@ export default function TaskForm({
                   onChange={(e) => set("days", e.target.value)}
                 />
               </div>
+            )}
+            {isDesignUnitEditable && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>نوع البوست</Label>
+                  <Select
+                    value={postFormat}
+                    onChange={(e) => set("quantity", e.target.value === "CAROUSEL" ? 2 : 1)}
+                  >
+                    <option value="SINGLE">بوست عادي</option>
+                    <option value="CAROUSEL">كاروسيل</option>
+                  </Select>
+                </div>
+                {postFormat === "CAROUSEL" && (
+                  <div className="space-y-1.5">
+                    <Label>عدد السلايدات</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="2"
+                      value={form.quantity}
+                      onChange={(e) => set("quantity", e.target.value)}
+                    />
+                    <p className="text-[10px] text-fg-muted">
+                      كل سلايد = وحدة تصميم. الكاروسيل يبقى بوست واحد بالنشر.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
             <div className="space-y-1.5">
               <Label>الأولوية</Label>

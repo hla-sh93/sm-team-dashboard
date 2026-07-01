@@ -93,6 +93,16 @@ export default function KanbanBoard({
   const empName = (id: string | null) => emp(id)?.name ?? "—";
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+  const writeScopeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of allTasks) {
+      if (!(t.stage === "WRITE" || t.kind === "CONTENT_WRITING")) continue;
+      if (!t.assigneeId || !t.companyId) continue;
+      const key = `${t.assigneeId}|${t.companyId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [allTasks]);
 
   const isLate = isTaskLateState;
 
@@ -101,6 +111,14 @@ export default function KanbanBoard({
   const reelNum = useMemo(() => buildReelNumbers(allTasks), [allTasks]);
   const isGroupable = isGroupableCard;
   const cardLabel = (t: Task, count: number) => cardLabelFor(t, count, reelNum, coName);
+  const durationLabel = (t: Task, quantity = t.quantity ?? 1) => {
+    const days = cardDurationDays(emp(t.assigneeId), { ...t, quantity });
+    if ((t.stage === "WRITE" || t.kind === "CONTENT_WRITING") && t.assigneeId && t.companyId) {
+      const scopes = writeScopeCounts.get(`${t.assigneeId}|${t.companyId}`) ?? 1;
+      return daysLabel(days / Math.max(1, scopes));
+    }
+    return daysLabel(days);
+  };
 
   // Build cards: batch posts/stories, keep reels/others individual.
   const cards = useMemo<KCard[]>(() => {
@@ -139,7 +157,7 @@ export default function KanbanBoard({
         durLabel:
           repr.stage === "PUBLISH"
             ? ""
-            : daysLabel(cardDurationDays(emp(repr.assigneeId), { ...repr, quantity: count })),
+            : durationLabel(repr, count),
       });
     }
     for (const t of singles) {
@@ -151,7 +169,7 @@ export default function KanbanBoard({
         count: t.quantity ?? 1,
         label: cardLabel(t, t.quantity ?? 1),
         blockedByLabel: blockedLabel(t),
-        durLabel: t.stage === "PUBLISH" ? "" : daysLabel(cardDurationDays(emp(t.assigneeId), t)),
+        durLabel: t.stage === "PUBLISH" ? "" : durationLabel(t),
       });
     }
     return out;
@@ -287,6 +305,9 @@ export default function KanbanBoard({
 
         {/* dates · duration · lateness */}
         <div className="flex items-center gap-1 flex-wrap">
+          {t.kind === "CONTENT" && t.stage !== "PUBLISH" && (t.quantity ?? 1) > 1 && (
+            <Pill>{t.quantity} وحدات تصميم</Pill>
+          )}
           {c.durLabel && <Pill icon={<Clock className="w-3 h-3" />}>{c.durLabel}</Pill>}
           {t.stage !== "PUBLISH" && t.workDate && (
             <Pill icon={<CalendarDays className="w-3 h-3" />}>

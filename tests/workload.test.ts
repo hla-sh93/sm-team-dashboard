@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeWorkload } from "@/lib/workload";
+import { taskDays } from "@/lib/capacity";
 
 const baseEmployee = (overrides: Record<string, unknown>) =>
   ({
@@ -80,6 +81,12 @@ const baseTask = (overrides: Record<string, unknown>) =>
   }) as any;
 
 describe("workload", () => {
+  it("uses the agreed default production rates", () => {
+    expect(taskDays({}, "POST", 10)).toBe(1);
+    expect(taskDays({}, "REEL", 3)).toBe(2);
+    expect(taskDays({}, "PLAN", 1)).toBe(2);
+  });
+
   it("ignores company plan numbers when there are no dated tasks in the month", () => {
     const employee = baseEmployee({});
     const company = baseCompany({ posts: 40, postOwnerId: "e" });
@@ -172,6 +179,107 @@ describe("workload", () => {
     expect(row.remainingDays).toBe(2);
     expect(row.freeDays).toBe(24);
     expect(row.itemCount).toBe(2);
+  });
+
+  it("caps publisher load at daily coverage capacity", () => {
+    const publisher = baseEmployee({
+      id: "e_omar",
+      name: "عمر",
+      role: "publisher",
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+    });
+    const publishTasks = Array.from({ length: 31 }, (_, index) => {
+      const date = new Date(2026, 6, index + 1);
+      return date.getDay() === 5
+        ? null
+        : baseTask({
+            id: `publish_${index + 1}`,
+            kind: "PUBLISH",
+            stage: "PUBLISH",
+            assigneeId: "e_omar",
+            publishDate: date,
+            readyDate: date,
+            workDate: date,
+          });
+    }).filter(Boolean) as any[];
+    const extra = baseTask({
+      id: "extra_omar",
+      kind: "ADHOC",
+      stage: null,
+      type: null,
+      assigneeId: "e_omar",
+      hours: 80,
+      workDate: new Date(2026, 6, 8),
+      readyDate: new Date(2026, 6, 8),
+    });
+
+    const [row] = computeWorkload([publisher], [...publishTasks, extra], 2026, 6);
+
+    expect(row.capacityDays).toBe(26);
+    expect(row.committedDays).toBe(26);
+    expect(row.pct).toBe(100);
+    expect(row.level).not.toBe("over");
+  });
+
+  it("charges Friday publishing to the previous workday's month", () => {
+    const publisher = baseEmployee({
+      id: "e_omar",
+      name: "عمر",
+      role: "publisher",
+      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]),
+    });
+    const fridayPublish = baseTask({
+      id: "may_friday_publish",
+      kind: "PUBLISH",
+      stage: "PUBLISH",
+      assigneeId: "e_omar",
+      publishDate: new Date(2026, 4, 1), // Friday, prepared Thu Apr 30.
+      readyDate: new Date(2026, 4, 1),
+      workDate: new Date(2026, 4, 1),
+    });
+
+    expect(fridayPublish.publishDate.getDay()).toBe(5);
+
+    const [april] = computeWorkload([publisher], [fridayPublish], 2026, 3);
+    const [may] = computeWorkload([publisher], [fridayPublish], 2026, 4);
+
+    expect(april.committedDays).toBe(1);
+    expect(may.committedDays).toBe(0);
+  });
+
+  it("counts one company writing plan once even when split into design and shoot scopes", () => {
+    const writer = baseEmployee({
+      name: "نوال",
+      role: "writer",
+      rates: JSON.stringify({ PLAN: 0.5 }),
+    });
+    const company = baseCompany({ posts: 4, reels: 3 });
+    const tasks = [
+      baseTask({
+        id: "write_design",
+        kind: "CONTENT_WRITING",
+        stage: "WRITE",
+        type: null,
+        title: "كتابة بوستات وستوريز",
+        workDate: new Date(2026, 6, 1),
+        readyDate: new Date(2026, 6, 1),
+      }),
+      baseTask({
+        id: "write_shoot",
+        kind: "CONTENT_WRITING",
+        stage: "WRITE",
+        type: null,
+        title: "سيناريو تصوير",
+        workDate: new Date(2026, 6, 4),
+        readyDate: new Date(2026, 6, 4),
+      }),
+    ];
+
+    const [row] = computeWorkload([writer], tasks, 2026, 6, [], [company]);
+
+    expect(row.committedDays).toBe(2);
+    expect(row.pct).toBe(10);
+    expect(row.freeDays).toBe(19);
   });
 
   it("load & availability are required-based: over ⇒ zero free days (no contradiction)", () => {

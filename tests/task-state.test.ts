@@ -4,6 +4,8 @@ import {
   inferHistoricalCompletionDate,
   isTaskLateState,
   isTaskDoneState,
+  normalizeStatusForStage,
+  statusToBoard,
 } from "@/lib/constants";
 
 describe("task completion state", () => {
@@ -52,5 +54,19 @@ describe("task completion state", () => {
     expect(
       isTaskLateState({ status: "READY", board: "DONE", readyDate: "2026-06-20" }, now),
     ).toBe(false);
+  });
+
+  it("keeps legacy status values mapped to kanban board columns", () => {
+    expect(statusToBoard("NOT_STARTED")).toBe("TODO");
+    expect(statusToBoard("IN_PROGRESS")).toBe("DOING");
+    expect(statusToBoard("AWAITING_APPROVAL")).toBe("REVIEW");
+    expect(statusToBoard("READY")).toBe("DONE");
+    expect(statusToBoard("PUBLISHED")).toBe("DONE");
+  });
+
+  it("normalizes READY on publish-stage cards to PUBLISHED", () => {
+    expect(normalizeStatusForStage("READY", "PUBLISH")).toBe("PUBLISHED");
+    expect(normalizeStatusForStage("READY", "DESIGN")).toBe("READY");
+    expect(normalizeStatusForStage("IN_PROGRESS", "PUBLISH")).toBe("IN_PROGRESS");
   });
 });

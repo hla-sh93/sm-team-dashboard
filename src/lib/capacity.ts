@@ -6,16 +6,16 @@
  * we derive: hours-per-item (for the hours-based workload) and the expected
  * duration of a task in working days (quantity ÷ rate).
  *
- * Designer capacity (items/day): 8 posts OR 10 stories OR 1 AI-reel on an
- * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 2 reels/day
- * (a session shoots 2–3 reels and delivers within 3 days).
+ * Designer capacity (items/day): 10 posts OR 10 stories OR 1 AI-reel on an
+ * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 3 reels every
+ * 2 working days.
  */
 export const DEFAULT_RATES: Record<string, number> = {
-  POST: 8, // 8 posts/day
+  POST: 10, // 10 posts/day
   STORY: 10, // 10 stories/day
   AI_REEL: 1, // 1 AI reel/day
-  REEL: 2 / 3, // photographer: 2 reels per 3 days
-  PLAN: 1, // 1 scope per day → since a company has 2 scopes (DESIGN/SHOOT), the total plan = 2 days
+  REEL: 3 / 2, // photographer: 3 reels per 2 days
+  PLAN: 0.5, // 1 company plan per 2 working days
 };
 
 /**

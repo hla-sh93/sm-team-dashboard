@@ -7,7 +7,7 @@
     "weekStart": "Saturday",
     "totals": {
       "contentItems": 137,
-      "allTasks": 289,
+      "allTasks": 288,
       "photoSessions": 15
     }
   },
@@ -26,7 +26,8 @@
       ],
       "isScheduled": true,
       "isPhotographer": false,
-      "color": "#17408E"
+      "color": "#17408E",
+      "salary": 400
     },
     {
       "id": "e_sabin",
@@ -42,7 +43,8 @@
       ],
       "isScheduled": true,
       "isPhotographer": false,
-      "color": "#0E9F6E"
+      "color": "#0E9F6E",
+      "salary": 200
     },
     {
       "id": "e_hla",
@@ -58,7 +60,8 @@
       ],
       "isScheduled": true,
       "isPhotographer": false,
-      "color": "#7C3AED"
+      "color": "#7C3AED",
+      "salary": 0
     },
     {
       "id": "e_nawal",
@@ -74,7 +77,8 @@
       ],
       "isScheduled": false,
       "isPhotographer": false,
-      "color": "#E8590C"
+      "color": "#E8590C",
+      "salary": 150
     },
     {
       "id": "e_omar",
@@ -90,11 +94,12 @@
       ],
       "isScheduled": false,
       "isPhotographer": false,
-      "color": "#0B7285"
+      "color": "#0B7285",
+      "salary": 400
     },
     {
       "id": "e_photo",
-      "name": "المصور",
+      "name": "غسان+مايك",
       "role": "مصور فريلانسر",
       "hoursPerDay": 8,
       "workDays": [
@@ -106,7 +111,27 @@
       ],
       "isScheduled": false,
       "isPhotographer": true,
-      "color": "#AD3D5B"
+      "color": "#AD3D5B",
+      "salary": 0,
+      "costPerReel": 10
+    },
+    {
+      "id": "e_majed",
+      "name": "ماجد",
+      "role": "مصور",
+      "hoursPerDay": 8,
+      "workDays": [
+        6,
+        0,
+        1,
+        2,
+        3
+      ],
+      "isScheduled": true,
+      "isPhotographer": true,
+      "color": "#0a8fa3",
+      "salary": 300,
+      "costPerReel": null
     }
   ],
   "companies": [
@@ -122,7 +147,8 @@
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#2563eb"
+      "color": "#2563eb",
+      "photographerId": "e_photo"
     },
     {
       "id": "c_phoenitech",
@@ -136,7 +162,8 @@
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#7c3aed"
+      "color": "#7c3aed",
+      "photographerId": "e_photo"
     },
     {
       "id": "c_noor",
@@ -150,7 +177,8 @@
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#db2777"
+      "color": "#db2777",
+      "photographerId": "e_majed"
     },
     {
       "id": "c_pro",
@@ -164,7 +192,8 @@
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#ea580c"
+      "color": "#ea580c",
+      "photographerId": "e_majed"
     },
     {
       "id": "c_mall",
@@ -179,7 +208,8 @@
       "storyOwnerId": "e_ayman",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#ca8a04"
+      "color": "#ca8a04",
+      "photographerId": "e_photo"
     },
     {
       "id": "c_jadarat",
@@ -189,12 +219,13 @@
       "reels": 0,
       "stories": 12,
       "aiReels": 6,
-      "contractStartDate": "2026-05-15",
+      "contractStartDate": "2026-07-01",
       "postOwnerId": "e_sabin",
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": "e_ayman",
       "defaultOwnerId": null,
-      "color": "#059669"
+      "color": "#059669",
+      "photographerId": "e_majed"
     },
     {
       "id": "c_training",
@@ -208,7 +239,59 @@
       "storyOwnerId": "e_sabin",
       "aiReelOwnerId": null,
       "defaultOwnerId": null,
-      "color": "#dc2626"
+      "color": "#dc2626",
+      "photographerId": "e_majed"
+    },
+    {
+      "id": "c_wasl",
+      "name": "وصل للتداول",
+      "managed": true,
+      "posts": 15,
+      "reels": 8,
+      "stories": 20,
+      "aiReels": 0,
+      "contractValue": 600,
+      "postOwnerId": "e_ayman",
+      "storyOwnerId": "e_ayman",
+      "aiReelOwnerId": null,
+      "defaultOwnerId": null,
+      "color": "#059669",
+      "contractStartDate": "2026-07-13",
+      "photographerId": "e_majed"
+    },
+    {
+      "id": "c_aghalia",
+      "name": "أغاليا",
+      "managed": true,
+      "posts": 10,
+      "reels": 6,
+      "stories": 15,
+      "aiReels": 0,
+      "contractValue": 150,
+      "postOwnerId": "e_sabin",
+      "storyOwnerId": "e_sabin",
+      "aiReelOwnerId": null,
+      "defaultOwnerId": null,
+      "color": "#db2777",
+      "contractStartDate": "2026-07-01",
+      "photographerId": "e_majed"
+    },
+    {
+      "id": "c_tawzeef",
+      "name": "التوظيف",
+      "managed": true,
+      "posts": 10,
+      "reels": 8,
+      "stories": 0,
+      "aiReels": 0,
+      "contractValue": 300,
+      "postOwnerId": "e_sabin",
+      "storyOwnerId": "e_sabin",
+      "aiReelOwnerId": null,
+      "defaultOwnerId": null,
+      "color": "#7c3aed",
+      "contractStartDate": "2026-07-01",
+      "photographerId": "e_majed"
     },
     {
       "id": "c_schools",
@@ -491,29 +574,6 @@
       "month": 7,
       "year": 2026,
       "company": "جدارات",
-      "dayName": null
-    },
-    {
-      "id": "w_c_training_DESIGN",
-      "kind": "CONTENT_WRITING",
-      "stage": "WRITE",
-      "board": "TODO",
-      "type": null,
-      "title": "كتابة بوستات وستوريز — التدريب",
-      "companyId": "c_training",
-      "assigneeId": "e_nawal",
-      "publishDate": null,
-      "readyDate": null,
-      "workDate": null,
-      "week": null,
-      "blockedById": null,
-      "pipelineKey": "c_training|DESIGN",
-      "quantity": 1,
-      "priority": "NORMAL",
-      "status": "NOT_STARTED",
-      "month": 7,
-      "year": 2026,
-      "company": "التدريب",
       "dayName": null
     },
     {
@@ -6509,7 +6569,7 @@
       "readyDate": "2026-07-13",
       "workDate": "2026-07-13",
       "week": 2,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-15",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6555,7 +6615,7 @@
       "readyDate": "2026-07-16",
       "workDate": "2026-07-16",
       "week": 3,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-20",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6601,7 +6661,7 @@
       "readyDate": "2026-07-22",
       "workDate": "2026-07-22",
       "week": 3,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-24",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6647,7 +6707,7 @@
       "readyDate": "2026-07-27",
       "workDate": "2026-07-27",
       "week": 4,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-29",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6693,7 +6753,7 @@
       "readyDate": "2026-06-30",
       "workDate": "2026-06-29",
       "week": 1,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-02",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6739,7 +6799,7 @@
       "readyDate": "2026-07-02",
       "workDate": "2026-07-02",
       "week": 1,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-06",
       "quantity": 1,
       "priority": "NORMAL",
@@ -6785,7 +6845,7 @@
       "readyDate": "2026-07-09",
       "workDate": "2026-07-08",
       "week": 2,
-      "blockedById": "w_c_training_DESIGN",
+      "blockedById": null,
       "pipelineKey": "c_training|POST|2026-07-11",
       "quantity": 1,
       "priority": "NORMAL",

@@ -14,3 +14,9 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 
 .claude/worktrees/
+.claude/settings.local.json
+
+.vercel
+
+# Local scratch (dev-server pids, one-off scripts)
+tmp/

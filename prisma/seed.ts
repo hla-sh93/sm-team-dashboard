@@ -18,10 +18,24 @@ import { createHash } from "crypto";
 import data from "./seed-data.json";
 import juneActuals from "./actuals-june.json";
 import { expandPipeline } from "../src/lib/pipeline";
+import { isTrainerSuppliedContentCompany } from "../src/lib/content-source";
 
 const prisma = new PrismaClient();
 
 const DONE = ["READY", "PUBLISHED"];
+const GENERIC_PUBLISHING_TASK_TITLES = ["جدولة ونشر بوستات الشركات"];
+
+async function removeGenericPublishingTasks() {
+  const deleted = await prisma.task.deleteMany({
+    where: {
+      kind: "ADHOC",
+      title: { in: GENERIC_PUBLISHING_TASK_TITLES },
+    },
+  });
+  if (deleted.count > 0) {
+    console.log(`🧹 removed ${deleted.count} generic publishing task(s)`);
+  }
+}
 
 /** Load the lead-reported June actuals into June (month 5) as a PIPELINE:
  *  content that was produced → design/shoot stage DONE, publish stage TO-DO
@@ -49,6 +63,8 @@ async function seedJuneActuals() {
   const writerId = emps.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
   const publisherId = emps.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
   const coName = (id: string) => cos.find((c) => c.id === id)?.name ?? "";
+  const trainerSuppliedContent = (id: string) =>
+    isTrainerSuppliedContentCompany(cos.find((c) => c.id === id));
   const wd = new Date(jYear, jMonth, 15); // generic "done in June"
   const wdISO = "2026-06-15";
 
@@ -77,6 +93,7 @@ async function seedJuneActuals() {
     writeBoard: "DONE",
     idPrefix: "jun_",
     writerWorkDays: [6, 0, 1, 2, 3],
+    skipWritingForCompany: trainerSuppliedContent,
   });
 
   const pipeRows = pipe.map((t) => ({
@@ -179,11 +196,12 @@ async function main() {
   /* ---------- 1) Employees (upsert canonical set) ---------- */
   // Productivity rates (items per working day) per person.
   const RATES: Record<string, Record<string, number>> = {
-    e_ayman: { POST: 8, STORY: 10, AI_REEL: 1 },
-    e_sabin: { POST: 8, STORY: 10, AI_REEL: 1 },
-    e_hla: { POST: 8, STORY: 10 }, // no AI reels
+    e_ayman: { POST: 10, STORY: 10, AI_REEL: 1 },
+    e_sabin: { POST: 10, STORY: 10, AI_REEL: 1 },
+    e_hla: { POST: 10, STORY: 10 }, // no AI reels
     e_nawal: { PLAN: 0.5 }, // a content plan per company = 2 working days
-    e_photo: { REEL: 2 / 3 }, // 2 reels per 3 days
+    e_photo: { REEL: 3 / 2 }, // 3 reels per 2 days (freelance)
+    e_majed: { REEL: 2 }, // employed photographer: 2 reels per day
   };
   for (const e of data.employees as any[]) {
     const payload = {
@@ -195,6 +213,8 @@ async function main() {
       isPhotographer: e.isPhotographer,
       color: e.color,
       rates: RATES[e.id] ? JSON.stringify(RATES[e.id]) : null,
+      ...(e.salary != null ? { salary: e.salary } : {}),
+      ...(e.costPerReel != null ? { costPerReel: e.costPerReel } : {}),
     };
     // Non-destructive: create if missing; only overwrite an existing row's
     // fields (name/role/rates/color…) on an explicit SEED_FORCE rebuild, so
@@ -207,8 +227,8 @@ async function main() {
   }
   console.log(`✓ employees: ${data.employees.length}`);
 
-  // Capacity update: designers do 8 posts/day & 10 stories/day on an 8-hour day.
-  // Idempotent and SAFE — only bumps the KNOWN prior values (POST 6→8, STORY
+  // Capacity update: designers do 10 posts/day & 10 stories/day on an 8-hour day.
+  // Idempotent and SAFE — only bumps KNOWN prior values (POST 6/8→10, STORY
   // 6/8→10), so a custom rate set in /admin/team is never clobbered. Runs on
   // every (re)deploy, so production updates automatically without a force seed.
   for (const id of ["e_ayman", "e_sabin", "e_hla"]) {
@@ -221,11 +241,44 @@ async function main() {
       r = {};
     }
     let changed = false;
-    if (r.POST === 6) { r.POST = 8; changed = true; }
+    if (r.POST === 6 || r.POST === 8) { r.POST = 10; changed = true; }
     if (r.STORY === 6 || r.STORY === 8) { r.STORY = 10; changed = true; }
     if (changed) {
       await prisma.employee.update({ where: { id }, data: { rates: JSON.stringify(r) } });
-      console.log(`↻ ${id}: rates → 8 posts/day, 10 stories/day`);
+      console.log(`↻ ${id}: rates → 10 posts/day, 10 stories/day`);
+    }
+  }
+
+  const approx = (a: number | undefined, b: number) =>
+    typeof a === "number" && Math.abs(a - b) < 0.001;
+
+  const nawal = await prisma.employee.findUnique({ where: { id: "e_nawal" } });
+  if (nawal) {
+    let r: Record<string, number> = {};
+    try {
+      r = nawal.rates ? (JSON.parse(nawal.rates) as Record<string, number>) : {};
+    } catch {
+      r = {};
+    }
+    if (r.PLAN === 1) {
+      r.PLAN = 0.5;
+      await prisma.employee.update({ where: { id: "e_nawal" }, data: { rates: JSON.stringify(r) } });
+      console.log("↻ e_nawal: plan rate → 1 company / 2 days");
+    }
+  }
+
+  const photo = await prisma.employee.findUnique({ where: { id: "e_photo" } });
+  if (photo) {
+    let r: Record<string, number> = {};
+    try {
+      r = photo.rates ? (JSON.parse(photo.rates) as Record<string, number>) : {};
+    } catch {
+      r = {};
+    }
+    if (approx(r.REEL, 2 / 3) || approx(r.REEL, 0.667)) {
+      r.REEL = 3 / 2;
+      await prisma.employee.update({ where: { id: "e_photo" }, data: { rates: JSON.stringify(r) } });
+      console.log("↻ e_photo: reel rate → 3 reels / 2 days");
     }
   }
 
@@ -247,7 +300,9 @@ async function main() {
       stories: c.stories,
       aiReels: c.aiReels,
       ...(c.contractStartDate ? { contractStartDate: D(c.contractStartDate) } : {}),
+      ...(c.contractValue != null ? { contractValue: c.contractValue } : {}),
       ...(c.color ? { color: c.color } : {}),
+      ...(c.photographerId ? { photographerId: c.photographerId } : {}),
       postOwnerId: c.postOwnerId,
       storyOwnerId: c.storyOwnerId,
       aiReelOwnerId: c.aiReelOwnerId,
@@ -262,6 +317,10 @@ async function main() {
     });
   }
   console.log(`✓ companies: ${data.companies.length}`);
+
+  // Historical cleanup: publishing is represented by one PUBLISH card per
+  // planned piece, not by a broad ad-hoc "publish all companies" task.
+  await removeGenericPublishingTasks();
 
   // June actuals (current-month accomplishments) — independent of July dataset.
   await seedJuneActuals();

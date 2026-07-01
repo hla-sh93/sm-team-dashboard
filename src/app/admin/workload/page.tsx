@@ -15,6 +15,7 @@ export default async function WorkloadPage({
   const { year, month } = await resolveActiveMonth(searchParams);
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);
+  const publishFetchEnd = new Date(year, month + 1, 2);
   const [employees, companies, tasks, sessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
@@ -24,7 +25,7 @@ export default async function WorkloadPage({
         OR: [
           { workDate: { gte: monthStart, lt: monthEnd } },
           { readyDate: { gte: monthStart, lt: monthEnd } },
-          { publishDate: { gte: monthStart, lt: monthEnd } },
+          { publishDate: { gte: monthStart, lt: publishFetchEnd } },
         ],
       },
     }),
@@ -105,6 +106,7 @@ export default async function WorkloadPage({
               </div>
               <div className="flex gap-2 mt-3 text-[11px] text-fg-dim flex-wrap">
                 <span>بوست: {w.breakdown.POST}</span>
+                <span>· ريل: {w.breakdown.REEL}</span>
                 <span>· ريل AI: {w.breakdown.AI_REEL}</span>
                 <span>· ستوري: {w.breakdown.STORY}</span>
                 <span>· مستعجلة: {w.breakdown.ADHOC}</span>

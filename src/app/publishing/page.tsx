@@ -11,7 +11,9 @@ export default async function PublishingPage({
   const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany(),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month, kind: "CONTENT", status: { not: "CANCELED" } } }),
+    prisma.task.findMany({
+      where: { year, month, stage: "PUBLISH", status: { not: "CANCELED" } },
+    }),
   ]);
 
   return (

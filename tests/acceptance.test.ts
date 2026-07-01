@@ -43,6 +43,34 @@ describe("§9 acceptance — plan match (criterion 1)", () => {
     }
   });
 
+  it("excludes soft-deleted content from publishing schedule counts", () => {
+    const active = {
+      detKey: "active",
+      kind: "CONTENT",
+      type: "POST",
+      title: "active",
+      companyId: "c",
+      assigneeId: "designer",
+      hours: 0.8,
+      priority: "NORMAL",
+      status: "NOT_STARTED",
+      publishDate: new Date(2026, 6, 7),
+      readyDate: new Date(2026, 6, 5),
+      workDate: new Date(2026, 6, 4),
+      week: 1,
+      overflow: false,
+      month: 6,
+      year: 2026,
+      isPinned: false,
+      isAuto: true,
+    } as ScheduledTask;
+    const canceled = { ...active, detKey: "deleted", status: "CANCELED" };
+
+    const schedule = derivePublishingSchedule([active, canceled]);
+
+    expect(schedule.get("c")?.counts.POST).toBe(1);
+  });
+
   it("no content is generated for design-only companies (§4.9)", () => {
     const { tasks } = run();
     const designOnly = companies.filter((c) => !c.managed).map((c) => c.id);
@@ -60,6 +88,12 @@ describe("§9 acceptance — no interruption (criterion 2)", () => {
     expect(v.problems).toEqual([]);
     expect(v.noInterruption).toBe(true);
     expect(v.planMatch).toBe(true);
+  });
+
+  it("does not schedule publishing on Friday", () => {
+    const { tasks } = run();
+    const fridayTasks = tasks.filter((t) => t.publishDate?.getDay() === 5);
+    expect(fridayTasks).toEqual([]);
   });
 });
 

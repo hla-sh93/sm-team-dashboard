@@ -58,7 +58,9 @@ export default async function FinancePage({
       <Card>
         <h2 className="display-font text-lg mb-1">ربح/خسارة لكل عقد</h2>
         <p className="text-xs text-fg-dim mb-4">
-          التكلفة = حصة العقد من رواتب الفريق (حسب أيام العمل) + تكلفة التصوير بالقطعة إن وُجدت.
+          <strong>التكلفة الكاملة</strong> = حصة العقد من كل رواتب الفريق (حسب أيام العمل) + تصوير بالقطعة —
+          عقد رخيص قد يبدو خاسراً. <strong>هامش المساهمة</strong> = السعر − الكلفة الحدّية المباشرة (بوست 1.5$،
+          ستوري 1$، ريل 10$) — يبيّن إن كان العقد يغطّي إنتاجه المباشر.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -66,14 +68,16 @@ export default async function FinancePage({
               <tr className="text-fg-dim text-xs border-b border-border-soft">
                 <th className="text-right font-medium pb-2">الشركة</th>
                 <th className="text-left font-medium pb-2">قيمة العقد</th>
-                <th className="text-left font-medium pb-2">التكلفة</th>
-                <th className="text-left font-medium pb-2">الربح/الخسارة</th>
-                <th className="text-left font-medium pb-2">الهامش</th>
+                <th className="text-left font-medium pb-2">التكلفة الكاملة</th>
+                <th className="text-left font-medium pb-2">ربح/خسارة كامل</th>
+                <th className="text-left font-medium pb-2">كلفة حدّية</th>
+                <th className="text-left font-medium pb-2">هامش المساهمة</th>
               </tr>
             </thead>
             <tbody>
               {f.perContract.map((p) => {
                 const win = p.profit >= 0;
+                const contribWin = p.contribution >= 0;
                 return (
                   <tr key={p.company.id} className="border-b border-border-soft/50">
                     <td className="py-2">
@@ -88,15 +92,18 @@ export default async function FinancePage({
                       {win ? "+" : "−"}
                       {money(Math.abs(p.profit))}
                     </td>
-                    <td className={"py-2 text-left tabular-nums " + (win ? "text-success" : "text-danger")}>
-                      {Math.round(p.margin)}%
+                    <td className="py-2 text-left tabular-nums text-fg-dim">{money(p.marginalCost)}</td>
+                    <td className={"py-2 text-left tabular-nums font-semibold " + (contribWin ? "text-success" : "text-danger")}>
+                      {contribWin ? "+" : "−"}
+                      {money(Math.abs(p.contribution))}
+                      <span className="text-[10px] font-normal opacity-70"> ({Math.round(p.contributionMargin)}%)</span>
                     </td>
                   </tr>
                 );
               })}
               {f.perContract.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-fg-muted">لا توجد عقود مُدارة.</td>
+                  <td colSpan={6} className="py-4 text-center text-fg-muted">لا توجد عقود مُدارة.</td>
                 </tr>
               )}
             </tbody>

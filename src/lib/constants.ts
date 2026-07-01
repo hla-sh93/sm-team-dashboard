@@ -181,12 +181,12 @@ export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
 
 // ============================================
 // TASK HOURS  — drives the schedule packing (placement per day).
-// Designer day = 8h → 8 posts/day (1h), 10 stories/day (0.8h), 1 AI-reel/day (8h).
+// Designer day = 8h → 10 posts/day (0.8h), 10 stories/day (0.8h), 1 AI-reel/day (8h).
 // KEEP IN SYNC with DEFAULT_RATES (lib/capacity.ts) so the schedule and the
 // workload screen agree on the same per-day output.
 // ============================================
 export const TYPE_HOURS: Record<Exclude<ContentType, "REEL">, number> = {
-  POST: 1,
+  POST: 0.8,
   AI_REEL: 8,
   STORY: 0.8,
 };
@@ -319,6 +319,11 @@ export function statusToBoard(status: string): Board {
     default:
       return "TODO";
   }
+}
+
+export function normalizeStatusForStage(status: string, stage?: string | null): string {
+  if (stage === "PUBLISH" && status === "READY") return "PUBLISHED";
+  return status;
 }
 
 export const ROLE_LABELS: Record<string, string> = {

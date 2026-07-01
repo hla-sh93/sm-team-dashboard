@@ -5,6 +5,7 @@ import { fromISODate } from "@/lib/dates";
 import {
   DONE_STATUSES,
   inferHistoricalCompletionDate,
+  normalizeStatusForStage,
   statusToBoard,
   type Status,
 } from "@/lib/constants";
@@ -24,6 +25,57 @@ function revalidateAll() {
 }
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
+
+function taskIsFinished(t: {
+  status: string;
+  board: string | null;
+  completedAt: Date | null;
+  finishedAt: Date | null;
+}) {
+  return isDone(t.status) || t.board === "DONE" || t.completedAt != null || t.finishedAt != null;
+}
+
+async function completeProductionForPublishedTask(task: {
+  kind: string;
+  stage: string | null;
+  blockedById: string | null;
+  pipelineKey: string | null;
+}) {
+  if (!(task.kind === "PUBLISH" || task.stage === "PUBLISH")) return;
+
+  const links = [
+    ...(task.blockedById ? [{ id: task.blockedById }] : []),
+    ...(task.pipelineKey
+      ? [{ pipelineKey: task.pipelineKey, stage: { in: ["DESIGN", "SHOOT"] } }]
+      : []),
+  ];
+  if (links.length === 0) return;
+
+  const now = new Date();
+  const predecessors = await prisma.task.findMany({
+    where: {
+      status: { not: "CANCELED" },
+      OR: links,
+    },
+  });
+  const openPredecessors = predecessors.filter((item) => !taskIsFinished(item));
+  if (openPredecessors.length === 0) return;
+
+  await prisma.$transaction(
+    openPredecessors.map((item) =>
+      prisma.task.update({
+        where: { id: item.id },
+        data: {
+          status: "READY",
+          board: "DONE",
+          startedAt: item.startedAt ?? now,
+          finishedAt: item.finishedAt ?? now,
+          completedAt: item.completedAt ?? now,
+        },
+      }),
+    ),
+  );
+}
 
 /** Create an ad-hoc / manual task (§4.8). Re-runs the month engine so the new
  *  task is scheduled (ASAP for urgent) immediately. */
@@ -123,6 +175,7 @@ export async function updateTask(id: string, input: TaskInput) {
         completedAt: doneAt,
       },
     });
+    if (done) await completeProductionForPublishedTask(before);
     if (before.kind === "ADHOC" || d.kind === "ADHOC") {
       await generateSchedule(d.year, d.month);
     }
@@ -141,6 +194,7 @@ export type TaskDetailsInput = {
   priority?: string;
   status?: string;
   days?: number | null; // ad-hoc effort in working days
+  quantity?: number | null; // production work units, e.g. carousel slide count
   isPinned?: boolean;
 };
 
@@ -159,7 +213,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
 
     const now = new Date();
-    const status = input.status ?? before.status;
+    const status = normalizeStatusForStage(input.status ?? before.status, before.stage);
     const done = isDone(status);
     const setDate = (iso: string | null | undefined, cur: Date | null) =>
       iso === undefined ? cur : iso ? fromISODate(iso) : null;
@@ -186,6 +240,10 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       input.days != null && before.kind === "ADHOC"
         ? Math.round(input.days * 8 * 10) / 10
         : before.hours;
+    const quantity =
+      input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH"
+        ? Math.max(1, Math.round(input.quantity))
+        : before.quantity;
 
     await prisma.task.update({
       where: { id: primary },
@@ -202,9 +260,11 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
         finishedAt,
         completedAt: doneAt,
         hours,
+        quantity,
         isPinned: pinned,
       },
     });
+    if (done) await completeProductionForPublishedTask(before);
 
     const rest = ids.slice(1);
     if (rest.length > 0) {
@@ -224,7 +284,8 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       input.priority !== undefined ||
       input.workDate !== undefined ||
       input.readyDate !== undefined ||
-      input.days != null;
+      input.days != null ||
+      input.quantity != null;
     if (reschedule) await generateSchedule(before.year, before.month);
 
     revalidateAll();
@@ -242,13 +303,48 @@ export async function deleteTasks(ids: string[]) {
   try {
     const tasks = await prisma.task.findMany({
       where: { id: { in: ids } },
-      select: { id: true, isAuto: true, year: true, month: true },
+      select: {
+        id: true,
+        isAuto: true,
+        year: true,
+        month: true,
+        stage: true,
+        pipelineKey: true,
+      },
     });
     if (tasks.length === 0) return { ok: true as const };
 
     const first = tasks[0];
     const manualIds = tasks.filter((t) => !t.isAuto).map((t) => t.id);
-    const autoIds = tasks.filter((t) => t.isAuto).map((t) => t.id);
+    const autoIdSet = new Set(tasks.filter((t) => t.isAuto).map((t) => t.id));
+    const pieceKeysByMonth = new Map<string, { year: number; month: number; keys: Set<string> }>();
+    for (const task of tasks) {
+      if (!task.isAuto || !task.pipelineKey) continue;
+      if (!(task.stage === "DESIGN" || task.stage === "SHOOT" || task.stage === "PUBLISH")) continue;
+      const key = `${task.year}|${task.month}`;
+      const group = pieceKeysByMonth.get(key) ?? {
+        year: task.year,
+        month: task.month,
+        keys: new Set<string>(),
+      };
+      group.keys.add(task.pipelineKey);
+      pieceKeysByMonth.set(key, group);
+    }
+
+    for (const group of pieceKeysByMonth.values()) {
+      const siblings = await prisma.task.findMany({
+        where: {
+          isAuto: true,
+          year: group.year,
+          month: group.month,
+          pipelineKey: { in: [...group.keys] },
+          stage: { in: ["DESIGN", "SHOOT", "PUBLISH"] },
+        },
+        select: { id: true },
+      });
+      for (const sibling of siblings) autoIdSet.add(sibling.id);
+    }
+    const autoIds = [...autoIdSet];
 
     if (manualIds.length > 0) {
       await prisma.task.deleteMany({ where: { id: { in: manualIds } } });
@@ -281,7 +377,7 @@ export async function updateTaskStatus(id: string, status: string) {
     const before = await prisma.task.findUnique({ where: { id } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
     const now = new Date();
-    const next = parsed.data;
+    const next = normalizeStatusForStage(parsed.data, before.stage);
     const done = isDone(next);
     // startedAt: set on first move out of NOT_STARTED. finishedAt: set when done.
     // Reverting to NOT_STARTED resets both.
@@ -298,11 +394,13 @@ export async function updateTaskStatus(id: string, status: string) {
       where: { id },
       data: {
         status: next,
+        board: statusToBoard(next),
         startedAt,
         finishedAt,
         completedAt: done ? (before.completedAt ?? now) : null,
       },
     });
+    if (done) await completeProductionForPublishedTask(before);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -341,6 +439,7 @@ export async function moveCard(id: string, board: string) {
         completedAt: board === "DONE" ? (t.completedAt ?? now) : null,
       },
     });
+    if (board === "DONE") await completeProductionForPublishedTask(t);
     revalidateAll();
     return { ok: true as const };
   } catch {

@@ -45,8 +45,10 @@ export function completedCompanyPlanCount(
 
   let done = 0;
   for (const piece of pieces.values()) {
+    // Company progress is publishing progress. Once the PUBLISH card is done,
+    // the item has reached the client-facing finish line even if an upstream
+    // production card was not manually moved to DONE.
     if (!piece.publish || !isTaskDoneState(piece.publish)) continue;
-    if (!piece.production || !isTaskDoneState(piece.production)) continue;
     done += piece.publish.quantity ?? 1;
   }
 

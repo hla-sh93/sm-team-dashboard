@@ -154,8 +154,8 @@ export default function TasksClient({
 
   // Build calendar items: PRODUCTION tasks by workDate. We exclude:
   //  - REEL content (the photographer's production unit is the shoot session),
-  //  - PUBLISH cards (publishing runs 7 days/week incl. days off — it lives on
-  //    the النشر calendar, not the production schedule).
+  //  - PUBLISH cards (publishing lives on the النشر calendar, not the
+  //    production schedule).
   // …so the production calendar only ever shows real work on people's workdays.
   const allItems = useMemo<CalItem[]>(() => {
     const taskItems: CalItem[] = tasks

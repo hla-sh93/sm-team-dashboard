@@ -9,14 +9,17 @@ import {
   CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
   CONTENT_TYPE_COLORS,
-  STATUSES,
   STATUS_LABELS,
   type ContentType,
+  type Status,
 } from "@/lib/constants";
 import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
+import { buildReelNumbers } from "@/lib/cards";
 import type { Company, Employee, Task } from "@/types";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
+
+const PUBLISH_STATUSES: Status[] = ["NOT_STARTED", "IN_PROGRESS", "PUBLISHED"];
 
 export default function PublishingClient({
   year,
@@ -43,9 +46,10 @@ export default function PublishingClient({
     companies.find((c) => c.id === id)?.name ?? "";
   const managed = companies.filter((c) => c.managed && c.status === "active");
 
-  // Publishing items = content tasks that have a publishDate.
+  // Publishing items = the actual PUBLISH pipeline cards. Updating these cards
+  // is what advances company progress; production cards stay owned by designers.
   const pubTasks = useMemo(
-    () => tasks.filter((t) => t.kind === "CONTENT" && t.publishDate),
+    () => tasks.filter((t) => t.stage === "PUBLISH" && t.publishDate),
     [tasks],
   );
 
@@ -59,27 +63,7 @@ export default function PublishingClient({
     [pubTasks, company, type],
   );
 
-  // Sequence number per (company, type), ordered by publish date: e.g. the
-  // 1st post of BW is "بوست-1", the 4th story of جدارات is "ستوري-4".
-  const seqOf = useMemo(() => {
-    const m = new Map<string, number>();
-    const groups = new Map<string, Task[]>();
-    for (const t of pubTasks) {
-      const k = `${t.companyId}|${t.type}`;
-      const arr = groups.get(k) ?? [];
-      arr.push(t);
-      groups.set(k, arr);
-    }
-    for (const arr of groups.values()) {
-      arr.sort(
-        (a, b) =>
-          new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime() ||
-          a.id.localeCompare(b.id),
-      );
-      arr.forEach((t, i) => m.set(t.id, i + 1));
-    }
-    return m;
-  }, [pubTasks]);
+  const seqOf = useMemo(() => buildReelNumbers(pubTasks), [pubTasks]);
   const seqLabel = (t: Task) => {
     const n = seqOf.get(t.id);
     return n ? `${typeLabel(t)}-${n}` : `${typeLabel(t)}`;
@@ -152,10 +136,10 @@ export default function PublishingClient({
         </div>
         <Select
           className="w-full h-7 text-[11px] py-0.5"
-          value={t.status}
+          value={t.status === "READY" ? "PUBLISHED" : t.status}
           onChange={(e) => onStatus(t.id, e.target.value)}
         >
-          {STATUSES.map((s) => (
+          {PUBLISH_STATUSES.map((s) => (
             <option key={s} value={s}>
               {STATUS_LABELS[s]}
             </option>

@@ -67,6 +67,29 @@ export async function resolvePublishMonth(searchParams: {
   }
 }
 
+/**
+ * Prisma `where` for the "continuation" tasks of a calendar month: work from
+ * OTHER cycle buckets whose real date (publish/work/deadline) lands inside this
+ * calendar month. A contract-cycle company (e.g. المول 20→20) carries the tail
+ * of its previous cycle into the first days of the next calendar month; without
+ * this the month view would look like the plan "restarted from post 1" while the
+ * ongoing pieces sat hidden under the previous month's bucket. Callers keep only
+ * the UNFINISHED ones so completed prior-cycle work stays archived.
+ */
+export function monthContinuationWhere(year: number, month: number) {
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 1);
+  return {
+    status: { not: "CANCELED" },
+    NOT: { year, month },
+    OR: [
+      { publishDate: { gte: start, lt: end } },
+      { workDate: { gte: start, lt: end } },
+      { readyDate: { gte: start, lt: end } },
+    ],
+  };
+}
+
 export function monthLabel({ year, month }: YM): string {
   return `${ARABIC_MONTHS[month]} ${year}`;
 }

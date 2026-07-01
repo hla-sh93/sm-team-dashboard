@@ -21,37 +21,47 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **85/85 pass** | S1 |
+| ENV‑3 | `npm test` | **120/120 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
-| ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; designers STORY=8 | S1 |
+| ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; seeded designers use 8h days and POST/STORY=10 rates | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 14 files / 85 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 21 files / 120 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
-| `tests/acceptance.test.ts` | 15 | SPEC acceptance (scheduling, ownership, photographer…) |
+| `tests/acceptance.test.ts` | 17 | SPEC acceptance (scheduling, ownership, photographer, determinism, canceled publishing…) |
 | `tests/schemas.test.ts` | 9 | Zod validation (employee / company / task) |
 | `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
 | `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
 | `tests/cycles.test.ts` | 7 | contract-cycle plan distribution (20→20, 15→15), cross-month packing |
-| `tests/workload.test.ts` | 5 | required‑vs‑capacity load; over ⇒ 0 free; publisher; month window |
-| `tests/task-state.test.ts` | 4 | done-state markers, historical completion date, unfinished-only lateness |
+| `tests/workload.test.ts` | 9 | default rates; required‑vs‑capacity load; over ⇒ 0 free; publisher cap at capacity; Friday→previous‑workday charge; single‑count of a split write plan; month window |
+| `tests/task-state.test.ts` | 6 | done-state markers, historical completion date, unfinished-only lateness, board/status normalization |
+| `tests/daily-work.test.ts` | 6 | today queue selection, active-work precedence, capacity fill, carousel slide units, publisher grouping |
+| `tests/carousel-design-units.test.ts` | 3 | carousel posts count as one published post but multiple design units |
 | `tests/task-filters.test.ts` | 3 | daily board task filtering by work/deadline/publish date |
-| `tests/progress.test.ts` | 3 | company progress requires production + publish done |
-| `tests/persistence.test.ts` | 3 | manual edits survive a regen |
+| `tests/person-day-state.test.ts` | 3 | task/backlog/off/free day labels for the overview daily tabs |
+| `tests/progress.test.ts` | 4 | company progress follows done/published PUBLISH cards |
+| `tests/persistence.test.ts` | 4 | manual edits, soft-deletes, and photo-session status survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
 | `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
-| `tests/db-integration.test.ts` | 1 | DB integration (self-skips if Prisma absent) |
+| `tests/pipeline.test.ts` | 6 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, and trainer-supplied training content |
+| `tests/seed-data.test.ts` | 3 | seed files avoid broad publishing tasks, use per-piece publisher cards, and skip training write cards |
+| `tests/finance.test.ts` | 2 | writer cost not allocated to trainer-supplied training content; contribution-margin (direct per-piece cost) vs full-absorption |
+| `tests/month-continuation.test.ts` | 2 | month view = cycle bucket **+** the still-open tail of other cycles dated in the calendar month |
+| `tests/db-integration.test.ts` | 1 | DB integration; self-skips if DB/env is unavailable |
 
 ### 0.2 Current locked logic rules
 - **Late means exactly**: not done + `readyDate`/`publishDate` is before today. A done task is never late.
 - **Done markers**: `READY`, `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
-- **Company progress**: a content piece counts only when its production stage and publish stage are both done.
-- **Daily tasks view**: `يومي` on `/tasks` renders the same Kanban board as `بورد`, filtered to today's task dates.
-- **Task Deletion**: Manual tasks (`isAuto=false`) are permanently deleted. Auto-generated tasks (`isAuto=true`) are soft-deleted (`status="CANCELED"`, pinned) for the current month only and hidden from views, but regenerate in the next month's cycle.
+- **Company progress**: a content piece counts when its PUBLISH card is done/published; production done alone does not count.
+- **Carousel posts**: PUBLISH cards count posts (`quantity=1`); DESIGN cards count design units/slides (`quantity=N`).
+- **Training content source**: التدريب is managed, but trainer-supplied; it has no Nawal WRITE card and no writer cost allocation.
+- **Daily tasks view**: `يومي` on `/tasks` renders the same Kanban board as `بورد`, filtered to today's task dates. Carousel quantity fills designer capacity by slide/design units.
+- **Task Deletion**: Manual tasks (`isAuto=false`) are permanently deleted. Auto-generated tasks (`isAuto=true`) are soft-deleted (`status="CANCELED"`, pinned) for the current month only. Content-piece deletion cancels both production and PUBLISH stages, remains hidden from publishing, and still suppresses one monthly piece if regenerated dates move.
 - **Local/production DB parity**: use one idempotent data-fix script against the chosen `DATABASE_URL`; no manual divergent local-only edits.
+- **Month-view continuity (contract cycles)**: a calendar-month board/overview shows its own cycle bucket **plus** the still-open tail of adjacent cycles whose publish/work/deadline date falls inside that calendar month — so a 20→20 company (e.g. المول) keeps its ongoing pieces visible on the 1st–19th instead of appearing to "restart from post 1". Completed prior-cycle work stays archived (only unfinished continuation is added). Engine/bucket tagging is unchanged; this is a read/view union only.
 
 ---
 
@@ -79,7 +89,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | SEED‑1 | re‑run `db:seed` on populated DB | “preserving” logs; no deletion; counts unchanged | **S1** |
 | SEED‑2 | edit a task → `db:seed` | edit kept | **S1** |
 | SEED‑3 | add company/employee → `db:seed` | not deleted | **S1** |
-| SEED‑4 | rate migration | designers still on STORY=6 → become 8; a custom rate is NOT touched | S2 |
+| SEED‑4 | rate migration | designers on POST/STORY 6/8 → become 10; writer PLAN 1→0.5; photographer REEL 2/3→3/2; a custom rate is NOT touched | S2 |
 | SEED‑5 | `SEED_FORCE=1` | full rebuild | S2 |
 | SEED‑6 | run `tsx scripts/sync-june-current-fixes.ts` with local SQLite `DATABASE_URL` | idempotent; Nawal unfinished writing remains open; remaining Phoenitech reel production remains open; Alber completed tasks stay completed with 12/06 and 21/06 dates | **S1** |
 | SEED‑7 | run same script with production Postgres `DATABASE_URL` | production DB receives the same targeted June fixes as local; no code or env secret committed | **S1** |
@@ -95,7 +105,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | HOME‑3 | **إنجاز الفريق** | a donut per person (done/total/remaining), counts ALL assigned tasks — **عمر appears** | **S2** |
 | HOME‑4 | **مهام اليوم** | a **tab per employee, always all of them**; active tab shows: their tasks, or **عطلة** (day off), or **متفرّغ لعمل إضافي** (working, no tasks) | **S2** |
 | HOME‑5 | publisher on a Thursday | عمر shows his publish tasks (tasks take precedence over an “off” weekday) | S2 |
-| HOME‑6 | **إنجاز الشركات** | done ÷ plan over the cycle; counts a piece only when production stage and PUBLISH stage are both DONE | S2 |
+| HOME‑6 | **إنجاز الشركات** | done ÷ plan over the cycle; counts a piece when its PUBLISH card is DONE/PUBLISHED | S2 |
 | HOME‑7 | إعادة الجدولة | success toast (stage counts); pipeline rebuilt. On failure → error toast with the real reason. If the run has gaps (missing writer/designer/photographer) → a **warning** toast lists them | S1 |
 
 ---
@@ -140,7 +150,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | STATE‑3 | create a not-started task due today | appears in today/daily board but **not** as late | **S2** |
 | STATE‑4 | enter historical completed June work today | `completedAt`/`finishedAt` uses the task date; it is still done and not late | **S1** |
 | STATE‑5 | `/tasks` → `يومي` | same board columns/actions/grouping as `بورد`; dataset is today's tasks only | **S2** |
-| STATE‑6 | company has publish card DONE but production card TODO | company progress does not count that piece | **S1** |
+| STATE‑6 | company has publish card DONE/PUBLISHED but production card TODO | company progress counts that piece because publishing is the final company-facing state | **S1** |
+| STATE‑7 | company has production DONE but publish card TODO | company progress does not count that piece | **S1** |
 
 ---
 
@@ -153,19 +164,23 @@ A case PASSES only if the expected result AND every side effect hold.
 | GEN‑4 | run twice | deterministic — identical result | S2 |
 | GEN‑5 | does NOT touch | company/employee/finance records, statuses, edits | **S1** |
 | GEN‑6 | priority tiebreak | among routine tasks with the **same deadline**, the higher‑priority company is placed first; **different deadlines are unaffected** (publish‑driven) | S2 |
+| GEN‑7 | edit carousel quantity → regenerate | design `quantity`/slide count survives; publish remains one post | **S1** |
+| GEN‑8 | delete a content card → regenerate after date/priority changes | the deleted monthly piece remains `CANCELED`; no matching PUBLISH card appears | **S1** |
+| GEN‑9 | regenerate التدريب | content pieces start at design; no WRITE card for Nawal; publishing still generated | **S1** |
 
 ---
 
 ## 7. Capacity / rates 🆕
 | ID | Check | Expected |
 |---|---|---|
-| RATE‑1 | designer posts | **6/day** (1h each, 6h day) |
-| RATE‑2 | designer stories | **8/day** (0.75h each) |
-| RATE‑3 | AI‑reel | 1/day (6h) |
-| RATE‑4 | Hla (3h) | half — 3 posts/day or 4 stories/day |
+| RATE‑1 | designer posts | **10/day** (0.8h each, 8h day) |
+| RATE‑2 | designer stories | **10/day** (0.8h each, 8h day) |
+| RATE‑3 | AI‑reel | 1/day (8h) |
+| RATE‑4 | per-employee overrides | custom `hoursPerDay`/`rates` are respected without changing the global defaults |
 | RATE‑5 | mixed day | sums to ≤ hoursPerDay (no day over capacity unless overflow) |
-| RATE‑6 | photographer | 2 reels / 3 days |
+| RATE‑6 | photographer | 3 reels / 2 days |
 | RATE‑7 | schedule = workload | per‑day packing matches the workload rates |
+| RATE‑8 | carousel posts | carousel 3 + carousel 4 = 2 published posts and 7 design units; at POST=10/day, only 3 single-post units remain in that designer day |
 
 ---
 
@@ -187,6 +202,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | PUB‑3 | no‑interruption | each managed company ≥1 publish per week → green “لا انقطاع” banner | S2 |
 | PUB‑4 | match Omar | publishing items ↔ Omar’s PUBLISH cards 1:1; parity after delete+regen | **S1** |
 | PUB‑5 | plan‑match | scheduled per‑type counts == plan exactly | S2 |
+| PUB‑6 | deleted content piece | `CANCELED` publish cards are excluded from schedule counts/calendar | **S1** |
 
 ---
 
@@ -206,7 +222,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | WL‑1 | per person | **الحمل% = مطلوب ÷ الطاقة** · منجز% · مطلوب/منجز/متبقّي/متاح + bar | S2 |
 | WL‑2 | designer | committed = dated task effort inside calendar month, not company plan totals | S2 |
 | WL‑3 | photographer | committed = dated shoot/reel task effort inside calendar month | S2 |
-| WL‑4 | publisher | capacity = calendar month days excluding Friday; load = publish duty‑days dated inside month (≤5 co/day) | **S2** |
+| WL‑4 | publisher | capacity = calendar month days excluding Friday; load = publish duty‑days dated inside month, **capped at capacity** (publishing alone never >100%); a Friday publish charges the previous workday | **S2** |
 | WL‑5 | required‑based & consistent | متاح = الطاقة − المطلوب (**لا يتأثر بالمنجز**); **over ⇒ متاح = 0** (لا "تجاوز مع وجود أيام متاحة"); تعليم مهمة منجزة يحرّك منجز/متبقّي فقط | **S1** |
 | WL‑6 | publisher over | عمر يتجاوز فقط لو المطلوب (أيام نشر + مستعجلة) > أيام الشهر بلا جُمَع — وإلا يبقى ≤100% | S2 |
 
@@ -216,7 +232,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | ID | Steps | Expected | Sev |
 |---|---|---|---|
 | REP‑1 | KPIs | المنجز · متوسط المدة الفعلية · المساهمون · إجمالي المهام | S2 |
-| REP‑2 | إنجاز خطة الشركات | per company % = pieces with production DONE + publish DONE vs plan | S2 |
+| REP‑2 | إنجاز خطة الشركات | per company % = done/published PUBLISH cards vs plan | S2 |
 | REP‑3 | **تشخيص التأخيرات** | overdue unfinished tasks grouped by **stage** (كتابة/تصميم/تصوير/نشر) + by **person** (count + worst delay); completed tasks never appear | **S2** |
 | REP‑4 | per‑person ledger | every task: البداية ← النهاية · المدة الفعلية · **متأخّر N يوم** · الحالة; done/total by name | S2 |
 | REP‑5 | CSV export | columns incl. dates/actual‑duration; UTF‑8 BOM (Arabic in Excel) | S3 |
@@ -232,6 +248,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | FIN‑4 | break‑even | min contracts = ceil(fixed ÷ avg contribution); above/below indicator | S2 |
 | FIN‑5 | team capacity | max contracts (bottleneck) + “fits N more”; per‑producer bars | S2 |
 | FIN‑6 | per‑reel photographer | costPerReel × reels charged to its companies (variable) | S2 |
+| FIN‑7 | التدريب content source | Nawal/writer salary is not allocated to التدريب content supplied by the trainer | **S1** |
 
 ---
 
@@ -266,9 +283,9 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 85 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 120 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
-- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6 PASS — S1.
+- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
 - [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, KAN‑11, REP‑2/3 PASS.
 - [ ] One DB backup stored outside the repo.
 

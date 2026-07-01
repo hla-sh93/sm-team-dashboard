@@ -15,6 +15,22 @@ import type { Employee, Company } from "@/types";
 import { taskDays } from "./capacity";
 import { parseWorkDays, periodDays } from "./dates";
 import { isWriterRole, isPublisherRole } from "./workload";
+import { isTrainerSuppliedContentCompany } from "./content-source";
+
+/**
+ * Direct/marginal production cost per item (contribution-margin view) — mirrors
+ * the manual profitability sheet: a post's direct cost is a fraction of a
+ * designer day, a story is a $1 template, a reel is the freelance job rate.
+ * This is a SIMPLE per-piece proxy independent of full salary absorption, so
+ * every contract that covers its own direct production shows a positive
+ * contribution even if its absorbed share of total salaries exceeds its price.
+ */
+export const MARGINAL_COST_PER_ITEM: Record<"POST" | "STORY" | "REEL" | "AI_REEL", number> = {
+  POST: 1.5,
+  STORY: 1,
+  REEL: 10,
+  AI_REEL: 10,
+};
 
 export type ContractPnL = {
   company: Company;
@@ -23,6 +39,9 @@ export type ContractPnL = {
   variableCost: number; // per-reel photographer cost (charged directly)
   profit: number;
   margin: number; // profit ÷ revenue (%)
+  marginalCost: number; // direct per-piece cost (contribution view)
+  contribution: number; // revenue − marginalCost
+  contributionMargin: number; // contribution ÷ revenue (%)
 };
 
 export type CapacityRow = {
@@ -95,7 +114,7 @@ export function computeFinance(
     if (c.aiReels > 0 && ao && empById.get(ao)) addEffort(ao, c.id, taskDays(empById.get(ao)!, "AI_REEL", c.aiReels));
     const pid = photographerOf(c);
     if (c.reels > 0 && pid && empById.get(pid)) addEffort(pid, c.id, taskDays(empById.get(pid)!, "REEL", c.reels));
-    if (items > 0 && writerId && empById.get(writerId))
+    if (items > 0 && writerId && empById.get(writerId) && !isTrainerSuppliedContentCompany(c))
       addEffort(writerId, c.id, taskDays(empById.get(writerId)!, "PLAN", 1));
     if (items > 0 && publisherId) pubItems.set(c.id, (pubItems.get(c.id) ?? 0) + items);
   }
@@ -142,6 +161,12 @@ export function computeFinance(
       const cost = laborCost.get(c.id)!;
       const variable = variableCost.get(c.id)!;
       const profit = revenue - cost;
+      const marginalCost =
+        c.posts * MARGINAL_COST_PER_ITEM.POST +
+        c.stories * MARGINAL_COST_PER_ITEM.STORY +
+        c.reels * MARGINAL_COST_PER_ITEM.REEL +
+        c.aiReels * MARGINAL_COST_PER_ITEM.AI_REEL;
+      const contribution = revenue - marginalCost;
       return {
         company: c,
         revenue,
@@ -149,6 +174,9 @@ export function computeFinance(
         variableCost: variable,
         profit,
         margin: revenue > 0 ? (profit / revenue) * 100 : 0,
+        marginalCost,
+        contribution,
+        contributionMargin: revenue > 0 ? (contribution / revenue) * 100 : 0,
       };
     })
     .sort((a, b) => a.profit - b.profit); // losses first

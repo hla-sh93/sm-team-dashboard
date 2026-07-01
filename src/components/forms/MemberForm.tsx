@@ -69,7 +69,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
     : {
         name: "",
         role: "designer",
-        hoursPerDay: 6,
+        hoursPerDay: 8,
         workDays: WORKDAYS_DEFAULT,
         isScheduled: true,
         isPhotographer: false,
@@ -99,10 +99,10 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
 
   // Photographer capacity entered the natural way: "X reels every Y days". We
   // derive the engine's rate = X / Y (reels per working day). Editing an existing
-  // rate shows it back over a 3-day window (e.g. 0.67 → 2 reels / 3 days).
+  // rate shows it back over a 2-day window (e.g. 1.5 → 3 reels / 2 days).
   const initReel = (): { count: number | ""; days: number | "" } => {
     const r = er.REEL;
-    if (r && r > 0) return { count: Math.round(r * 3), days: 3 };
+    if (r && r > 0) return { count: Math.round(r * 2), days: 2 };
     return { count: "", days: "" };
   };
   const [reel, setReel] = useState<{ count: number | ""; days: number | "" }>(initReel);
@@ -182,7 +182,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                     type="number"
                     step="1"
                     min="0"
-                    placeholder="2"
+                    placeholder="3"
                     className="w-16 text-center"
                     value={reel.count}
                     onChange={(e) => setReelField("count", e.target.value)}
@@ -192,7 +192,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                     type="number"
                     step="1"
                     min="1"
-                    placeholder="3"
+                    placeholder="2"
                     className="w-16 text-center"
                     value={reel.days}
                     onChange={(e) => setReelField("days", e.target.value)}
@@ -202,7 +202,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                 <p className="text-[11px] text-accent">
                   {reelRate != null
                     ? `≈ ${Math.round(reelRate * 100) / 100} ريل/يوم — أي نزلة تصوير تُغطّي عدة ريلات`
-                    : "اتركيها فارغة لاستخدام الافتراضي (ريلين كل 3 أيام)."}
+                    : "اتركيها فارغة لاستخدام الافتراضي (3 ريل كل يومين)."}
                 </p>
               </div>
             ) : (
@@ -234,7 +234,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
               </div>
             </div>
             <p className="text-[10px] text-fg-muted">
-              اتركي الخانة فارغة لاستخدام الافتراضي. مثال: سابين 6 بوست/يوم، أيمن 1 ريل AI/يوم، مصوّر ريلين كل 3 أيام.
+              اتركي الخانة فارغة لاستخدام الافتراضي. مثال: المصمم 10 بوست/يوم، أيمن 1 ريل AI/يوم، مصوّر 3 ريل كل يومين.
             </p>
           </div>
 

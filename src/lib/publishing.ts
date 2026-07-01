@@ -14,6 +14,8 @@ import type { ContentType } from "./constants";
 import { CONTENT_TYPE_LABELS, WEEKDAY_LABELS } from "./constants";
 import { toISODate, weekOf } from "./dates";
 
+type PublishingSourceTask = Omit<ScheduledTask, "status"> & { status: string };
+
 export type PublishRow = {
   detKey: string;
   companyId: string;
@@ -34,10 +36,11 @@ export type CompanyPublishSchedule = {
 
 /** Build the per-company publishing schedule from scheduled content tasks. */
 export function derivePublishingSchedule(
-  tasks: ScheduledTask[],
+  tasks: PublishingSourceTask[],
 ): Map<string, CompanyPublishSchedule> {
   const out = new Map<string, CompanyPublishSchedule>();
   for (const t of tasks) {
+    if (t.status === "CANCELED") continue;
     if (t.kind !== "CONTENT" || !t.type || !t.publishDate || !t.companyId) continue;
     let entry = out.get(t.companyId);
     if (!entry) {
@@ -84,7 +87,7 @@ export type PublishValidation = {
 
 /** §9 criteria (1) plan match and (2) no interruption. */
 export function validatePublishing(
-  tasks: ScheduledTask[],
+  tasks: PublishingSourceTask[],
   companies: {
     id: string;
     name: string;
@@ -141,7 +144,7 @@ export function validatePublishing(
 }
 
 /** Group all publishing rows by ISO date (for a calendar/day view). */
-export function publishingByDay(tasks: ScheduledTask[]): Map<string, PublishRow[]> {
+export function publishingByDay(tasks: PublishingSourceTask[]): Map<string, PublishRow[]> {
   const schedule = derivePublishingSchedule(tasks);
   const byDay = new Map<string, PublishRow[]>();
   for (const entry of schedule.values()) {

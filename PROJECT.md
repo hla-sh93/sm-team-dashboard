@@ -10,8 +10,8 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 > Single source of context for a new session. The original spec is
 > `SOCIAL_SCHEDULER_SPEC.md`; many rules below override it — **this file wins on
 > conflict.** Reflects the code on branch `main` (production) after the access
-> split, per‑piece cards, 6/8 capacity, no‑Friday publishing, preferred shoot
-> day, strict unfinished-only lateness, production+publish company progress, and
+> split, per‑piece cards, 8h/10-item capacity, no‑Friday publishing, preferred shoot
+> day, strict unfinished-only lateness, publish-card company progress, and
 > daily-board task filtering.
 
 ---
@@ -20,7 +20,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**85**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**120**). Enums stored as **String**; `Int[]` (workDays) as JSON.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -29,7 +29,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (85)
+npm test             # vitest (120)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -74,7 +74,7 @@ Same app, same data — the **URL** decides what you see. No authentication.
 ## 3. Data model (Prisma)
 
 ### Employee
-`id, name, role (free‑text Arabic), hoursPerDay (Hla=3, rest 6), workDays (JSON
+`id, name, role (free‑text Arabic), hoursPerDay (default 8), workDays (JSON
 int[] of getDay()), isScheduled, isPhotographer, salary (monthly $), costPerReel
 (per‑reel $ for a freelance photographer; null=salaried), color, rates (JSON
 items/day), …` + ownership relations postOwner/storyOwner/aiReelOwner/
@@ -111,9 +111,12 @@ status, month, year, companyId, …`
 
 ## 4. Pipeline / workflow + card display
 
-Each content item flows: **كتابة (نوال) → تصميم/تصوير (مصمم/مصور) → نشر (عمر)**.
+Each content item usually flows: **كتابة (نوال) → تصميم/تصوير (مصمم/مصور) → نشر (عمر)**.
 Each stage is a card on one person's board; downstream cards are soft‑locked
 («بانتظار…») until `blockedById` is DONE.
+Exception: **التدريب** is managed for planning/publishing/progress, but its
+content is supplied by the trainer according to monthly courses. It skips Nawal's
+WRITE card and starts directly at design → publish.
 
 **One numbered card per piece 🆕 (`lib/cards.ts`).** Posts/stories are **NOT
 batched** — every piece is its own numbered card (`بوست-1`, `ستوري-2`, `ريل-1`,
@@ -129,15 +132,20 @@ each one published on its own day.
 
 ## 5. Capacity / productivity (`lib/capacity.ts`, `lib/constants.ts`)
 
-Designer day = **6h** → **6 posts/day OR 8 stories/day OR 1 AI‑reel/day** (mixes
-allowed up to 6h). Hla (3h) → half. The two models are kept aligned:
-- `TYPE_HOURS` (schedule packing): POST 1h, STORY 0.75h, AI_REEL 6h, REEL 0
+Designer day = **8h** → **10 posts/day OR 10 stories/day OR 1 AI‑reel/day** (mixes
+allowed up to 8h). Per-employee rates can override these defaults. The two models are kept aligned:
+- `TYPE_HOURS` (schedule packing): POST 0.8h, STORY 0.8h, AI_REEL 8h, REEL 0
   (photographer).
-- `DEFAULT_RATES` (workload, items/day): POST 6, STORY 8, AI_REEL 1, REEL 2/3
-  (2 reels per 3 days), PLAN 0.5 (=2 days/company). Per‑employee overrides in
+- `DEFAULT_RATES` (workload, items/day): POST 10, STORY 10, AI_REEL 1, REEL 3/2
+  (3 reels per 2 days), PLAN 0.5 (=2 days/company). Per‑employee overrides in
   `Employee.rates`.
-- **Ad‑hoc effort is in WORK DAYS** (`hours = days × 6`); normalized by the fixed
-  6 so a work‑day = one calendar working day for everyone.
+- **Ad‑hoc effort is in WORK DAYS** (`hours = days × 8`); normalized by the fixed
+  8 so a work‑day = one calendar working day for everyone.
+- **Carousel posts**: the publish card remains `quantity=1` because it is one
+  client-facing post, while the design card's `quantity` is the design-unit /
+  slide count. Example: one 5-slide carousel = 1 published post, 5 design units.
+  Example: carousel 3 + carousel 4 for the same company = 2 published posts,
+  7 design units, and 3 remaining single-post units in a 10-post designer day.
 
 ---
 
@@ -181,18 +189,22 @@ persists, preserving board/status + pinned edits + ad‑hoc.
 
 ### 6.1 Task Deletion Rules
 - **Manual/Ad-hoc Tasks (`isAuto: false`)**: Deleted permanently from the database.
-- **Auto-generated Tasks (`isAuto: true`)**: Soft-deleted (set to `status: "CANCELED"`, pinned). This hides them from the current month's cycle but preserves the underlying company plan, ensuring they regenerate fresh in the following month.
+- **Auto-generated Tasks (`isAuto: true`)**: Soft-deleted (set to `status: "CANCELED"`, pinned). For content pieces, deleting either the production card or the PUBLISH card cancels the matching piece stages for the current month, so the deleted item stays out of both task boards and publishing. The underlying company plan is unchanged, so the item regenerates fresh in the following month's cycle.
 
 ---
 
 ## 7. Workload — plan‑driven burndown (`lib/workload.ts`)
 
 Per person: **committed / done / remaining / free** days (+ pct, type breakdown).
-Plan‑driven (so correct even before a regenerate); **completion never lowers
-committed**. Writer = managed companies with a plan × 2 days. Designer = Σ owned
-posts/6 + stories/8 + aiReels/1. Photographer = Σ **assigned** companies' reels ÷
-rate. **Publisher (عمر)** = one duty‑day per publishing day (≤5 companies/day);
-**capacity = all period days EXCEPT Friday** 🆕. Shown on `/workload` (admin).
+Dated task effort is computed from the task `quantity` and the employee's rates;
+**completion never lowers committed**. Writer cards use the PLAN rate — a company
+plan split into DESIGN and SHOOT write scopes is still charged **once** (the plan
+days are divided across its scopes, never double-counted). Designer
+POST/STORY/AI_REEL cards use their design-unit quantities, photographer load
+uses assigned reel work, and **Publisher (عمر)** = one duty-day per publishing
+day, **capped at capacity** so publishing alone never exceeds 100%. A Friday
+publish date is charged to the previous workday (Thursday). **capacity = all
+period days EXCEPT Friday** 🆕. Shown on `/workload` (admin).
 
 ---
 
@@ -213,7 +225,9 @@ salary + per‑reel cost).
 
 - **schedule.ts** `generateSchedule(year,month)`: rebuild pipeline from plans over
   each cycle; apply June achievements; **preserve** board/status (by
-  pipelineKey+stage) + pinned title/dates/owner/priority + ad‑hoc. Deterministic.
+  pipelineKey+stage), pinned title/dates/owner/priority/quantity, monthly deleted
+  content-piece counts, trainer-supplied training content, and ad‑hoc.
+  Deterministic.
 - **tasks.ts** create/`updateTaskStatus`/`moveCard`/`updateTaskDetails` (always
   pins) / `deleteTasks`. **companies.ts** / **employees.ts** CRUD (persist the new
   finance + cycle + photographer + preferredShootDay fields). All revalidate the
@@ -226,16 +240,22 @@ salary + per‑reel cost).
   chooses local SQLite vs production Postgres.
 - **Seed is NON‑destructive** (`prisma/seed.ts`): seeds a month only when empty;
   upserts employees/companies without overwriting edits (full rebuild =
-  `SEED_FORCE=1`). Includes a **safe idempotent rate correction** (designers
-  STORY 6→8 only if still on the old value) so production picks up the new
-  capacity on deploy. `seed-data.json` carries colors + contract dates.
+  `SEED_FORCE=1`). Includes **safe idempotent rate corrections** (designers POST
+  & STORY 6/8→10, writer PLAN 1→0.5, photographer REEL 2/3→3/2 — each applied only
+  when still on a known old value, so a custom rate is never clobbered) so
+  production picks up the new capacity on deploy. It also removes the legacy
+  generic "publish all companies" ad-hoc task and skips التدريب's writer card.
+  `seed-data.json` carries colors, contract dates, **and contract values** (the
+  company payload seeds `contractValue`/`photographerId` when present, on create
+  or a `SEED_FORCE` rebuild).
 
 ### Seed team / companies
-6 employees: أيمن (Sun→Thu), سابين, حلا (lead, 3h), نوال (writer), عمر
+6 employees: أيمن (Sun→Thu), سابين, حلا (lead/designer), نوال (writer), عمر
 (publisher), المصور (photographer — may be renamed / a 2nd photographer added).
 Managed companies with plans + owners + colors (BW, Phoenitech, مخبر د.نور, برو,
-المول الصيني 20→20, جدارات 15→15, التدريب); design‑only: المدارس, كابرياني.
-Finance values/salaries and any companies you add live in the DB.
+المول الصيني 20→20, جدارات 15→15, التدريب, **وصل للتداول** $600 15P/8R/20S,
+**أغاليا** $150 10P/6R/15S, **التوظيف** 10P/8R — Phoeni Jobs launch); design‑only:
+المدارس, كابرياني. Salaries and any further companies you add live in the DB.
 
 ---
 
@@ -245,11 +265,11 @@ Root = employee area; `/admin/*` = admin area (same shared pages + the rest).
 
 | Route (employee `/` · admin `/admin/…`) | Shows |
 |---|---|
-| `/` , `/admin` | KPIs · **المهام الحرجة** (only not-done tasks overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (production done + publish done ÷ plan over the cycle) · إعادة الجدولة |
-| `/tasks` | Kanban board (default) + **daily view using the same KanbanBoard filtered to today only** + weekly/monthly production calendars. One numbered card per piece; full add/edit/delete; status/board moves. Weekly/monthly calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days** only for unfinished overdue cards. |
+| `/` , `/admin` | KPIs · **المهام الحرجة** (only not-done tasks overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (published PUBLISH cards ÷ plan over the cycle) · إعادة الجدولة |
+| `/tasks` | Kanban board (default) + **daily view using the same KanbanBoard filtered to today only** + weekly/monthly production calendars. One numbered card per piece; full add/edit/delete; status/board moves. **Month view = the month's own cycle bucket + the still-open tail of adjacent cycles dated in this calendar month** (`monthContinuationWhere`), so a 20→20 company (المول) keeps its ongoing 1st–19th pieces visible instead of restarting. Weekly/monthly calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days** only for unfinished overdue cards. |
 | `/publishing` | Publishing calendar by publishDate (no Fridays); numbered chips; no‑interruption banner |
 | `/admin/workload` | Whole‑team burndown |
-| `/reports`, `/admin/reports` | KPIs · إنجاز خطة الشركات (production done + publish done) · **تشخيص التأخيرات** (unfinished overdue grouped by stage + by person, with days) · per‑person ledger (every task: start→end · actual duration · lateness days) · CSV |
+| `/reports`, `/admin/reports` | KPIs · إنجاز خطة الشركات (published PUBLISH cards) · **تشخيص التأخيرات** (unfinished overdue grouped by stage + by person, with days) · per‑person ledger (every task: start→end · actual duration · lateness days) · CSV |
 | `/admin/finance` | P&L per contract, break‑even, team capacity |
 | `/admin/companies` | CRUD + plan + owners + color + contract value + contract date + photographer + **preferred shoot day** |
 | `/admin/team` | CRUD + rates (designers items/day; photographer “X reels every Y days”) + workdays + salary + per‑reel cost |
@@ -271,15 +291,23 @@ forms `{Task,Member,Company}Form`.
   day apart; stories one/day (may share a feed day); no week is empty.
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
   20→20); else calendar month.
-- **Capacity**: designer 6 posts/day OR 8 stories/day OR 1 AI‑reel/day (Hla half);
-  photographer 2 reels/3 days; writer 2 days/company; publisher 4–5 companies/day.
+- **Capacity**: designer 10 posts/day OR 10 stories/day OR 1 AI‑reel/day;
+  photographer 3 reels/2 days; writer 2 days/company; publisher daily coverage.
+- **Carousel capacity**: a carousel is one post in the company plan/publishing
+  progress, but it consumes one design unit per slide on the designer workload.
+- **Regenerate preservation**: إعادة الجدولة may reorder work dates and publish
+  dates, but it preserves pinned card edits including carousel quantity. A
+  deleted auto-generated content piece remains canceled for the current month
+  across production and PUBLISH stages, even if dates move after priority changes.
+- **Trainer-supplied training content**: التدريب stays managed and keeps its
+  design/publish workload, company progress, and publishing calendar entries,
+  but it does not generate Nawal WRITE work or writer cost allocation.
 - **Cards**: one numbered card per piece (no batching); writing per company.
 - **Multiple photographers**: assign reels per company; optional **soft preferred
   shoot day** per company (editable).
-- **Company achievement = production DONE + publish DONE**. A reel/photoshoot or
-  design piece does not count toward company progress just because the publish
-  card is done; both the production stage and the publish stage for the same
-  `pipelineKey` must be done.
+- **Company achievement = publish-card completion**. A content piece counts when
+  its PUBLISH card is done/published; upstream production closure is operational
+  state and is not required for company-facing progress.
 - **Lateness = unfinished + deadline before today**. Done states are `READY`,
   `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
   Completed historical June tasks keep their real task date as completion date,

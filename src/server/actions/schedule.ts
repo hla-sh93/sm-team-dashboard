@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/db";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
+import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
+import { isTrainerSuppliedContentCompany } from "@/lib/content-source";
 import { loadState } from "@/lib/schedule-data";
 import { companyCycle, contractDayOf, formatDateShort, parseWorkDays } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
@@ -111,6 +113,8 @@ export async function generateSchedule(year: number, month: number) {
     const publisherId =
       state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
+    const trainerSuppliedContent = (id: string) =>
+      isTrainerSuppliedContentCompany(state.companies.find((c) => c.id === id));
     // Contract-cycle label for the writer's plan card (e.g. "دورة 20 حزيران – 19
     // تموز"). end is exclusive, so the last shown day is end − 1.
     const cycleLabel = (id: string) => {
@@ -129,6 +133,7 @@ export async function generateSchedule(year: number, month: number) {
     const items = result.tasks
       .filter((t) => t.kind === "CONTENT" && t.companyId && t.type)
       .map((t) => ({
+        id: t.detKey,
         companyId: t.companyId!,
         type: t.type as "POST" | "REEL" | "AI_REEL" | "STORY",
         assigneeId: t.assigneeId,
@@ -148,6 +153,7 @@ export async function generateSchedule(year: number, month: number) {
       cycleLabel,
       writerWorkDays,
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
+      skipWritingForCompany: trainerSuppliedContent,
     });
     applyAchievements(pipe, achievementsFor(year, month));
 
@@ -168,23 +174,14 @@ export async function generateSchedule(year: number, month: number) {
         readyDate: true,
         assigneeId: true,
         priority: true,
+        quantity: true,
+        companyId: true,
+        type: true,
+        publishDate: true,
+        kind: true,
       },
     });
-    const snap = new Map(existing.map((e) => [`${e.pipelineKey}|${e.stage}`, e]));
-    for (const c of pipe) {
-      const s = snap.get(`${c.pipelineKey}|${c.stage}`);
-      if (!s) continue;
-      c.board = s.board as PipelineTask["board"];
-      c.status = s.status;
-      if (s.isPinned) {
-        c.isPinned = true;
-        if (s.title != null) c.title = s.title;
-        if (s.workDate) c.workDate = iso(s.workDate);
-        if (s.readyDate) c.readyDate = iso(s.readyDate);
-        if (s.assigneeId) c.assigneeId = s.assigneeId;
-        if (s.priority) c.priority = s.priority;
-      }
-    }
+    applyPipelinePreservation(pipe, existing);
 
     const adhocTasks = result.tasks.filter((t) => t.kind === "ADHOC");
 
