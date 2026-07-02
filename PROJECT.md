@@ -11,8 +11,11 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 > `SOCIAL_SCHEDULER_SPEC.md`; many rules below override it — **this file wins on
 > conflict.** Reflects the code on branch `main` (production) after the access
 > split, per‑piece cards, 8h/10-item capacity, no‑Friday publishing, preferred shoot
-> day, strict unfinished-only lateness, publish-card company progress, and
-> daily-board task filtering.
+> day, strict unfinished-only lateness, publish-card company progress,
+> daily-board task filtering, and the 2026‑07 audit fixes: regen preserves work
+> history + photo-session status, ad-hoc of every priority is packed, day→day
+> contiguous contract cycles, dynamic open-work carryover across months, and
+> per-cycle card numbering with a carryover badge.
 
 ---
 
@@ -20,7 +23,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**120**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**128**). Enums stored as **String**; `Int[]` (workDays) as JSON.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -29,7 +32,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (120)
+npm test             # vitest (128)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -124,9 +127,15 @@ batched** — every piece is its own numbered card (`بوست-1`, `ستوري-2`
 whole batch). The **same number = the same piece** across design → publish →
 publishing calendar, so a piece is traceable end‑to‑end and the publisher marks
 each one published on its own day.
-- `buildContentNumbers` numbers per `(company,type)` by publish order (shared
-  across a piece's stages via pipelineKey). `cardLabelFor` → `بوست-N` / `جدولة
-  بوست-N` (feed) / `نشر ريل-N` (reels). `groupTasksIntoCards` = one card per task.
+- `buildContentNumbers` numbers per `(company,type,CYCLE)` by publish order —
+  **numbering restarts at 1 every cycle bucket** (year/month), so June leftovers
+  shown next to July's plan never inflate the numbers (a 6-piece plan always
+  reads 1..6, never 7..12). The number is shared across a piece's stages via
+  pipelineKey. `cardLabelFor` → `بوست-N` / `جدولة بوست-N` (feed) / `نشر ريل-N`
+  (reels). `groupTasksIntoCards` = one card per task.
+- **Carryover badge (`CyclePill`)**: a card whose bucket month differs from the
+  month being viewed shows «متبقّي من دورة <شهر>» (kanban, critical panel, daily
+  queue) — fully dynamic: in August the badge reads تموز/حزيران automatically.
 
 ---
 
@@ -156,11 +165,15 @@ allowed up to 8h). Per-employee rates can override these defaults. The two model
 ### Contract cycles (`lib/dates.ts`)
 Each company distributes its plan over its **contract cycle**:
 `companyCycle(year, month, contractDay)` = `[day of THIS month → day of NEXT
-month)` (e.g. signed on the 20th → a **20→20** window). `contractStartDate` null
-→ the calendar month. Tasks stay tagged with the cycle's **start** month even
-when dates spill into the next calendar month. `packingWindowDays` extends the
-employee packing canvas to the furthest deadline; `monthGridDays(…, until)`
-extends calendar grids to show the spill‑over. Seeded: جدارات 15→15, المول 20→20.
+month)` (e.g. signed on the 20th → a **20→20** window). The end is anchored to
+the **same day of the next month** (clamped to its real length), NOT a fixed
++30 days — so consecutive cycles are exactly **contiguous** (bucket N's end ==
+bucket N+1's start; no dead day after 31-day months, no February overlap).
+`contractStartDate` null → the calendar month. Tasks stay tagged with the
+cycle's **start** month even when dates spill into the next calendar month.
+`packingWindowDays` extends the employee packing canvas to the furthest
+deadline; `monthGridDays(…, until)` extends calendar grids to show the
+spill‑over. Seeded: جدارات 15→15, المول 20→20.
 
 ### Publishing distribution
 - **NO publishing on Friday** 🆕 — each company's cycle days are filtered to
@@ -184,8 +197,17 @@ extends calendar grids to show the spill‑over. Seeded: جدارات 15→15, �
   back to that weekday when possible (earlier only → safe); not mandatory; any
   shoot is editable manually.
 
+### Packing (§5.4)
+**URGENT and ALL ad-hoc tasks (any priority) pack ASAP** — earliest free day ≤
+deadline, URGENT first via the rank sort; routine plan content packs JIT
+(latest day ≤ deadline). Every packed task consumes daily capacity; overflow is
+flagged, never silent.
+
 Wrapped by **`generateSchedule`** (server action) which expands the pipeline and
-persists, preserving board/status + pinned edits + ad‑hoc.
+persists, preserving board/status + pinned edits + ad‑hoc + **work-history
+timestamps** (`startedAt`/`finishedAt`/`completedAt`) + **photo-session
+statuses** (matched by detKey, falling back to company|kind|no when a
+regenerated shoot date moved).
 
 ### 6.1 Task Deletion Rules
 - **Manual/Ad-hoc Tasks (`isAuto: false`)**: Deleted permanently from the database.
@@ -225,9 +247,11 @@ salary + per‑reel cost).
 
 - **schedule.ts** `generateSchedule(year,month)`: rebuild pipeline from plans over
   each cycle; apply June achievements; **preserve** board/status (by
-  pipelineKey+stage), pinned title/dates/owner/priority/quantity, monthly deleted
-  content-piece counts, trainer-supplied training content, and ad‑hoc.
-  Deterministic.
+  pipelineKey+stage), pinned title/dates/owner/priority/quantity, **work-history
+  timestamps** (startedAt/finishedAt/completedAt — reports' actual-duration
+  metrics survive every regen), **photo-session statuses** (detKey →
+  company|kind|no fallback), monthly deleted content-piece counts,
+  trainer-supplied training content, and ad‑hoc. Deterministic.
 - **tasks.ts** create/`updateTaskStatus`/`moveCard`/`updateTaskDetails` (always
   pins) / `deleteTasks`. **companies.ts** / **employees.ts** CRUD (persist the new
   finance + cycle + photographer + preferredShootDay fields). All revalidate the
@@ -270,8 +294,8 @@ Root = employee area; `/admin/*` = admin area (same shared pages + the rest).
 
 | Route (employee `/` · admin `/admin/…`) | Shows |
 |---|---|
-| `/` , `/admin` | KPIs · **المهام الحرجة** (only not-done tasks overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (published PUBLISH cards ÷ plan over the cycle) · إعادة الجدولة |
-| `/tasks` | Kanban board (default) + **daily view using the same KanbanBoard filtered to today only** + weekly/monthly production calendars. One numbered card per piece; full add/edit/delete; status/board moves. **Month view = the month's own cycle bucket + the still-open tail of adjacent cycles dated in this calendar month** (`monthContinuationWhere`), so a 20→20 company (المول) keeps its ongoing 1st–19th pieces visible instead of restarting. Weekly/monthly calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days** only for unfinished overdue cards. |
+| `/` , `/admin` | KPIs · **المهام الحرجة** (only not-done tasks overdue or due ≤2 working days, days‑late) · **إنجاز الفريق** (per‑person donuts: done/total/remaining, counts all assigned) · **مهام اليوم** = a **tab per employee** (always all of them), each showing tasks / **عطلة** / **متفرّغ لعمل إضافي** · **إنجاز الشركات** (published PUBLISH cards ÷ plan over the cycle) · إعادة الجدولة. **Loads the same live set as the board**: bucket + cycle continuation + open carryover, so overdue prior-month work reaches the daily queue and critical panel (with the «متبقّي من دورة …» badge). |
+| `/tasks` | Kanban board (default) + **daily view using the same KanbanBoard filtered to today only** + weekly/monthly production calendars. One numbered card per piece; full add/edit/delete; status/board moves. **Month view = the month's own cycle bucket + the still-open tail of adjacent cycles dated in this calendar month (`monthContinuationWhere`) + ALL still-open work from earlier buckets regardless of dates (`openCarryoverWhere` — dynamic: any past month)**, so a 20→20 company (المول) keeps its ongoing 1st–19th pieces visible and overdue June cards follow the team into July until finished/deleted. Carryover cards carry the «متبقّي من دورة …» badge. Weekly/monthly calendar excludes REEL & PUBLISH (production view, on workdays). Late badge shows **N days** only for unfinished overdue cards. |
 | `/publishing` | Publishing calendar by publishDate (no Fridays); numbered chips; no‑interruption banner |
 | `/admin/workload` | Whole‑team burndown |
 | `/reports`, `/admin/reports` | KPIs · إنجاز خطة الشركات (published PUBLISH cards) · **تشخيص التأخيرات** (unfinished overdue grouped by stage + by person, with days) · per‑person ledger (every task: start→end · actual duration · lateness days) · CSV |
@@ -280,9 +304,10 @@ Root = employee area; `/admin/*` = admin area (same shared pages + the rest).
 | `/admin/team` | CRUD + rates (designers items/day; photographer “X reels every Y days”) + workdays + salary + per‑reel cost |
 | `/admin/priorities` | company priority ordering |
 
-Shared UI: `Sidebar` (path‑aware), `MonthBar`, `calendar/*`, `KanbanBoard`,
-`components/ui/{Donut,pills}` (`Pill`/`PriorityPill`/`LatePill`/`daysLateOf`),
-forms `{Task,Member,Company}Form`.
+Shared UI: `Sidebar` (path‑aware), `MonthBar`, `calendar/*`, `KanbanBoard`
+(takes `year`/`month` to badge carryover cards), `components/ui/{Donut,pills}`
+(`Pill`/`PriorityPill`/`LatePill`/`CyclePill`/`daysLateOf`), forms
+`{Task,Member,Company}Form`.
 
 ---
 
@@ -295,7 +320,19 @@ forms `{Task,Member,Company}Form`.
 - **Publishing**: per contract cycle; **NO Friday publishing** (Thu OK); feed ≥1
   day apart; stories one/day (may share a feed day); no week is empty.
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
-  20→20); else calendar month.
+  20→20); else calendar month. Consecutive cycles are contiguous — no gap, no
+  overlap.
+- **Open-work carryover (dynamic)**: unfinished work from ANY earlier cycle
+  bucket follows the team into the current month's board/overview until it is
+  finished or deleted — never month-specific; in August the carryover shows
+  July's (and any older) leftovers automatically, each badged with its cycle.
+- **Card numbering is per cycle**: every cycle numbers its pieces 1..N per
+  (company, type); numbers never continue across months.
+- **Regen never erases history**: startedAt/finishedAt/completedAt and
+  photo-session statuses survive إعادة الجدولة (which runs implicitly on every
+  task add/edit/delete).
+- **Ad-hoc of any priority is packed ASAP** and consumes capacity; URGENT goes
+  first.
 - **Capacity**: designer 10 posts/day OR 10 stories/day OR 1 AI‑reel/day;
   photographer 3 reels/2 days; writer 2 days/company; publisher daily coverage.
 - **Carousel capacity**: a carousel is one post in the company plan/publishing
@@ -335,10 +372,19 @@ forms `{Task,Member,Company}Form`.
   contract cycle (safe — only pulls shoots earlier). Preferred shoot day is soft.
 - Late tasks are flagged/diagnosed but **not auto‑rescheduled** — a separate
   “معالجة المتأخرات” recovery action (re‑pack overdue forward with overtime) is a
-  planned, deliberate step kept out of the deterministic regenerate.
+  planned, deliberate step kept out of the deterministic regenerate. (They DO
+  carry over visibly into the current month now.)
 - `/reports` actual duration is “—” until a task is moved through the board.
 - June achievements hard‑coded (`JUNE_2026_DONE`); other months start empty.
 - Two Prisma schema files kept in sync manually.
+- Publisher workload is capped at 100% by design — a publisher never shows
+  “over” even with extra ad-hoc load.
+- When a plan is denser than its cycle allows (e.g. 14 feed items in a 26-day
+  canvas), the ≥1-day feed gap falls back to adjacent days **silently** (no
+  warning yet).
+- `validatePublishing` (§9 plan-match / no-interruption checks) exists and is
+  tested but is not wired into any screen.
+- No ESLint config — `npm run lint` opens an interactive setup prompt.
 
 ---
 

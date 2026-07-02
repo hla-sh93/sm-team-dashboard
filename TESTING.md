@@ -1,9 +1,11 @@
 # sm-team-dashboard — QA Test Plan (current system)
 
 Block‑by‑block test plan for the **current** build: employee/admin access split,
-per‑piece numbered cards, 6/8 designer capacity, contract cycles, **no Friday
-publishing**, multi‑photographer + soft preferred shoot day, plan‑driven workload,
-finance P&L, and delay diagnosis. Each case: **steps → expected → side effects**.
+per‑piece numbered cards (per‑cycle numbering + carryover badge), contract
+cycles (day→day contiguous), **no Friday publishing**, multi‑photographer +
+soft preferred shoot day, plan‑driven workload, finance P&L, delay diagnosis,
+dynamic open‑work carryover across months, and regen‑safe work history +
+photo‑session statuses. Each case: **steps → expected → side effects**.
 
 - Reference: `PROJECT.md` (wins on conflict). Locale Arabic/RTL, light/aqua,
   months 0‑based, dates LOCAL midnight, currency `$`.
@@ -21,21 +23,21 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **120/120 pass** | S1 |
+| ENV‑3 | `npm test` | **128/128 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; seeded designers use 8h days and POST/STORY=10 rates | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 21 files / 120 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 128 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
-| `tests/acceptance.test.ts` | 17 | SPEC acceptance (scheduling, ownership, photographer, determinism, canceled publishing…) |
+| `tests/acceptance.test.ts` | 18 | SPEC acceptance (scheduling, ownership, photographer, determinism, canceled publishing, **ad-hoc of every priority gets packed — URGENT first**) |
 | `tests/schemas.test.ts` | 9 | Zod validation (employee / company / task) |
 | `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
 | `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
-| `tests/cycles.test.ts` | 7 | contract-cycle plan distribution (20→20, 15→15), cross-month packing |
+| `tests/cycles.test.ts` | 10 | contract-cycle plan distribution (20→20, 15→15), cross-month packing, **day→day cycle end (not +30d), consecutive-cycle contiguity across 31-day months/February/year boundary** |
 | `tests/workload.test.ts` | 9 | default rates; required‑vs‑capacity load; over ⇒ 0 free; publisher cap at capacity; Friday→previous‑workday charge; single‑count of a split write plan; month window |
 | `tests/task-state.test.ts` | 6 | done-state markers, historical completion date, unfinished-only lateness, board/status normalization |
 | `tests/daily-work.test.ts` | 6 | today queue selection, active-work precedence, capacity fill, carousel slide units, publisher grouping |
@@ -46,10 +48,11 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/persistence.test.ts` | 4 | manual edits, soft-deletes, and photo-session status survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
 | `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
-| `tests/pipeline.test.ts` | 6 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, and trainer-supplied training content |
+| `tests/pipeline.test.ts` | 7 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, trainer-supplied training content, **work-history timestamps carried across regeneration** |
+| `tests/cards.test.ts` | 2 | **per-cycle card numbering restarts at 1 each bucket; design+publish share one number** |
 | `tests/seed-data.test.ts` | 3 | seed files avoid broad publishing tasks, use per-piece publisher cards, and skip training write cards |
 | `tests/finance.test.ts` | 2 | writer cost not allocated to trainer-supplied training content; contribution-margin (direct per-piece cost) vs full-absorption |
-| `tests/month-continuation.test.ts` | 2 | month view = cycle bucket **+** the still-open tail of other cycles dated in the calendar month |
+| `tests/month-continuation.test.ts` | 3 | month view = cycle bucket **+** the still-open tail of other cycles dated in the calendar month, **+ `openCarryoverWhere` (open work from ANY earlier bucket, done-state mirrored)** |
 | `tests/db-integration.test.ts` | 1 | DB integration; self-skips if DB/env is unavailable |
 
 ### 0.2 Current locked logic rules
@@ -62,6 +65,11 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Task Deletion**: Manual tasks (`isAuto=false`) are permanently deleted. Auto-generated tasks (`isAuto=true`) are soft-deleted (`status="CANCELED"`, pinned) for the current month only. Content-piece deletion cancels both production and PUBLISH stages, remains hidden from publishing, and still suppresses one monthly piece if regenerated dates move.
 - **Local/production DB parity**: use one idempotent data-fix script against the chosen `DATABASE_URL`; no manual divergent local-only edits.
 - **Month-view continuity (contract cycles)**: a calendar-month board/overview shows its own cycle bucket **plus** the still-open tail of adjacent cycles whose publish/work/deadline date falls inside that calendar month — so a 20→20 company (e.g. المول) keeps its ongoing pieces visible on the 1st–19th instead of appearing to "restart from post 1". Completed prior-cycle work stays archived (only unfinished continuation is added). Engine/bucket tagging is unchanged; this is a read/view union only.
+- **Open-work carryover (DYNAMIC, any earlier month)**: `openCarryoverWhere` additionally pulls ALL still-open tasks from every EARLIER bucket regardless of their dates — overdue June cards follow the team into July, and in August the same rule automatically surfaces July's (and any older) leftovers. Used by BOTH the tasks board and the home overview (daily queue + critical panel). Carryover cards show the «متبقّي من دورة <شهر>» badge (month name read from the card's own bucket — never hardcoded).
+- **Per-cycle numbering**: `buildContentNumbers` groups by (company | type | year | month) — every cycle numbers its pieces 1..N; numbers never continue across months (a 6-piece plan can never read AI-8..AI-12).
+- **Regen-safe history**: إعادة الجدولة (also triggered implicitly by task add/edit/delete) preserves `startedAt`/`finishedAt`/`completedAt` and photo-session statuses (detKey match, company|kind|no fallback). Reports' actual-duration metrics never reset.
+- **Ad-hoc packing**: ad-hoc tasks of EVERY priority are packed ASAP and consume capacity; URGENT still goes first.
+- **Contract cycles are contiguous**: cycle end = same day of the next month (clamped), so bucket N's end == bucket N+1's start — no dead day after 31-day months, no February overlap.
 
 ---
 
@@ -107,6 +115,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | HOME‑5 | publisher on a Thursday | عمر shows his publish tasks (tasks take precedence over an “off” weekday) | S2 |
 | HOME‑6 | **إنجاز الشركات** | done ÷ plan over the cycle; counts a piece when its PUBLISH card is DONE/PUBLISHED | S2 |
 | HOME‑7 | إعادة الجدولة | success toast (stage counts); pipeline rebuilt. On failure → error toast with the real reason. If the run has gaps (missing writer/designer/photographer) → a **warning** toast lists them | S1 |
+| HOME‑8 | **carryover reaches the home page** | with unfinished prior-month tasks (any dates), the critical panel + daily queue show them with the «متبقّي من دورة …» badge; finishing/deleting them removes them everywhere | **S2** |
 
 ---
 
@@ -124,6 +133,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | KAN‑9 | **خطة دورة label** | نوال’s write cards read “كتابة بوستات وستوريز — <company> · دورة <start> – <end>” for the cycle they cover (e.g. المول 20 حزيران – 19 تموز) after إعادة الجدولة | S2 |
 | KAN‑10 | **collapse groups** | click a group header → its cards fold away (chevron flips), header + count stay; click again → expand. “طيّ الكل / فتح الكل” folds/unfolds every group at once. Reduces clutter/scroll on heavy columns | S2 |
 | KAN‑11 | **يومي** | renders the exact same Kanban board UI/grouping/actions as `بورد`, but only cards whose `workDate`/`readyDate`/`publishDate` is today | **S2** |
+| KAN‑12 | **per-cycle numbering** | in a month view that shows carryover, each cycle numbers its own pieces 1..N (e.g. جدارات July AI reels read `ريل AI-1..6`, never `7..12`); the same piece keeps one number across design/publish | **S2** |
+| KAN‑13 | **carryover badge** | every card from another cycle bucket shows «متبقّي من دورة <شهر>» with that card’s own month name; current-month cards never show it; in the NEXT month the badge text follows automatically (dynamic) | **S2** |
 | CAL‑1 | calendar (شهري/أسبوعي) | items by workDate; **REEL & PUBLISH excluded** (production view); Friday column clear of work | **S2** |
 | CAL‑2 | calendar card | owner read‑only (edit via ✏️); status select; pills incl. متأخّر N يوم | S2 |
 | CAL‑3 | cycle spill | monthly grid extends to show a 20→20 company’s next‑month days | S2 |
@@ -167,6 +178,9 @@ A case PASSES only if the expected result AND every side effect hold.
 | GEN‑7 | edit carousel quantity → regenerate | design `quantity`/slide count survives; publish remains one post | **S1** |
 | GEN‑8 | delete a content card → regenerate after date/priority changes | the deleted monthly piece remains `CANCELED`; no matching PUBLISH card appears | **S1** |
 | GEN‑9 | regenerate التدريب | content pieces start at design; no WRITE card for Nawal; publishing still generated | **S1** |
+| GEN‑10 | move a card to DOING/DONE (timestamps set) → regenerate | `startedAt`/`finishedAt`/`completedAt` unchanged; reports’ المدة الفعلية unchanged | **S1** |
+| GEN‑11 | mark a photo session تم التصوير/تم التسليم → add any ad-hoc task (implicit regen) | session status is NOT reset to لم يبدأ | **S1** |
+| GEN‑12 | create a NORMAL-priority ad-hoc task | it gets a workDate (ASAP) and consumes that day’s capacity; URGENT still lands earlier | **S1** |
 
 ---
 
@@ -191,6 +205,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | CYC‑2 | جدارات (day 15) | in [15 → 15) | S2 |
 | CYC‑3 | company w/o contract date | stays within the calendar month | S2 |
 | CYC‑4 | cross‑month work | every non‑reel design task gets a workDate (extended packing window) | S2 |
+| CYC‑5 | **cycle contiguity** | for any contract day, bucket N’s cycle END equals bucket N+1’s START (check a 31-day month and February) — no un-covered day, no double-covered day | **S2** |
 
 ---
 
@@ -283,10 +298,10 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 120 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 128 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
-- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
-- [ ] PUB‑1 PASS (no Friday), CYC‑1..4, PHO‑2/3, RATE‑1/2, KAN‑11, REP‑2/3 PASS.
+- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, **GEN‑10/11/12**, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
+- [ ] PUB‑1 PASS (no Friday), CYC‑1..5, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, REP‑2/3 PASS.
 - [ ] One DB backup stored outside the repo.
 
 **Owner:** ____  **Date:** ____  **Result:** PASS / FAIL
