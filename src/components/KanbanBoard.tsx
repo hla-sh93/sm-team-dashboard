@@ -16,10 +16,10 @@ import {
   type Board,
   type Stage,
 } from "@/lib/constants";
-import { formatDateShort } from "@/lib/dates";
+import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
-import { Pill, PriorityPill, LatePill, daysLateOf } from "@/components/ui/pills";
+import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
@@ -65,6 +65,8 @@ export default function KanbanBoard({
   employees,
   companies,
   groupBy = "company",
+  year,
+  month,
   onEdit,
   onDelete,
 }: {
@@ -73,6 +75,11 @@ export default function KanbanBoard({
   employees: Employee[];
   companies: Company[];
   groupBy?: BoardGroupBy;
+  /** The cycle bucket being viewed — cards from OTHER buckets (carryover of
+   *  unfinished work) get a «متبقّي من دورة …» badge so they're never mistaken
+   *  for extra pieces in this month's plan. */
+  year?: number;
+  month?: number;
   onEdit?: (repr: Task, ids: string[], label: string) => void;
   onDelete?: (ids: string[], label: string) => void;
 }) {
@@ -305,6 +312,9 @@ export default function KanbanBoard({
 
         {/* dates · duration · lateness */}
         <div className="flex items-center gap-1 flex-wrap">
+          {year != null && month != null && (t.year !== year || t.month !== month) && (
+            <CyclePill monthLabel={ARABIC_MONTHS[t.month]} />
+          )}
           {t.kind === "CONTENT" && t.stage !== "PUBLISH" && (t.quantity ?? 1) > 1 && (
             <Pill>{t.quantity} وحدات تصميم</Pill>
           )}

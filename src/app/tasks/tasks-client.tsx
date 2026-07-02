@@ -444,6 +444,8 @@ export default function TasksClient({
           allTasks={tasks}
           employees={employees}
           companies={companies}
+          year={year}
+          month={month}
           groupBy={groupBy}
           onEdit={openEdit}
           onDelete={onDelete}

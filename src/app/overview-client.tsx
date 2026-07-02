@@ -21,7 +21,9 @@ import {
   addWorkdaysFor,
   parseWorkDays,
   ARABIC_DAYS,
+  ARABIC_MONTHS,
 } from "@/lib/dates";
+import { CyclePill } from "@/components/ui/pills";
 import type { Employee, Company, Task } from "@/types";
 import { AlertTriangle, Building2, CalendarClock, Send, Users, Zap, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -278,6 +280,9 @@ export default function OverviewClient({
                         <span className="text-xs font-medium truncate">
                           {cardLabelFor(card.repr, card.count, reelNum, coName)}
                         </span>
+                        {(card.repr.year !== year || card.repr.month !== month) && (
+                          <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} />
+                        )}
                         {dl && (
                           <span
                             className={
@@ -436,9 +441,12 @@ export default function OverviewClient({
                       {card.repr.overflow && (
                         <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
                       )}
-                      <span className="text-xs truncate">
+                      <span className="text-xs truncate flex-1">
                         {cardLabelFor(card.repr, card.count, reelNum, coName)}
                       </span>
+                      {(card.repr.year !== year || card.repr.month !== month) && (
+                        <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} />
+                      )}
                     </div>
                   ))
                 )}

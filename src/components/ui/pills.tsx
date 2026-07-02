@@ -34,6 +34,16 @@ export function PriorityPill({ priority }: { priority: string }) {
   );
 }
 
+/** "Leftover from a previous cycle" badge — a card whose bucket month differs
+ *  from the month being viewed (unfinished work following the team). */
+export function CyclePill({ monthLabel }: { monthLabel: string }) {
+  return (
+    <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-warning/10 text-warning font-semibold whitespace-nowrap">
+      متبقّي من دورة {monthLabel}
+    </span>
+  );
+}
+
 /** Overdue / late badge. */
 export function LatePill({ days }: { days?: number }) {
   const label =

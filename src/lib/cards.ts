@@ -14,14 +14,18 @@ import type { Task } from "@/types";
 // Content pieces are never batched anymore; everything is an individual card.
 export const isGroupableCard = (_t: Task) => false;
 
-/** Map every content task id → its number per (company,type), by publish order.
- *  The design + publish cards of one piece share a number via pipelineKey. */
+/** Map every content task id → its number per (company,type,CYCLE), by publish
+ *  order. The design + publish cards of one piece share a number via
+ *  pipelineKey. Numbering RESTARTS AT 1 EACH CYCLE (the task's year/month
+ *  bucket): a view mixing June leftovers with July's plan must show بوست-1..6
+ *  per cycle — continuous numbering across cycles made a 6-piece plan look
+ *  like 12. */
 export function buildContentNumbers(allTasks: Task[]): Map<string, number> {
   const byId = new Map<string, number>();
   const groups = new Map<string, Task[]>();
   for (const t of allTasks) {
     if (t.type === "POST" || t.type === "STORY" || t.type === "REEL" || t.type === "AI_REEL") {
-      const k = `${t.companyId}|${t.type}`;
+      const k = `${t.companyId}|${t.type}|${t.year}|${t.month}`;
       const arr = groups.get(k) ?? [];
       arr.push(t);
       groups.set(k, arr);
