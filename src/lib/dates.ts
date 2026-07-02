@@ -342,6 +342,11 @@ export function clampDayToMonth(year: number, month: number, day: number): numbe
  * company signed on the 20th gets a 20→20 window. When omitted (null), the
  * cycle is the plain calendar month (back-compatible default).
  *
+ * The end is anchored to the SAME DAY of the next month (clamped to its real
+ * length), NOT a fixed +30 days — a fixed span left one uncovered day after
+ * every 31-day month and overlapped around February, so consecutive cycles
+ * were not contiguous. day→day makes bucket N's end exactly bucket N+1's start.
+ *
  * Returns the start (inclusive), end (EXCLUSIVE = next cycle's first day), and
  * the list of calendar days in the window.
  */
@@ -355,8 +360,8 @@ export function companyCycle(
   if (contractDay && contractDay > 1) {
     const sd = clampDayToMonth(year, month, contractDay);
     start = new Date(year, month, sd);
-    end = new Date(start);
-    end.setDate(end.getDate() + 30);
+    const ed = clampDayToMonth(year, month + 1, contractDay);
+    end = new Date(year, month + 1, ed);
   } else {
     start = new Date(year, month, 1);
     end = new Date(year, month + 1, 1);

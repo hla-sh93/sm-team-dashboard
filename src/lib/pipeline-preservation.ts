@@ -16,6 +16,12 @@ export type ExistingPipelineTaskState = {
   type: string | null;
   publishDate: Date | null;
   kind: string | null;
+  // Work history — preserved together with board/status so regen never resets
+  // when work actually began/finished (reports compute actual durations from
+  // these).
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  completedAt?: Date | null;
 };
 
 type CanceledPiece = {
@@ -165,6 +171,9 @@ export function applyPipelinePreservation(
     if (!saved) continue;
     task.board = saved.board as PipelineTask["board"];
     task.status = saved.status;
+    task.startedAt = saved.startedAt ?? null;
+    task.finishedAt = saved.finishedAt ?? null;
+    task.completedAt = saved.completedAt ?? null;
     if (saved.isPinned) {
       task.isPinned = true;
       if (saved.title != null) task.title = saved.title;

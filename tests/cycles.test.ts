@@ -51,6 +51,34 @@ describe("contract cycle helpers", () => {
     expect(contractDayOf(new Date(2026, 4, 15))).toBe(15);
     expect(contractDayOf(null)).toBe(1);
   });
+
+  it("cycle end is day→day (same day next month), not a fixed +30 days", () => {
+    // July has 31 days: a day-20 cycle must reach Aug 20, leaving no dead day.
+    const july = companyCycle(2026, 6, 20);
+    expect(toISODate(july.start)).toBe("2026-07-20");
+    expect(toISODate(july.end)).toBe("2026-08-20");
+  });
+
+  it("consecutive cycles are contiguous across 31-day months and February", () => {
+    // Every bucket's end must be exactly the next bucket's start — no gap
+    // (lost publishing day) and no overlap (double-booked day).
+    for (const day of [7, 13, 20, 30, 31]) {
+      for (let m = 0; m < 11; m++) {
+        const a = companyCycle(2026, m, day);
+        const b = companyCycle(2026, m + 1, day);
+        expect(
+          toISODate(a.end),
+          `day-${day} contract: bucket ${m} end vs bucket ${m + 1} start`,
+        ).toBe(toISODate(b.start));
+      }
+    }
+  });
+
+  it("rolls the cycle over a year boundary (December → January)", () => {
+    const dec = companyCycle(2026, 11, 20);
+    expect(toISODate(dec.start)).toBe("2026-12-20");
+    expect(toISODate(dec.end)).toBe("2027-01-20");
+  });
 });
 
 describe("scheduler distributes over the contract cycle", () => {

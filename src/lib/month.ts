@@ -90,6 +90,24 @@ export function monthContinuationWhere(year: number, month: number) {
   };
 }
 
+/**
+ * Prisma `where` for OPEN (unfinished) work from EARLIER cycle buckets,
+ * regardless of its dates. Overdue June cards whose dates all sit inside June
+ * would otherwise vanish from every July view — unfinished work must follow
+ * the team into the current month until it's done or canceled. The conditions
+ * mirror isTaskDoneState (status/board/completedAt/finishedAt) so anything the
+ * app considers done stays archived under its own month.
+ */
+export function openCarryoverWhere(year: number, month: number) {
+  return {
+    status: { notIn: ["CANCELED", "READY", "PUBLISHED"] },
+    board: { not: "DONE" },
+    completedAt: null,
+    finishedAt: null,
+    OR: [{ year: { lt: year } }, { year, month: { lt: month } }],
+  };
+}
+
 export function monthLabel({ year, month }: YM): string {
   return `${ARABIC_MONTHS[month]} ${year}`;
 }

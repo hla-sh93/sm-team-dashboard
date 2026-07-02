@@ -230,6 +230,34 @@ describe("§9 acceptance — priorities (criterion 9)", () => {
       expect(earliestUrgent).toBeLessThanOrEqual(earliestRoutine);
     }
   });
+
+  it("ad-hoc tasks of EVERY priority are packed (workDate + capacity), not only URGENT", () => {
+    const state = specState(YEAR, MONTH, false);
+    state.adhoc = (["NORMAL", "IMPORTANT", "URGENT"] as const).map((priority) => ({
+      id: `a_${priority}`,
+      title: `adhoc ${priority}`,
+      companyId: null,
+      assigneeId: EMP.sabin,
+      hours: 6,
+      priority,
+      status: "NOT_STARTED" as const,
+      readyDate: new Date(YEAR, MONTH, 20),
+    }));
+    const { tasks } = buildSchedule(state);
+    const adhoc = tasks.filter((t) => t.kind === "ADHOC");
+    expect(adhoc).toHaveLength(3);
+    for (const t of adhoc) {
+      expect(t.workDate, `${t.title} must get a work day`).not.toBeNull();
+      // Placed on a deadline-respecting day (or flagged overflow when impossible).
+      if (!t.overflow && t.readyDate) {
+        expect(toISODate(t.workDate!) <= toISODate(t.readyDate)).toBe(true);
+      }
+    }
+    // URGENT still goes first among the ASAP set.
+    const at = (id: string) => adhoc.find((t) => t.detKey === `adhoc:${id}`)!.workDate!.getTime();
+    expect(at("a_URGENT")).toBeLessThanOrEqual(at("a_IMPORTANT"));
+    expect(at("a_URGENT")).toBeLessThanOrEqual(at("a_NORMAL"));
+  });
 });
 
 describe("§9 acceptance — determinism (criterion 11)", () => {

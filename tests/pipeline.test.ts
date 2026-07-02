@@ -96,6 +96,26 @@ describe("pipeline expansion", () => {
     expect(pipe.find((task) => task.stage === "PUBLISH")?.quantity).toBe(1);
   });
 
+  it("carries work-history timestamps (started/finished/completed) across regeneration", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
+    const startedAt = new Date(2026, 6, 2, 9, 30);
+    const finishedAt = new Date(2026, 6, 4, 14, 0);
+    const completedAt = new Date(2026, 6, 4, 14, 0);
+
+    applyPipelinePreservation(pipe, [
+      saved({ board: "DONE", status: "READY", startedAt, finishedAt, completedAt }),
+    ]);
+
+    const design = pipe.find((task) => task.stage === "DESIGN")!;
+    expect(design.board).toBe("DONE");
+    expect(design.startedAt).toEqual(startedAt);
+    expect(design.finishedAt).toEqual(finishedAt);
+    expect(design.completedAt).toEqual(completedAt);
+    // Cards without a preserved match keep no phantom history.
+    const publish = pipe.find((task) => task.stage === "PUBLISH")!;
+    expect(publish.startedAt ?? null).toBeNull();
+  });
+
   it("keeps a deleted production card out of the matching publish stage", () => {
     const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
 

@@ -179,9 +179,28 @@ export async function generateSchedule(year: number, month: number) {
         type: true,
         publishDate: true,
         kind: true,
+        startedAt: true,
+        finishedAt: true,
+        completedAt: true,
       },
     });
     applyPipelinePreservation(pipe, existing);
+
+    // Photo-session statuses (تم التصوير/المونتاج/التسليم) must survive the
+    // replace below too — matched by detKey, falling back to (company, kind,
+    // session no.) when a regenerated shoot date shifted the detKey.
+    const existingSessions = await prisma.photoSession.findMany({
+      where: { isAuto: true, year, month },
+      select: { detKey: true, companyId: true, kind: true, no: true, status: true },
+    });
+    const sessionStatusByDet = new Map<string, string>();
+    const sessionStatusByPos = new Map<string, string>();
+    for (const s of existingSessions) {
+      if (s.status === "NOT_STARTED") continue;
+      if (s.detKey) sessionStatusByDet.set(s.detKey, s.status);
+      const pos = `${s.companyId}|${s.kind}|${s.no}`;
+      if (!sessionStatusByPos.has(pos)) sessionStatusByPos.set(pos, s.status);
+    }
 
     const adhocTasks = result.tasks.filter((t) => t.kind === "ADHOC");
 
@@ -190,33 +209,44 @@ export async function generateSchedule(year: number, month: number) {
       await tx.task.deleteMany({ where: { isAuto: true, year, month } });
       await tx.photoSession.deleteMany({ where: { isAuto: true, year, month } });
 
+      const now = new Date();
       await tx.task.createMany({
-        data: pipe.map((t) => ({
-          id: t.id,
-          kind: t.kind,
-          stage: t.stage,
-          board: t.board,
-          type: t.type,
-          title: t.title,
-          companyId: t.companyId,
-          assigneeId: t.assigneeId,
-          hours: 0,
-          quantity: t.quantity,
-          priority: t.priority,
-          status: t.status,
-          publishDate: D(t.publishDate),
-          readyDate: D(t.readyDate),
-          workDate: D(t.workDate),
-          week: t.week,
-          blockedById: t.blockedById,
-          pipelineKey: t.pipelineKey,
-          overflow: false,
-          isAuto: true,
-          isPinned: t.isPinned ?? false,
-          completedAt: t.board === "DONE" ? new Date() : null,
-          month,
-          year,
-        })),
+        data: pipe.map((t) => {
+          // Preserved work history (or a sensible first-time stamp): started
+          // when the card ever left TODO, finished/completed only when DONE.
+          const done = t.board === "DONE";
+          const finishedAt = done ? (t.finishedAt ?? t.completedAt ?? now) : null;
+          const startedAt =
+            t.startedAt ?? (t.board !== "TODO" ? (finishedAt ?? now) : null);
+          return {
+            id: t.id,
+            kind: t.kind,
+            stage: t.stage,
+            board: t.board,
+            type: t.type,
+            title: t.title,
+            companyId: t.companyId,
+            assigneeId: t.assigneeId,
+            hours: 0,
+            quantity: t.quantity,
+            priority: t.priority,
+            status: t.status,
+            publishDate: D(t.publishDate),
+            readyDate: D(t.readyDate),
+            workDate: D(t.workDate),
+            week: t.week,
+            blockedById: t.blockedById,
+            pipelineKey: t.pipelineKey,
+            overflow: false,
+            isAuto: true,
+            isPinned: t.isPinned ?? false,
+            startedAt,
+            finishedAt,
+            completedAt: done ? (t.completedAt ?? finishedAt) : null,
+            month,
+            year,
+          };
+        }),
       });
 
       if (result.sessions.length > 0) {
@@ -227,7 +257,10 @@ export async function generateSchedule(year: number, month: number) {
             shootDate: s.shootDate,
             deliverBy: s.deliverBy,
             reelCount: s.reelCount,
-            status: s.status,
+            status:
+              sessionStatusByDet.get(s.detKey) ??
+              sessionStatusByPos.get(`${s.companyId}|${s.kind}|${s.no}`) ??
+              s.status,
             month: s.month,
             year: s.year,
             isAuto: true,

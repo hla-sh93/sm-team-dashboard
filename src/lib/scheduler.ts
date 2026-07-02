@@ -502,8 +502,11 @@ function packEmployee(
   }
 
   const free = empTasks.filter((t) => !(t.isPinned && t.workDate));
+  // ASAP set = urgent OR ad-hoc of ANY priority (§5.4 "URGENT/ADHOC → ASAP").
+  // The sort below still puts URGENT first, so a normal ad-hoc never jumps
+  // ahead of an urgent one — but it always gets a slot and consumes capacity.
   const urgent = free.filter(
-    (t) => t.priority === "URGENT",
+    (t) => t.priority === "URGENT" || t.kind === "ADHOC",
   );
   const routine = free.filter(
     (t) => !(t.priority === "URGENT" || t.kind === "ADHOC"),

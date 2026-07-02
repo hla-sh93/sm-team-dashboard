@@ -54,6 +54,11 @@ export type PipelineTask = {
   priority: string;
   status: string;
   isPinned?: boolean; // set when a prior manual edit is preserved on regen
+  // Work-history timestamps carried over from a prior run by the preservation
+  // step — regen must never erase who started/finished what and when.
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  completedAt?: Date | null;
   month: number; // 0-based
   year: number;
 };

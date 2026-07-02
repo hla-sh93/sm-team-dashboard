@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthContinuationWhere } from "@/lib/month";
+import { monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 
 describe("monthContinuationWhere", () => {
   it("excludes the current cycle bucket and windows the calendar month", () => {
@@ -25,5 +25,20 @@ describe("monthContinuationWhere", () => {
     const dec = where.OR.find((c) => "publishDate" in c)!.publishDate!;
     expect(dec.gte.getTime()).toBe(new Date(2026, 11, 1).getTime());
     expect(dec.lt.getTime()).toBe(new Date(2027, 0, 1).getTime());
+  });
+});
+
+describe("openCarryoverWhere", () => {
+  it("targets only EARLIER buckets and only still-open work (mirrors isTaskDoneState)", () => {
+    const where = openCarryoverWhere(2026, 6); // July (0-based)
+
+    // Earlier buckets: any prior year, or same year with a smaller month.
+    expect(where.OR).toEqual([{ year: { lt: 2026 } }, { year: 2026, month: { lt: 6 } }]);
+
+    // Open = not done under ANY of the app's done signals, and never canceled.
+    expect(where.status).toEqual({ notIn: ["CANCELED", "READY", "PUBLISHED"] });
+    expect(where.board).toEqual({ not: "DONE" });
+    expect(where.completedAt).toBeNull();
+    expect(where.finishedAt).toBeNull();
   });
 });
