@@ -313,7 +313,7 @@ export default function KanbanBoard({
         {/* dates · duration · lateness */}
         <div className="flex items-center gap-1 flex-wrap">
           {year != null && month != null && (t.year !== year || t.month !== month) && (
-            <CyclePill monthLabel={ARABIC_MONTHS[t.month]} />
+            <CyclePill monthLabel={ARABIC_MONTHS[t.month]} late={isLate(t)} />
           )}
           {t.kind === "CONTENT" && t.stage !== "PUBLISH" && (t.quantity ?? 1) > 1 && (
             <Pill>{t.quantity} وحدات تصميم</Pill>

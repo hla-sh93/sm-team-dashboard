@@ -8,6 +8,7 @@ import { MonthBar } from "@/components/MonthBar";
 import {
   ROLE_LABELS,
   isTaskDoneState,
+  isTaskLateState,
   taskColor,
 } from "@/lib/constants";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
@@ -281,7 +282,7 @@ export default function OverviewClient({
                           {cardLabelFor(card.repr, card.count, reelNum, coName)}
                         </span>
                         {(card.repr.year !== year || card.repr.month !== month) && (
-                          <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} />
+                          <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} late={overdue} />
                         )}
                         {dl && (
                           <span
@@ -445,7 +446,10 @@ export default function OverviewClient({
                         {cardLabelFor(card.repr, card.count, reelNum, coName)}
                       </span>
                       {(card.repr.year !== year || card.repr.month !== month) && (
-                        <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} />
+                        <CyclePill
+                          monthLabel={ARABIC_MONTHS[card.repr.month]}
+                          late={isTaskLateState(card.repr)}
+                        />
                       )}
                     </div>
                   ))
