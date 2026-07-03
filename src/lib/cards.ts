@@ -14,17 +14,24 @@ import type { Task } from "@/types";
 // Content pieces are never batched anymore; everything is an individual card.
 export const isGroupableCard = (_t: Task) => false;
 
-/** Map every content task id → its number per (company,type,CYCLE), by publish
- *  order. The design + publish cards of one piece share a number via
- *  pipelineKey. Numbering RESTARTS AT 1 EACH CYCLE (the task's year/month
- *  bucket): a view mixing June leftovers with July's plan must show بوست-1..6
- *  per cycle — continuous numbering across cycles made a 6-piece plan look
- *  like 12. */
+/** Map every content task id → its piece number.
+ *  The STORED `pieceNo` (assigned once at generation, per company+type by
+ *  publish order within the piece's own cycle) always wins: a piece keeps its
+ *  number for life, so a June-cycle ستوري-6 reads 6 even when its 5 published
+ *  siblings are archived out of the loaded view.
+ *  Legacy rows without a stored number fall back to computing per
+ *  (company,type,CYCLE) over the loaded tasks — numbering restarts at 1 each
+ *  cycle bucket, and the design+publish cards of one piece share a number via
+ *  pipelineKey. */
 export function buildContentNumbers(allTasks: Task[]): Map<string, number> {
   const byId = new Map<string, number>();
   const groups = new Map<string, Task[]>();
   for (const t of allTasks) {
     if (t.type === "POST" || t.type === "STORY" || t.type === "REEL" || t.type === "AI_REEL") {
+      if (t.pieceNo != null) {
+        byId.set(t.id, t.pieceNo);
+        continue;
+      }
       const k = `${t.companyId}|${t.type}|${t.year}|${t.month}`;
       const arr = groups.get(k) ?? [];
       arr.push(t);

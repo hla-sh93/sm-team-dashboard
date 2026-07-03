@@ -121,6 +121,10 @@ model Task {
   title       String?
   hours       Float     @default(0)
   quantity    Int       @default(1)              // batch size (e.g. "6 بوست" = 6)
+  // Stable per-cycle piece number (بوست-N / ستوري-N) assigned at generation —
+  // a piece keeps its number for life even when the rest of its cycle is
+  // archived, so a June-cycle ستوري-6 never shows up renumbered as ستوري-1.
+  pieceNo     Int?
   priority    String    @default("NORMAL")
   status      String    @default("NOT_STARTED")
   publishDate DateTime?

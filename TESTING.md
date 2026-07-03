@@ -1,4 +1,4 @@
-# sm-team-dashboard — QA Test Plan (current system)
+﻿# sm-team-dashboard — QA Test Plan (current system)
 
 Block‑by‑block test plan for the **current** build: employee/admin access split,
 per‑piece numbered cards (per‑cycle numbering + carryover badge), contract
@@ -23,13 +23,13 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **130/130 pass** | S1 |
+| ENV‑3 | `npm test` | **132/132 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; seeded designers use 8h days and POST/STORY=10 rates | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 130 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 132 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
@@ -48,8 +48,8 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/persistence.test.ts` | 4 | manual edits, soft-deletes, and photo-session status survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
 | `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
-| `tests/pipeline.test.ts` | 7 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, trainer-supplied training content, **work-history timestamps carried across regeneration** |
-| `tests/cards.test.ts` | 2 | **per-cycle card numbering restarts at 1 each bucket; design+publish share one number** |
+| `tests/pipeline.test.ts` | 8 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, trainer-supplied training content, **work-history timestamps carried across regeneration, stable piece numbers assigned at generation** |
+| `tests/cards.test.ts` | 3 | **stored pieceNo always wins (a cycle's last open piece keeps its number); per-cycle numbering restarts at 1 each bucket; design+publish share one number** |
 | `tests/seed-data.test.ts` | 3 | seed files avoid broad publishing tasks, use per-piece publisher cards, and skip training write cards |
 | `tests/finance.test.ts` | 2 | writer cost not allocated to trainer-supplied training content; contribution-margin (direct per-piece cost) vs full-absorption |
 | `tests/month-continuation.test.ts` | 3 | month view = cycle bucket **+** the still-open tail of other cycles dated in the calendar month, **+ `openCarryoverWhere` (open work from ANY earlier bucket, done-state mirrored)** |
@@ -66,7 +66,7 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Local/production DB parity**: use one idempotent data-fix script against the chosen `DATABASE_URL`; no manual divergent local-only edits.
 - **Month-view continuity (contract cycles)**: a calendar-month board/overview shows its own cycle bucket **plus** the still-open tail of adjacent cycles whose publish/work/deadline date falls inside that calendar month — so a 20→20 company (e.g. المول) keeps its ongoing pieces visible on the 1st–19th instead of appearing to "restart from post 1". Completed prior-cycle work stays archived (only unfinished continuation is added). Engine/bucket tagging is unchanged; this is a read/view union only.
 - **Open-work carryover (DYNAMIC, any earlier month)**: `openCarryoverWhere` additionally pulls ALL still-open tasks from every EARLIER bucket regardless of their dates — overdue June cards follow the team into July, and in August the same rule automatically surfaces July's (and any older) leftovers. Used by BOTH the tasks board and the home overview (daily queue + critical panel). Carryover cards show the «متبقّي من دورة <شهر>» badge (month name read from the card's own bucket — never hardcoded).
-- **Per-cycle numbering**: `buildContentNumbers` groups by (company | type | year | month) — every cycle numbers its pieces 1..N; numbers never continue across months (a 6-piece plan can never read AI-8..AI-12).
+- **Per-cycle numbering, STORED for life**: piece numbers are assigned at generation (`Task.pieceNo`, per company+type by publish order within the cycle) and never recomputed from a view's loaded subset — the June cycle's ستوري-6 reads 6 forever, even as the only open survivor among archived siblings. Numbers restart at 1 each cycle (a 6-piece plan can never read AI-8..AI-12). Legacy rows: `npm run db:backfill-numbers[:prod]` once, idempotent.
 - **Regen-safe history**: إعادة الجدولة (also triggered implicitly by task add/edit/delete) preserves `startedAt`/`finishedAt`/`completedAt` and photo-session statuses (detKey match, company|kind|no fallback). Reports' actual-duration metrics never reset.
 - **Ad-hoc packing**: ad-hoc tasks of EVERY priority are packed ASAP and consume capacity; URGENT still goes first.
 - **Contract cycles are contiguous**: cycle end = same day of the next month (clamped), so bucket N's end == bucket N+1's start — no dead day after 31-day months, no February overlap.
@@ -300,7 +300,7 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 130 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 132 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
 - [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, **GEN‑10/11/12**, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
 - [ ] PUB‑1 PASS (no Friday), CYC‑1..6, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, REP‑2/3 PASS.

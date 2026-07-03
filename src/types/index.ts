@@ -57,6 +57,9 @@ export type Task = {
   title: string | null;
   hours: number;
   quantity: number;
+  /** Stable per-cycle piece number (بوست-N / ستوري-N …) assigned at generation
+   *  — the piece keeps it for life, whatever subset of the cycle a view loads. */
+  pieceNo: number | null;
   priority: Priority | string;
   status: Status | string;
   publishDate: Date | null;

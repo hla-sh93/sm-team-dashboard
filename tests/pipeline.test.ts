@@ -96,6 +96,27 @@ describe("pipeline expansion", () => {
     expect(pipe.find((task) => task.stage === "PUBLISH")?.quantity).toBe(1);
   });
 
+  it("assigns stable piece numbers at generation, shared by design + publish cards", () => {
+    const pipe = expandPipeline(
+      [
+        { ...baseItem, id: "c|POST|2026-07-09|1", publishDate: "2026-07-09" },
+        { ...baseItem, id: "c|POST|2026-07-05|1", publishDate: "2026-07-05" },
+        { ...baseItem, id: "c|POST|2026-07-15|1", publishDate: "2026-07-15" },
+      ],
+      opts,
+    );
+    const numOf = (pk: string, stage: string) =>
+      pipe.find((t) => t.pipelineKey === pk && t.stage === stage)?.pieceNo;
+
+    // Numbered by publish order (5th → 1, 9th → 2, 15th → 3), same number on
+    // both stages of a piece; the WRITE card carries no number.
+    expect(numOf("c|POST|2026-07-05|1", "DESIGN")).toBe(1);
+    expect(numOf("c|POST|2026-07-09|1", "DESIGN")).toBe(2);
+    expect(numOf("c|POST|2026-07-15|1", "DESIGN")).toBe(3);
+    expect(numOf("c|POST|2026-07-09|1", "PUBLISH")).toBe(2);
+    expect(pipe.find((t) => t.stage === "WRITE")?.pieceNo ?? null).toBeNull();
+  });
+
   it("carries work-history timestamps (started/finished/completed) across regeneration", () => {
     const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
     const startedAt = new Date(2026, 6, 2, 9, 30);

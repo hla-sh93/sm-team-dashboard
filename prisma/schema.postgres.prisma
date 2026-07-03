@@ -83,6 +83,7 @@ model Task {
   title       String?
   hours       Float     @default(0)
   quantity    Int       @default(1)
+  pieceNo     Int?
   priority    String    @default("NORMAL")
   status      String    @default("NOT_STARTED")
   publishDate DateTime?

@@ -239,6 +239,7 @@ export async function generateSchedule(year: number, month: number) {
             assigneeId: t.assigneeId,
             hours: 0,
             quantity: t.quantity,
+            pieceNo: t.pieceNo ?? null,
             priority: t.priority,
             status: t.status,
             publishDate: D(t.publishDate),

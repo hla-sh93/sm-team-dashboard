@@ -53,6 +53,10 @@ export type PipelineTask = {
   quantity: number;
   priority: string;
   status: string;
+  /** Stable per-(company,type) piece number by publish order — assigned here
+   *  at generation so the piece keeps its number for life (a June-cycle
+   *  ستوري-6 stays 6 even when its 5 published siblings are archived). */
+  pieceNo?: number | null;
   isPinned?: boolean; // set when a prior manual edit is preserved on regen
   // Work-history timestamps carried over from a prior run by the preservation
   // step — regen must never erase who started/finished what and when.
@@ -225,6 +229,32 @@ export function expandPipeline(
       month,
       year,
     });
+  }
+
+  // 4) Piece numbers — per (company,type), by publish date then pipelineKey,
+  // shared by a piece's production + publish cards. Stored on the task so any
+  // view shows the same number regardless of which subset of the cycle it
+  // loaded (done pieces are archived out of the live board).
+  const numGroups = new Map<string, Map<string, string | null>>(); // co|type → pk → minPublish
+  for (const t of out) {
+    if (t.stage === "WRITE" || !t.type || !t.pipelineKey) continue;
+    const g = numGroups.get(`${t.companyId}|${t.type}`) ?? new Map();
+    const cur = g.get(t.pipelineKey);
+    if (cur === undefined || (t.publishDate && (!cur || t.publishDate < cur))) {
+      g.set(t.pipelineKey, t.publishDate);
+    }
+    numGroups.set(`${t.companyId}|${t.type}`, g);
+  }
+  const numOf = new Map<string, number>(); // pipelineKey → piece number
+  for (const g of numGroups.values()) {
+    const ordered = [...g.entries()].sort(
+      (a, b) => (a[1] ?? "9999").localeCompare(b[1] ?? "9999") || a[0].localeCompare(b[0]),
+    );
+    ordered.forEach(([pk], i) => numOf.set(pk, i + 1));
+  }
+  for (const t of out) {
+    if (t.stage === "WRITE" || !t.pipelineKey) continue;
+    t.pieceNo = numOf.get(t.pipelineKey) ?? null;
   }
 
   return out;

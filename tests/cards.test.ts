@@ -26,6 +26,18 @@ const piece = (
   }) as unknown as Task;
 
 describe("buildContentNumbers — per-cycle numbering", () => {
+  it("a stored pieceNo ALWAYS wins: the last open piece of a cycle keeps its number", () => {
+    // June cycle had 6 stories; 5 published (archived — not loaded). The lone
+    // open survivor carries pieceNo=6 from generation and must read ستوري-6,
+    // NEVER be renumbered to 1 by the loaded-subset fallback.
+    const survivor = piece("jun_last", 5, 30, { pieceNo: 6 } as never);
+    const julyPlan = [1, 2, 3].map((i) => piece(`jul_${i}`, 6, 2 * i));
+    const num = buildContentNumbers([survivor, ...julyPlan]);
+
+    expect(num.get("jun_last")).toBe(6);
+    expect(julyPlan.map((t) => num.get(t.id))).toEqual([1, 2, 3]);
+  });
+
   it("restarts at 1 for each cycle bucket instead of counting across months", () => {
     // June leftovers (cycle bucket month=5) shown TOGETHER with July's plan
     // (month=6) — exactly the carryover view. A 6-piece July plan must read

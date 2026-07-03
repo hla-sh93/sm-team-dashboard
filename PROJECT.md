@@ -1,4 +1,4 @@
-# sm-team-dashboard — Project Handoff / Full Documentation
+﻿# sm-team-dashboard — Project Handoff / Full Documentation
 
 A social‑media team management, scheduling **and finance** dashboard (Arabic,
 **RTL**, light theme, aqua primary). It runs a digital‑marketing team that serves
@@ -23,7 +23,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**130**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**132**). Enums stored as **String**; `Int[]` (workDays) as JSON.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -32,7 +32,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (130)
+npm test             # vitest (132)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -127,12 +127,17 @@ batched** — every piece is its own numbered card (`بوست-1`, `ستوري-2`
 whole batch). The **same number = the same piece** across design → publish →
 publishing calendar, so a piece is traceable end‑to‑end and the publisher marks
 each one published on its own day.
-- `buildContentNumbers` numbers per `(company,type,CYCLE)` by publish order —
-  **numbering restarts at 1 every cycle bucket** (year/month), so June leftovers
-  shown next to July's plan never inflate the numbers (a 6-piece plan always
-  reads 1..6, never 7..12). The number is shared across a piece's stages via
-  pipelineKey. `cardLabelFor` → `بوست-N` / `جدولة بوست-N` (feed) / `نشر ريل-N`
-  (reels). `groupTasksIntoCards` = one card per task.
+- **Piece numbers are STORED (`Task.pieceNo`)**, assigned once at generation in
+  `expandPipeline` per (company,type) by publish order within the cycle, shared
+  by a piece's design + publish cards. A piece keeps its number for life: the
+  June cycle's ستوري-6 stays 6 in every view even when its 5 published siblings
+  are archived out of the loaded set. Numbering restarts at 1 every cycle
+  (a 6-piece plan always reads 1..6, never 7..12). `buildContentNumbers`
+  prefers the stored number and falls back to computing per
+  (company,type,cycle) for legacy rows; `scripts/backfill-piece-numbers.ts`
+  (`db:backfill-numbers[:prod]`) backfills those once, idempotently.
+  `cardLabelFor` → `بوست-N` / `جدولة بوست-N` (feed) / `نشر ريل-N` (reels).
+  `groupTasksIntoCards` = one card per task.
 - **Carryover badge (`CyclePill`)**: a card whose bucket month differs from the
   month being viewed shows «متبقّي من دورة <شهر>» (kanban, critical panel, daily
   queue) — fully dynamic: in August the badge reads تموز/حزيران automatically.
