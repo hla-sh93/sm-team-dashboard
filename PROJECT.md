@@ -23,7 +23,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**128**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**130**). Enums stored as **String**; `Int[]` (workDays) as JSON.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -32,7 +32,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (128)
+npm test             # vitest (130)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -197,11 +197,23 @@ spill‑over. Seeded: جدارات 15→15, المول 20→20.
   back to that weekday when possible (earlier only → safe); not mandatory; any
   shoot is editable manually.
 
+### No work before the contract start 🆕
+A company's `contractStartDate` is a HARD floor for every auto-generated date:
+design/story deadlines (§5.3), packed work days, writer-card starts, reel
+shoots, deliveries, and the photoshoot session are all clamped to ≥ the
+contract date. In a contract's **FIRST cycle**, reel publishes are additionally
+placed ≥ 4 days in (shoot −3 + deliver −1 must fit INSIDE the contract) — so a
+July-signed client (التوظيف/أغاليا) can never get June prep dates or phantom
+"late" June work. Later cycles are untouched: an ONGOING client's prior-month
+prep (photoshoot staging, early shoots) is legitimate and unchanged. Manual
+(ad-hoc, pinned) tasks are the user's authority and are never clamped.
+
 ### Packing (§5.4)
 **URGENT and ALL ad-hoc tasks (any priority) pack ASAP** — earliest free day ≤
 deadline, URGENT first via the rank sort; routine plan content packs JIT
 (latest day ≤ deadline). Every packed task consumes daily capacity; overflow is
-flagged, never silent.
+flagged, never silent. Candidate days respect the company's contract-start
+floor.
 
 Wrapped by **`generateSchedule`** (server action) which expands the pipeline and
 persists, preserving board/status + pinned edits + ad‑hoc + **work-history
@@ -322,6 +334,10 @@ Shared UI: `Sidebar` (path‑aware), `MonthBar`, `calendar/*`, `KanbanBoard`
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
   20→20); else calendar month. Consecutive cycles are contiguous — no gap, no
   overlap.
+- **No work before contract start**: no auto-generated date (write/design/
+  shoot/deliver/photoshoot/work day) may precede `contractStartDate`; a new
+  contract's first-cycle reels publish ≥ 4 days in so the shoot+delivery lead
+  stays inside the contract. Ongoing clients keep prior-month prep.
 - **Open-work carryover (dynamic)**: unfinished work from ANY earlier cycle
   bucket follows the team into the current month's board/overview until it is
   finished or deleted — never month-specific; in August the carryover shows

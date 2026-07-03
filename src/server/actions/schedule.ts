@@ -125,6 +125,15 @@ export async function generateSchedule(year: number, month: number) {
       last.setDate(last.getDate() - 1);
       return `دورة ${formatDateShort(start)} – ${formatDateShort(last)}`;
     };
+    // Writing never starts before the company's contract start date.
+    const notBeforeISO = (id: string) => {
+      const cs = state.companies.find((c) => c.id === id)?.contractStartDate;
+      if (!cs) return null;
+      const d = new Date(cs);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate(),
+      ).padStart(2, "0")}`;
+    };
     const iso = (d: Date | null) =>
       d
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -154,6 +163,7 @@ export async function generateSchedule(year: number, month: number) {
       writerWorkDays,
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
       skipWritingForCompany: trainerSuppliedContent,
+      notBeforeISO,
     });
     applyAchievements(pipe, achievementsFor(year, month));
 

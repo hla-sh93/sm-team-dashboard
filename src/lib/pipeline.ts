@@ -101,6 +101,9 @@ export function expandPipeline(
     idPrefix?: string;
     writerWorkDays: number[];
     skipWritingForCompany?: (companyId: string) => boolean;
+    // Optional: floor date (YYYY-MM-DD) per company — the WRITE card's start is
+    // clamped to it so writing never begins before the contract start date.
+    notBeforeISO?: (companyId: string) => string | null;
   },
 ): PipelineTask[] {
   const out: PipelineTask[] = [];
@@ -132,7 +135,10 @@ export function expandPipeline(
   for (const [co, scopes] of scopesByCompany) {
     for (const scope of scopes) {
       const end = earliestStart.get(`${co}|${scope}`) ?? null;
-      const start = end ? backWorkdays(end, 2, opts.writerWorkDays) : null;
+      let start = end ? backWorkdays(end, 2, opts.writerWorkDays) : null;
+      // Writing can start with the contract, never before it (first cycle).
+      const nb = opts.notBeforeISO?.(co) ?? null;
+      if (start && nb && start < nb) start = nb;
       out.push({
         id: writeId(co, scope),
         kind: "CONTENT_WRITING",

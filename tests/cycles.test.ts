@@ -149,3 +149,62 @@ describe("scheduler distributes over the contract cycle", () => {
     expect(designWork.every((t) => t.workDate != null)).toBe(true);
   });
 });
+
+describe("new contract — NO work before the contract start date", () => {
+  const photographer = (): EmployeeInput => ({
+    id: "ph1",
+    name: "مصور",
+    role: "photographer",
+    hoursPerDay: 8,
+    workDays: [6, 0, 1, 2, 3],
+    isScheduled: false,
+    isPhotographer: true,
+  });
+
+  it("first cycle: every work/ready/shoot/deliver date is on/after the contract start", () => {
+    // Contract signed July 1st, 2026 — like التوظيف / أغاليا. Reels included so
+    // the photographer path (batch shoots, photoshoot session) is exercised.
+    const start = new Date(2026, 6, 1);
+    const r = buildSchedule({
+      year: 2026,
+      month: 6,
+      employees: [emp(), photographer()],
+      companies: [co({ contractStartDate: start, posts: 10, stories: 6, reels: 8 })],
+    });
+    const floor = start.getTime();
+    for (const t of r.tasks.filter((x) => x.companyId === "c1")) {
+      if (t.workDate) expect(t.workDate.getTime(), `${t.detKey} workDate`).toBeGreaterThanOrEqual(floor);
+      if (t.readyDate) expect(t.readyDate.getTime(), `${t.detKey} readyDate`).toBeGreaterThanOrEqual(floor);
+    }
+    for (const s of r.sessions) {
+      expect(s.shootDate.getTime(), `${s.detKey} shootDate`).toBeGreaterThanOrEqual(floor);
+      expect(s.deliverBy.getTime(), `${s.detKey} deliverBy`).toBeGreaterThanOrEqual(floor);
+    }
+    // First-cycle reels leave the shoot+delivery lead INSIDE the contract:
+    // no reel publishes in the first 4 days.
+    const minReelPublish = new Date(2026, 6, 5).getTime();
+    const reels = r.tasks.filter((t) => t.type === "REEL");
+    expect(reels.length).toBe(8); // plan match preserved
+    for (const t of reels) {
+      expect(t.publishDate!.getTime(), `${t.detKey} publish`).toBeGreaterThanOrEqual(minReelPublish);
+    }
+  });
+
+  it("an ONGOING contract keeps its pre-cycle prep (prior-month shoots unchanged)", () => {
+    // Contract signed back in January — by July the client is ongoing, so the
+    // photoshoot may still be staged in the prior month's tail (June).
+    const r = buildSchedule({
+      year: 2026,
+      month: 6,
+      employees: [emp(), photographer()],
+      companies: [co({ contractStartDate: new Date(2026, 0, 20), posts: 4, stories: 0, reels: 4 })],
+    });
+    const cycleStart = new Date(2026, 6, 20).getTime();
+    const photoshoot = r.sessions.find((s) => s.kind === "PHOTOSHOOT")!;
+    expect(photoshoot).toBeTruthy();
+    // Prior-month staging still allowed for ongoing clients…
+    expect(photoshoot.shootDate.getTime()).toBeLessThan(cycleStart);
+    // …but never before the contract itself (trivially true here).
+    expect(photoshoot.shootDate.getTime()).toBeGreaterThan(new Date(2026, 0, 20).getTime());
+  });
+});

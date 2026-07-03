@@ -5,7 +5,7 @@
  * companies, produce PhotoSessions (one photoshoot per client + reel batches)
  * and the per-reel ready/shoot dates.
  */
-import { batchSizes, backWorkday, addWorkdaysFor, prevMonth, weeks } from "./dates";
+import { batchSizes, backWorkday, forwardWorkday, addWorkdaysFor, prevMonth, weeks } from "./dates";
 import type { PhotoKind, PhotoStatus } from "./constants";
 import { getWorkingDaysInMonth } from "./dates";
 
@@ -57,6 +57,9 @@ export function buildPhotoSessions(
     preferredShootDay?: number | null;
     cycleStart?: Date | null;
     cycleEnd?: Date | null;
+    /** Contract start — no shoot/delivery may precede it (a new client has no
+     *  prior-month prep before day one of the contract). */
+    notBefore?: Date | null;
   }[],
   photographerWorkDays: number[],
 ): PhotographerResult {
@@ -111,11 +114,17 @@ export function buildPhotoSessions(
 
     // ---- Session 1: PHOTOSHOOT (§4.6 rule 1) ----
     // Two clients per day, filling the latest prior-month working days first.
+    // Never before the contract start — a brand-new client's first photoshoot
+    // happens on/after day one of the contract, not as prior-month prep.
     const dayFromEnd = Math.floor(ci / 2);
     const shootIdx = Math.max(0, priorWork.length - 1 - dayFromEnd);
-    const photoShootDate = priorWork.length
+    let photoShootDate = priorWork.length
       ? new Date(priorWork[shootIdx])
       : backWorkday(new Date(year, month, 1), photoWork);
+    const nb = co.notBefore ?? null;
+    if (nb && photoShootDate.getTime() < nb.getTime()) {
+      photoShootDate = forwardWorkday(nb, photoWork);
+    }
     const photoDeliver = addWorkdaysFor(photoShootDate, 2, photoWork);
     sessions.push({
       detKey: `${co.companyId}|PHOTOSHOOT|${toKeyDate(photoShootDate)}|1`,
@@ -163,12 +172,18 @@ export function buildPhotoSessions(
         }
         if (d.getDay() === pref) shoot = d;
       }
-      // deliver = backWorkday(min(epub − 1, shoot + 3))
+      // HARD floor: never shoot before the contract start (first cycle of a
+      // new client). Overrides the back-scheduled lead and the soft preference.
+      if (nb && shoot.getTime() < nb.getTime()) {
+        shoot = forwardWorkday(nb, photoWork);
+      }
+      // deliver = backWorkday(min(epub − 1, shoot + 3)), never before the shoot.
       const deliverTarget =
         shiftCal(epub, -1).getTime() < shiftCal(shoot, 3).getTime()
           ? shiftCal(epub, -1)
           : shiftCal(shoot, 3);
-      const deliver = backWorkday(deliverTarget, photoWork);
+      let deliver = backWorkday(deliverTarget, photoWork);
+      if (deliver.getTime() < shoot.getTime()) deliver = new Date(shoot);
 
       // Invariants (§4.6 rule 5 / §9): shoot ≤ deliver ≤ shoot+3, deliver < epub,
       // shoot not in the last cycle-week.

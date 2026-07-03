@@ -23,13 +23,13 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **128/128 pass** | S1 |
+| ENV‑3 | `npm test` | **130/130 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; seeded designers use 8h days and POST/STORY=10 rates | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 128 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 130 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
@@ -37,7 +37,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/schemas.test.ts` | 9 | Zod validation (employee / company / task) |
 | `tests/access-control.test.ts` | 7 | **employee area never exposes any `/admin` route** (guards ACC‑1/6/7) |
 | `tests/schema-sync.test.ts` | 7 | SQLite ↔ Postgres Prisma models stay identical |
-| `tests/cycles.test.ts` | 10 | contract-cycle plan distribution (20→20, 15→15), cross-month packing, **day→day cycle end (not +30d), consecutive-cycle contiguity across 31-day months/February/year boundary** |
+| `tests/cycles.test.ts` | 12 | contract-cycle plan distribution (20→20, 15→15), cross-month packing, **day→day cycle end (not +30d), consecutive-cycle contiguity across 31-day months/February/year boundary, NO work before a new contract's start date (first-cycle clamp + reel lead) while ongoing clients keep prior-month prep** |
 | `tests/workload.test.ts` | 9 | default rates; required‑vs‑capacity load; over ⇒ 0 free; publisher cap at capacity; Friday→previous‑workday charge; single‑count of a split write plan; month window |
 | `tests/task-state.test.ts` | 6 | done-state markers, historical completion date, unfinished-only lateness, board/status normalization |
 | `tests/daily-work.test.ts` | 6 | today queue selection, active-work precedence, capacity fill, carousel slide units, publisher grouping |
@@ -70,6 +70,7 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Regen-safe history**: إعادة الجدولة (also triggered implicitly by task add/edit/delete) preserves `startedAt`/`finishedAt`/`completedAt` and photo-session statuses (detKey match, company|kind|no fallback). Reports' actual-duration metrics never reset.
 - **Ad-hoc packing**: ad-hoc tasks of EVERY priority are packed ASAP and consume capacity; URGENT still goes first.
 - **Contract cycles are contiguous**: cycle end = same day of the next month (clamped), so bucket N's end == bucket N+1's start — no dead day after 31-day months, no February overlap.
+- **No work before contract start**: every auto-generated date (design/story deadline, packed work day, WRITE start, reel shoot, delivery, photoshoot session) is clamped to ≥ `contractStartDate`; a new contract's FIRST-cycle reels publish ≥ 4 days in (shoot −3 + deliver −1 fit inside the contract). Ongoing clients (contract long past) keep prior-month prep unchanged. Manual/pinned tasks are never clamped.
 
 ---
 
@@ -206,6 +207,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | CYC‑3 | company w/o contract date | stays within the calendar month | S2 |
 | CYC‑4 | cross‑month work | every non‑reel design task gets a workDate (extended packing window) | S2 |
 | CYC‑5 | **cycle contiguity** | for any contract day, bucket N’s cycle END equals bucket N+1’s START (check a 31-day month and February) — no un-covered day, no double-covered day | **S2** |
+| CYC‑6 | **new-contract floor** | a company signed on the 1st of this month → after regenerate, NO card (write/design/shoot/publish prep) and NO photo session is dated before the contract date; its reels publish ≥ day 4; an ongoing client (contract months ago) still stages its photoshoot in the prior month | **S1** |
 
 ---
 
@@ -298,10 +300,10 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 128 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 130 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
 - [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, **GEN‑10/11/12**, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
-- [ ] PUB‑1 PASS (no Friday), CYC‑1..5, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, REP‑2/3 PASS.
+- [ ] PUB‑1 PASS (no Friday), CYC‑1..6, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, REP‑2/3 PASS.
 - [ ] One DB backup stored outside the repo.
 
 **Owner:** ____  **Date:** ____  **Result:** PASS / FAIL

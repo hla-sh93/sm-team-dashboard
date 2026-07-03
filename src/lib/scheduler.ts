@@ -19,6 +19,8 @@ import {
   type TaskKind,
   CONTENT_TYPE_LABELS,
   LEAD,
+  PHOTO_DELIVER_LEAD,
+  PHOTO_SHOOT_LEAD,
   PRIORITY_RANK,
   hoursForType,
 } from "./constants";
@@ -26,6 +28,7 @@ import {
   backWorkday,
   companyCycle,
   contractDayOf,
+  forwardWorkday,
   packingWindowDays,
   parseWorkDays,
   shiftDays,
@@ -117,6 +120,9 @@ export type ScheduledTask = {
   year: number;
   isPinned: boolean;
   isAuto: boolean;
+  /** Company contract start — no work day may be placed before it (engine
+   *  internal, only bites in a contract's FIRST cycle). */
+  notBefore?: Date | null;
 };
 
 export type SchedulerWarning = {
@@ -192,19 +198,35 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // consecutive day); stories may share days; companies are staggered (offset)
   // so they don't all publish together.
   let coIdx = 0;
+  // Per-company floor date: NO work may be scheduled before a company's
+  // contractStartDate (a brand-new client has no June prep for a July
+  // contract). Only the FIRST cycle is affected — later cycles start after it.
+  const notBeforeByCompany = new Map<string, Date>();
   for (const co of managed) {
     const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
     // Contract not started yet for this bucket: if the whole cycle window ends
     // on/before the contractStartDate, this client's execution cycle begins in a
     // LATER month — emit nothing now (no phantom "late" tasks before day one).
-    if (co.contractStartDate) {
-      const cs = new Date(co.contractStartDate);
-      const csMidnight = new Date(cs.getFullYear(), cs.getMonth(), cs.getDate());
-      if (cyc.end.getTime() <= csMidnight.getTime()) continue;
-    }
+    const cs = co.contractStartDate ? new Date(co.contractStartDate) : null;
+    const csMidnight = cs
+      ? new Date(cs.getFullYear(), cs.getMonth(), cs.getDate())
+      : null;
+    if (csMidnight && cyc.end.getTime() <= csMidnight.getTime()) continue;
+    if (csMidnight) notBeforeByCompany.set(co.id, csMidnight);
+    // First cycle of the contract = the bucket whose cycle starts ON the
+    // contract start date. Its reels can't publish in the first days — the
+    // shoot (−3) + delivery (−1) lead must fit INSIDE the contract.
+    const firstCycle =
+      !!csMidnight && cyc.start.getTime() === csMidnight.getTime();
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
     const cycleDays = cyc.days.filter((d) => d.getDay() !== 5);
     const cycleLen = cycleDays.length;
+    let reelMinIdx = 0;
+    if (firstCycle) {
+      const minReelDate = shiftDays(cyc.start, PHOTO_SHOOT_LEAD + PHOTO_DELIVER_LEAD);
+      const idx = cycleDays.findIndex((d) => d.getTime() >= minReelDate.getTime());
+      reelMinIdx = idx >= 0 ? idx : 0;
+    }
     const weekOfCycle = (dayIdx: number) =>
       Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);
     const offset = (coIdx * 2) % cycleLen; // rotate companies apart
@@ -237,6 +259,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         year,
         isPinned: false,
         isAuto: true,
+        notBefore: csMidnight,
       });
     };
 
@@ -261,7 +284,12 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     feedSeq.forEach((type, i) => {
       const target =
         Math.round(offset + (i + 0.5) * (cycleLen / feedSeq.length)) % cycleLen;
-      const slot = placeAvoidingAdjacent(target, usedFeed, cycleLen);
+      const slot = placeAvoidingAdjacent(
+        target,
+        usedFeed,
+        cycleLen,
+        type === "REEL" ? reelMinIdx : 0,
+      );
       usedFeed.add(slot);
       emit(type, slot);
     });
@@ -292,6 +320,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       preferredShootDay: number | null;
       cycleStart: Date;
       cycleEnd: Date;
+      notBefore: Date | null;
       reels: ReelTask[];
     }[]
   >();
@@ -305,6 +334,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       preferredShootDay: co.preferredShootDay ?? null,
       cycleStart: cyc.start,
       cycleEnd: cyc.end,
+      notBefore: notBeforeByCompany.get(co.id) ?? null,
       reels: tasks
         .filter((t) => t.type === "REEL" && t.companyId === co.id)
         .map<ReelTask>((t) => ({
@@ -350,13 +380,21 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   }
 
   // -------------------------------------------------------------------------
-  // §5.3 — readyDate for non-REEL content tasks.
+  // §5.3 — readyDate for non-REEL content tasks. Never before the company's
+  // contract start (a July-signed client has no June design deadlines) — when
+  // the lead time would cross it, the deadline compresses toward publish day.
   // -------------------------------------------------------------------------
   for (const t of tasks) {
     if (t.type === "REEL" || !t.type || !t.publishDate) continue;
     const lead = LEAD[t.type as keyof typeof LEAD] ?? LEAD.POST;
     const owWork = workDaysOf(t.assigneeId);
-    t.readyDate = backWorkday(shiftDays(t.publishDate, -lead), owWork);
+    let ready = backWorkday(shiftDays(t.publishDate, -lead), owWork);
+    const nb = t.companyId ? notBeforeByCompany.get(t.companyId) : undefined;
+    if (nb && ready.getTime() < nb.getTime()) {
+      ready = forwardWorkday(nb, owWork);
+      if (ready.getTime() > t.publishDate.getTime()) ready = new Date(t.publishDate);
+    }
+    t.readyDate = ready;
   }
 
   // -------------------------------------------------------------------------
@@ -490,6 +528,9 @@ function packEmployee(
   const lastISO = dayISO[dayISO.length - 1];
   const deadlineISO = (t: ScheduledTask): string =>
     t.readyDate ? toISODate(t.readyDate) : lastISO;
+  // Floor: no placement before the company's contract start (first cycle).
+  const minISO = (t: ScheduledTask): string =>
+    t.notBefore ? toISODate(t.notBefore) : "";
 
   // 1) Pinned tasks reserve their stored workDate first.
   const pinned = empTasks.filter((t) => t.isPinned && t.workDate);
@@ -522,10 +563,12 @@ function packEmployee(
   );
   for (const t of urgent) {
     const dl = deadlineISO(t);
+    const nb = minISO(t);
     let placed = false;
     for (let i = 0; i < dayISO.length; i++) {
       const iso = dayISO[i];
       if (iso > dl) break;
+      if (iso < nb) continue;
       if (loadOf(iso) + t.hours <= cap + EPS) {
         placeTask(t, iso, days[i]);
         addLoad(iso, t.hours);
@@ -534,10 +577,12 @@ function packEmployee(
       }
     }
     if (!placed) {
-      // ASAP overflow: earliest day in the period (day[0]) — urgent work starts
+      // ASAP overflow: earliest eligible day in the period — urgent work starts
       // as soon as possible even when it can't fit cleanly. Flag overflow.
-      placeTask(t, dayISO[0], days[0]);
-      addLoad(dayISO[0], t.hours);
+      let first = dayISO.findIndex((iso) => iso >= nb);
+      if (first < 0) first = 0;
+      placeTask(t, dayISO[first], days[first]);
+      addLoad(dayISO[first], t.hours);
       t.overflow = true;
     }
   }
@@ -546,10 +591,11 @@ function packEmployee(
   routine.sort((a, b) => compareRoutineTasks(a, b, lastISO, priorityOf));
   for (const t of routine) {
     const dl = deadlineISO(t);
-    // Candidate indices: days ≤ deadline.
+    const nb = minISO(t);
+    // Candidate indices: contract-start ≤ day ≤ deadline.
     const cands: number[] = [];
     for (let i = 0; i < dayISO.length; i++) {
-      if (dayISO[i] <= dl) cands.push(i);
+      if (dayISO[i] <= dl && dayISO[i] >= nb) cands.push(i);
     }
     let placed = false;
     // JIT: latest day first.
@@ -563,8 +609,9 @@ function packEmployee(
       }
     }
     if (!placed) {
-      // Least-loaded day among candidates (or all days). Overflow.
-      const pool = cands.length ? cands : dayISO.map((_, i) => i);
+      // Least-loaded day among candidates (or all eligible days). Overflow.
+      const eligible = dayISO.map((_, i) => i).filter((i) => dayISO[i] >= nb);
+      const pool = cands.length ? cands : eligible.length ? eligible : dayISO.map((_, i) => i);
       let best = pool[0];
       for (const i of pool) {
         if (loadOf(dayISO[i]) < loadOf(dayISO[best])) best = i;
@@ -615,23 +662,26 @@ function interleaveTypes(counts: {
 
 /** Nearest free day index to `target` whose neighbours (±1) are also free for
  *  this company — enforces "no same-day and no consecutive-day" for feed. Falls
- *  back to same-day-free, then to target, if the canvas is saturated. */
+ *  back to same-day-free, then to target, if the canvas is saturated. `minIdx`
+ *  floors the slot (first-cycle reels must leave shoot+delivery lead inside a
+ *  brand-new contract). */
 function placeAvoidingAdjacent(
   target: number,
   used: Set<number>,
   len: number,
+  minIdx = 0,
 ): number {
   const ok = (i: number) =>
-    i >= 0 && i < len && !used.has(i) && !used.has(i - 1) && !used.has(i + 1);
+    i >= minIdx && i < len && !used.has(i) && !used.has(i - 1) && !used.has(i + 1);
   for (let d = 0; d < len; d++) {
     if (ok(target + d)) return target + d;
     if (ok(target - d)) return target - d;
   }
   for (let d = 0; d < len; d++) {
-    if (target + d < len && !used.has(target + d)) return target + d;
-    if (target - d >= 0 && !used.has(target - d)) return target - d;
+    if (target + d >= minIdx && target + d < len && !used.has(target + d)) return target + d;
+    if (target - d >= minIdx && !used.has(target - d)) return target - d;
   }
-  return Math.min(len - 1, Math.max(0, target));
+  return Math.min(len - 1, Math.max(minIdx, target));
 }
 
 /** Nearest free day index to `target` (no two of the same kind on one day). */
