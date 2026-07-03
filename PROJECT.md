@@ -197,16 +197,21 @@ spill‑over. Seeded: جدارات 15→15, المول 20→20.
   back to that weekday when possible (earlier only → safe); not mandatory; any
   shoot is editable manually.
 
-### No work before the contract start 🆕
-A company's `contractStartDate` is a HARD floor for every auto-generated date:
-design/story deadlines (§5.3), packed work days, writer-card starts, reel
-shoots, deliveries, and the photoshoot session are all clamped to ≥ the
-contract date. In a contract's **FIRST cycle**, reel publishes are additionally
-placed ≥ 4 days in (shoot −3 + deliver −1 must fit INSIDE the contract) — so a
-July-signed client (التوظيف/أغاليا) can never get June prep dates or phantom
-"late" June work. Later cycles are untouched: an ONGOING client's prior-month
-prep (photoshoot staging, early shoots) is legitimate and unchanged. Manual
-(ad-hoc, pinned) tasks are the user's authority and are never clamped.
+### New-contract pipeline lead — no work before the contract start 🆕
+A company's `contractStartDate` is a HARD floor, and in the contract's **FIRST
+cycle** the whole production chain is sequenced from day one:
+**العقد (يوم 1) → كتابة الخطة (يومان) → تصميم/تصوير → نشر**.
+- The writer card starts ON the contract date; NOTHING production-facing
+  (design/story/AI deadlines & work days, reel shoots, deliveries, the
+  photoshoot session) is dated before **contract + 2 writing days**.
+- Publish floors per type = writing + the type's own lead: POST/AI_REEL
+  2+2 → day 5, STORY 2+1 → day 4, REEL 2+3 (scenario → shoot → publish) →
+  day 6. So a July-1 client's first story publishes ≥ Jul 4, first post ≥
+  Jul 5, first reel ≥ Jul 6 — and NEVER gets June prep dates or phantom
+  "late" June work.
+Later cycles are untouched: an ONGOING client's prior-month prep (photoshoot
+staging, early shoots) is legitimate and unchanged. Manual (ad-hoc, pinned)
+tasks are the user's authority and are never clamped.
 
 ### Packing (§5.4)
 **URGENT and ALL ad-hoc tasks (any priority) pack ASAP** — earliest free day ≤
@@ -334,10 +339,11 @@ Shared UI: `Sidebar` (path‑aware), `MonthBar`, `calendar/*`, `KanbanBoard`
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
   20→20); else calendar month. Consecutive cycles are contiguous — no gap, no
   overlap.
-- **No work before contract start**: no auto-generated date (write/design/
-  shoot/deliver/photoshoot/work day) may precede `contractStartDate`; a new
-  contract's first-cycle reels publish ≥ 4 days in so the shoot+delivery lead
-  stays inside the contract. Ongoing clients keep prior-month prep.
+- **New-contract pipeline lead**: the first cycle sequences
+  عقد → كتابة (يومان) → تصميم/تصوير → نشر. No auto-generated date precedes
+  `contractStartDate`; no production date precedes contract+2 (the written
+  plan); first publishes per type: STORY day 4, POST/AI day 5, REEL day 6.
+  Ongoing clients keep prior-month prep.
 - **Open-work carryover (dynamic)**: unfinished work from ANY earlier cycle
   bucket follows the team into the current month's board/overview until it is
   finished or deleted — never month-specific; in August the carryover shows

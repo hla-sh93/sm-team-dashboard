@@ -70,7 +70,7 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Regen-safe history**: إعادة الجدولة (also triggered implicitly by task add/edit/delete) preserves `startedAt`/`finishedAt`/`completedAt` and photo-session statuses (detKey match, company|kind|no fallback). Reports' actual-duration metrics never reset.
 - **Ad-hoc packing**: ad-hoc tasks of EVERY priority are packed ASAP and consume capacity; URGENT still goes first.
 - **Contract cycles are contiguous**: cycle end = same day of the next month (clamped), so bucket N's end == bucket N+1's start — no dead day after 31-day months, no February overlap.
-- **No work before contract start**: every auto-generated date (design/story deadline, packed work day, WRITE start, reel shoot, delivery, photoshoot session) is clamped to ≥ `contractStartDate`; a new contract's FIRST-cycle reels publish ≥ 4 days in (shoot −3 + deliver −1 fit inside the contract). Ongoing clients (contract long past) keep prior-month prep unchanged. Manual/pinned tasks are never clamped.
+- **New-contract pipeline lead**: the FIRST cycle sequences عقد (day 1) → كتابة الخطة (2 working days) → تصميم/تصوير → نشر. No auto-generated date precedes `contractStartDate`; no production date (design/story/AI/shoot/photoshoot) precedes contract+2 writing days; publish floors per type = writing + type lead (STORY day 4, POST/AI_REEL day 5, REEL day 6). Ongoing clients (contract long past) keep prior-month prep unchanged. Manual/pinned tasks are never clamped.
 
 ---
 
@@ -207,7 +207,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | CYC‑3 | company w/o contract date | stays within the calendar month | S2 |
 | CYC‑4 | cross‑month work | every non‑reel design task gets a workDate (extended packing window) | S2 |
 | CYC‑5 | **cycle contiguity** | for any contract day, bucket N’s cycle END equals bucket N+1’s START (check a 31-day month and February) — no un-covered day, no double-covered day | **S2** |
-| CYC‑6 | **new-contract floor** | a company signed on the 1st of this month → after regenerate, NO card (write/design/shoot/publish prep) and NO photo session is dated before the contract date; its reels publish ≥ day 4; an ongoing client (contract months ago) still stages its photoshoot in the prior month | **S1** |
+| CYC‑6 | **new-contract pipeline lead** | a company signed on the 1st → after regenerate: the WRITE card starts day 1; NO design/story/shoot/photoshoot date before day 3 (writing done); first STORY publish ≥ day 4, POST/AI ≥ day 5, REEL ≥ day 6; nothing at all before the contract date; an ongoing client (contract months ago) still stages its photoshoot in the prior month | **S1** |
 
 ---
 

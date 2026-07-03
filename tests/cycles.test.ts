@@ -161,7 +161,7 @@ describe("new contract — NO work before the contract start date", () => {
     isPhotographer: true,
   });
 
-  it("first cycle: every work/ready/shoot/deliver date is on/after the contract start", () => {
+  it("first cycle honors the FULL pipeline lead: write (2d) → design/shoot → publish", () => {
     // Contract signed July 1st, 2026 — like التوظيف / أغاليا. Reels included so
     // the photographer path (batch shoots, photoshoot session) is exercised.
     const start = new Date(2026, 6, 1);
@@ -172,21 +172,38 @@ describe("new contract — NO work before the contract start date", () => {
       companies: [co({ contractStartDate: start, posts: 10, stories: 6, reels: 8 })],
     });
     const floor = start.getTime();
-    for (const t of r.tasks.filter((x) => x.companyId === "c1")) {
-      if (t.workDate) expect(t.workDate.getTime(), `${t.detKey} workDate`).toBeGreaterThanOrEqual(floor);
-      if (t.readyDate) expect(t.readyDate.getTime(), `${t.detKey} readyDate`).toBeGreaterThanOrEqual(floor);
-    }
+    // Nothing at all before the contract (sessions may start day 1 — the
+    // photoshoot gathers raw material and doesn't need the written plan).
     for (const s of r.sessions) {
       expect(s.shootDate.getTime(), `${s.detKey} shootDate`).toBeGreaterThanOrEqual(floor);
       expect(s.deliverBy.getTime(), `${s.detKey} deliverBy`).toBeGreaterThanOrEqual(floor);
     }
-    // First-cycle reels leave the shoot+delivery lead INSIDE the contract:
-    // no reel publishes in the first 4 days.
-    const minReelPublish = new Date(2026, 6, 5).getTime();
+    // DESIGN/STORY work waits for the WRITTEN plan: nothing designer-facing
+    // before contract start + 2 writing days (Jul 3).
+    const designFloor = new Date(2026, 6, 3).getTime();
+    for (const t of r.tasks.filter((x) => x.companyId === "c1" && x.type !== "REEL")) {
+      if (t.workDate) expect(t.workDate.getTime(), `${t.detKey} workDate`).toBeGreaterThanOrEqual(designFloor);
+      if (t.readyDate) expect(t.readyDate.getTime(), `${t.detKey} readyDate`).toBeGreaterThanOrEqual(designFloor);
+    }
+    // Publish floors = writing + the type's own production lead:
+    // POST 2+2 (≥ Jul 5) · STORY 2+1 (≥ Jul 4) · REEL 2+3 (≥ Jul 6).
+    const minPublish: Record<string, number> = {
+      POST: new Date(2026, 6, 5).getTime(),
+      STORY: new Date(2026, 6, 4).getTime(),
+      REEL: new Date(2026, 6, 6).getTime(),
+    };
+    for (const t of r.tasks.filter((x) => x.kind === "CONTENT" && x.publishDate)) {
+      expect(
+        t.publishDate!.getTime(),
+        `${t.detKey} publish`,
+      ).toBeGreaterThanOrEqual(minPublish[t.type!]);
+    }
+    // Reel shoots happen AFTER the scenario is written and before publish.
     const reels = r.tasks.filter((t) => t.type === "REEL");
     expect(reels.length).toBe(8); // plan match preserved
     for (const t of reels) {
-      expect(t.publishDate!.getTime(), `${t.detKey} publish`).toBeGreaterThanOrEqual(minReelPublish);
+      expect(t.workDate!.getTime(), `${t.detKey} shoot`).toBeGreaterThanOrEqual(designFloor);
+      expect(t.readyDate!.getTime(), `${t.detKey} deliver`).toBeLessThan(t.publishDate!.getTime());
     }
   });
 

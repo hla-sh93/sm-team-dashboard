@@ -19,7 +19,6 @@ import {
   type TaskKind,
   CONTENT_TYPE_LABELS,
   LEAD,
-  PHOTO_DELIVER_LEAD,
   PHOTO_SHOOT_LEAD,
   PRIORITY_RANK,
   hoursForType,
@@ -148,6 +147,10 @@ export type SchedulerResult = {
 
 const EPS = 1e-9;
 
+/** Working days the writer needs to prepare a NEW contract's plan before any
+ *  production (design/shoot) can start — drives the first-cycle floors. */
+const WRITE_LEAD_DAYS = 2;
+
 const PLAN_KEYS: Record<ContentType, "posts" | "reels" | "stories" | "aiReels"> = {
   POST: "posts",
   REEL: "reels",
@@ -198,10 +201,17 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // consecutive day); stories may share days; companies are staggered (offset)
   // so they don't all publish together.
   let coIdx = 0;
-  // Per-company floor date: NO work may be scheduled before a company's
-  // contractStartDate (a brand-new client has no June prep for a July
-  // contract). Only the FIRST cycle is affected — later cycles start after it.
-  const notBeforeByCompany = new Map<string, Date>();
+  // Per-company floor dates. NO work may be scheduled before a company's
+  // contractStartDate — and in the contract's FIRST cycle the whole pipeline
+  // lead is respected: the writer needs WRITE_LEAD_DAYS to prepare the plan
+  // BEFORE anything reaches a designer/photographer, and publishing starts
+  // only after writing + the type's production lead both fit inside the
+  // contract. Ongoing cycles are untouched.
+  // One production floor per company: contract start + the writing lead in the
+  // FIRST cycle (nothing — design, story, AI, shoot, photoshoot — starts before
+  // the plan is written); just the contract start afterwards (no-op for
+  // ongoing clients whose contract is long past).
+  const productionFloorByCompany = new Map<string, Date>();
   for (const co of managed) {
     const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
     // Contract not started yet for this bucket: if the whole cycle window ends
@@ -212,20 +222,33 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       ? new Date(cs.getFullYear(), cs.getMonth(), cs.getDate())
       : null;
     if (csMidnight && cyc.end.getTime() <= csMidnight.getTime()) continue;
-    if (csMidnight) notBeforeByCompany.set(co.id, csMidnight);
     // First cycle of the contract = the bucket whose cycle starts ON the
-    // contract start date. Its reels can't publish in the first days — the
-    // shoot (−3) + delivery (−1) lead must fit INSIDE the contract.
+    // contract start date.
     const firstCycle =
       !!csMidnight && cyc.start.getTime() === csMidnight.getTime();
+    // Production can start only after the plan is WRITTEN (first cycle).
+    const productionFloor =
+      csMidnight && firstCycle ? shiftDays(csMidnight, WRITE_LEAD_DAYS) : csMidnight;
+    if (productionFloor) productionFloorByCompany.set(co.id, productionFloor);
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
     const cycleDays = cyc.days.filter((d) => d.getDay() !== 5);
     const cycleLen = cycleDays.length;
-    let reelMinIdx = 0;
+    // First-cycle publish floors per type: writing (2d) + the type's own
+    // production lead must fit INSIDE the contract. POST/AI 2+2, STORY 2+1,
+    // REEL 2 (scenario) + 3 (shoot→publish).
+    const minIdxOf: Record<ContentType, number> = { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0 };
     if (firstCycle) {
-      const minReelDate = shiftDays(cyc.start, PHOTO_SHOOT_LEAD + PHOTO_DELIVER_LEAD);
-      const idx = cycleDays.findIndex((d) => d.getTime() >= minReelDate.getTime());
-      reelMinIdx = idx >= 0 ? idx : 0;
+      const offs: Record<ContentType, number> = {
+        POST: WRITE_LEAD_DAYS + LEAD.POST,
+        AI_REEL: WRITE_LEAD_DAYS + LEAD.AI_REEL,
+        STORY: WRITE_LEAD_DAYS + LEAD.STORY,
+        REEL: WRITE_LEAD_DAYS + PHOTO_SHOOT_LEAD,
+      };
+      for (const ty of TYPE_ORDER) {
+        const minDate = shiftDays(cyc.start, offs[ty]);
+        const idx = cycleDays.findIndex((d) => d.getTime() >= minDate.getTime());
+        minIdxOf[ty] = idx >= 0 ? idx : 0;
+      }
     }
     const weekOfCycle = (dayIdx: number) =>
       Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);
@@ -259,7 +282,9 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         year,
         isPinned: false,
         isAuto: true,
-        notBefore: csMidnight,
+        // Every production path waits for the written plan (REEL packing is
+        // the photographer's — his floor is applied in buildPhotoSessions).
+        notBefore: productionFloor,
       });
     };
 
@@ -284,12 +309,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     feedSeq.forEach((type, i) => {
       const target =
         Math.round(offset + (i + 0.5) * (cycleLen / feedSeq.length)) % cycleLen;
-      const slot = placeAvoidingAdjacent(
-        target,
-        usedFeed,
-        cycleLen,
-        type === "REEL" ? reelMinIdx : 0,
-      );
+      const slot = placeAvoidingAdjacent(target, usedFeed, cycleLen, minIdxOf[type]);
       usedFeed.add(slot);
       emit(type, slot);
     });
@@ -299,7 +319,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     for (let i = 0; i < co.stories; i++) {
       const target =
         Math.round(offset + (i + 0.5) * (cycleLen / co.stories)) % cycleLen;
-      const slot = placeUnique(target, usedStory, cycleLen);
+      const slot = placeUnique(target, usedStory, cycleLen, minIdxOf.STORY);
       usedStory.add(slot);
       emit("STORY", slot);
     }
@@ -334,7 +354,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       preferredShootDay: co.preferredShootDay ?? null,
       cycleStart: cyc.start,
       cycleEnd: cyc.end,
-      notBefore: notBeforeByCompany.get(co.id) ?? null,
+      notBefore: productionFloorByCompany.get(co.id) ?? null,
       reels: tasks
         .filter((t) => t.type === "REEL" && t.companyId === co.id)
         .map<ReelTask>((t) => ({
@@ -381,15 +401,17 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 
   // -------------------------------------------------------------------------
   // §5.3 — readyDate for non-REEL content tasks. Never before the company's
-  // contract start (a July-signed client has no June design deadlines) — when
-  // the lead time would cross it, the deadline compresses toward publish day.
+  // design floor (contract start + the writing lead in the first cycle — a
+  // July-signed client has no June design deadlines, and nothing reaches the
+  // designer before the plan is written). When the lead time would cross it,
+  // the deadline compresses toward publish day.
   // -------------------------------------------------------------------------
   for (const t of tasks) {
     if (t.type === "REEL" || !t.type || !t.publishDate) continue;
     const lead = LEAD[t.type as keyof typeof LEAD] ?? LEAD.POST;
     const owWork = workDaysOf(t.assigneeId);
     let ready = backWorkday(shiftDays(t.publishDate, -lead), owWork);
-    const nb = t.companyId ? notBeforeByCompany.get(t.companyId) : undefined;
+    const nb = t.companyId ? productionFloorByCompany.get(t.companyId) : undefined;
     if (nb && ready.getTime() < nb.getTime()) {
       ready = forwardWorkday(nb, owWork);
       if (ready.getTime() > t.publishDate.getTime()) ready = new Date(t.publishDate);
@@ -684,11 +706,12 @@ function placeAvoidingAdjacent(
   return Math.min(len - 1, Math.max(minIdx, target));
 }
 
-/** Nearest free day index to `target` (no two of the same kind on one day). */
-function placeUnique(target: number, used: Set<number>, len: number): number {
+/** Nearest free day index to `target` (no two of the same kind on one day).
+ *  `minIdx` floors the slot (first-cycle stories wait for the written plan). */
+function placeUnique(target: number, used: Set<number>, len: number, minIdx = 0): number {
   for (let d = 0; d < len; d++) {
-    if (target + d < len && !used.has(target + d)) return target + d;
-    if (target - d >= 0 && !used.has(target - d)) return target - d;
+    if (target + d >= minIdx && target + d < len && !used.has(target + d)) return target + d;
+    if (target - d >= minIdx && !used.has(target - d)) return target - d;
   }
-  return Math.min(len - 1, Math.max(0, target));
+  return Math.min(len - 1, Math.max(minIdx, target));
 }
