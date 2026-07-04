@@ -235,8 +235,10 @@ export default function KanbanBoard({
   const STAGE_RANK: Record<string, number> = { WRITE: 0, DESIGN: 1, SHOOT: 1, PUBLISH: 2 };
   const TYPE_RANK: Record<string, number> = { POST: 0, STORY: 1, AI_REEL: 2, REEL: 3 };
 
+  // Ordering the manager asked for: carry-over from PREVIOUS cycles first (the
+  // overdue pieces from last month's cycles), THEN everything strictly oldest →
+  // newest by date. Stage/label only break exact-date ties.
   const byTime = (a: KCard, b: KCard) =>
-    Number(isLate(b.repr)) - Number(isLate(a.repr)) ||
     Number(isPreviousCycle(b.repr)) - Number(isPreviousCycle(a.repr)) ||
     cardDateMs(a.repr) - cardDateMs(b.repr) ||
     (STAGE_RANK[a.repr.stage ?? ""] ?? 3) - (STAGE_RANK[b.repr.stage ?? ""] ?? 3) ||
