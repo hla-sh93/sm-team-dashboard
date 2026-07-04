@@ -54,23 +54,42 @@ Stop the dev server before `next build` AND before `prisma generate`/`db push`
 
 ---
 
-## 2. Access model 🆕 — employees vs admin, by URL (NO login)
+## 2. Access model 🆕 — employees (open) vs admin (password-protected)
 
-Same app, same data — the **URL** decides what you see. No authentication.
+Same app, same data. The employee area is open; the admin area is behind a
+password login (`src/lib/auth.ts`).
 - **Employees → root URLs** (`/`, `/tasks`, `/publishing`, `/reports`): the
   shared pages, with **FULL functionality** (add/edit/delete tasks, regenerate,
-  status moves). Sidebar shows only those four.
-- **Admin → `/admin/*`** (base = `ADMIN_BASE` in `components/Sidebar.tsx`): sees
-  everything — the shared pages PLUS the sensitive routes **finance, companies,
-  team, workload, priorities**.
+  status moves). Sidebar shows only those four. No login.
+- **Admin → `/admin/*`** (base = `ADMIN_BASE`): the shared pages PLUS the
+  sensitive routes **finance, companies, team, workload, priorities**. Requires
+  an admin session.
 - Admin‑only routes physically live only under `/admin` → an employee hitting
   `/finance`, `/team`, etc. gets a **404** (salaries/contracts are unreachable).
 - Shared pages render from one place (`OverviewView`, `tasks/TasksView`,
-  re‑exported publishing/reports) so `/x` and `/admin/x` are identical. The
-  Sidebar is path‑aware (`pathname.startsWith(ADMIN_BASE)`). Server actions
-  `revalidatePath('/', 'layout')` so both areas refresh after a mutation.
-- **Only the `/admin` URL protects the sensitive data** — keep it private (it can
-  be renamed to an obscure path by renaming `src/app/admin` + `ADMIN_BASE`).
+  re‑exported publishing/reports) so `/x` and `/admin/x` are identical.
+
+### Admin authentication (§ lib/auth.ts, server actions/auth.ts)
+Layered enforcement — admin pages/actions can't be reached or invoked without a
+valid session, and direct-URL access is blocked:
+1. **`middleware.ts`** (edge) redirects any `/admin/*` request lacking the
+   session cookie to `/login` (cheap presence check).
+2. **`app/admin/layout.tsx`** calls `requireAdminPage()` → real HMAC signature
+   check on every admin render; a forged/expired cookie renders NO admin markup
+   (server redirect before any data is computed).
+3. Sensitive server actions (`companies.*`, `employees.*`, `changePassword`)
+   call **`assertAdmin()`** so mutations can't run without a session even if
+   POSTed directly.
+- **Password/secret storage**: never hardcoded, never sent to the client.
+  Password is scrypt-hashed (`salt:hash`); session cookie is `exp.HMAC`
+  (HttpOnly, Secure, SameSite=Lax). Both live in the DB `Setting` table, or come
+  from `ADMIN_PASSWORD` / `AUTH_SECRET` env vars when set (which override the DB).
+- **First run has no default credential**: `/login` shows a "create password"
+  flow until one is configured — then it's the login form. Logout button in the
+  admin sidebar/drawer. Auth settings are preserved across a local→prod snapshot
+  import so a re-sync never resets the admin login.
+- The `/admin` base can still be renamed to an obscure path (rename
+  `src/app/admin` + `ADMIN_BASE` + the middleware matcher) for defence in depth.
 
 ---
 
@@ -330,6 +349,23 @@ Shared UI: `Sidebar` (path‑aware), `MonthBar`, `calendar/*`, `KanbanBoard`
 (takes `year`/`month` to badge carryover cards), `components/ui/{Donut,pills}`
 (`Pill`/`PriorityPill`/`LatePill`/`CyclePill`/`daysLateOf`), forms
 `{Task,Member,Company}Form`.
+
+### Responsive layout 🆕
+Mobile-first, verified at 360/768/1280.
+- **Navigation** (`Sidebar.tsx`): a 260px sticky rail at **lg+**; below lg it
+  collapses to a slim **sticky top bar + hamburger drawer** (slides from the
+  right for RTL; closes on navigate/overlay/Esc; includes the admin logout). The
+  layout is `lg:flex` — stacked (bar above content) on mobile/tablet, a row
+  (rail beside content) on desktop. The bar is `sticky` (not `fixed`) so it never
+  depends on the fixed initial-containing-block width.
+- **No horizontal scroll**: `body { overflow-x: clip }` (keeps the sticky rail
+  working, unlike `hidden`); the tasks toolbar and report actions wrap; the
+  critical-panel person cards truncate (`min-w-0` + `flex-1`) instead of forcing
+  width. Intentional horizontal scroll (wide tables, kanban columns) stays inside
+  its own `overflow-x-auto` wrappers.
+- Grids already use responsive column counts (`grid-cols-2 lg:grid-cols-4`,
+  `md:grid-cols-2 xl:grid-cols-3`); the Radix dialog is `w-[calc(100vw-32px)]
+  max-w-xl max-h-[90vh]` so forms/modals fit and scroll on mobile.
 
 ---
 

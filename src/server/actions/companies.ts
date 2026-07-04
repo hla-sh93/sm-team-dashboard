@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { assertAdmin } from "@/lib/auth";
 import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
@@ -16,6 +17,11 @@ function parseContractDate(v: string | null | undefined): Date | null {
 }
 
 export async function createCompany(input: CompanyInput) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
   const parsed = companySchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
@@ -51,6 +57,11 @@ export async function createCompany(input: CompanyInput) {
 }
 
 export async function updateCompany(id: string, input: CompanyInput) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
   const parsed = companySchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
@@ -88,6 +99,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
 
 export async function deleteCompany(id: string) {
   try {
+    await assertAdmin();
     await prisma.company.delete({ where: { id } });
     revalidateAll();
     return { ok: true as const };
@@ -97,6 +109,11 @@ export async function deleteCompany(id: string) {
 }
 
 export async function reorderCompanies(orderedIds: string[]) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
   const parsed = reorderSchema.safeParse({ orderedIds });
   if (!parsed.success) return { ok: false as const, error: "ترتيب غير صالح" };
   try {

@@ -161,6 +161,16 @@ async function main() {
     settings: withDates(requireRows(parsed.settings, "settings"), dateFields.settings),
   };
 
+  // Auth config (admin password + session secret) lives in Setting but must
+  // NOT be lost when a snapshot without it replaces prod — otherwise a re-sync
+  // would silently reset the admin login. Capture prod's values first; restore
+  // any key the incoming snapshot doesn't already carry.
+  const AUTH_KEYS = ["authSecret", "adminPasswordHash"];
+  const preservedAuth = await prisma.setting
+    .findMany({ where: { key: { in: AUTH_KEYS } } })
+    .catch(() => [] as { key: string; value: string }[]);
+  const snapshotKeys = new Set(snapshot.settings.map((s) => s.key as string));
+
   const imported = await prisma.$transaction(
     async (tx: any) => {
       await tx.task.deleteMany();
@@ -182,6 +192,17 @@ async function main() {
     },
     { maxWait: 30000, timeout: 120000 },
   );
+
+  // Restore preserved auth settings the snapshot didn't provide (keeps the
+  // production admin login working across a re-sync from a local export).
+  for (const row of preservedAuth) {
+    if (snapshotKeys.has(row.key)) continue;
+    await prisma.setting.upsert({
+      where: { key: row.key },
+      update: { value: row.value },
+      create: { key: row.key, value: row.value },
+    });
+  }
 
   // Record the imported snapshot's hash AFTER the replace (the transaction wiped
   // settings and reloaded the snapshot's own rows; this marker is added on top),

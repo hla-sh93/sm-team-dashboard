@@ -372,14 +372,14 @@ export default function TasksClient({
       </header>
 
       {/* View toggle + filters */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1 bg-bg-elev border border-border rounded-lg p-1 w-fit">
+      <div className="flex items-stretch justify-between flex-wrap gap-3">
+        <div className="flex gap-1 bg-bg-elev border border-border rounded-lg p-1 w-full sm:w-fit">
           {(["board", "monthly", "weekly", "daily"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={
-                "px-4 py-1.5 rounded-md text-sm font-medium transition " +
+                "flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition " +
                 (view === v ? "bg-info text-bg" : "text-fg-dim hover:text-fg")
               }
             >
@@ -393,10 +393,10 @@ export default function TasksClient({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto sm:items-center">
           {view === "board" && (
             <Select
-              className="h-9 w-36 text-sm"
+              className="h-9 w-full sm:w-36 text-sm col-span-2 sm:col-span-1"
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
               title="تجميع كروت البورد"
@@ -408,7 +408,7 @@ export default function TasksClient({
             </Select>
           )}
           <Select
-            className="h-9 w-40 text-sm"
+            className="h-9 w-full sm:w-40 text-sm"
             value={person}
             onChange={(e) => setPerson(e.target.value)}
           >
@@ -420,7 +420,7 @@ export default function TasksClient({
             ))}
           </Select>
           <Select
-            className="h-9 w-40 text-sm"
+            className="h-9 w-full sm:w-40 text-sm"
             value={company}
             onChange={(e) => setCompany(e.target.value)}
           >

@@ -24,9 +24,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ar" dir="rtl" className={`${tajawal.variable} ${reem.variable}`}>
       <body className="font-sans antialiased">
-        <div className="flex min-h-screen">
+        {/* Stacks vertically below lg (sticky mobile bar above content) and
+            becomes a row at lg+ (rail beside content). */}
+        <div className="lg:flex min-h-screen">
           <Sidebar />
-          <main className="flex-1 min-w-0 px-6 py-8 md:px-10">{children}</main>
+          <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+            {children}
+          </main>
         </div>
         <Toaster />
       </body>

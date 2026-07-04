@@ -232,13 +232,13 @@ export default function OverviewClient({
             {criticalByPerson.map(({ emp, items, counts }) => (
               <div
                 key={emp.id}
-                className="flex flex-col gap-2 border border-border-soft rounded-lg p-3 bg-bg-elev/40"
+                className="flex flex-col gap-2 min-w-0 border border-border-soft rounded-lg p-3 bg-bg-elev/40"
               >
                 {/* person header: avatar + name + counters + quick link to board */}
                 <div className="flex items-center gap-2">
                   <Avatar name={emp.name} color={emp.color ?? undefined} size={22} />
-                  <span className="text-sm font-semibold flex-1 truncate">{emp.name}</span>
-                  <div className="flex items-center gap-1 text-[10px] tabular-nums">
+                  <span className="text-sm font-semibold flex-1 min-w-0 truncate">{emp.name}</span>
+                  <div className="flex items-center gap-1 text-[10px] tabular-nums shrink-0 flex-wrap justify-end">
                     {counts.overdue > 0 && (
                       <span className="rounded-full px-1.5 py-0.5 bg-danger/15 text-danger font-semibold">
                         متأخرة {counts.overdue}
@@ -277,7 +277,7 @@ export default function OverviewClient({
                           (overdue ? "text-danger" : "text-warning")
                         }
                       />
-                      <div className="min-w-0 flex flex-col gap-0.5">
+                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                         <span className="text-xs font-medium truncate">
                           {cardLabelFor(card.repr, card.count, reelNum, coName)}
                         </span>

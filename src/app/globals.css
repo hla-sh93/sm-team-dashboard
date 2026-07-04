@@ -34,6 +34,12 @@
     );
     background-attachment: fixed;
     min-height: 100vh;
+    /* Guard against accidental horizontal scroll on small screens. `clip`
+       (not `hidden`) keeps the desktop sticky sidebar working and doesn't turn
+       the page into a vertical scroll container. Intentional horizontal
+       scrolling (tables, kanban) lives in its own overflow-x-auto wrappers. */
+    max-width: 100%;
+    overflow-x: clip;
   }
   * {
     border-color: var(--border-soft);

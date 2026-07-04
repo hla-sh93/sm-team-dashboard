@@ -68,7 +68,7 @@ export function ReportActions({
   };
 
   return (
-    <div className="flex items-center gap-2 no-print">
+    <div className="flex items-center gap-2 flex-wrap no-print">
       <Button size="sm" onClick={exportTasks}>
         <Download className="w-4 h-4" /> تصدير المهام CSV
       </Button>

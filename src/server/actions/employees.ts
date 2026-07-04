@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { assertAdmin } from "@/lib/auth";
 import { employeeSchema, type EmployeeInput } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
@@ -22,6 +23,11 @@ function buildRates(d: EmployeeInput): string | null {
 }
 
 export async function createEmployee(input: EmployeeInput) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
   const parsed = employeeSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
@@ -49,6 +55,11 @@ export async function createEmployee(input: EmployeeInput) {
 }
 
 export async function updateEmployee(id: string, input: EmployeeInput) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
   const parsed = employeeSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
@@ -78,6 +89,7 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
 
 export async function deleteEmployee(id: string) {
   try {
+    await assertAdmin();
     await prisma.employee.delete({ where: { id } });
     revalidateAll();
     return { ok: true as const };

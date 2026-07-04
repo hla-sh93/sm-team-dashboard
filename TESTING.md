@@ -90,6 +90,31 @@ A case PASSES only if the expected result AND every side effect hold.
 | ACC‑7 | Admin sidebar area‑switch | a single “واجهة الموظفين” link back to `/`; never the reverse on the employee side | S2 |
 | ACC‑8 | Employee `/reports` carries no money | shows task ledger + workload only; **no salary / contract value / P&L** | **S1** |
 
+## 1.1 Admin authentication 🆕 — S1 (security)
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| AUTH‑1 | Fresh install, open `/admin` | redirects to `/login` in **first-run mode** ("create a password" + confirm); no admin markup rendered | **S1** |
+| AUTH‑2 | Enter a ≥6-char password → save | session set (HttpOnly cookie, invisible to JS); lands on the originally-requested admin page | **S1** |
+| AUTH‑3 | Log out (sidebar/drawer button) → open any `/admin/*` by typing the URL | redirected to `/login`; no admin page renders (middleware + layout gate) | **S1** |
+| AUTH‑4 | While logged out, POST an admin server action directly (e.g. `updateCompany`) | rejected — action returns "غير مصرّح" (`assertAdmin()` throws) | **S1** |
+| AUTH‑5 | Tamper the `sm_admin` cookie value → open `/admin` | rejected (HMAC signature check in the layout); redirected to login | **S1** |
+| AUTH‑6 | Wrong password on the login form | "كلمة المرور غير صحيحة"; no session set | **S1** |
+| AUTH‑7 | Set `ADMIN_PASSWORD` env → deploy | env password is the source of truth; DB password ignored; login works with it | S2 |
+| AUTH‑8 | Re-sync local→prod snapshot after setting a prod password | admin login still works (auth Settings preserved by the import) | **S1** |
+
+## 1.2 Responsive layout 🆕 — S2
+> Verified with `document.documentElement.clientWidth` (the true CSS width;
+> `window.innerWidth` is unreliable under device emulation).
+
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| RSP‑1 | Mobile 360–430px, every route (incl. `/admin/*`, `/login`) | no horizontal page scroll (`scrollWidth == clientWidth`); content not clipped | **S2** |
+| RSP‑2 | Mobile/tablet (<1024) | sticky top bar + hamburger; tapping it opens the right-side drawer with full nav + logout; closes on navigate/overlay/Esc | **S2** |
+| RSP‑3 | Desktop ≥1024 | 260px sticky rail beside content; mobile bar hidden; rail stays put on scroll | S2 |
+| RSP‑4 | Open a form modal (company/team/task) on mobile | dialog fits (`100vw-32px`), scrolls vertically, all fields tappable | S2 |
+| RSP‑5 | Tables (finance P&L, reports ledger) on mobile | scroll inside their own container; page itself doesn't scroll horizontally | S2 |
+| RSP‑6 | Tasks toolbar + report actions on mobile | view toggle full-width; filters/buttons wrap; nothing overflows | S2 |
+
 ---
 
 ## 2. Seed & data integrity — S1
