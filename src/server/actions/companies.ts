@@ -97,14 +97,45 @@ export async function updateCompany(id: string, input: CompanyInput) {
   }
 }
 
+/**
+ * Delete a company — but ONLY when it has no history. A company row cascades to
+ * its tasks and photo sessions (schema onDelete: Cascade), so deleting a client
+ * that ever had work would IRREVERSIBLY wipe its published history, reports and
+ * financial trail. We refuse that and steer the manager to archiving instead
+ * (status='archived' hides it from scheduling/finance while keeping the record).
+ */
 export async function deleteCompany(id: string) {
   try {
     await assertAdmin();
+    const taskCount = await prisma.task.count({ where: { companyId: id } });
+    const sessionCount = await prisma.photoSession.count({ where: { companyId: id } });
+    if (taskCount + sessionCount > 0) {
+      return {
+        ok: false as const,
+        error:
+          `لا يمكن حذف الشركة لأن لديها ${taskCount + sessionCount} مهمة/جلسة وتاريخاً محفوظاً. ` +
+          `للحفاظ على السجل، استخدم «الأرشفة» بدل الحذف (تختفي من الجدولة والمالية ويبقى تاريخها).`,
+        canArchive: true as const,
+      };
+    }
     await prisma.company.delete({ where: { id } });
     revalidateAll();
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل حذف الشركة" };
+  }
+}
+
+/** Archive a company: keep all its history but remove it from scheduling,
+ *  publishing and finance (managed companies are filtered by status='active'). */
+export async function archiveCompany(id: string) {
+  try {
+    await assertAdmin();
+    await prisma.company.update({ where: { id }, data: { status: "archived" } });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل أرشفة الشركة" };
   }
 }
 

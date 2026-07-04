@@ -28,6 +28,21 @@ async function main() {
     prisma.setting.findMany({ orderBy: { key: "asc" } }),
   ]);
 
+  // Timezone normalisation: schedule dates are stored at LOCAL midnight (e.g.
+  // 2026-07-04 on a GMT+3 machine → 2026-07-03T21:00Z). Read back on Vercel's
+  // UTC runtime after the import, that becomes July 3 — the whole calendar
+  // shifts a day and on-time work can flip to "late". So we snap every CALENDAR
+  // date to UTC-midnight of its local day here, making the snapshot read the
+  // same on any timezone. (Timestamps like createdAt/startedAt are left as-is.)
+  const snapDay = (v: unknown) =>
+    v instanceof Date ? new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate())) : v;
+  const snapFields = <T extends Record<string, any>>(rows: T[], fields: string[]): T[] =>
+    rows.map((r) => {
+      const next: any = { ...r };
+      for (const f of fields) if (next[f] != null) next[f] = snapDay(next[f]);
+      return next;
+    });
+
   const snapshot = {
     meta: {
       exportedAt: new Date().toISOString(),
@@ -35,9 +50,9 @@ async function main() {
       schema: "social-media-team-dashboard/v1",
     },
     employees,
-    companies,
-    tasks,
-    photoSessions,
+    companies: snapFields(companies, ["contractStartDate"]),
+    tasks: snapFields(tasks, ["publishDate", "readyDate", "workDate"]),
+    photoSessions: snapFields(photoSessions, ["shootDate", "deliverBy"]),
     settings,
   };
 

@@ -216,7 +216,7 @@ describe("workload", () => {
     expect(row.freeDays).toBe(20);
   });
 
-  it("caps publisher load at daily coverage capacity", () => {
+  it("publisher: publishing alone maxes at 100%, but ad-hoc on top shows OVER", () => {
     const publisher = baseEmployee({
       id: "e_omar",
       name: "عمر",
@@ -237,6 +237,16 @@ describe("workload", () => {
             workDate: date,
           });
     }).filter(Boolean) as any[];
+
+    // Publishing is one duty-day per publishing day → never exceeds capacity.
+    const [pubOnly] = computeWorkload([publisher], publishTasks, 2026, 6);
+    expect(pubOnly.capacityDays).toBe(21);
+    expect(pubOnly.committedDays).toBe(21);
+    expect(pubOnly.pct).toBe(100);
+    expect(pubOnly.level).not.toBe("over");
+
+    // 80h (10 work-days) of ad-hoc ON TOP must push the publisher OVER capacity
+    // (the old clamp hid this and always showed a flat 100%).
     const extra = baseTask({
       id: "extra_omar",
       kind: "ADHOC",
@@ -247,13 +257,10 @@ describe("workload", () => {
       workDate: new Date(2026, 6, 8),
       readyDate: new Date(2026, 6, 8),
     });
-
-    const [row] = computeWorkload([publisher], [...publishTasks, extra], 2026, 6);
-
-    expect(row.capacityDays).toBe(21);
-    expect(row.committedDays).toBe(21);
-    expect(row.pct).toBe(100);
-    expect(row.level).not.toBe("over");
+    const [over] = computeWorkload([publisher], [...publishTasks, extra], 2026, 6);
+    expect(over.committedDays).toBeGreaterThan(over.capacityDays);
+    expect(over.pct).toBeGreaterThan(100);
+    expect(over.level).toBe("over");
   });
 
   it("charges Friday publishing to the previous workday's month", () => {

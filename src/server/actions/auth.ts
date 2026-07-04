@@ -5,34 +5,43 @@ import {
   assertAdmin,
   createSession,
   destroySession,
-  isPasswordConfigured,
+  isAdminConfigured,
+  setAdminEmail,
   setAdminPassword,
+  verifyAdminEmail,
   verifyAdminPassword,
 } from "@/lib/auth";
 
 const MIN_PASSWORD = 6;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Log in to the admin area. On first ever use (no password configured yet) this
- * CREATES the admin password from the value entered — so there is never a
- * hardcoded default credential. Afterwards it verifies the entered password.
- * On success it sets the signed session cookie.
+ * Log in to the admin area with email + password. On first ever use (nothing
+ * configured yet) this CREATES the admin email + password from the values
+ * entered — so there is never a hardcoded default credential. Afterwards it
+ * verifies both. On success it sets the signed session cookie.
  */
-export async function loginAction(password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function loginAction(
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const em = (email ?? "").trim();
   const pw = (password ?? "").trim();
-  const configured = await isPasswordConfigured();
+  const configured = await isAdminConfigured();
 
   if (!configured) {
+    if (!EMAIL_RE.test(em)) return { ok: false, error: "أدخل بريداً إلكترونياً صحيحاً" };
     if (pw.length < MIN_PASSWORD) {
       return { ok: false, error: `اختر كلمة مرور من ${MIN_PASSWORD} أحرف على الأقل` };
     }
+    await setAdminEmail(em);
     await setAdminPassword(pw);
     await createSession();
     return { ok: true };
   }
 
-  if (!(await verifyAdminPassword(pw))) {
-    return { ok: false, error: "كلمة المرور غير صحيحة" };
+  if (!(await verifyAdminEmail(em)) || !(await verifyAdminPassword(pw))) {
+    return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
   await createSession();
   return { ok: true };

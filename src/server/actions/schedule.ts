@@ -26,30 +26,47 @@ const D = (s: string | null): Date | null => {
   return new Date(y, m - 1, d);
 };
 
-// Reported June 2026 reality (per company|type), in PIECE order by publish date:
-//   published → the piece is published (publish card DONE),
+// Reported reality (per company|type), in PIECE order by publish date. Applied
+// in this precedence, then the rest stay TODO (pending production):
+//   published → published to the client (production DONE + publish card DONE),
+//   ready     → designed AND approved, waiting to be published (production DONE,
+//               publish card stays TODO → it sits in the publishing queue),
 //   review    → produced, awaiting approval (design/shoot in REVIEW),
-//   doing     → in progress, e.g. reels shot but not yet delivered (DOING).
-// Anything beyond these counts stays TODO. Later months start empty (all TODO).
-type JuneState = { published?: number; review?: number; doing?: number };
+//   doing     → in progress, e.g. a reel shot but not yet delivered (DOING).
+type JuneState = { published?: number; ready?: number; review?: number; doing?: number };
+
+// June carry-over reality (2026-06). برو: 1 reel + 1 post still to produce;
+// المول: 2 published + 3 designed-ready posts, 1 reel filmed-not-delivered
+// (Albert); المخبر: 3 reels filmed-not-delivered (غسان+مايك). جدارات is handled
+// as a TODAY-anchored cycle (JULY_2026) so it is never late.
 const JUNE_2026: Record<string, JuneState> = {
   "c_phoenitech|POST": { published: 4 }, // فوني تيك — كله منجز
   "c_phoenitech|REEL": { published: 2 }, // 2 منشورة · 2 بانتظار التصوير
   "c_training|POST": { published: 7 }, // التدريب — منجز
   "c_noor|POST": { published: 6 }, // المخبر — كل البوستات منشورة
-  "c_noor|REEL": { published: 3 }, // 3 ريل منشورة · 3 بانتظار التصوير (TODO)
+  "c_noor|REEL": { published: 3, doing: 3 }, // 3 منشورة · 3 مصوّرة لم تُسلَّم (غسان+مايك)
   "c_bw|POST": { published: 4 },
   "c_bw|REEL": { published: 2, doing: 2 }, // 2 منشورة · 2 مصوّرة لم تُسلّم
-  "c_mall|POST": { published: 2 }, // المول — 2 بوست منجز
-  "c_mall|REEL": { published: 2 }, // 2 ريل منجز
-  "c_pro|POST": { published: 1 }, // برو — بوست 1 منشور · 2 متبقّي (TODO)
-  "c_pro|STORY": { published: 1 }, // ستوري 1 منشور · 11 متبقّي (TODO)
-  "c_pro|REEL": { published: 6, doing: 1 }, // 6 منشورة · 1 مصوّر لم يُسلّم · 1 بانتظار
-  "c_jadarat|POST": { review: 6 }, // جدارات — التصاميم بانتظار المراجعة
-  "c_jadarat|AI_REEL": { review: 3 }, // أول 3 ريلات بانتظار المراجعة
+  "c_mall|POST": { published: 2, ready: 3 }, // 2 منشور · 3 مصمّمة جاهزة للنشر (أيمن)
+  "c_mall|STORY": { published: 2 }, // 2 ستوري منشور
+  "c_mall|REEL": { published: 2, doing: 1 }, // 2 منشورة · 1 مصوّرة لم تُسلَّم (ألبير)
+  "c_pro|POST": { published: 2 }, // برو — 2 منشور · 1 متبقٍّ للإنتاج
+  "c_pro|STORY": { published: 6 }, // كل الستوريز منجزة
+  "c_pro|REEL": { published: 7 }, // 7 منشورة · 1 متبقٍّ لم يُصوَّر بعد
 };
+
+// جدارات — scheduling starts TODAY (its contractStartDate is set to today), so
+// it lives in the July cycle and is never late. Posts are designed+approved
+// (ready to publish from today); 3 AI reels are still under review.
+const JULY_2026: Record<string, JuneState> = {
+  "c_jadarat|POST": { ready: 6 }, // كل البوستات مصمّمة ومعتمدة (سابين) — جاهزة للنشر
+  "c_jadarat|AI_REEL": { review: 3 }, // 3 ريلات AI قيد المراجعة
+};
+
 function achievementsFor(year: number, month: number): Record<string, JuneState> {
-  return year === 2026 && month === 5 ? JUNE_2026 : {};
+  if (year === 2026 && month === 5) return JUNE_2026;
+  if (year === 2026 && month === 6) return JULY_2026;
+  return {};
 }
 
 /**
@@ -89,6 +106,15 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
         p.board = "DONE";
         p.status = "PUBLISHED";
       }
+    }
+    // ready = designed + approved, waiting to publish: the production card is
+    // DONE, but the PUBLISH card stays TODO so the piece sits in the publishing
+    // queue (ready to schedule) instead of being marked already published.
+    for (let n = st.ready ?? 0; n > 0 && i < arr.length; n--, i++) {
+      const c = arr[i];
+      c.board = "DONE";
+      c.status = "READY";
+      // publish card left as generated (TODO / NOT_STARTED) → ready to publish.
     }
     for (let n = st.review ?? 0; n > 0 && i < arr.length; n--, i++) {
       arr[i].board = "REVIEW";

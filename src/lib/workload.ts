@@ -196,7 +196,9 @@ export function computeWorkload(
         committedDays += cost;
         doneDays += entry.count > 0 ? cost * (entry.done / entry.count) : 0;
       }
-      committedDays = Math.min(committedDays, capacityDays);
+      // NOTE: publishing is one duty-day per publishing day, so it can never
+      // exceed capacity on its own — no clamp needed here, and clamping the
+      // TOTAL (below) was hiding real overload once ad-hoc work was added.
       itemCount += publishTasks.length;
     }
 
@@ -215,9 +217,9 @@ export function computeWorkload(
       else if (task.type === "STORY") breakdown.STORY += task.quantity ?? 1;
     }
 
-    if (publisher) {
-      committedDays = Math.min(committedDays, capacityDays);
-    }
+    // The publisher's load is NO LONGER clamped to capacity: publishing duty +
+    // ad-hoc work can legitimately exceed the month → the bar shows "over" so a
+    // real bottleneck (e.g. عمر) is visible instead of a flat 100%.
     doneDays = Math.min(committedDays, doneDays);
 
     const remainingDays = Math.max(0, committedDays - doneDays);

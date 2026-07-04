@@ -15,6 +15,7 @@ export default function LoginClient({
   from: string;
 }) {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,7 @@ export default function LoginClient({
       return;
     }
     startTransition(async () => {
-      const res = await loginAction(password);
+      const res = await loginAction(email, password);
       if (res.ok) {
         router.replace(from);
         router.refresh();
@@ -58,6 +59,21 @@ export default function LoginClient({
 
           <form onSubmit={submit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email">البريد الإلكتروني</Label>
+              <Input
+                id="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                dir="ltr"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11 text-left"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">
                 {configured ? "كلمة المرور" : "كلمة المرور الجديدة"}
               </Label>
@@ -65,7 +81,6 @@ export default function LoginClient({
                 id="password"
                 type="password"
                 autoComplete={configured ? "current-password" : "new-password"}
-                autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-11"

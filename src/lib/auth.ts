@@ -35,6 +35,7 @@ import { prisma } from "./db";
 
 const SECRET_KEY = "authSecret";
 const PASSWORD_KEY = "adminPasswordHash";
+const EMAIL_KEY = "adminEmail";
 export const SESSION_COOKIE = "sm_admin";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -114,6 +115,41 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
   }
   const stored = await storedPasswordHash();
   return stored != null && verifyPasswordHash(password, stored);
+}
+
+// --- admin email ------------------------------------------------------------
+
+/** The admin email: env `ADMIN_EMAIL` override, else the DB value. */
+export async function getAdminEmail(): Promise<string | null> {
+  if (process.env.ADMIN_EMAIL) return process.env.ADMIN_EMAIL;
+  const row = await prisma.setting.findUnique({ where: { key: EMAIL_KEY } });
+  return row?.value ?? null;
+}
+
+export async function setAdminEmail(email: string): Promise<void> {
+  if (process.env.ADMIN_EMAIL) {
+    throw new Error("البريد مضبوط عبر متغيّر البيئة ADMIN_EMAIL");
+  }
+  const value = email.trim().toLowerCase();
+  await prisma.setting.upsert({
+    where: { key: EMAIL_KEY },
+    update: { value },
+    create: { key: EMAIL_KEY, value },
+  });
+}
+
+/** Compared case-insensitively. When no email is configured the email field is
+ *  informational only (the password remains the gate). */
+export async function verifyAdminEmail(email: string): Promise<boolean> {
+  const stored = await getAdminEmail();
+  if (!stored) return true;
+  return (email ?? "").trim().toLowerCase() === stored.trim().toLowerCase();
+}
+
+/** True once BOTH an email and a password are configured. Until then the login
+ *  screen runs its first-time "create admin" flow. */
+export async function isAdminConfigured(): Promise<boolean> {
+  return (await isPasswordConfigured()) && (await getAdminEmail()) != null;
 }
 
 // --- session token ----------------------------------------------------------

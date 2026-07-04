@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import CompanyForm from "@/components/forms/CompanyForm";
-import { deleteCompany } from "@/server/actions/companies";
+import { deleteCompany, archiveCompany } from "@/server/actions/companies";
 import { toast } from "@/components/ui/toaster";
 import type { Company, Employee } from "@/types";
 import { Plus, Pencil, Trash2 } from "lucide-react";
@@ -24,10 +24,19 @@ export default function CompaniesClient({
   const [, start] = useTransition();
   const empName = (id: string | null) => employees.find((e) => e.id === id)?.name ?? "—";
 
+  const doArchive = (c: Company) =>
+    start(async () => {
+      const r = await archiveCompany(c.id);
+      if (r.ok) {
+        toast(`تمت أرشفة ${c.name}`);
+        router.refresh();
+      } else toast(r.error, "error");
+    });
+
   const onDelete = (c: Company) => {
     Swal.fire({
       title: "تأكيد الحذف",
-      text: `حذف ${c.name}؟`,
+      text: `حذف ${c.name}؟ إن كان لديها تاريخ، سيُقترح الأرشفة بدل الحذف.`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "نعم، احذف",
@@ -40,7 +49,23 @@ export default function CompaniesClient({
         if (r.ok) {
           toast("تم الحذف");
           router.refresh();
-        } else toast(r.error, "error");
+          return;
+        }
+        // Has history → cascade-delete blocked. Offer archiving instead.
+        if ("canArchive" in r && r.canArchive) {
+          const choice = await Swal.fire({
+            title: "لا يمكن الحذف — يوجد تاريخ محفوظ",
+            text: r.error,
+            icon: "info",
+            showCancelButton: true,
+            confirmButtonText: "أرشفة الشركة",
+            cancelButtonText: "إلغاء",
+            confirmButtonColor: "#0a8fa3",
+          });
+          if (choice.isConfirmed) doArchive(c);
+        } else {
+          toast(r.error, "error");
+        }
       });
     });
   };

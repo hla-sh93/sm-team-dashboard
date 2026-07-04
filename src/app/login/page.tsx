@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isAuthenticated, isPasswordConfigured } from "@/lib/auth";
+import { isAuthenticated, isAdminConfigured } from "@/lib/auth";
 import LoginClient from "./login-client";
 
 export const metadata = { title: "دخول الإدارة" };
@@ -14,7 +14,7 @@ export default async function LoginPage({
   const from = rawFrom.startsWith("/admin") ? rawFrom : "/admin";
 
   if (await isAuthenticated()) redirect(from);
-  const configured = await isPasswordConfigured();
+  const configured = await isAdminConfigured();
 
   return <LoginClient configured={configured} from={from} />;
 }
