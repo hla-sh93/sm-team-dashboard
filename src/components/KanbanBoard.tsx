@@ -16,7 +16,12 @@ import {
   type Board,
   type Stage,
 } from "@/lib/constants";
-import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
+import {
+  ARABIC_MONTHS,
+  companyCycle,
+  contractDayOf,
+  formatDateShort,
+} from "@/lib/dates";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
@@ -55,7 +60,7 @@ type KCard = {
  * Per-person kanban. Every content piece is its own numbered card (بوست-1،
  * ستوري-2، ريل-1، ريل AI-3) — no batching. Columns are the workflow status
  * (قيد الانتظار → قيد التنفيذ → للمراجعة → منجز); within each column the cards
- * are grouped by `groupBy` (شركة افتراضياً) and sorted by nearest deadline.
+ * keep the selected grouping and are ordered by urgency/date.
  */
 export type BoardGroupBy = "company" | "type" | "person" | "none";
 
@@ -110,8 +115,6 @@ export default function KanbanBoard({
     }
     return counts;
   }, [allTasks]);
-
-  const isLate = isTaskLateState;
 
   // Reel numbering + labels are shared with the rest of the app (lib/cards) so
   // every view shows identical labels.
@@ -190,17 +193,54 @@ export default function KanbanBoard({
   }, [cards]);
 
   // Within each status column, optionally group cards (by company / type /
-  // person) so daily follow-up reads "where is company X" — not just a flat
-  // pile. Inside a group, cards sort by nearest deadline then pipeline stage.
+  // person) so the display shape stays the same. The only behavior change is
+  // ordering: late/older work comes first, then upcoming work by nearest date.
   type CardGroup = { key: string; label: string; color?: string; cards: KCard[] };
   const coById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
   const empOrder = useMemo(() => new Map(employees.map((e, i) => [e.id, i])), [employees]);
-  const deadlineMs = (t: Task) => {
-    const d = t.readyDate ?? t.publishDate;
-    return d ? new Date(d).getTime() : Number.MAX_SAFE_INTEGER;
+  const isActiveContractCycle = (t: Task) => {
+    if (!t.companyId) return false;
+    const co = coById.get(t.companyId);
+    if (!co?.contractStartDate) return false;
+    const contractDay = contractDayOf(co.contractStartDate);
+    if (contractDay <= 1) return false;
+    const { start, end } = companyCycle(t.year, t.month, contractDay);
+    const today = new Date();
+    return today >= start && today < end;
   };
+  const isLate = (t: Task) => {
+    if (!isTaskLateState(t)) return false;
+    // A still-open contract cycle (e.g. المول 20/6 → 20/7) is not stale
+    // carry-over just because the bucket is حزيران. Plain waiting work stays
+    // queued; in-progress work past delivery still shows as late.
+    if (isActiveContractCycle(t) && t.board === "TODO" && t.status === "NOT_STARTED") {
+      return false;
+    }
+    return true;
+  };
+  const dateMs = (value: Date | string | null | undefined) =>
+    value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
+  const cardDateMs = (t: Task) => {
+    const primary =
+      t.stage === "PUBLISH" || t.kind === "PUBLISH"
+        ? (t.publishDate ?? t.readyDate ?? t.workDate)
+        : (t.readyDate ?? t.workDate ?? t.publishDate);
+    return dateMs(primary);
+  };
+  const isPreviousCycle = (t: Task) =>
+    year != null &&
+    month != null &&
+    (t.year < year || (t.year === year && t.month < month)) &&
+    !isActiveContractCycle(t);
   const STAGE_RANK: Record<string, number> = { WRITE: 0, DESIGN: 1, SHOOT: 1, PUBLISH: 2 };
   const TYPE_RANK: Record<string, number> = { POST: 0, STORY: 1, AI_REEL: 2, REEL: 3 };
+
+  const byTime = (a: KCard, b: KCard) =>
+    Number(isLate(b.repr)) - Number(isLate(a.repr)) ||
+    Number(isPreviousCycle(b.repr)) - Number(isPreviousCycle(a.repr)) ||
+    cardDateMs(a.repr) - cardDateMs(b.repr) ||
+    (STAGE_RANK[a.repr.stage ?? ""] ?? 3) - (STAGE_RANK[b.repr.stage ?? ""] ?? 3) ||
+    a.label.localeCompare(b.label, "ar");
 
   const groupInfo = (c: KCard): { key: string; label: string; color?: string; sort: number } => {
     const t = c.repr;
@@ -223,31 +263,28 @@ export default function KanbanBoard({
   const columnGroups = useMemo(() => {
     const out: Record<Board, CardGroup[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
     for (const board of BOARDS) {
+      const sortedCards = [...columns[board]].sort(byTime);
       if (groupBy === "none") {
-        out[board] = [{ key: "__all", label: "", cards: columns[board] }];
+        out[board] = [{ key: "__all", label: "", cards: sortedCards }];
         continue;
       }
-      const groups = new Map<string, CardGroup & { sort: number }>();
-      for (const c of columns[board]) {
+
+      const groups = new Map<string, CardGroup & { sort: number; firstIndex: number }>();
+      for (const [index, c] of sortedCards.entries()) {
         const gi = groupInfo(c);
-        const g = groups.get(gi.key) ?? { ...gi, cards: [] };
+        const g = groups.get(gi.key) ?? { ...gi, cards: [], firstIndex: index };
         g.cards.push(c);
+        g.firstIndex = Math.min(g.firstIndex, index);
         groups.set(gi.key, g);
       }
       const arr = [...groups.values()].sort(
-        (a, b) => a.sort - b.sort || a.label.localeCompare(b.label, "ar"),
+        (a, b) => a.firstIndex - b.firstIndex || a.sort - b.sort || a.label.localeCompare(b.label, "ar"),
       );
-      for (const g of arr)
-        g.cards.sort(
-          (a, b) =>
-            deadlineMs(a.repr) - deadlineMs(b.repr) ||
-            (STAGE_RANK[a.repr.stage ?? ""] ?? 3) - (STAGE_RANK[b.repr.stage ?? ""] ?? 3),
-        );
       out[board] = arr;
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, groupBy, coById, empOrder]);
+  }, [columns, groupBy, coById, empOrder, year, month]);
 
   const onMove = (ids: string[], board: string) =>
     start(async () => {
