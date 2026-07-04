@@ -84,6 +84,20 @@ function backWorkdays(iso: string, n: number, workDays: number[]): string {
   ).padStart(2, "0")}`;
 }
 
+/** Move a YYYY-MM-DD backward, inclusive, to a working day. */
+function snapBackWorkday(iso: string, workDays: number[]): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  let guard = 0;
+  while (!workDays.includes(dt.getDay()) && guard < 14) {
+    dt.setDate(dt.getDate() - 1);
+    guard++;
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
+    dt.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 export function expandPipeline(
   items: PipelineContentItem[],
   opts: {
@@ -104,6 +118,7 @@ export function expandPipeline(
     writeBoard?: Board;
     idPrefix?: string;
     writerWorkDays: number[];
+    publisherWorkDays?: number[];
     skipWritingForCompany?: (companyId: string) => boolean;
     // Optional: floor date (YYYY-MM-DD) per company — the WRITE card's start is
     // clamped to it so writing never begins before the contract start date.
@@ -113,6 +128,7 @@ export function expandPipeline(
   const out: PipelineTask[] = [];
   const { writerId, publisherId, year, month, companyName } = opts;
   const writeBoard = opts.writeBoard ?? "TODO";
+  const publisherWorkDays = opts.publisherWorkDays ?? [6, 0, 1, 2, 3];
   const pfx = opts.idPrefix ?? "";
 
   // 1) WRITE cards — 2 per company that has any items, by scope. Each writing
@@ -219,7 +235,7 @@ export function expandPipeline(
       assigneeId: publisherId,
       publishDate: it.publishDate,
       readyDate: it.publishDate,
-      workDate: it.publishDate,
+      workDate: it.publishDate ? snapBackWorkday(it.publishDate, publisherWorkDays) : null,
       week: it.week,
       blockedById: designId,
       pipelineKey: pk,

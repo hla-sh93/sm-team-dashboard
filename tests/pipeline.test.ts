@@ -50,6 +50,17 @@ describe("pipeline expansion", () => {
     expect(pipe.filter((task) => task.stage === "PUBLISH")).toHaveLength(1);
   });
 
+  it("moves publish workDate backward to the publisher's working day", () => {
+    const pipe = expandPipeline(
+      [{ ...baseItem, publishDate: "2026-07-09", id: "c|POST|2026-07-09|1" }],
+      { ...opts, publisherWorkDays: [6, 0, 1, 2, 3] },
+    );
+
+    const publish = pipe.find((task) => task.stage === "PUBLISH")!;
+    expect(publish.publishDate).toBe("2026-07-09"); // Thursday can stay client-facing.
+    expect(publish.workDate).toBe("2026-07-08"); // Omar's task is Wednesday.
+  });
+
   it("keeps same-day same-type pieces distinct when deterministic ids are provided", () => {
     const pipe = expandPipeline(
       [

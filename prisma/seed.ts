@@ -19,6 +19,7 @@ import data from "./seed-data.json";
 import juneActuals from "./actuals-june.json";
 import { expandPipeline } from "../src/lib/pipeline";
 import { isTrainerSuppliedContentCompany } from "../src/lib/content-source";
+import { parseWorkDays } from "../src/lib/dates";
 
 const prisma = new PrismaClient();
 
@@ -62,6 +63,9 @@ async function seedJuneActuals() {
   const cos = data.companies as any[];
   const writerId = emps.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
   const publisherId = emps.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
+  const publisherWorkDays = parseWorkDays(
+    emps.find((e) => e.id === publisherId)?.workDays,
+  );
   const coName = (id: string) => cos.find((c) => c.id === id)?.name ?? "";
   const trainerSuppliedContent = (id: string) =>
     isTrainerSuppliedContentCompany(cos.find((c) => c.id === id));
@@ -93,6 +97,7 @@ async function seedJuneActuals() {
     writeBoard: "DONE",
     idPrefix: "jun_",
     writerWorkDays: [6, 0, 1, 2, 3],
+    publisherWorkDays,
     skipWritingForCompany: trainerSuppliedContent,
   });
 

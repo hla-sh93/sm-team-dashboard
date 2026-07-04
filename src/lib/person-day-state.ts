@@ -9,8 +9,8 @@ export function personDayState({
   openCardCount: number;
   isOff: boolean;
 }): PersonDayState {
+  if (isOff) return "OFF";
   if (dayCardCount > 0) return "TASKS";
   if (openCardCount > 0) return "BACKLOG";
-  if (isOff) return "OFF";
   return "FREE";
 }

@@ -1,6 +1,6 @@
 import { isTaskDoneState, PRIORITY_RANK } from "@/lib/constants";
 import { adhocDays, cardDurationDays } from "@/lib/capacity";
-import { toISODate } from "@/lib/dates";
+import { parseWorkDays, toISODate } from "@/lib/dates";
 import type { Company, Employee, Task } from "@/types";
 
 const EPS = 1e-9;
@@ -148,6 +148,10 @@ export function selectDailyWorkTasks({
   today?: Date;
 }): Task[] {
   const todayISO = toISODate(today);
+  if (!parseWorkDays(employee.workDays).includes(today.getDay())) {
+    return [];
+  }
+
   const companyPriority = new Map(companies.map((company) => [company.id, company.priority]));
   const scopeCounts = writeScopeCounts(allTasks);
   const open = tasks

@@ -27,6 +27,26 @@ later deploys never wipe your data (it only seeds an empty database).
 - To use the same database locally, copy its connection string into a local
   `.env` as `DATABASE_URL` (see `.env.example`).
 
+## Copy the current local database to Vercel
+
+When local and Vercel differ, export the local SQLite database and import that
+snapshot into the Vercel Postgres database. This replaces the production app
+tables, including completed and incomplete task states plus finance fields.
+
+```
+npm run db:export-local
+vercel env pull .env.production.local --environment=production
+npm run db:import-prod
+```
+
+`db:import-prod` refuses to run unless `DATABASE_URL` points at Postgres. After
+the import, redeploy or refresh the app; Vercel will read the copied data.
+If Vercel keeps Postgres secrets hidden from `env pull`, run a one-off deploy:
+
+```
+vercel deploy --prod --force --build-env IMPORT_LOCAL_SNAPSHOT=1
+```
+
 ## Two schemas (local SQLite vs production Postgres)
 
 - `prisma/schema.prisma` — **SQLite**, used for local development/preview.

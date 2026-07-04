@@ -1,0 +1,9 @@
+*.db
+*.db-journal
+!backups/local-db-snapshot.json
+.env.local
+.env.*.local
+.generated/
+.next/
+node_modules/
+tmp/

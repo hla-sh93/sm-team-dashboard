@@ -557,11 +557,16 @@ function packEmployee(
   // 1) Pinned tasks reserve their stored workDate first.
   const pinned = empTasks.filter((t) => t.isPinned && t.workDate);
   for (const t of pinned) {
+    if (!workDays.includes(t.workDate!.getDay())) {
+      const snapped = backWorkday(t.workDate!, workDays);
+      if (minISO(t) && toISODate(snapped) < minISO(t)) {
+        t.workDate = forwardWorkday(t.notBefore!, workDays);
+      } else {
+        t.workDate = snapped;
+      }
+    }
     const iso = toISODate(t.workDate!);
     addLoad(iso, t.hours);
-    if (!workDays.includes(t.workDate!.getDay())) {
-      t.overflow = true; // pinned on a non-working day — flag it
-    }
   }
 
   const free = empTasks.filter((t) => !(t.isPinned && t.workDate));

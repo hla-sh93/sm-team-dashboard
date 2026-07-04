@@ -20,3 +20,8 @@ next-env.d.ts
 
 # Local scratch (dev-server pids, one-off scripts)
 tmp/
+.generated/
+
+# Local DB snapshot IS tracked on purpose: the Vercel build imports it into
+# production Postgres (IMPORT_LOCAL_SNAPSHOT=1, hash-guarded so it runs once per
+# unique export). Re-sync prod = `npm run db:export-local` then commit + push.

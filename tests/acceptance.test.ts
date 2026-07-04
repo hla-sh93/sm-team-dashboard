@@ -141,13 +141,35 @@ describe("§9 acceptance — holiday respect (criterion 5)", () => {
     const { tasks } = run();
     for (const t of tasks) {
       if (!t.assigneeId || !t.workDate) continue;
-      if (t.isPinned) continue; // pinned tasks may be force-locked
       const wd = workDaysOf(t.assigneeId);
       expect(
         wd.includes(t.workDate.getDay()),
         `${t.title} on ${toISODate(t.workDate)} (day ${t.workDate.getDay()}) outside workDays of ${t.assigneeId}`,
       ).toBe(true);
     }
+  });
+
+  it("moves pinned tasks off personal holidays instead of force-locking them there", () => {
+    const state = specState(YEAR, MONTH, false);
+    state.adhoc = [
+      {
+        id: "pinned_friday",
+        title: "manual pinned",
+        companyId: null,
+        assigneeId: EMP.sabin,
+        hours: 1,
+        priority: "NORMAL",
+        status: "NOT_STARTED" as const,
+        readyDate: new Date(2026, 6, 7),
+        workDate: new Date(2026, 6, 3), // Friday
+        isPinned: true,
+      },
+    ];
+
+    const task = buildSchedule(state).tasks.find((t) => t.detKey === "adhoc:pinned_friday")!;
+    expect(task.isPinned).toBe(true);
+    expect(toISODate(task.workDate!)).toBe("2026-07-01"); // previous working day
+    expect(parseWorkDays(employees.find((e) => e.id === EMP.sabin)!.workDays).includes(task.workDate!.getDay())).toBe(true);
   });
 });
 

@@ -80,6 +80,20 @@ const task = (overrides: Record<string, unknown>) =>
   }) as any;
 
 describe("daily work queue", () => {
+  it("returns no daily queue on the employee's day off", () => {
+    const designer = employee();
+    const companies = [company({ id: "company", priority: 1 })];
+
+    const selected = selectDailyWorkTasks({
+      employee: designer,
+      tasks: [task({ id: "open", workDate: new Date(2026, 6, 3) })],
+      companies,
+      today: new Date(2026, 6, 3), // Friday, off for Sat→Wed
+    });
+
+    expect(selected).toEqual([]);
+  });
+
   it("fills today's queue from unfinished future-dated posts up to the designer capacity", () => {
     const designer = employee();
     const companies = [

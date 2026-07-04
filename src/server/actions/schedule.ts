@@ -6,7 +6,14 @@ import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
 import { isTrainerSuppliedContentCompany } from "@/lib/content-source";
 import { loadState } from "@/lib/schedule-data";
-import { companyCycle, contractDayOf, formatDateShort, parseWorkDays } from "@/lib/dates";
+import {
+  backWorkday,
+  companyCycle,
+  contractDayOf,
+  formatDateShort,
+  forwardWorkday,
+  parseWorkDays,
+} from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -112,6 +119,9 @@ export async function generateSchedule(year: number, month: number) {
     );
     const publisherId =
       state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
+    const publisherWorkDays = parseWorkDays(
+      state.employees.find((e) => e.id === publisherId)?.workDays as string | number[]
+    );
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
     const trainerSuppliedContent = (id: string) =>
       isTrainerSuppliedContentCompany(state.companies.find((c) => c.id === id));
@@ -164,6 +174,7 @@ export async function generateSchedule(year: number, month: number) {
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
       skipWritingForCompany: trainerSuppliedContent,
       notBeforeISO,
+      publisherWorkDays,
     });
     applyAchievements(pipe, achievementsFor(year, month));
 
@@ -195,6 +206,7 @@ export async function generateSchedule(year: number, month: number) {
       },
     });
     applyPipelinePreservation(pipe, existing);
+    snapPipelineWorkDatesToAssigneeWorkDays(pipe, state.employees);
 
     // Photo-session statuses (تم التصوير/المونتاج/التسليم) must survive the
     // replace below too — matched by detKey, falling back to (company, kind,
@@ -313,6 +325,30 @@ export async function generateSchedule(year: number, month: number) {
     console.error(e);
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };
+  }
+}
+
+function snapPipelineWorkDatesToAssigneeWorkDays(
+  pipe: PipelineTask[],
+  employees: { id: string; workDays: string | number[] }[],
+) {
+  const workDaysByEmployee = new Map(
+    employees.map((e) => [e.id, parseWorkDays(e.workDays)]),
+  );
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}`;
+  for (const task of pipe) {
+    if (!task.assigneeId || !task.workDate) continue;
+    const workDays = workDaysByEmployee.get(task.assigneeId);
+    if (!workDays) continue;
+    const d = D(task.workDate);
+    if (!d || workDays.includes(d.getDay())) continue;
+    const snapped = task.readyDate || task.publishDate
+      ? backWorkday(d, workDays)
+      : forwardWorkday(d, workDays);
+    task.workDate = iso(snapped);
   }
 }
 

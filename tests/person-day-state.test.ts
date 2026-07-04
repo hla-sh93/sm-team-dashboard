@@ -12,14 +12,24 @@ describe("personDayState", () => {
     ).toBe("BACKLOG");
   });
 
-  it("keeps reference-day tasks first even on an off day", () => {
+  it("keeps an off day task-free even when backlog exists", () => {
+    expect(
+      personDayState({
+        dayCardCount: 0,
+        openCardCount: 5,
+        isOff: true,
+      }),
+    ).toBe("OFF");
+  });
+
+  it("treats off day as a hard stop even if a caller passes day cards", () => {
     expect(
       personDayState({
         dayCardCount: 2,
         openCardCount: 5,
         isOff: true,
       }),
-    ).toBe("TASKS");
+    ).toBe("OFF");
   });
 
   it("marks a person free only when they are working and have no open work", () => {

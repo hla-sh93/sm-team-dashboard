@@ -17,9 +17,10 @@
  * charged twice.
  *
  * Capacity is the employee's configured working days inside the same calendar
- * month. Publisher capacity follows the publishing calendar: every day except
- * Friday. Rates: POST 10/day, STORY 10/day, AI_REEL 1/day, PLAN 0.5/day
- * (= two days per company plan), and photographer REEL rates.
+ * month. Publisher load is day-coverage: any number of publish cards on one
+ * workDate costs one working day. Rates: POST 10/day, STORY 10/day, AI_REEL
+ * 1/day, PLAN 0.5/day (= two days per company plan), and photographer REEL
+ * rates.
  */
 import type { Employee, Task, PhotoSession, Company } from "@/types";
 import { isTaskDoneState } from "./constants";
@@ -49,10 +50,6 @@ export type WorkloadEntry = {
 // Roles are free-text and may be Arabic ("ناشر + مدير صفحات") or English keys.
 export const isPublisherRole = (role: string) => /ناشر|نشر|publisher/i.test(role);
 export const isWriterRole = (role: string) => /كات|writer/i.test(role);
-
-// Publishing is daily operational coverage. Friday publications, if any are
-// entered manually, are prepared on the previous day.
-const PUBLISHER_WORK_DAYS = [6, 0, 1, 2, 3, 4];
 
 const isDoneTask = isTaskDoneState;
 
@@ -95,10 +92,18 @@ function fractionOfEffortInMonth(
   return inMonth / totalDays;
 }
 
-function publisherWorkDate(date: Date | null | undefined): Date | null {
-  if (!date) return null;
-  const d = new Date(date);
-  if (d.getDay() === 5) d.setDate(d.getDate() - 1);
+function publisherWorkDate(
+  task: Pick<Task, "workDate" | "publishDate">,
+  workDays: number[],
+): Date | null {
+  const source = task.workDate ?? task.publishDate;
+  if (!source) return null;
+  const d = new Date(source);
+  let guard = 0;
+  while (!workDays.includes(d.getDay()) && guard < 14) {
+    d.setDate(d.getDate() - 1);
+    guard++;
+  }
   return d;
 }
 
@@ -149,7 +154,7 @@ export function computeWorkload(
   return employees.map((emp) => {
     const configuredWorkDays = parseWorkDays(emp.workDays);
     const publisher = isPublisherRole(emp.role);
-    const workloadDays = publisher ? PUBLISHER_WORK_DAYS : configuredWorkDays;
+    const workloadDays = configuredWorkDays;
     const capacityDays = monthDays.filter((d) => workloadDays.includes(d.getDay())).length;
     const writeScopeCount = (task: Task) => {
       if (!task.companyId) return 1;
@@ -161,7 +166,7 @@ export function computeWorkload(
     const myTasks = tasks.filter((task) => {
       if (task.assigneeId !== emp.id) return false;
       if (publisher && task.kind === "PUBLISH") {
-        return isInMonth(publisherWorkDate(task.publishDate), year, month);
+        return isInMonth(publisherWorkDate(task, workloadDays), year, month);
       }
       return fractionOfEffortInMonth(task, year, month, workloadDays) > 0;
     });
@@ -173,11 +178,11 @@ export function computeWorkload(
 
     if (publisher) {
       const publishTasks = myTasks.filter(
-        (task) => task.kind === "PUBLISH" && isInMonth(publisherWorkDate(task.publishDate), year, month),
+        (task) => task.kind === "PUBLISH" && isInMonth(publisherWorkDate(task, workloadDays), year, month),
       );
       const dayMap = new Map<string, { companies: Set<string>; count: number; done: number }>();
       for (const task of publishTasks) {
-        const effectiveDate = publisherWorkDate(task.publishDate);
+        const effectiveDate = publisherWorkDate(task, workloadDays);
         if (!effectiveDate) continue;
         const day = toISODate(effectiveDate);
         const entry = dayMap.get(day) ?? { companies: new Set(), count: 0, done: 0 };

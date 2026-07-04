@@ -134,12 +134,12 @@ describe("workload", () => {
     expect(row.freeDays).toBe(22);
   });
 
-  it("publisher load is based on publish cards dated inside the month", () => {
+  it("publisher load is based on publish workDate days, not publish item count", () => {
     const publisher = baseEmployee({
       id: "e_omar",
       name: "عمر",
       role: "publisher",
-      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]),
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
     });
     const tasks = [
       baseTask({
@@ -151,6 +151,15 @@ describe("workload", () => {
         readyDate: new Date(2026, 6, 1),
         workDate: new Date(2026, 6, 1),
         month: 5,
+      }),
+      baseTask({
+        id: "same_day_second_company",
+        kind: "PUBLISH",
+        stage: "PUBLISH",
+        assigneeId: "e_omar",
+        publishDate: new Date(2026, 6, 1),
+        readyDate: new Date(2026, 6, 1),
+        workDate: new Date(2026, 6, 1),
       }),
       baseTask({
         id: "same_month_july_publish",
@@ -174,11 +183,37 @@ describe("workload", () => {
 
     const [row] = computeWorkload([publisher], tasks, 2026, 6);
 
-    expect(row.capacityDays).toBe(26);
+    expect(row.capacityDays).toBe(21);
     expect(row.committedDays).toBe(2);
     expect(row.remainingDays).toBe(2);
-    expect(row.freeDays).toBe(24);
-    expect(row.itemCount).toBe(2);
+    expect(row.freeDays).toBe(19);
+    expect(row.itemCount).toBe(3);
+  });
+
+  it("charges a Thursday publish to Omar's Wednesday workDate", () => {
+    const publisher = baseEmployee({
+      id: "e_omar",
+      name: "عمر",
+      role: "publisher",
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
+    });
+    const thursdayPublish = baseTask({
+      id: "thursday_publish",
+      kind: "PUBLISH",
+      stage: "PUBLISH",
+      assigneeId: "e_omar",
+      publishDate: new Date(2026, 6, 9), // Thursday, client-facing publish day.
+      readyDate: new Date(2026, 6, 9),
+      workDate: new Date(2026, 6, 8), // Wednesday, Omar's scheduling work day.
+    });
+
+    const [row] = computeWorkload([publisher], [thursdayPublish], 2026, 6);
+
+    expect(thursdayPublish.publishDate.getDay()).toBe(4);
+    expect(thursdayPublish.workDate.getDay()).toBe(3);
+    expect(row.capacityDays).toBe(21);
+    expect(row.committedDays).toBe(1);
+    expect(row.freeDays).toBe(20);
   });
 
   it("caps publisher load at daily coverage capacity", () => {
@@ -215,8 +250,8 @@ describe("workload", () => {
 
     const [row] = computeWorkload([publisher], [...publishTasks, extra], 2026, 6);
 
-    expect(row.capacityDays).toBe(26);
-    expect(row.committedDays).toBe(26);
+    expect(row.capacityDays).toBe(21);
+    expect(row.committedDays).toBe(21);
     expect(row.pct).toBe(100);
     expect(row.level).not.toBe("over");
   });
@@ -226,16 +261,16 @@ describe("workload", () => {
       id: "e_omar",
       name: "عمر",
       role: "publisher",
-      workDays: JSON.stringify([6, 0, 1, 2, 3, 4]),
+      workDays: JSON.stringify([6, 0, 1, 2, 3]),
     });
     const fridayPublish = baseTask({
       id: "may_friday_publish",
       kind: "PUBLISH",
       stage: "PUBLISH",
       assigneeId: "e_omar",
-      publishDate: new Date(2026, 4, 1), // Friday, prepared Thu Apr 30.
+      publishDate: new Date(2026, 4, 1), // Friday, prepared on the previous Omar workday.
       readyDate: new Date(2026, 4, 1),
-      workDate: new Date(2026, 4, 1),
+      workDate: null,
     });
 
     expect(fridayPublish.publishDate.getDay()).toBe(5);
