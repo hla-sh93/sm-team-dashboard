@@ -125,6 +125,29 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
       arr[i].status = "IN_PROGRESS";
     }
   }
+
+  // Nawal writes each company's plan UP FRONT, before any design/shoot. So once
+  // a scope's production has STARTED (any post/story/reel of that scope is
+  // designed / shot / in-review / published), her WRITE card for that scope is
+  // clearly done — it must not linger as "late" while its own content is already
+  // being produced or is live. (For a fresh month with no achievements, nothing
+  // is produced yet, so writes correctly stay pending.)
+  const isPastWriting = (c: PipelineTask) =>
+    c.board === "DONE" || c.board === "REVIEW" || c.board === "DOING";
+  for (const w of pipe) {
+    if (w.stage !== "WRITE" || !w.pipelineKey) continue;
+    const [coId, scope] = w.pipelineKey.split("|");
+    const scopePieces = pipe.filter(
+      (c) =>
+        (c.stage === "DESIGN" || c.stage === "SHOOT") &&
+        c.companyId === coId &&
+        (scope === "SHOOT" ? c.type === "REEL" : c.type !== "REEL"),
+    );
+    if (scopePieces.length > 0 && scopePieces.some(isPastWriting)) {
+      w.board = "DONE";
+      w.status = "READY";
+    }
+  }
 }
 
 /**
