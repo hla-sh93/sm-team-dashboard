@@ -40,13 +40,13 @@ type JuneState = { published?: number; ready?: number; review?: number; doing?: 
 // (Albert); المخبر: 3 reels filmed-not-delivered (غسان+مايك). جدارات is handled
 // as a TODAY-anchored cycle (JULY_2026) so it is never late.
 const JUNE_2026: Record<string, JuneState> = {
-  "c_phoenitech|POST": { published: 4 }, // فوني تيك — كله منجز
-  "c_phoenitech|REEL": { published: 2 }, // 2 منشورة · 2 بانتظار التصوير
+  "c_phoenitech|POST": { published: 4 }, // فوني تيك — منتهٍ بالكامل
+  "c_phoenitech|REEL": { published: 4 }, // كل الريلات منشورة (لا متبقّي)
   "c_training|POST": { published: 7 }, // التدريب — منجز
   "c_noor|POST": { published: 6 }, // المخبر — كل البوستات منشورة
   "c_noor|REEL": { published: 3, doing: 3 }, // 3 منشورة · 3 مصوّرة لم تُسلَّم (غسان+مايك)
-  "c_bw|POST": { published: 4 },
-  "c_bw|REEL": { published: 2, doing: 2 }, // 2 منشورة · 2 مصوّرة لم تُسلّم
+  "c_bw|POST": { published: 4 }, // BW — منتهٍ بالكامل
+  "c_bw|REEL": { published: 4 }, // كل الريلات منشورة (لا متبقّي)
   "c_mall|POST": { published: 2, ready: 3 }, // 2 منشور · 3 مصمّمة جاهزة للنشر (أيمن)
   "c_mall|STORY": { published: 2 }, // 2 ستوري منشور
   "c_mall|REEL": { published: 2, doing: 1 }, // 2 منشورة · 1 مصوّرة لم تُسلَّم (ألبير)
