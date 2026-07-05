@@ -9,6 +9,7 @@ export type ExistingPipelineTaskState = {
   title: string | null;
   workDate: Date | null;
   readyDate: Date | null;
+  manualDay?: Date | null;
   assigneeId: string | null;
   priority: string | null;
   quantity: number | null;
@@ -179,6 +180,7 @@ export function applyPipelinePreservation(
       if (saved.title != null) task.title = saved.title;
       if (saved.workDate) task.workDate = iso(saved.workDate);
       if (saved.readyDate) task.readyDate = iso(saved.readyDate);
+      if (saved.manualDay) task.manualDay = iso(saved.manualDay);
       if (saved.assigneeId) task.assigneeId = saved.assigneeId;
       if (saved.priority) task.priority = saved.priority;
       task.quantity = saved.quantity ?? task.quantity;

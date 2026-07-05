@@ -89,6 +89,7 @@ model Task {
   publishDate DateTime?
   readyDate   DateTime?
   workDate    DateTime?
+  manualDay   DateTime?
   week        Int?
   overflow    Boolean   @default(false)
   month       Int

@@ -27,6 +27,10 @@ function dateISO(value: Date | string | null | undefined): string | null {
   return toISODate(value instanceof Date ? value : new Date(value));
 }
 
+function manualDayISO(task: Pick<Task, "manualDay">): string | null {
+  return task.manualDay ? dateISO(task.manualDay) : null;
+}
+
 function deadlineISO(task: Pick<Task, "readyDate" | "publishDate" | "stage">): string | null {
   if (task.stage === "PUBLISH") {
     return dateISO(task.publishDate) ?? dateISO(task.readyDate);
@@ -100,6 +104,13 @@ export function compareDailyWorkTasks(
     companyPriority: Map<string, number>;
   },
 ): number {
+  // Manual override wins above everything: a task the lead pinned to TODAY via
+  // «بدّل» tops the person's queue, regardless of priority/deadline. Only bites
+  // on its own day, so it silently expires afterwards.
+  const manualTodayRank =
+    Number(manualDayISO(a) !== todayISO) - Number(manualDayISO(b) !== todayISO);
+  if (manualTodayRank !== 0) return manualTodayRank;
+
   const activeRank = Number(!isActive(a)) - Number(!isActive(b));
   if (activeRank !== 0) return activeRank;
 
@@ -155,7 +166,14 @@ export function selectDailyWorkTasks({
   const companyPriority = new Map(companies.map((company) => [company.id, company.priority]));
   const scopeCounts = writeScopeCounts(allTasks);
   const open = tasks
-    .filter((task) => task.assigneeId === employee.id && !isTaskDoneState(task))
+    .filter((task) => {
+      if (task.assigneeId !== employee.id || isTaskDoneState(task)) return false;
+      // A task the lead parked on a LATER day (via «بدّل») is held out of today's
+      // queue until that day arrives. Its own day (== today) and any past day
+      // stay eligible, so the override self-expires.
+      const md = manualDayISO(task);
+      return !(md != null && md > todayISO);
+    })
     .sort((a, b) => compareDailyWorkTasks(a, b, { todayISO, companyPriority }));
 
   const selected: Task[] = [];

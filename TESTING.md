@@ -23,13 +23,13 @@ A case PASSES only if the expected result AND every side effect hold.
 |---|---|---|---|
 | ENV‑1 | `npm ci` | clean install | S2 |
 | ENV‑2 | `npm run typecheck` | no errors | S1 |
-| ENV‑3 | `npm test` | **132/132 pass** | S1 |
+| ENV‑3 | `npm test` | **142/142 pass** | S1 |
 | ENV‑4 | stop dev, `rm -rf .next && npx next build` | compiles; all routes incl. `/admin/*` build | S1 |
 | ENV‑5 | fresh DB: delete `dev.db`, `db:push && db:seed` | seeds; جدارات/المول contract dates; seeded designers use 8h days and POST/STORY=10 rates | S1 |
 | ENV‑6 | backup `dev.db` before destructive tests | copy exists | S2 |
 | ENV‑7 | stop dev before `prisma generate`/`db push` | no Windows DLL lock (EPERM) | S3 |
 
-### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 132 tests
+### 0.1 Automated test suite (`npm test`, Vitest) — 22 files / 142 tests
 | File | Tests | Covers |
 |---|---|---|
 | `tests/dates.test.ts` | 15 | working days, Thu/Fri skip, Levantine month names, formats |
@@ -40,7 +40,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/cycles.test.ts` | 12 | contract-cycle plan distribution (20→20, 15→15), cross-month packing, **day→day cycle end (not +30d), consecutive-cycle contiguity across 31-day months/February/year boundary, NO work before a new contract's start date (first-cycle clamp + reel lead) while ongoing clients keep prior-month prep** |
 | `tests/workload.test.ts` | 9 | default rates; required‑vs‑capacity load; over ⇒ 0 free; publisher cap at capacity; Friday→previous‑workday charge; single‑count of a split write plan; month window |
 | `tests/task-state.test.ts` | 6 | done-state markers, historical completion date, unfinished-only lateness, board/status normalization |
-| `tests/daily-work.test.ts` | 6 | today queue selection, active-work precedence, capacity fill, carousel slide units, publisher grouping |
+| `tests/daily-work.test.ts` | 9 | today queue selection, active-work precedence, capacity fill, carousel slide units, publisher grouping, **manualDay daily-swap: today-pin tops the queue, a future manualDay is held out of today, a past one self-expires** |
 | `tests/carousel-design-units.test.ts` | 3 | carousel posts count as one published post but multiple design units |
 | `tests/task-filters.test.ts` | 3 | daily board task filtering by work/deadline/publish date |
 | `tests/person-day-state.test.ts` | 3 | task/backlog/off/free day labels for the overview daily tabs |
@@ -48,7 +48,7 @@ A case PASSES only if the expected result AND every side effect hold.
 | `tests/persistence.test.ts` | 4 | manual edits, soft-deletes, and photo-session status survive a regen |
 | `tests/csv.test.ts` | 3 | report CSV export |
 | `tests/priority.test.ts` | 3 | company priority is a tiebreaker only (deadline dominates) |
-| `tests/pipeline.test.ts` | 8 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, trainer-supplied training content, **work-history timestamps carried across regeneration, stable piece numbers assigned at generation** |
+| `tests/pipeline.test.ts` | 10 | pipeline expansion, distinct deterministic keys, carousel quantity, deleted-piece preservation, trainer-supplied training content, **work-history timestamps carried across regeneration, stable piece numbers assigned at generation, pinned `manualDay` daily-swap survives regen (dropped for un-pinned)** |
 | `tests/cards.test.ts` | 3 | **stored pieceNo always wins (a cycle's last open piece keeps its number); per-cycle numbering restarts at 1 each bucket; design+publish share one number** |
 | `tests/seed-data.test.ts` | 3 | seed files avoid broad publishing tasks, use per-piece publisher cards, and skip training write cards |
 | `tests/finance.test.ts` | 2 | writer cost not allocated to trainer-supplied training content; contribution-margin (direct per-piece cost) vs full-absorption |
@@ -71,6 +71,7 @@ A case PASSES only if the expected result AND every side effect hold.
 - **Ad-hoc packing**: ad-hoc tasks of EVERY priority are packed ASAP and consume capacity; URGENT still goes first.
 - **Contract cycles are contiguous**: cycle end = same day of the next month (clamped), so bucket N's end == bucket N+1's start — no dead day after 31-day months, no February overlap.
 - **New-contract pipeline lead**: the FIRST cycle sequences عقد (day 1) → كتابة الخطة (2 working days) → تصميم/تصوير → نشر. No auto-generated date precedes `contractStartDate`; no production date (design/story/AI/shoot/photoshoot) precedes contract+2 writing days; publish floors per type = writing + type lead (STORY day 4, POST/AI_REEL day 5, REEL day 6). Ongoing clients (contract long past) keep prior-month prep unchanged. Manual/pinned tasks are never clamped.
+- **Manual daily task-mix (`manualDay`)**: the lead hand-picks a person's TODAY card mix via «تعديل مهام اليوم» (the `Task.manualDay` column). In the daily queue: `manualDay == today` tops that person's list (above active/priority/deadline); a FUTURE `manualDay` is held OUT of today's queue until its day; a PAST one is ignored (self-expiry). It ONLY moves the daily queue — `readyDate` (deadlines), `publishDate` (publishing), workload, and the scheduling engine are untouched. The action pins the cards, so `updateDailyTasks` promotions/demotions survive إعادة الجدولة (preserved alongside `workDate`). Capacity is still capped by the engine: a valid day = ONE full-day card (REEL/AI_REEL or ≥1-day design/ad-hoc) **or** a set of partials whose day-loads sum ≤ 1.
 
 ---
 
@@ -142,6 +143,25 @@ A case PASSES only if the expected result AND every side effect hold.
 | HOME‑6 | **إنجاز الشركات** | done ÷ plan over the cycle; counts a piece when its PUBLISH card is DONE/PUBLISHED | S2 |
 | HOME‑7 | إعادة الجدولة | success toast (stage counts); pipeline rebuilt. On failure → error toast with the real reason. If the run has gaps (missing writer/designer/photographer) → a **warning** toast lists them | S1 |
 | HOME‑8 | **carryover reaches the home page** | with unfinished prior-month tasks (any dates), the critical panel + daily queue show them with the «متبقّي من دورة …» badge; finishing/deleting them removes them everywhere | **S2** |
+
+---
+
+## 3.1 تعديل مهام اليوم — daily task-mix checklist 🆕 — S2
+> Capacity-gated checklist that lets the lead hand-pick a person's TODAY card mix
+> without touching the scheduling engine or publishing. Backed by `Task.manualDay`
+> + `updateDailyTasks(promoteIds, demoteIds)`; verified live in the browser.
+
+| ID | Steps | Expected | Sev |
+|---|---|---|---|
+| SWAP‑1 | مهام اليوم → active person with open work → **تعديل مهام اليوم** | dialog «مهام اليوم — <name>» opens: checked «مهام اليوم» + an add-pool «من المتبقّي», and a live day-load meter | S2 |
+| SWAP‑2 | tick partial cards (بوست/ستوري) one by one | meter climbs by each card's day-load; header shows «لسا فيك تضيف (~N% متبقّي)»; only cards that still fit stay enabled | **S2** |
+| SWAP‑3 | fill the day to ~100% | meter green at 100%; banner «✓ اليوم ممتلئ — ما عاد في مجال»; the add-pool is gated off | **S2** |
+| SWAP‑4 | tick a full-day card (REEL/AI_REEL/≥1-day design) | it clears the rest and LOCKS the list: «باقي القائمة مقفولة» (rest hidden); meter «مهمة يوم كامل · 100%» | **S2** |
+| SWAP‑5 | **حفظ مهام اليوم** | checked cards → today (top of that person's queue); un-checked today-cards → their owner's next working day; toast «تم تحديث مهام اليوم» | **S2** |
+| SWAP‑6 | after save, re-open the panel / refresh | the picked mix shows as today's cards; the displaced ones are gone from today (surface on their next work day) | S2 |
+| SWAP‑7 | **no schedule/publishing side effects** | `readyDate`, `publishDate`, the publishing calendar, and workload% are unchanged by a swap (only `workDate`/`manualDay`/`isPinned` move) | **S1** |
+| SWAP‑8 | إعادة الجدولة after a swap | the swapped day mix survives (cards are pinned; `manualDay` preserved) | **S1** |
+| SWAP‑9 | next calendar day | a card demoted to «today+1» tops that day's queue; a promotion whose `manualDay` has passed reverts to normal deadline order (self-expiry) | S2 |
 
 ---
 
@@ -325,10 +345,10 @@ A case PASSES only if the expected result AND every side effect hold.
 ---
 
 ## 17. Pre‑launch checklist
-- [ ] ENV‑2/3/4 green (typecheck · 132 tests · build).
+- [ ] ENV‑2/3/4 green (typecheck · 142 tests · build).
 - [ ] **ACC‑2 + ACC‑6 + ACC‑8 PASS** (employees can’t reach OR see finance/team; no money in employee reports) — S1.
-- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, **GEN‑10/11/12**, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7 PASS — S1.
-- [ ] PUB‑1 PASS (no Friday), CYC‑1..6, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, REP‑2/3 PASS.
+- [ ] SEED‑1..3, SEED‑6/7, GEN‑2/5, **GEN‑10/11/12**, DEL‑2/PUB‑4, WL‑5, STATE‑1/2/4/6/7, **SWAP‑7/8** PASS — S1.
+- [ ] PUB‑1 PASS (no Friday), CYC‑1..6, PHO‑2/3, RATE‑1/2, KAN‑11/12/13, HOME‑8, **SWAP‑1..5**, REP‑2/3 PASS.
 - [ ] One DB backup stored outside the repo.
 
 **Owner:** ____  **Date:** ____  **Result:** PASS / FAIL

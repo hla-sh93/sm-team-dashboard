@@ -130,6 +130,10 @@ model Task {
   publishDate DateTime?
   readyDate   DateTime?
   workDate    DateTime?
+  // Manual daily override: the lead pinned this task to a specific day in the
+  // "مهام اليوم" queue (بدّل). On that day it tops the person's queue; before it,
+  // it's held out of the queue. Self-expires (ignored once the day passes).
+  manualDay   DateTime?
   week        Int?      // 1..4
   overflow    Boolean   @default(false)
   month       Int                                 // 0..11

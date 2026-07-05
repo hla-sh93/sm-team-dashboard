@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { fromISODate } from "@/lib/dates";
+import { forwardWorkday, fromISODate, parseWorkDays, shiftDays } from "@/lib/dates";
 import {
   DONE_STATUSES,
   inferHistoricalCompletionDate,
@@ -461,6 +461,70 @@ export async function reassignTask(id: string, assigneeId: string) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل تحويل المهمة" };
+  }
+}
+
+/**
+ * Manual «مهام اليوم» editor (§ user req). A person's day is a FULL production
+ * load (e.g. 2 stories + 6 posts, or one full-day AI reel), not a single card —
+ * so the lead edits the whole basket at once:
+ *   - `promoteIds` → pinned onto TODAY (manualDay=today) so they head the day's
+ *     queue and fill it in the chosen mix.
+ *   - `demoteIds`  → pushed to each card's OWNER's next working day.
+ * It only sets `manualDay` (a same-day queue override) + pins — never readyDate
+ * (deadlines) or publishDate — so the scheduling engine and publishing calendar
+ * stay exactly as they were, and the daily capacity cap still governs how much
+ * of the promoted mix actually shows. Pins survive إعادة الجدولة.
+ */
+export async function updateDailyTasks(promoteIds: string[], demoteIds: string[]) {
+  const promote = [...new Set(promoteIds)];
+  const demote = [...new Set(demoteIds)].filter((id) => !promote.includes(id));
+  if (promote.length === 0 && demote.length === 0) return { ok: true as const };
+  try {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Each demoted card → its own owner's nearest next working day.
+    const demoteTasks = demote.length
+      ? await prisma.task.findMany({
+          where: { id: { in: demote } },
+          select: { id: true, assigneeId: true },
+        })
+      : [];
+    const empIds = [
+      ...new Set(demoteTasks.map((t) => t.assigneeId).filter((v): v is string => !!v)),
+    ];
+    const emps = empIds.length
+      ? await prisma.employee.findMany({
+          where: { id: { in: empIds } },
+          select: { id: true, workDays: true },
+        })
+      : [];
+    const workDaysById = new Map(emps.map((e) => [e.id, parseWorkDays(e.workDays)]));
+    const nextDayFor = (assigneeId: string | null) => {
+      const wd = (assigneeId && workDaysById.get(assigneeId)) || [6, 0, 1, 2, 3];
+      return forwardWorkday(shiftDays(today, 1), wd.length ? wd : [6, 0, 1, 2, 3]);
+    };
+
+    await prisma.$transaction([
+      ...promote.map((id) =>
+        prisma.task.update({
+          where: { id },
+          data: { manualDay: today, workDate: today, isPinned: true },
+        }),
+      ),
+      ...demoteTasks.map((t) => {
+        const day = nextDayFor(t.assigneeId);
+        return prisma.task.update({
+          where: { id: t.id },
+          data: { manualDay: day, workDate: day, isPinned: true },
+        });
+      }),
+    ]);
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تعديل مهام اليوم" };
   }
 }
 

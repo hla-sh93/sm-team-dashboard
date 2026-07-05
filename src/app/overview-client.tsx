@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/badge";
 import { Donut } from "@/components/ui/Donut";
 import { MonthBar } from "@/components/MonthBar";
@@ -11,9 +20,9 @@ import {
   isTaskLateState,
   taskColor,
 } from "@/lib/constants";
-import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
+import { buildReelNumbers, cardLabelFor, groupTasksIntoCards, type GroupedCard } from "@/lib/cards";
 import { completedCompanyPlanCount } from "@/lib/progress";
-import { selectDailyWorkTasks } from "@/lib/daily-work";
+import { dailyTaskEffortDays, selectDailyWorkTasks } from "@/lib/daily-work";
 import { personDayState } from "@/lib/person-day-state";
 import {
   toISODate,
@@ -25,10 +34,21 @@ import {
   ARABIC_MONTHS,
 } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
+import { updateDailyTasks } from "@/server/actions/tasks";
+import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task } from "@/types";
-import { AlertTriangle, Building2, CalendarClock, Send, Users, Zap, ArrowLeft } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Building2,
+  CalendarClock,
+  Send,
+  Users,
+  Zap,
+  ArrowLeft,
+} from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function OverviewClient({
   year,
@@ -44,6 +64,8 @@ export default function OverviewClient({
   tasks: Task[];
 }) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [, startDayEdit] = useTransition();
+  const router = useRouter();
   const pathname = usePathname();
   // The overview is shared at `/` and `/admin`; keep board links in the same area.
   const base = pathname.startsWith("/admin") ? "/admin" : "";
@@ -131,6 +153,52 @@ export default function OverviewClient({
   const activeId =
     activeTab && dayByPerson.some((g) => g.emp.id === activeTab) ? activeTab : defaultId;
   const activeGroup = dayByPerson.find((g) => g.emp.id === activeId) ?? null;
+
+  // «تعديل مهام اليوم» editor. A person's day is a full production load (e.g.
+  // 2 ستوري + 6 بوست), so the lead ticks the exact card mix for today: kept +
+  // added cards go onto today, un-ticked today-cards move to the next work day.
+  const [editDayFor, setEditDayFor] = useState<string | null>(null);
+  const editGroup = dayByPerson.find((g) => g.emp.id === editDayFor) ?? null;
+  const todayIdsOf = (g: typeof editGroup) => new Set(g?.cards.flatMap((c) => c.ids) ?? []);
+  // Per-card daily load (in working days) for the person, so the meter can show
+  // whether the picked mix fills the day.
+  const scopeCounts = (() => {
+    const m = new Map<string, number>();
+    for (const t of tasks) {
+      if (!(t.stage === "WRITE" || t.kind === "CONTENT_WRITING")) continue;
+      if (!t.assigneeId || !t.companyId) continue;
+      const k = `${t.assigneeId}|${t.companyId}`;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  })();
+  const loadOf = (card: GroupedCard, emp: Employee) =>
+    dailyTaskEffortDays(emp, card.repr, scopeCounts);
+
+  // Ticked cards while the editor is open (id set). Seeded with today's cards.
+  const [daySel, setDaySel] = useState<Set<string>>(new Set());
+  const openDayEditor = (g: NonNullable<typeof activeGroup>) => {
+    setDaySel(todayIdsOf(g));
+    setEditDayFor(g.emp.id);
+  };
+  const onSaveDay = () => {
+    if (!editGroup) return;
+    const todayIds = todayIdsOf(editGroup);
+    const promoteIds = [...daySel];
+    const demoteIds = [...todayIds].filter((id) => !daySel.has(id));
+    if (promoteIds.length === 0 && demoteIds.length === 0) {
+      setEditDayFor(null);
+      return;
+    }
+    startDayEdit(async () => {
+      const r = await updateDailyTasks(promoteIds, demoteIds);
+      if (r.ok) {
+        toast("تم تحديث مهام اليوم");
+        setEditDayFor(null);
+        router.refresh();
+      } else toast(r.error, "error");
+    });
+  };
 
   // ---- المهام الحرجة: not-done tasks whose deadline is overdue or within ≤2
   // working days. Deadline = readyDate (design/adhoc) else publishDate.
@@ -455,6 +523,19 @@ export default function OverviewClient({
                   ))
                 )}
               </div>
+
+              {activeGroup && !activeGroup.isOff && activeGroup.openCards.length > 0 && (
+                <div className="flex justify-end mt-3">
+                  <button
+                    type="button"
+                    onClick={() => openDayEditor(activeGroup)}
+                    className="flex items-center gap-1.5 text-[11px] text-fg-dim hover:text-accent border border-border-soft rounded-md px-2.5 py-1.5 transition"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    تعديل مهام اليوم
+                  </button>
+                </div>
+              )}
             </>
           )}
         </Card>
@@ -506,6 +587,189 @@ export default function OverviewClient({
           )}
         </div>
       </Card>
+
+      {/* «تعديل مهام اليوم» — pick the exact card mix that fills a person's day. */}
+      <Dialog open={editDayFor != null} onOpenChange={(o) => !o && setEditDayFor(null)}>
+        <DialogContent className="max-w-md">
+          {editGroup &&
+            (() => {
+              const EPSD = 1e-9;
+              const emp = editGroup.emp;
+              const todayIds = todayIdsOf(editGroup);
+              const todayCards = editGroup.cards;
+              const backlog = editGroup.openCards.filter(
+                (c) => !c.ids.some((id) => todayIds.has(id)),
+              );
+              const allCards = [...todayCards, ...backlog];
+              const cardById = new Map(allCards.map((c) => [c.repr.id, c]));
+              // A full-day card (reel / AI reel / a design or ad-hoc that is ≥1
+              // day) owns the whole day — same rule the engine uses.
+              const isExclusive = (card: GroupedCard) =>
+                card.repr.type === "REEL" ||
+                card.repr.type === "AI_REEL" ||
+                loadOf(card, emp) >= 1 - EPSD;
+
+              const selectedCards = allCards.filter((c) => daySel.has(c.repr.id));
+              // Everything not chosen yet (dropped today-cards + backlog) is the
+              // add-pool; a chosen card moves up into «مهام اليوم».
+              const addPool = allCards.filter((c) => !daySel.has(c.repr.id));
+              const hasExclusiveSel = selectedCards.some(isExclusive);
+              // Publish cards cost 0 (unlimited); a day is full at ≥1 work-day of
+              // production, or the moment a full-day card is picked.
+              const usedDays = hasExclusiveSel
+                ? 1
+                : selectedCards.reduce((s, c) => s + loadOf(c, emp), 0);
+              const remaining = Math.max(0, 1 - usedDays);
+              const pct = Math.round(Math.min(1, usedDays) * 100);
+              // A backlog card is addable if it still fits the remaining day (a
+              // full-day card is offered as a "switch the whole day" option).
+              const fits = (card: GroupedCard) =>
+                isExclusive(card) || loadOf(card, emp) <= remaining + EPSD;
+              const canAddMore =
+                !hasExclusiveSel && remaining > EPSD && addPool.some(fits);
+              const meterColor = usedDays >= 1 - EPSD ? "bg-success" : "bg-accent";
+
+              // Checking a full-day card clears the rest; checking a partial drops
+              // any full-day card that was selected.
+              const onToggle = (card: GroupedCard) => {
+                const id = card.repr.id;
+                setDaySel((prev) => {
+                  if (prev.has(id)) {
+                    const n = new Set(prev);
+                    n.delete(id);
+                    return n;
+                  }
+                  if (isExclusive(card)) return new Set([id]);
+                  const n = new Set(
+                    [...prev].filter((x) => {
+                      const c = cardById.get(x);
+                      return c ? !isExclusive(c) : true;
+                    }),
+                  );
+                  n.add(id);
+                  return n;
+                });
+              };
+
+              const row = (card: GroupedCard, disabled = false) => {
+                const checked = daySel.has(card.repr.id);
+                const off = disabled && !checked;
+                return (
+                  <label
+                    key={card.key}
+                    className={
+                      "flex items-center gap-2 rounded-md px-2.5 py-2 border border-border-soft bg-bg-elev transition " +
+                      (off
+                        ? "opacity-40 cursor-not-allowed"
+                        : "cursor-pointer hover:border-accent/40")
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={off}
+                      onChange={() => onToggle(card)}
+                      className="accent-accent w-4 h-4 shrink-0"
+                    />
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ background: taskColor(card.repr.kind, card.repr.type) }}
+                    />
+                    <span className="text-xs truncate flex-1">
+                      {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                    </span>
+                    {isExclusive(card) && (
+                      <span className="text-[9px] rounded px-1 py-0.5 bg-accent/10 text-accent shrink-0">
+                        يوم كامل
+                      </span>
+                    )}
+                  </label>
+                );
+              };
+
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>مهام اليوم — {emp.name}</DialogTitle>
+                    <DialogDescription>
+                      شيكلِست حسب سعة {emp.name} اليومية: زيد كروت لتعبّي اليوم. مهمة بتاخد
+                      يوم كامل بتقفل القائمة، وإذا ضل مجال بيطلع «لسا فيك تضيف». المفكوكة
+                      بتنتقل لأقرب يوم عمل — بلا أي تأثير على المواعيد أو النشر.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="mb-4">
+                    <div className="flex items-baseline justify-between text-[11px] mb-1">
+                      <span className="text-fg-dim">حمل اليوم</span>
+                      <span
+                        className={
+                          "tabular-nums font-semibold " +
+                          (usedDays >= 1 - EPSD ? "text-success" : "text-accent")
+                        }
+                      >
+                        {hasExclusiveSel ? "مهمة يوم كامل · 100%" : `${pct}% من يوم عمل`}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden">
+                      <div
+                        className={"h-full " + meterColor}
+                        style={{ width: `${Math.min(100, pct)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold text-fg-dim mb-1.5">
+                        مهام اليوم
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        {selectedCards.length === 0 ? (
+                          <p className="text-[11px] text-fg-muted">
+                            لا مهام مختارة — زيد من المتبقّي.
+                          </p>
+                        ) : (
+                          selectedCards.map((c) => row(c))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Add-list — gated by remaining capacity. */}
+                    {hasExclusiveSel ? (
+                      <p className="text-[11px] text-fg-muted bg-bg-elev-2 rounded-md px-2.5 py-2">
+                        اخترت مهمة بتاخد اليوم كامل — باقي القائمة مقفولة. فكّها لإضافة
+                        مهام أصغر.
+                      </p>
+                    ) : !canAddMore ? (
+                      <p className="text-[11px] text-success bg-success/10 rounded-md px-2.5 py-2">
+                        ✓ اليوم ممتلئ — ما عاد في مجال لمهام إضافية.
+                      </p>
+                    ) : (
+                      <div>
+                        <p className="text-[11px] font-semibold text-accent mb-1.5">
+                          لسا فيك تضيف ({remaining >= 1 ? "يوم" : `~${Math.round(remaining * 100)}%`}{" "}
+                          متبقّي)
+                        </p>
+                        <div className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto pr-1">
+                          {addPool.map((c) => row(c, !fits(c)))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="ghost" size="sm" onClick={() => setEditDayFor(null)}>
+                      إلغاء
+                    </Button>
+                    <Button size="sm" onClick={onSaveDay}>
+                      حفظ مهام اليوم
+                    </Button>
+                  </DialogFooter>
+                </>
+              );
+            })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

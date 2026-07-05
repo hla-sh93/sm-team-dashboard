@@ -278,4 +278,85 @@ describe("daily work queue", () => {
 
     expect(selected.map((item) => item.id)).toEqual(["publish_1", "publish_2"]);
   });
+
+  it("promotes a manualDay==today card above higher-priority/earlier work (بدّل)", () => {
+    const designer = employee();
+    const companies = [company({ id: "company", priority: 1 })];
+    // «jobs» has the earlier deadline AND a higher priority, so it would normally
+    // win the day. The lead swapped «aghalia» onto today via manualDay.
+    const jobs = task({
+      id: "jobs",
+      priority: "HIGH",
+      workDate: new Date(2026, 6, 1),
+      readyDate: new Date(2026, 6, 3),
+    });
+    const aghalia = task({
+      id: "aghalia",
+      priority: "NORMAL",
+      workDate: new Date(2026, 6, 10),
+      readyDate: new Date(2026, 6, 12),
+      manualDay: new Date(2026, 6, 5),
+    });
+
+    const selected = selectDailyWorkTasks({
+      employee: designer,
+      tasks: [jobs, aghalia],
+      companies,
+      today: new Date(2026, 6, 5),
+    });
+
+    // The promoted card tops the queue (the actual swap also parks «jobs» on a
+    // later day — see the next test — which then drops it from today entirely).
+    expect(selected[0].id).toBe("aghalia");
+  });
+
+  it("holds a card parked on a FUTURE day out of today's queue (المُستبعَدة)", () => {
+    const designer = employee();
+    const companies = [company({ id: "company", priority: 1 })];
+    // «jobs» was displaced to its owner's next working day; only «aghalia» (its
+    // manualDay is today) should surface today.
+    const aghalia = task({ id: "aghalia", manualDay: new Date(2026, 6, 5) });
+    const jobs = task({
+      id: "jobs",
+      workDate: new Date(2026, 6, 1),
+      readyDate: new Date(2026, 6, 3),
+      manualDay: new Date(2026, 6, 6),
+    });
+
+    const selected = selectDailyWorkTasks({
+      employee: designer,
+      tasks: [aghalia, jobs],
+      companies,
+      today: new Date(2026, 6, 5),
+    });
+
+    expect(selected.map((item) => item.id)).toEqual(["aghalia"]);
+  });
+
+  it("ignores a manualDay that has already passed (self-expiry)", () => {
+    const designer = employee();
+    const companies = [company({ id: "company", priority: 1 })];
+    // A stale manualDay from an earlier day must not keep pinning the card; normal
+    // deadline order resumes.
+    const stale = task({
+      id: "stale",
+      workDate: new Date(2026, 6, 10),
+      readyDate: new Date(2026, 6, 12),
+      manualDay: new Date(2026, 6, 1),
+    });
+    const earlier = task({
+      id: "earlier",
+      workDate: new Date(2026, 6, 2),
+      readyDate: new Date(2026, 6, 3),
+    });
+
+    const selected = selectDailyWorkTasks({
+      employee: designer,
+      tasks: [stale, earlier],
+      companies,
+      today: new Date(2026, 6, 5),
+    });
+
+    expect(selected[0].id).toBe("earlier");
+  });
 });

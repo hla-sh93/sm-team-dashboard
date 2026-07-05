@@ -107,6 +107,27 @@ describe("pipeline expansion", () => {
     expect(pipe.find((task) => task.stage === "PUBLISH")?.quantity).toBe(1);
   });
 
+  it("preserves a pinned card's manual daily-swap day (manualDay) across regeneration", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
+
+    applyPipelinePreservation(pipe, [
+      saved({ isPinned: true, manualDay: new Date(2026, 6, 9) }),
+    ]);
+
+    // The lead's «تعديل مهام اليوم» pin survives a regen so the day mix sticks.
+    expect(pipe.find((task) => task.stage === "DESIGN")?.manualDay).toBe("2026-07-09");
+  });
+
+  it("does not carry manualDay for an un-pinned card", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
+
+    applyPipelinePreservation(pipe, [
+      saved({ isPinned: false, manualDay: new Date(2026, 6, 9) }),
+    ]);
+
+    expect(pipe.find((task) => task.stage === "DESIGN")?.manualDay ?? null).toBeNull();
+  });
+
   it("assigns stable piece numbers at generation, shared by design + publish cards", () => {
     const pipe = expandPipeline(
       [

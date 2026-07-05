@@ -65,6 +65,10 @@ export type Task = {
   publishDate: Date | null;
   readyDate: Date | null;
   workDate: Date | null;
+  /** Manual daily override set by the lead's «بدّل» — the day this task should
+   *  top the person's «مهام اليوم» queue. Held out of the queue before that day;
+   *  ignored once the day passes. Null = pure auto ordering. */
+  manualDay: Date | null;
   week: number | null;
   overflow: boolean;
   month: number;

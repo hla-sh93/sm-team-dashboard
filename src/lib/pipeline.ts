@@ -47,6 +47,9 @@ export type PipelineTask = {
   publishDate: string | null;
   readyDate: string | null;
   workDate: string | null;
+  /** Manual daily-queue override (YYYY-MM-DD) — preserved across regen for
+   *  pinned cards so a lead's «بدّل» is never thrown away. */
+  manualDay?: string | null;
   week: number | null;
   blockedById: string | null;
   pipelineKey: string | null;
