@@ -212,7 +212,7 @@ export default async function ReportsPage({
             <div>
               <div className="text-xs text-fg-muted">متوسط مدة الإنجاز الفعلية</div>
               <div className="display-font text-2xl">
-                {avgElapsed == null ? "—" : `${avgElapsed} يوم`}
+                {avgElapsed == null ? "—" : avgElapsed === 0 ? "نفس اليوم" : `${avgElapsed} يوم`}
               </div>
             </div>
           </div>

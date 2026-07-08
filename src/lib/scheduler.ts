@@ -67,6 +67,8 @@ export type CompanyInput = {
   contractStartDate?: Date | string | null;
   /** Soft preferred shoot weekday (getDay 0..6) for reels; null = none. */
   preferredShootDay?: number | null;
+  /** Content plan supplied externally — writer plan cards skipped. */
+  contentSupplied?: boolean | null;
   postOwnerId: string | null;
   storyOwnerId: string | null;
   aiReelOwnerId: string | null;

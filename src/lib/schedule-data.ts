@@ -40,6 +40,7 @@ export async function loadCompanies(): Promise<CompanyInput[]> {
     aiReels: c.aiReels,
     contractStartDate: c.contractStartDate,
     preferredShootDay: c.preferredShootDay,
+    contentSupplied: c.contentSupplied,
     postOwnerId: c.postOwnerId,
     storyOwnerId: c.storyOwnerId,
     aiReelOwnerId: c.aiReelOwnerId,

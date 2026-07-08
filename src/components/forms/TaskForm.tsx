@@ -107,7 +107,8 @@ export default function TaskForm({
           assigneeId: form.assigneeId || null,
           priority: form.priority,
           status: form.status,
-          days: isAdhoc ? Number(form.days) || 0 : undefined,
+          // Effort floor: a 0-day task would vanish from workload math.
+          days: isAdhoc ? Math.max(0.5, Number(form.days) || 0) : undefined,
           quantity: isDesignUnitEditable ? Math.max(1, Math.round(Number(form.quantity) || 1)) : undefined,
           isPinned: form.isPinned,
         });
@@ -117,7 +118,8 @@ export default function TaskForm({
           router.refresh(); // pull the fresh server view so the edit shows immediately
         } else toast(result.error, "error");
       } else {
-        const days = Number(form.days) || 0;
+        // Effort floor: a 0-day task would vanish from workload math.
+        const days = Math.max(0.5, Number(form.days) || 0);
         const result = await createTask({
           title: form.title.trim(),
           kind: "ADHOC",
@@ -212,7 +214,7 @@ export default function TaskForm({
                 <Input
                   type="number"
                   step="0.5"
-                  min="0"
+                  min="0.5"
                   value={form.days}
                   onChange={(e) => set("days", e.target.value)}
                 />

@@ -102,6 +102,11 @@ export function buildPhotoSessions(
 
   const companiesWithReels = reelsByCompany.filter((c) => c.reels.length > 0);
 
+  // One photographer can't run two REEL batches on the same day. All companies
+  // in this call share one photographer, so track his booked shoot days across
+  // companies and nudge collisions to the nearest free working day.
+  const usedReelDays = new Set<string>();
+
   companiesWithReels.forEach((co, ci) => {
     const reels = [...co.reels].sort((a, b) => {
       const t = a.publishDate.getTime() - b.publishDate.getTime();
@@ -177,6 +182,35 @@ export function buildPhotoSessions(
       if (nb && shoot.getTime() < nb.getTime()) {
         shoot = forwardWorkday(nb, photoWork);
       }
+      // Cross-company double-booking guard: if this day is already taken by
+      // another batch of the same photographer, try earlier free working days
+      // first (moving earlier only ADDS lead — always safe), then later ones up
+      // to the no-last-week cap. When nothing is free, keep the day and warn.
+      if (usedReelDays.has(toKeyDate(shoot))) {
+        let placed: Date | null = null;
+        let back = new Date(shoot);
+        for (let i = 0; i < 10 && !placed; i++) {
+          back = backWorkday(shiftCal(back, -1), photoWork);
+          if (nb && back.getTime() < nb.getTime()) break;
+          if (!usedReelDays.has(toKeyDate(back))) placed = back;
+        }
+        let fwd = new Date(shoot);
+        for (let i = 0; i < 10 && !placed; i++) {
+          fwd = forwardWorkday(shiftCal(fwd, 1), photoWork);
+          if (fwd.getTime() > SHOOT_CAP.getTime()) break;
+          if (!usedReelDays.has(toKeyDate(fwd))) placed = fwd;
+        }
+        if (placed) {
+          shoot = placed;
+        } else {
+          warnings.push({
+            level: "warning",
+            message: `${co.companyName}: يوم التصوير متعارض مع نزلة شركة أخرى لنفس المصور — عدّليه يدوياً`,
+            companyId: co.companyId,
+          });
+        }
+      }
+      usedReelDays.add(toKeyDate(shoot));
       // deliver = backWorkday(min(epub − 1, shoot + 3)), never before the shoot.
       const deliverTarget =
         shiftCal(epub, -1).getTime() < shiftCal(shoot, 3).getTime()

@@ -17,13 +17,14 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   STORY: "ستوري",
 };
 
-// Task kinds (§3 enum TaskKind)
+// Task kinds (§3 enum TaskKind + PUBLISH, the pipeline's publish-stage cards)
 export const TASK_KINDS = [
   "CONTENT",
   "ADHOC",
   "PHOTOSHOOT",
   "REPORT",
   "CONTENT_WRITING",
+  "PUBLISH",
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
@@ -33,6 +34,7 @@ export const TASK_KIND_LABELS: Record<TaskKind, string> = {
   PHOTOSHOOT: "تصوير",
   REPORT: "تقرير",
   CONTENT_WRITING: "كتابة محتوى",
+  PUBLISH: "نشر",
 };
 
 // ============================================

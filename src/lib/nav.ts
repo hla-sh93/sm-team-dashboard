@@ -4,11 +4,12 @@
  * import it directly and assert the employee area never links to the admin
  * dashboard.
  *
- * SECURITY RULE (there is NO login): anything reachable from the employee
- * sidebar is visible to every employee. The employee area must therefore expose
- * ONLY the daily-work routes — never finance / team / companies / workload /
- * priorities, and never the /admin base itself. The owner opens /admin via a
- * manual URL/bookmark.
+ * SECURITY RULE: the employee area has NO login (by design — the whole team
+ * shares it), so anything reachable from the employee sidebar is visible to
+ * every employee. It must therefore expose ONLY the daily-work routes — never
+ * finance / team / companies / workload / priorities, and never the /admin
+ * base itself. /admin IS password-protected (see lib/auth.ts): middleware +
+ * admin layout + assertAdmin() gate it; the owner logs in at /login.
  */
 import {
   Building2,
@@ -26,8 +27,8 @@ import {
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 export type NavSection = { title: string; items: NavItem[] };
 
-// Admin lives under this base path (NO login). To change it, rename
-// src/app/<base> AND this constant.
+// Admin lives under this base path (password-protected — see lib/auth.ts).
+// To change it, rename src/app/<base> AND this constant.
 export const ADMIN_BASE = "/admin";
 
 // Employees (root URLs) — daily work only.

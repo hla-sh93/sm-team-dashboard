@@ -86,6 +86,8 @@ export async function createTask(input: TaskInput) {
   }
   try {
     const d = parsed.data;
+    // Ad-hoc effort floor (see updateTaskDetails): never persist a 0-hour task.
+    if (d.kind === "ADHOC" && d.hours < 4) d.hours = 4;
     const now = new Date();
     const readyDate = d.readyDate ? fromISODate(d.readyDate) : null;
     const workDate = d.workDate ? fromISODate(d.workDate) : null;
@@ -127,64 +129,9 @@ export async function createTask(input: TaskInput) {
   }
 }
 
-export async function updateTask(id: string, input: TaskInput) {
-  const parsed = taskSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
-  }
-  try {
-    const d = parsed.data;
-    const before = await prisma.task.findUnique({ where: { id } });
-    if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
-    const now = new Date();
-    const readyDate = d.readyDate ? fromISODate(d.readyDate) : null;
-    const workDate = d.workDate ? fromISODate(d.workDate) : null;
-    const done = isDone(d.status);
-    const doneAt = done
-      ? inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
-      : null;
-    let startedAt = before.startedAt;
-    let finishedAt = before.finishedAt;
-    if (d.status === "NOT_STARTED") {
-      startedAt = null;
-      finishedAt = null;
-    } else {
-      if (!startedAt) startedAt = done ? (workDate ?? doneAt) : now;
-      finishedAt = done ? doneAt : null;
-    }
-    await prisma.task.update({
-      where: { id },
-      data: {
-        kind: d.kind,
-        type: d.type ?? null,
-        title: d.title,
-        hours: d.hours,
-        priority: d.priority,
-        status: d.status,
-        board: statusToBoard(d.status),
-        readyDate,
-        workDate,
-        isPinned: d.isPinned,
-        notes: d.notes ?? null,
-        month: d.month,
-        year: d.year,
-        assigneeId: d.assigneeId,
-        companyId: d.companyId,
-        startedAt,
-        finishedAt,
-        completedAt: doneAt,
-      },
-    });
-    if (done) await completeProductionForPublishedTask(before);
-    if (before.kind === "ADHOC" || d.kind === "ADHOC") {
-      await generateSchedule(d.year, d.month);
-    }
-    revalidateAll();
-    return { ok: true as const };
-  } catch {
-    return { ok: false as const, error: "فشل تحديث المهمة" };
-  }
-}
+// NOTE: updateTask (full TaskInput rewrite) was removed (2026-07-08 audit): no
+// UI caller — every card edit goes through updateTaskDetails — yet it remained
+// a publicly callable action that could rewrite any task's kind/month/year.
 
 export type TaskDetailsInput = {
   title?: string | null;
@@ -236,9 +183,11 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     // preserves pinned cards' title/dates/owner/priority). The form's checkbox
     // no longer needs to be ticked for the edit to stick.
     const pinned = true;
+    // Ad-hoc effort floor: a 0-day task would cost nothing in workload math and
+    // silently disappear from capacity — clamp to at least half a working day.
     const hours =
       input.days != null && before.kind === "ADHOC"
-        ? Math.round(input.days * 8 * 10) / 10
+        ? Math.round(Math.max(0.5, input.days) * 8 * 10) / 10
         : before.hours;
     const quantity =
       input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH"
@@ -476,13 +425,24 @@ export async function reassignTask(id: string, assigneeId: string) {
  * stay exactly as they were, and the daily capacity cap still governs how much
  * of the promoted mix actually shows. Pins survive إعادة الجدولة.
  */
-export async function updateDailyTasks(promoteIds: string[], demoteIds: string[]) {
+export async function updateDailyTasks(
+  promoteIds: string[],
+  demoteIds: string[],
+  /** The CLIENT's local day (YYYY-MM-DD). The server may run in another
+   *  timezone (e.g. UTC on Vercel) where "today" is still yesterday — trusting
+   *  server time made a lead's after-midnight «بدّل» land on the wrong day and
+   *  silently expire. Falls back to server time when absent (old callers). */
+  todayISO?: string,
+) {
   const promote = [...new Set(promoteIds)];
   const demote = [...new Set(demoteIds)].filter((id) => !promote.includes(id));
   if (promote.length === 0 && demote.length === 0) return { ok: true as const };
   try {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today =
+      todayISO && /^\d{4}-\d{2}-\d{2}$/.test(todayISO)
+        ? fromISODate(todayISO)
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     // Each demoted card → its own owner's nearest next working day.
     const demoteTasks = demote.length

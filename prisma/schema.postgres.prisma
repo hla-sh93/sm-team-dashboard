@@ -54,6 +54,10 @@ model Company {
   // Soft preferred shoot weekday (getDay 0..6) for reels; null = none.
   preferredShootDay Int?
 
+  // Content plan is supplied externally (client/trainer) — the writer's plan
+  // cards (كتابة) are skipped for this company.
+  contentSupplied Boolean @default(false)
+
   color    String? @default("#C8A84E")
   priority Int     @default(99)
   status   String  @default("active")

@@ -72,6 +72,8 @@ export const companySchema = z.object({
     (v) => (v === "" || v == null ? null : Number(v)),
     z.number().int().min(0).max(6).nullable(),
   ),
+  // Content plan supplied externally (client/trainer) → writer cards skipped.
+  contentSupplied: z.boolean().default(false),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")

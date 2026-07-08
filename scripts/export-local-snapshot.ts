@@ -20,13 +20,21 @@ async function main() {
   );
   const prisma = new PrismaClient();
 
-  const [employees, companies, tasks, photoSessions, settings] = await Promise.all([
+  const [employees, companies, tasks, photoSessions, allSettings] = await Promise.all([
     prisma.employee.findMany({ orderBy: { id: "asc" } }),
     prisma.company.findMany({ orderBy: { id: "asc" } }),
     prisma.task.findMany({ orderBy: { id: "asc" } }),
     prisma.photoSession.findMany({ orderBy: { id: "asc" } }),
     prisma.setting.findMany({ orderBy: { key: "asc" } }),
   ]);
+
+  // NEVER ship the LOCAL admin credentials/signing secret: the prod import
+  // wipes Setting and reloads the snapshot's rows, so exporting these would
+  // silently replace the PRODUCTION admin password with the local one. The
+  // import script explicitly preserves prod's own auth keys whenever the
+  // snapshot doesn't carry them — so we omit them here.
+  const AUTH_KEYS = new Set(["authSecret", "adminPasswordHash", "adminEmail"]);
+  const settings = allSettings.filter((s) => !AUTH_KEYS.has(s.key));
 
   // Timezone normalisation: schedule dates are stored at LOCAL midnight (e.g.
   // 2026-07-04 on a GMT+3 machine → 2026-07-03T21:00Z). Read back on Vercel's

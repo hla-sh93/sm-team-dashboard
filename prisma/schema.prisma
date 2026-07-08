@@ -79,6 +79,10 @@ model Company {
   // mandatory and any shoot can be edited manually. Null = no preference.
   preferredShootDay Int?
 
+  // Content plan is supplied externally (client/trainer) — the writer's plan
+  // cards (كتابة) are skipped for this company.
+  contentSupplied Boolean @default(false)
+
   // Carried-over UI / deterministic-ordering fields (not part of §3 plan but
   // used by screens and to give the engine a stable company order).
   color    String? @default("#C8A84E")

@@ -10,14 +10,17 @@ import {
   CONTENT_TYPE_LABELS,
   CONTENT_TYPE_COLORS,
   STATUS_LABELS,
+  isTaskDoneState,
   type ContentType,
   type Status,
 } from "@/lib/constants";
 import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import { buildReelNumbers } from "@/lib/cards";
+import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
+import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task } from "@/types";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 
 const PUBLISH_STATUSES: Status[] = ["NOT_STARTED", "IN_PROGRESS", "PUBLISHED"];
 
@@ -52,15 +55,37 @@ export default function PublishingClient({
     () => tasks.filter((t) => t.stage === "PUBLISH" && t.publishDate),
     [tasks],
   );
+  // Calendar + plan validation stay scoped to THIS bucket's schedule…
+  const bucketPub = useMemo(
+    () => pubTasks.filter((t) => t.year === year && t.month === month),
+    [pubTasks, year, month],
+  );
+  // …while every still-open card past its publish date — including carryover
+  // from earlier cycles — surfaces in the «متأخر النشر» strip below, so the
+  // publisher's own screen finally shows his overdue queue.
+  const todayISO = toISODate(new Date());
+  const overdue = useMemo(
+    () =>
+      pubTasks
+        .filter(
+          (t) => !isTaskDoneState(t) && toISODate(new Date(t.publishDate!)) < todayISO,
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime() ||
+            a.id.localeCompare(b.id),
+        ),
+    [pubTasks, todayISO],
+  );
 
   const items = useMemo(
     () =>
-      pubTasks.filter(
+      bucketPub.filter(
         (t) =>
           (company === "all" || t.companyId === company) &&
           (type === "all" || t.type === type),
       ),
-    [pubTasks, company, type],
+    [bucketPub, company, type],
   );
 
   const seqOf = useMemo(() => buildReelNumbers(pubTasks), [pubTasks]);
@@ -74,7 +99,7 @@ export default function PublishingClient({
   const gaps = useMemo(() => {
     const out: string[] = [];
     for (const co of managed) {
-      const rows = pubTasks.filter((t) => t.companyId === co.id);
+      const rows = bucketPub.filter((t) => t.companyId === co.id);
       if (rows.length === 0) continue;
       const missing = [1, 2, 3, 4].filter(
         (w) => !rows.some((r) => r.week === w),
@@ -82,7 +107,7 @@ export default function PublishingClient({
       if (missing.length) out.push(`${co.name} (أسبوع ${missing.join("، ")})`);
     }
     return out;
-  }, [managed, pubTasks]);
+  }, [managed, bucketPub]);
 
   const onStatus = (id: string, status: string) =>
     start(async () => {
@@ -172,6 +197,58 @@ export default function PublishingClient({
         </div>
         <MonthBar year={year} month={month} />
       </header>
+
+      {/* متأخر النشر — every open card past its publish date, INCLUDING pieces
+          carried over from earlier cycles (their dates sit outside this month's
+          grid, so without this strip they were invisible right here). */}
+      {overdue.length > 0 && (
+        <div className="rounded-lg border border-danger/40 bg-danger/5 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <CalendarClock className="w-4 h-4 text-danger" />
+            <span className="text-sm font-semibold text-danger">
+              متأخر النشر · {overdue.length}
+            </span>
+            <span className="text-[11px] text-fg-muted">
+              كل قطعة جاهزة أو مستحقة تجاوزت موعد نشرها — انشريها أو عدّلي موعدها
+            </span>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[260px] overflow-y-auto pr-1">
+            {overdue.map((t) => (
+              <div
+                key={t.id}
+                className="rounded-md border border-danger/30 bg-bg-elev px-2.5 py-2 flex flex-col gap-1.5"
+                style={{ borderRightColor: typeColor(t), borderRightWidth: 3 }}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-semibold truncate flex-1">
+                    {seqLabel(t)} · {coName(t.companyId)}
+                  </span>
+                  {(t.year !== year || t.month !== month) && (
+                    <CyclePill monthLabel={ARABIC_MONTHS[t.month]} late />
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-danger font-semibold">
+                    موعدها {formatDateShort(new Date(t.publishDate!))}
+                  </span>
+                  <span className="text-fg-muted">· {empName(t.assigneeId)}</span>
+                </div>
+                <Select
+                  className="w-full h-7 text-[11px] py-0.5"
+                  value={t.status === "READY" ? "PUBLISHED" : t.status}
+                  onChange={(e) => onStatus(t.id, e.target.value)}
+                >
+                  {PUBLISH_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* No-interruption banner (§4.4) */}
       {pubTasks.length > 0 &&

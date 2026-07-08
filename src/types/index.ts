@@ -38,6 +38,8 @@ export type Company = {
   contractValue: number;
   contractStartDate: Date | null;
   preferredShootDay: number | null;
+  /** Content plan supplied externally — writer plan cards skipped. */
+  contentSupplied: boolean;
   color: string | null;
   priority: number;
   status: string;

@@ -1,9 +1,10 @@
 import { Card } from "@/components/ui/card";
 import { MonthBar } from "@/components/MonthBar";
 import { resolveActiveMonth, monthLabel } from "@/lib/month";
-import { computeFinance } from "@/lib/finance";
+import { computeFinance, type FinanceResult } from "@/lib/finance";
+import { formatDateShort } from "@/lib/dates";
 import { prisma } from "@/lib/db";
-import { TrendingUp, TrendingDown, Wallet, DollarSign } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react";
 
 const money = (n: number) => {
   const r = Math.round(n);
@@ -21,7 +22,33 @@ export default async function FinancePage({
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
   ]);
-  const f = computeFinance(employees, companies, year, month);
+  // P&L history: computeFinance always reads CURRENT salaries/contract values,
+  // so a raise or an archived client would silently rewrite past months. For a
+  // PAST month we therefore freeze the first computed result as a snapshot in
+  // Setting (`financeSnapshot:{y}-{m}`) and render the snapshot from then on.
+  // The current month stays live.
+  const now = new Date();
+  const isPast = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth());
+  const snapKey = `financeSnapshot:${year}-${month}`;
+  let f = computeFinance(employees, companies, year, month);
+  let snapshotAt: Date | null = null;
+  if (isPast) {
+    const row = await prisma.setting.findUnique({ where: { key: snapKey } }).catch(() => null);
+    if (row) {
+      try {
+        const saved = JSON.parse(row.value) as { savedAt: string; data: FinanceResult };
+        f = saved.data;
+        snapshotAt = new Date(saved.savedAt);
+      } catch {
+        /* broken snapshot → fall back to live numbers */
+      }
+    } else if (f.hasData) {
+      snapshotAt = now;
+      await prisma.setting
+        .create({ data: { key: snapKey, value: JSON.stringify({ savedAt: now.toISOString(), data: f }) } })
+        .catch(() => null); // best effort (double render / race is harmless)
+    }
+  }
   const profit = f.netProfit >= 0;
 
   return (
@@ -33,6 +60,14 @@ export default async function FinancePage({
         </div>
         <MonthBar year={year} month={month} showGenerate={false} />
       </header>
+
+      {snapshotAt && (
+        <div className="flex items-center gap-2 text-xs text-fg-dim bg-bg-elev border border-border-soft rounded-lg px-3 py-2">
+          <Lock className="w-3.5 h-3.5 shrink-0" />
+          أرقام مثبّتة — لقطة محفوظة بتاريخ {formatDateShort(snapshotAt)} حتى لا تتغيّر
+          أرباح الشهور الماضية عند تعديل الرواتب أو العقود لاحقاً.
+        </div>
+      )}
 
       {!f.hasData && (
         <Card className="text-center py-8 text-fg-muted">

@@ -6,6 +6,7 @@ import {
   createSession,
   destroySession,
   isAdminConfigured,
+  rotateAuthSecret,
   setAdminEmail,
   setAdminPassword,
   verifyAdminEmail,
@@ -14,6 +15,33 @@ import {
 
 const MIN_PASSWORD = 6;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// --- brute-force throttle (best-effort, per server instance) -----------------
+// After LOCK_AFTER consecutive failures for an email, further attempts are
+// refused for an escalating window (30s, 60s, 120s … capped at 15 min). An
+// in-memory map is enough here: it survives the life of the server process,
+// and a serverless cold start merely resets the counter — the scrypt hash
+// still makes each guess expensive.
+const failedLogins = new Map<string, { count: number; lockedUntil: number }>();
+const LOCK_AFTER = 5;
+const LOCK_BASE_MS = 30_000;
+const LOCK_MAX_MS = 15 * 60_000;
+
+function loginLockedFor(email: string): number {
+  const entry = failedLogins.get(email);
+  if (!entry) return 0;
+  return Math.max(0, entry.lockedUntil - Date.now());
+}
+
+function recordLoginFailure(email: string): void {
+  const entry = failedLogins.get(email) ?? { count: 0, lockedUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= LOCK_AFTER) {
+    const factor = Math.min(2 ** (entry.count - LOCK_AFTER), LOCK_MAX_MS / LOCK_BASE_MS);
+    entry.lockedUntil = Date.now() + LOCK_BASE_MS * factor;
+  }
+  failedLogins.set(email, entry);
+}
 
 /**
  * Log in to the admin area with email + password. On first ever use (nothing
@@ -40,9 +68,19 @@ export async function loginAction(
     return { ok: true };
   }
 
+  const throttleKey = em.toLowerCase();
+  const lockedMs = loginLockedFor(throttleKey);
+  if (lockedMs > 0) {
+    return {
+      ok: false,
+      error: `محاولات كثيرة خاطئة — انتظر ${Math.ceil(lockedMs / 1000)} ثانية ثم أعد المحاولة`,
+    };
+  }
   if (!(await verifyAdminEmail(em)) || !(await verifyAdminPassword(pw))) {
+    recordLoginFailure(throttleKey);
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
+  failedLogins.delete(throttleKey);
   await createSession();
   return { ok: true };
 }
@@ -73,6 +111,9 @@ export async function changePasswordAction(
     return { ok: false, error: `كلمة المرور الجديدة قصيرة (${MIN_PASSWORD} أحرف على الأقل)` };
   }
   await setAdminPassword(next);
-  await createSession(); // refresh the session under the new secret/expiry
+  // Rotate the signing secret so EVERY existing session (including any stolen
+  // cookie the password change was meant to shut out) is invalidated at once…
+  await rotateAuthSecret();
+  await createSession(); // …then re-issue the current admin's session under it.
   return { ok: true };
 }

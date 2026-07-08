@@ -87,9 +87,39 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
   }
 }
 
+/**
+ * Delete an employee — but ONLY when nothing references them. Task.assignee and
+ * the company owner relations are `onDelete: SetNull`, so deleting a teammate
+ * with history silently orphans their tasks (المسؤول → «غير مُسند») and drops
+ * their companies' ownership — workload and accountability vanish with no trace.
+ * Mirrors the deleteCompany guard: refuse and steer to reassigning first (or
+ * unticking «يدخل الجدولة» to retire them while keeping the record).
+ */
 export async function deleteEmployee(id: string) {
   try {
     await assertAdmin();
+    const [taskCount, companyCount] = await Promise.all([
+      prisma.task.count({ where: { assigneeId: id } }),
+      prisma.company.count({
+        where: {
+          OR: [
+            { postOwnerId: id },
+            { storyOwnerId: id },
+            { aiReelOwnerId: id },
+            { defaultOwnerId: id },
+            { photographerId: id },
+          ],
+        },
+      }),
+    ]);
+    if (taskCount + companyCount > 0) {
+      return {
+        ok: false as const,
+        error:
+          `لا يمكن حذف الموظف — لديه ${taskCount} مهمة و${companyCount} شركة مرتبطة به. ` +
+          `أعيدي إسناد مهامه وشركاته أولاً، أو ألغي «يدخل الجدولة» من تعديل الموظف للاحتفاظ بسجلّه.`,
+      };
+    }
     await prisma.employee.delete({ where: { id } });
     revalidateAll();
     return { ok: true as const };

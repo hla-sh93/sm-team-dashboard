@@ -71,7 +71,11 @@ export default function OverviewClient({
   const base = pathname.startsWith("/admin") ? "/admin" : "";
   const managed = companies.filter((c) => c.managed && c.status === "active");
   const designers = employees.filter((e) => e.isScheduled && !e.isPhotographer);
-  const content = tasks.filter((t) => t.kind === "CONTENT");
+  // KPI = THIS bucket's production cards only; carryover extras from other
+  // cycles are live work but not part of this month's plan count.
+  const content = tasks.filter(
+    (t) => t.kind === "CONTENT" && t.year === year && t.month === month,
+  );
   const qty = (t: Task) => t.quantity ?? 1;
   const isDone = isTaskDoneState;
   const openUrgent = tasks.filter((t) => t.priority === "URGENT" && !isDone(t));
@@ -191,7 +195,8 @@ export default function OverviewClient({
       return;
     }
     startDayEdit(async () => {
-      const r = await updateDailyTasks(promoteIds, demoteIds);
+      // Pass the browser's local day: the server may sit in another timezone.
+      const r = await updateDailyTasks(promoteIds, demoteIds, todayISO);
       if (r.ok) {
         toast("تم تحديث مهام اليوم");
         setEditDayFor(null);

@@ -35,6 +35,11 @@ const D = (s: string | null): Date | null => {
 //   doing     → in progress, e.g. a reel shot but not yet delivered (DOING).
 type JuneState = { published?: number; ready?: number; review?: number; doing?: number };
 
+// BOOTSTRAP DEFAULTS ONLY — the live source of truth is the Setting table
+// (key `achievements:{year}-{month0}`, JSON of the same shape). These built-in
+// maps are persisted to Setting on first use and never read again, so future
+// months are onboarded by adding a Setting row — no code change, no redeploy.
+//
 // June carry-over reality (2026-06). برو: 1 reel + 1 post still to produce;
 // المول: 2 published + 3 designed-ready posts, 1 reel filmed-not-delivered
 // (Albert); المخبر: 3 reels filmed-not-delivered (غسان+مايك). جدارات is handled
@@ -63,9 +68,34 @@ const JULY_2026: Record<string, JuneState> = {
   "c_jadarat|AI_REEL": { review: 3 }, // 3 ريلات AI قيد المراجعة
 };
 
-function achievementsFor(year: number, month: number): Record<string, JuneState> {
-  if (year === 2026 && month === 5) return JUNE_2026;
-  if (year === 2026 && month === 6) return JULY_2026;
+/**
+ * Reported reality for a month, read from the Setting table
+ * (`achievements:{year}-{month0}` → JSON Record<"companyId|TYPE", JuneState>).
+ * The 2026 built-in maps above are persisted there on first use (bootstrap),
+ * so from then on the DB row is the only source — edit it to onboard a month.
+ */
+async function achievementsFor(year: number, month: number): Promise<Record<string, JuneState>> {
+  const key = `achievements:${year}-${month}`;
+  try {
+    const row = await prisma.setting.findUnique({ where: { key } });
+    if (row?.value) return JSON.parse(row.value) as Record<string, JuneState>;
+  } catch {
+    // fall through to bootstrap — a broken row must not block scheduling
+  }
+  const builtin =
+    year === 2026 && month === 5 ? JUNE_2026 : year === 2026 && month === 6 ? JULY_2026 : null;
+  if (builtin) {
+    try {
+      await prisma.setting.upsert({
+        where: { key },
+        update: {}, // never overwrite an existing row — DB wins
+        create: { key, value: JSON.stringify(builtin) },
+      });
+    } catch {
+      /* best effort */
+    }
+    return builtin;
+  }
   return {};
 }
 
@@ -225,7 +255,7 @@ export async function generateSchedule(year: number, month: number) {
       notBeforeISO,
       publisherWorkDays,
     });
-    applyAchievements(pipe, achievementsFor(year, month));
+    applyAchievements(pipe, await achievementsFor(year, month));
 
     // Preserve manual edits from a prior run (matched by pipelineKey+stage).
     // Board/status are always kept; for cards the user PINNED (manual edit via
@@ -403,16 +433,6 @@ function snapPipelineWorkDatesToAssigneeWorkDays(
   }
 }
 
-/** Clear generated cards + auto sessions for a month (keeps ad-hoc tasks). */
-export async function clearMonthSchedule(year: number, month: number) {
-  try {
-    await prisma.$transaction([
-      prisma.task.deleteMany({ where: { isAuto: true, year, month } }),
-      prisma.photoSession.deleteMany({ where: { isAuto: true, year, month } }),
-    ]);
-    revalidateAll();
-    return { ok: true as const };
-  } catch {
-    return { ok: false as const, error: "فشل الحذف" };
-  }
-}
+// NOTE: clearMonthSchedule was removed (2026-07-08 audit): it had no UI caller
+// but remained a publicly callable server action that wiped a month's generated
+// schedule. Regeneration via generateSchedule covers every legitimate use.

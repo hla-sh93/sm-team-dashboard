@@ -15,6 +15,7 @@
     "db:import-prod": "tsx scripts/import-snapshot-to-postgres.ts backups/local-db-snapshot.json --confirm --env-file=.env.production.local",
     "db:import-prod:env": "tsx scripts/import-snapshot-to-postgres.ts backups/local-db-snapshot.json --confirm",
     "db:fix-offdays": "tsx scripts/fix-offday-workdates.ts",
+    "db:fix-june-hours": "tsx scripts/fix-june-adhoc-hours.ts",
     "db:reconcile-june": "tsx scripts/reconcile-june-2026.ts",
     "db:reconcile-june:prod": "prisma generate --schema=prisma/schema.postgres.prisma && tsx scripts/reconcile-june-2026.ts && prisma generate",
     "db:clean-orphans": "tsx scripts/clean-orphan-writes.ts",

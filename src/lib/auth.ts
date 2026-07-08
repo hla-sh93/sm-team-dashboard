@@ -61,6 +61,21 @@ async function getSecret(): Promise<string> {
   return secret;
 }
 
+/** Rotate the session-signing secret. Called on password change so every
+ *  previously issued cookie (possibly stolen) is invalidated at once — without
+ *  this, changing the password did NOT log out existing sessions. No-op when
+ *  the host controls the secret via AUTH_SECRET. */
+export async function rotateAuthSecret(): Promise<void> {
+  if (process.env.AUTH_SECRET) return;
+  const secret = randomBytes(32).toString("hex");
+  await prisma.setting.upsert({
+    where: { key: SECRET_KEY },
+    update: { value: secret },
+    create: { key: SECRET_KEY, value: secret },
+  });
+  cachedSecret = secret;
+}
+
 // --- password ---------------------------------------------------------------
 
 function hashPassword(password: string): string {

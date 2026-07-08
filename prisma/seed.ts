@@ -19,6 +19,7 @@ import data from "./seed-data.json";
 import juneActuals from "./actuals-june.json";
 import { expandPipeline } from "../src/lib/pipeline";
 import { isTrainerSuppliedContentCompany } from "../src/lib/content-source";
+import { WORK_DAY_HOURS } from "../src/lib/capacity";
 import { parseWorkDays } from "../src/lib/dates";
 
 const prisma = new PrismaClient();
@@ -135,9 +136,9 @@ async function seedJuneActuals() {
       title: it.title ?? "مهمة",
       companyId: it.companyId ?? null,
       assigneeId: it.assignee ?? null,
-      // Effort in working days (× 6h daily capacity). Drives the person's
-      // workload occupancy for ad-hoc/writing tasks. Defaults to 1 day.
-      hours: (it.days ?? 1) * 6,
+      // Effort in working days (× WORK_DAY_HOURS = 8h — the app's canonical
+      // working day; adhocDays() divides by the same constant). Defaults to 1 day.
+      hours: (it.days ?? 1) * WORK_DAY_HOURS,
       quantity: it.quantity ?? 1,
       priority: "NORMAL",
       status: it.status,
@@ -306,6 +307,7 @@ async function main() {
       aiReels: c.aiReels,
       ...(c.contractStartDate ? { contractStartDate: D(c.contractStartDate) } : {}),
       ...(c.contractValue != null ? { contractValue: c.contractValue } : {}),
+      ...(c.contentSupplied != null ? { contentSupplied: c.contentSupplied } : {}),
       ...(c.color ? { color: c.color } : {}),
       ...(c.photographerId ? { photographerId: c.photographerId } : {}),
       postOwnerId: c.postOwnerId,
@@ -322,6 +324,15 @@ async function main() {
     });
   }
   console.log(`✓ companies: ${data.companies.length}`);
+
+  // Supplied-content flag migration: التدريب's plan comes from the trainer, so
+  // its writer cards are skipped. Idempotent bump for DBs created before the
+  // contentSupplied column existed (the code keeps an id/name fallback too).
+  const suppliedBump = await prisma.company.updateMany({
+    where: { id: "c_training", contentSupplied: false },
+    data: { contentSupplied: true },
+  });
+  if (suppliedBump.count) console.log("↻ c_training: contentSupplied → true");
 
   // Historical cleanup: publishing is represented by one PUBLISH card per
   // planned piece, not by a broad ad-hoc "publish all companies" task.

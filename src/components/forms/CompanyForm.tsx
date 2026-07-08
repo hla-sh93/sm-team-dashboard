@@ -44,6 +44,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         contractStartDate: company.contractStartDate
           ? toISODate(new Date(company.contractStartDate))
           : "",
+        contentSupplied: company.contentSupplied ?? false,
         color: company.color ?? "#C8A84E",
         priority: company.priority,
         status: company.status as CompanyInput["status"],
@@ -61,6 +62,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         aiReels: 0,
         stories: 0,
         contractStartDate: "",
+        contentSupplied: false,
         color: "#C8A84E",
         priority: 99,
         status: "active",
@@ -147,10 +149,14 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" {...register("managed")} className="accent-accent" />
               شركة مُدارة (لها خطة نشر)
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" {...register("contentSupplied")} className="accent-accent" />
+              المحتوى جاهز من العميل (بدون كروت كتابة)
             </label>
           </div>
 
