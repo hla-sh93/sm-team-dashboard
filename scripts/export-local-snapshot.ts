@@ -34,7 +34,7 @@ async function main() {
   // import script explicitly preserves prod's own auth keys whenever the
   // snapshot doesn't carry them — so we omit them here.
   const AUTH_KEYS = new Set(["authSecret", "adminPasswordHash", "adminEmail"]);
-  const settings = allSettings.filter((s) => !AUTH_KEYS.has(s.key));
+  const settings = allSettings.filter((s: { key: string }) => !AUTH_KEYS.has(s.key));
 
   // Timezone normalisation: schedule dates are stored at LOCAL midnight (e.g.
   // 2026-07-04 on a GMT+3 machine → 2026-07-03T21:00Z). Read back on Vercel's
