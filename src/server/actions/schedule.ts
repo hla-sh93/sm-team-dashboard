@@ -312,10 +312,22 @@ export async function generateSchedule(year: number, month: number) {
 
     const adhocTasks = result.tasks.filter((t) => t.kind === "ADHOC");
 
+    // A dormant company (paused / archived) is NOT planned by the engine, so a
+    // blanket delete wipes its cards and nothing regenerates them: Siizen's 26
+    // filled-in cards vanished on an unrelated regeneration, plan text and all.
+    // Its work is deliberately parked, not cancelled — leave it alone.
+    const dormantIds = state.companies.filter((c) => c.status !== "active").map((c) => c.id);
+    const replaceScope = {
+      isAuto: true,
+      year,
+      month,
+      ...(dormantIds.length ? { NOT: { companyId: { in: dormantIds } } } : {}),
+    };
+
     await prisma.$transaction(async (tx) => {
       // Replace generated cards + auto sessions (keep ad-hoc, isAuto=false).
-      await tx.task.deleteMany({ where: { isAuto: true, year, month } });
-      await tx.photoSession.deleteMany({ where: { isAuto: true, year, month } });
+      await tx.task.deleteMany({ where: replaceScope });
+      await tx.photoSession.deleteMany({ where: replaceScope });
 
       const now = new Date();
       await tx.task.createMany({

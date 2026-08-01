@@ -676,10 +676,18 @@ Editing stays derived from completed shoots (`EDITS_PER_DAY`), not scheduled.
 `scheduler.ts` plans only `managed && status === "active"`. Pausing is the right
 tool for a **signed but not-yet-started** client (Siizen: contract dated, but the
 page details and product list never arrived) — the contract dates stay intact and
-one flag resumes it. Caveat: regenerating does NOT clear a paused company's
-existing cards, so untouched auto work must be deleted explicitly (step 11 of
-`apply-2026-08-updates.ts` does this: only `isAuto && !isPinned && NOT_STARTED`
-with no timestamps, and its stray `blockedById` refs are nulled first).
+one flag resumes it. Caveat: unwanted auto work must be deleted explicitly (step
+11 of `apply-2026-08-updates.ts` does this: only `isAuto && !isPinned &&
+NOT_STARTED` with no timestamps, and its stray `blockedById` refs are nulled
+first).
+
+**A regeneration must never touch a dormant company.** `generateSchedule`
+replaces the month by deleting every `isAuto` card and rebuilding from the plan
+— but the engine plans only `managed && active`, so a paused or archived company
+got deleted and never rebuilt. Siizen's 26 filled-in cards (plan text and all)
+vanished on a regeneration triggered for someone else entirely; `fill-siizen-
+cards.ts` had to recreate them. The delete is now scoped with
+`NOT: { companyId: { in: dormantIds } }`: parked work stays parked.
 
 ### Screen — `/today` · `/admin/today` (employee + admin, shared view)
 Per company: ينزل اليوم (with a **readiness** signal from the piece's open

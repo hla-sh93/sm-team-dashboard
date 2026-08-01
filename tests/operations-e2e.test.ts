@@ -424,6 +424,28 @@ describe("contract renewal lifecycle", () => {
     expect(after.length).toBe(0);
   });
 
+  /**
+   * A paused company's cards are PARKED, not cancelled — Siizen is signed and
+   * its plan is written, we just have not started. Regeneration rebuilds only
+   * active companies, so a blanket delete erased its 26 filled-in cards (plan
+   * text and all) on a run triggered for somebody else.
+   */
+  it("a regeneration for other companies leaves a paused company's cards alone", async () => {
+    if (skip()) return;
+    const co = await makeCompany({ name: `${uniq}-parked`, contractStartDate: "2026-08-01", posts: 3 });
+    await actions.generateSchedule(YEAR, 7);
+    const built = await prisma.task.findMany({ where: { companyId: co.id, year: YEAR, month: 7 } });
+    expect(built.length).toBeGreaterThan(0);
+    // Park it, then regenerate the month for everyone else.
+    await prisma.company.update({ where: { id: co.id }, data: { status: "paused" } });
+    await actions.generateSchedule(YEAR, 7);
+
+    const after = await prisma.task.findMany({ where: { companyId: co.id, year: YEAR, month: 7 } });
+    expect(after.map((t: { id: string }) => t.id).sort()).toEqual(
+      built.map((t: { id: string }) => t.id).sort(),
+    );
+  });
+
   it("renewing after «لم يُجدد» revives the contract", async () => {
     if (skip()) return;
     const co = await makeCompany({ name: `${uniq}-revive`, contractStartDate: "2026-07-01" });
