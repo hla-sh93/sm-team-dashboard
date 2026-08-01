@@ -1,6 +1,6 @@
 {
   "meta": {
-    "exportedAt": "2026-08-01T12:23:00.574Z",
+    "exportedAt": "2026-08-01T12:26:04.210Z",
     "source": "local-sqlite",
     "schema": "social-media-team-dashboard/v1"
   },
@@ -23855,7 +23855,7 @@
       "quantity": 1,
       "pieceNo": null,
       "priority": "IMPORTANT",
-      "status": "AWAITING_APPROVAL",
+      "status": "READY",
       "publishDate": null,
       "readyDate": "2026-07-08T00:00:00.000Z",
       "workDate": "2026-07-01T00:00:00.000Z",
@@ -23867,17 +23867,17 @@
       "isPinned": true,
       "isAuto": false,
       "stage": null,
-      "board": "REVIEW",
+      "board": "DONE",
       "blockedById": null,
       "pipelineKey": null,
       "detKey": null,
       "notes": null,
       "brief": null,
-      "completedAt": null,
+      "completedAt": "2026-07-07T21:00:00.000Z",
       "startedAt": "2026-07-03T13:46:57.958Z",
-      "finishedAt": null,
+      "finishedAt": "2026-07-07T21:00:00.000Z",
       "createdAt": "2026-07-01T05:58:39.124Z",
-      "updatedAt": "2026-08-01T08:47:58.616Z",
+      "updatedAt": "2026-08-01T12:24:18.145Z",
       "companyId": "c_wasl",
       "assigneeId": "e_hla"
     },
