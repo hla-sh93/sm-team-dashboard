@@ -94,6 +94,22 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
     };
   }
 
+  // «نشر» as a REPLY to the design file is the publisher's confirmation. The
+  // reply names the piece exactly — no content matching, no guessing which of
+  // today's posts went out — so it closes that piece's نشر card and nothing else.
+  const published = await handlePublishConfirmation(msg, chatId, delivery.sentAt);
+  if (published)
+    return {
+      stored: true,
+      chatId,
+      chatTitle,
+      unlinked: companyId == null,
+      companyId,
+      taskId: published,
+      matchedBy: "NAME",
+      advanced: true,
+    };
+
   const match = companyId ? await matchAgainstCompany(delivery, companyId) : null;
 
   await prisma.telegramMessage.create({
@@ -136,6 +152,56 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
     matchedBy: match?.by ?? null,
     advanced,
   };
+}
+
+/** Words the publisher uses to confirm a piece went out. */
+const PUBLISHED_WORDS = /(^|\s)(نشر|اننشر|تم النشر|نزل|published?)(\s|$)|✅|☑️|✔️/i;
+
+/**
+ * Close a نشر card from the publisher's reply.
+ *
+ * Verifying publication from the platforms themselves would mean a Meta app,
+ * tokens and review — and would still not say WHICH plan piece a post is. A
+ * reply does: Telegram carries `reply_to_message_id`, that message is already
+ * linked to a task, so «نشر» on it identifies the piece with certainty.
+ *
+ * Returns the task id when a publish card was closed.
+ */
+async function handlePublishConfirmation(
+  msg: { reply_to_message?: { message_id?: number }; text?: string; caption?: string },
+  chatId: string,
+  at: Date,
+): Promise<string | null> {
+  const replyTo = msg.reply_to_message?.message_id;
+  if (!replyTo) return null;
+  const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
+  if (!text || !PUBLISHED_WORDS.test(text)) return null;
+
+  // The message being replied to must be a delivery we already matched.
+  const target = await prisma.telegramMessage.findFirst({
+    where: { chatId, messageId: replyTo, taskId: { not: null } },
+  });
+  if (!target?.taskId) return null;
+
+  const production = await prisma.task.findUnique({ where: { id: target.taskId } });
+  if (!production?.pipelineKey) return null;
+  const publishCard = await prisma.task.findFirst({
+    where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
+  });
+  if (!publishCard || isTaskDoneState(publishCard)) return null;
+
+  await prisma.task.update({
+    where: { id: publishCard.id },
+    data: {
+      status: "PUBLISHED",
+      board: "DONE",
+      startedAt: publishCard.startedAt ?? at,
+      finishedAt: at,
+      completedAt: at,
+      isPinned: true,
+    },
+  });
+  return publishCard.id;
 }
 
 /** Find the piece this delivery belongs to, among the company's open work. */

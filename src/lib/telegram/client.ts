@@ -131,7 +131,7 @@ export type TelegramMessageRef = {
   message_thread_id?: number;
   forum_topic_created?: ForumTopicCreated;
   /** Carries `forum_topic_created` when a message replies into a topic. */
-  reply_to_message?: { forum_topic_created?: ForumTopicCreated };
+  reply_to_message?: { message_id?: number; forum_topic_created?: ForumTopicCreated };
   photo?: TelegramPhotoSize[];
   video?: { file_id: string; file_name?: string; mime_type?: string };
   animation?: { file_id: string; file_name?: string };
