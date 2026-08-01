@@ -12,6 +12,11 @@
  *   …                                        --publish   # close the نشر card too
  *   …                                        --date 2026-07-20
  *
+ * When the lead names the piece instead of a count — «أكاديمية وصل is done», and
+ * the plan says that is post 5 — target it directly. The count form cannot: the
+ * oldest open piece is rarely the one she means.
+ *   npx tsx scripts/mark-pieces-done.ts وصل POST --piece 5 --publish --apply
+ *
  * Dry run by default. Closed cards are pinned so إعادة الجدولة keeps them.
  */
 import { PrismaClient } from "@prisma/client";
@@ -28,16 +33,19 @@ const dateArg = dateIdx > -1 ? argv[dateIdx + 1] : null;
 const AT = dateArg ? new Date(dateArg) : new Date();
 // -1 + 1 === 0 would skip the FIRST positional argument, so keep the "no date"
 // case out of range entirely.
-const skipIdx = dateIdx > -1 ? dateIdx + 1 : -1;
+const pieceIdx = argv.indexOf("--piece");
+/** Explicit piece numbers, e.g. `--piece 5` or `--piece 3,5,8`. */
+const PIECES = pieceIdx > -1 ? argv[pieceIdx + 1].split(",").map((n) => Number(n.trim())) : null;
+const skip = new Set([dateIdx > -1 ? dateIdx + 1 : -1, pieceIdx > -1 ? pieceIdx + 1 : -1]);
 const [companyArg, typeArg, countArg] = argv.filter(
-  (a, i) => !a.startsWith("--") && i !== skipIdx,
+  (a, i) => !a.startsWith("--") && !skip.has(i),
 );
 
 const TYPES: ContentType[] = ["POST", "REEL", "AI_REEL", "STORY"];
 
 async function main() {
   const count = Number(countArg);
-  if (!companyArg || !TYPES.includes(typeArg as ContentType) || !Number.isFinite(count)) {
+  if (!companyArg || !TYPES.includes(typeArg as ContentType) || (!PIECES && !Number.isFinite(count))) {
     console.error("الاستعمال: npx tsx scripts/mark-pieces-done.ts <شركة> <POST|REEL|AI_REEL|STORY> <العدد> [--apply] [--publish] [--date YYYY-MM-DD]");
     process.exit(1);
   }
@@ -61,16 +69,42 @@ async function main() {
     `${company.name} · ${CONTENT_TYPE_LABELS[type]} — ${production.length} قطعة، ` +
       `${alreadyDone} خالصة، ${open.length} مفتوحة`,
   );
+
+  // Named pieces take precedence: «أكاديمية وصل is done» means piece 5, not
+  // «one more of the oldest».
+  if (PIECES) {
+    const targets = open.filter((t) => PIECES.includes(t.pieceNo ?? -1));
+    const missing = PIECES.filter((n) => !targets.some((t) => t.pieceNo === n));
+    if (missing.length) console.log(`(${missing.join("، ")} — مسكّرة أصلاً أو غير موجودة)`);
+    await close(targets);
+    await prisma.$disconnect();
+    return;
+  }
+
   if (count <= alreadyDone) {
     console.log(`المطلوب ${count} خالصة، وفي ${alreadyDone} أصلاً — ما في شي لأعمله.`);
     await prisma.$disconnect();
     return;
   }
 
-  const toClose = open.slice(0, count - alreadyDone);
-  console.log(`\n${APPLY ? "إغلاق" : "رح أغلق"} ${toClose.length} قطعة (الأقدم أولاً):`);
+  await close(open.slice(0, count - alreadyDone));
+  await prisma.$disconnect();
+}
+
+type Closeable = Awaited<ReturnType<typeof prisma.task.findMany>>[number];
+
+/** Close production cards, and their نشر card when --publish is set. */
+async function close(toClose: Closeable[]) {
+  if (!toClose.length) {
+    console.log("\nما في قطعة لأغلقها.");
+    return;
+  }
+  console.log(`\n${APPLY ? "إغلاق" : "رح أغلق"} ${toClose.length} قطعة:`);
   for (const t of toClose) {
-    console.log(`  ${CONTENT_TYPE_LABELS[type]} ${t.pieceNo ?? "?"} · استحقاق ${t.readyDate?.toLocaleDateString("en-CA") ?? "—"}`);
+    console.log(
+      `  ${CONTENT_TYPE_LABELS[t.type as "POST"] ?? t.type} ${t.pieceNo ?? "?"}` +
+        ` · استحقاق ${t.readyDate?.toLocaleDateString("en-CA") ?? "—"}`,
+    );
     if (!APPLY) continue;
     await prisma.task.update({
       where: { id: t.id },
@@ -101,7 +135,6 @@ async function main() {
       });
   }
   console.log(APPLY ? "\nتم." : "\nتشغيل تجريبي — أضف --apply.");
-  await prisma.$disconnect();
 }
 
 main().catch(async (e) => {

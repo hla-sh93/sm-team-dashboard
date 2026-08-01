@@ -132,7 +132,13 @@ export default function OverviewClient({
   //  - off with no open work           → عطلة
   //  - no open work at all             → متفرّغ لعمل إضافي
   const refDayObj = fromISODate(todayISO);
-  const dayByPerson = employees.map((e) => ({
+  // Freelancers (ألبير, غسان+مايك) have no standing schedule — they are hired
+  // per shoot. Showing them every day as «متفرّغ» reads as idle staff, so they
+  // appear only while they actually hold open work.
+  const rosterToday = employees.filter(
+    (e) => e.isScheduled || e.salary > 0 || (openByPerson.get(e.id)?.length ?? 0) > 0,
+  );
+  const dayByPerson = rosterToday.map((e) => ({
     emp: e,
     isOff: !parseWorkDays(e.workDays).includes(refDayObj.getDay()),
     cards: groupTasksIntoCards(
