@@ -284,6 +284,9 @@ export async function generateSchedule(year: number, month: number) {
         startedAt: true,
         finishedAt: true,
         completedAt: true,
+        // Imported once a month from the client's plan and not re-derivable —
+        // dropping it here is what turned honest matching back into guessing.
+        brief: true,
       },
     });
     applyPipelinePreservation(pipe, existing);
@@ -345,6 +348,7 @@ export async function generateSchedule(year: number, month: number) {
             overflow: false,
             isAuto: true,
             isPinned: t.isPinned ?? false,
+            brief: t.brief ?? null,
             startedAt,
             finishedAt,
             completedAt: done ? (t.completedAt ?? finishedAt) : null,

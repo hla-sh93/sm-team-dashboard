@@ -67,6 +67,19 @@ function parseDate(title: string): { iso: string; unix: string } | null {
 const EXT_VIDEO = /\.(mp4|mov|avi|mkv|webm)$/i;
 const EXT_IMAGE = /\.(jpe?g|png|webp|gif)$/i;
 
+/** The title Telegram writes when the media itself was not downloaded. */
+const PLACEHOLDER_TITLE = /^(photo|video file|voice message|sticker|animation|file)$/i;
+
+const typedByName = (name: string) => ({
+  file_name: name,
+  media_type: EXT_VIDEO.test(name) ? "video_file" : "document",
+  mime_type: EXT_VIDEO.test(name)
+    ? "video/mp4"
+    : EXT_IMAGE.test(name)
+      ? "image/jpeg"
+      : "application/octet-stream",
+});
+
 function mediaOf(block: string): Partial<OutMessage> {
   // A file sent "as a document" — the visible title keeps the ORIGINAL name
   // while the href is the on-disk (possibly de-duplicated) path.
@@ -75,12 +88,7 @@ function mediaOf(block: string): Partial<OutMessage> {
     const after = block.slice(block.indexOf(fileHref[0]));
     const title = after.match(/class="title bold">\s*([^<]+)/);
     const name = title ? strip(title[1]) : decodeURIComponent(fileHref[1].split("/").pop() ?? "");
-    return {
-      file: decode(fileHref[1]),
-      file_name: name,
-      media_type: EXT_VIDEO.test(name) ? "video_file" : "document",
-      mime_type: EXT_VIDEO.test(name) ? "video/mp4" : EXT_IMAGE.test(name) ? "image/jpeg" : "application/octet-stream",
-    };
+    return { file: decode(fileHref[1]), ...typedByName(name) };
   }
   const video = block.match(/class="video_file_wrap[^"]*"[^>]*href="([^"]+)"/);
   if (video) {
@@ -94,7 +102,23 @@ function mediaOf(block: string): Partial<OutMessage> {
   }
   const photo = block.match(/class="photo_wrap[^"]*"[^>]*href="([^"]+)"/);
   if (photo) return { photo: decode(photo[1]) };
-  return {};
+
+  // ---- Export made WITHOUT media ("Not included, change data exporting
+  // settings to download") — there is no href at all, only the class and the
+  // visible title. A file sent as a DOCUMENT still carries its original name
+  // there, and the name is the whole point: «Agalia 7-1.mp4» identifies the
+  // piece on its own. Photos/videos sent inline lose their name entirely, so
+  // they are recorded as nameless media — still evidence of WHO delivered WHAT
+  // KIND and WHEN, which the TYPE tier and the caption/BRIEF tier can use.
+  const kind = block.match(/class="media clearfix pull_left (media_[a-z_]+)"/);
+  if (!kind) return {};
+  const title = block.match(/class="title bold">\s*([^<]+)/);
+  const name = title ? strip(title[1]) : "";
+  if (name && !PLACEHOLDER_TITLE.test(name)) return typedByName(name);
+  if (kind[1] === "media_photo") return { photo: "", media_type: "photo" };
+  if (kind[1] === "media_video")
+    return { media_type: "video_file", mime_type: "video/mp4" };
+  return {}; // voice messages and stickers are not deliveries
 }
 
 function main() {
@@ -167,9 +191,27 @@ function main() {
   const dest = join(dir, "result.json");
   writeFileSync(dest, JSON.stringify(out));
   const topics = messages.filter((m) => m.action === "topic_created").length;
-  const media = messages.filter((m) => m.file || m.photo).length;
+  // A media-less export has no paths at all — count what actually identifies a
+  // delivery (a name, or a nameless photo/video), not whether a file is on disk.
+  const media = messages.filter((m) => m.file || m.photo != null || m.file_name || m.media_type).length;
+  const named = messages.filter((m) => m.file_name).length;
   console.log(`\n✅ ${dest}`);
-  console.log(`   ${messages.length} رسالة · ${topics} موضوع · ${media} ملف/صورة`);
+  console.log(
+    `   ${messages.length} رسالة · ${topics} موضوع · ${media} ملف/صورة (${named} باسم)`,
+  );
+  // Two different situations, and confusing them sends the lead re-exporting for
+  // nothing: an export made WITHOUT media has no paths at all, while an inline
+  // photo simply never had an original name — Telegram itself does not keep one.
+  // Only the first is fixable by changing the export settings.
+  const noMedia = messages.every((m) => !m.file && !m.photo);
+  if (noMedia && media > named)
+    console.log(
+      `   ⚠️ التصدير بلا ميديا محمّلة — الأسماء إجت من عناوين الرسائل. صدّري «مع الميديا» لتصير أدق.`,
+    );
+  else if (media > named)
+    console.log(
+      `   ℹ️ ${media - named} صورة/فيديو مرسلة inline — تلغرام أصلاً ما بيحفظ إسمها الأصلي، فالمطابقة إلها بالنوع أو بنص الخطة.`,
+    );
 }
 
 main();

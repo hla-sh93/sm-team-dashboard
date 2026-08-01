@@ -45,11 +45,13 @@ export default function TelegramClient({
     );
   };
 
+  // Mirrors the two send waves (§14): ٧:٤٥ is the message she forwards to the
+  // team group + her private report; ٨:٠٠ is everything with the detail in it.
   const messages =
     tab === "main"
-      ? [brief.schedule, brief.detail, brief.lead]
+      ? [brief.schedule, brief.lead]
       : tab === "companies"
-        ? brief.companies
+        ? [brief.detail, ...brief.companies]
         : brief.employees;
 
   return (
@@ -208,7 +210,7 @@ export default function TelegramClient({
           <div className="flex gap-1 bg-bg border border-border rounded-lg p-1">
             {(
               [
-                ["main", "الصباحي"],
+                ["main", "العام ٧:٤٥"],
                 ["companies", `شركات (${brief.companies.length})`],
                 ["employees", `موظفين (${brief.employees.length})`],
               ] as const

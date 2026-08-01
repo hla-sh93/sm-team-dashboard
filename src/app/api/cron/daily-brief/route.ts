@@ -7,7 +7,7 @@
  * nothing machine-written ever lands in a client conversation.
  */
 import { NextResponse } from "next/server";
-import { sendDailyBrief } from "@/lib/telegram/service";
+import { sendDailyBrief, type BriefWave } from "@/lib/telegram/service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +21,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const res = await sendDailyBrief();
-  return NextResponse.json(res, { status: res.ok ? 200 : 500 });
+  // Two scheduled calls a day (see vercel.json): ?wave=general at 07:45 and
+  // ?wave=detail at 08:00. An unrecognised value sends everything, so a
+  // mis-typed cron entry can never silently drop a wave.
+  const raw = new URL(req.url).searchParams.get("wave");
+  const wave: BriefWave = raw === "general" || raw === "detail" ? raw : "all";
+
+  const res = await sendDailyBrief(new Date(), wave);
+  return NextResponse.json({ ...res, wave }, { status: res.ok ? 200 : 500 });
 }

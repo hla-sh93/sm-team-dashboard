@@ -23,6 +23,12 @@ export type ExistingPipelineTaskState = {
   startedAt?: Date | null;
   finishedAt?: Date | null;
   completedAt?: Date | null;
+  // The plan's own words (§14). Imported once per month from the client's .docx
+  // and NOT re-derivable by the engine, so a regeneration that drops it destroys
+  // the only thing that makes delivery-matching honest: without a brief the
+  // matcher falls back to blind type-matching and inflates every figure. This
+  // silently wiped 29 rows of مركز البلسم and all of التوظيف before it was found.
+  brief?: string | null;
 };
 
 type CanceledPiece = {
@@ -175,6 +181,9 @@ export function applyPipelinePreservation(
     task.startedAt = saved.startedAt ?? null;
     task.finishedAt = saved.finishedAt ?? null;
     task.completedAt = saved.completedAt ?? null;
+    // Always kept, pinned or not — the plan text belongs to the piece, not to a
+    // manual edit, and re-importing the .docx every month is not a real option.
+    if (saved.brief != null) task.brief = saved.brief;
     if (saved.isPinned) {
       task.isPinned = true;
       if (saved.title != null) task.title = saved.title;

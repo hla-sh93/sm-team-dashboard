@@ -19,6 +19,10 @@ export type Employee = {
   workDays: string; // JSON Int[]
   isScheduled: boolean;
   isPhotographer: boolean;
+  /** Telegram handle without the @ — used to mention people in the brief. */
+  telegramUsername?: string | null;
+  /** Numeric Telegram user id — who a delivery is credited to. */
+  telegramUserId?: string | null;
   salary: number;
   costPerReel: number | null;
   color: string | null;
@@ -44,6 +48,8 @@ export type Company = {
   preferredShootDay: number | null;
   /** Content plan supplied externally — writer plan cards skipped. */
   contentSupplied: boolean;
+  /** Set when the hold-up is the client's, not ours → never counted as late. */
+  lateExemptReason?: string | null;
   /** Latin short name for the canonical asset name «Agalia 7-1» (§14). */
   slug: string | null;
   /** This company's Telegram group id (§14). */

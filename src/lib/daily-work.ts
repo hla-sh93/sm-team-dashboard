@@ -58,8 +58,15 @@ function isPublishTask(task: Pick<Task, "kind" | "stage">): boolean {
   return task.stage === "PUBLISH" || task.kind === "PUBLISH";
 }
 
-function isExclusiveDayTask(task: Pick<Task, "type">, effortDays: number): boolean {
-  return task.type === "REEL" || task.type === "AI_REEL" || effortDays >= 1 - EPS;
+/**
+ * A task that takes the whole day on its own. This used to hard-code REEL and
+ * AI_REEL, from when one person shot AND cut the same reel. Now that shooting
+ * (ماجد, 3 reels/day) and editing (أليسار, 3 reels/day) are separate people,
+ * a shoot is a third of a day and three fit — so exclusivity follows the rate
+ * rather than the type. AI_REEL still lands here on its own: its rate is 1/day.
+ */
+function isExclusiveDayTask(_task: Pick<Task, "type">, effortDays: number): boolean {
+  return effortDays >= 1 - EPS;
 }
 
 function writeScopeCounts(tasks: Task[]): Map<string, number> {

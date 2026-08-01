@@ -31,6 +31,16 @@ model Employee {
   workDays       String   @default("[6,0,1,2,3]") // JSON Int[] getDay() values
   isScheduled    Boolean  @default(true)        // enters the auto content engine
   isPhotographer Boolean  @default(false)
+  // Telegram handle WITHOUT the @ (e.g. "Omar_ORR"). The morning brief is
+  // forwarded into the team group, where a real @mention is what actually gets
+  // someone's attention. Null → the person is addressed by name, as the lead
+  // does for anyone whose handle she doesn't use.
+  telegramUsername String?
+  // Numeric Telegram user id — the STABLE identity (a display name changes, an
+  // id does not). When a delivery closes a piece, the credit goes to whoever
+  // actually sent the file, matched through this. Without it the plan's owner
+  // silently gets the credit: سابين's Jobs posts were booked to حلا.
+  telegramUserId String?
   // Finance: monthly salary/cost (fixed). costPerReel = per-reel variable cost
   // for freelance photographers paid by the job (null = paid by salary).
   salary         Float    @default(0)
@@ -92,6 +102,13 @@ model Company {
   // Content plan is supplied externally (client/trainer) — the writer's plan
   // cards (كتابة) are skipped for this company.
   contentSupplied Boolean @default(false)
+
+  // Why this company's work must NOT be counted as late — set when the delay is
+  // the CLIENT's, not the team's (جدارات: the page access never arrived, so
+  // nothing can be published and the team is not the one holding it up).
+  // Non-null → its cards never appear in any «متأخر» list. Clear it the day the
+  // blocker lifts; the real deadlines underneath were never touched.
+  lateExemptReason String?
 
   // === Telegram follow-up (§14) ===
   // Latin short name used to build the canonical asset name «Agalia 7-1»

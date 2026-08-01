@@ -565,19 +565,44 @@ A match **closes the piece's production card** (READY/DONE,
 `finishedAt` = the real delivery time) — reversible with «مو هي» on the اليوم
 screen (`unmatchMessage`). Albums (carousels) close their piece once.
 
+**The credit follows the SENDER, not the plan.** The plan says who was *supposed*
+to make a piece; the group says who *did*. سابين delivered the Jobs posts and
+they closed حلا's cards, so every report read as حلا's work — the lead caught it
+and the rule is now enforced in `closeProductionCard`: the card is re-assigned to
+the employee whose `Employee.telegramUserId` matches the sender, and pinned so a
+regeneration can't hand it back. Matching is by NUMERIC id, never display name (a
+name changes, an id doesn't); an unknown sender leaves the owner alone, because a
+wrong name is worse than a stale one. Populate ids from observed senders — the
+`/admin/telegram` message list shows them.
+
 ### Morning brief (`lib/telegram/brief.ts` + `service.ts`, `/api/cron/daily-brief`)
 **The bot never posts into a client group.** Every message goes to the LEAD's
 private chat (`Setting["telegram.leadChatId"]` or `TELEGRAM_LEAD_CHAT_ID`), one
 Telegram message each, so she forwards what she wants — by her rule, nothing may
-look machine-written to a client. Sent in this order:
-1. **جدول المهام** — one line per person, name + headline, NO detail
-   («عمر: متابعة مع الزباين والنشر — 4 قطعة اليوم», «أيمن: تصاميم وصل»). A day
-   off reads «عطلة»; freelancers appear only when they actually hold work.
-2. **التفصيلي** — النشر اليوم / تسليم اليوم / مونتاج اليوم / المتأخر, piece by
-   piece with the canonical name and the company.
-3. The lead's risk report, then the per-company and per-employee sheets she
-   forwards (the employee sheet inlines the piece's `brief`, so nobody opens a
-   Word file to start).
+look machine-written to a client.
+
+Sent in **TWO WAVES**, because that is how she actually works — she showed us
+her own hand-written brief and the bot's was far too detailed for the 07:45 slot
+(`briefMessagesFor(brief, wave)`; `?wave=general|detail`, two `vercel.json` crons):
+
+**07:45 — `general`.** The message she forwards to the team group *verbatim*, so
+it has to read like she typed it: `صباح الخير`, then ONE bare line per person —
+`أيمن ريلات جدارات`, `@Omar_ORR متابعة الصفحات والنشر`. **No** bullets, emoji,
+dates, piece names, or day counts; work is named by company only. Overdue work
+that today's queue can't reach becomes a short chase — `والمتأخر وصل وبرو وغيرها`
+— capped at two companies, and a company already named in today's half is not
+repeated. `Employee.telegramUsername` (no `@`) turns a name into a real mention;
+unset → the plain name, as she does for anyone whose handle she doesn't use.
+Someone idle or off today gets **no line at all**; idle names go only to her own
+risk report (`🟢 فاضي اليوم`), which rides along in this wave since it is private.
+
+**08:00 — `detail`.** النشر اليوم / تسليم اليوم / مونتاج اليوم / المتأخر piece by
+piece with the canonical name, then the per-company and per-employee sheets (the
+employee sheet inlines the piece's `brief`, so nobody opens a Word file to
+start). This is the wave that is *allowed* to be long.
+
+The rule to keep: **anything with a piece name, a date or a day-count in it
+belongs to the 08:00 wave.** `tests/telegram.test.ts` pins that boundary.
 
 **Editing queue**: montage starts the DAY AFTER the shoot and the editor gets
 through 3 reels/day (`EDIT_STARTS_AFTER_DAYS`, `EDITS_PER_DAY`), so أليسار's list
@@ -610,9 +635,19 @@ invisible. Recovered from a **Telegram Desktop export**:
 - `import-plan-briefs.ts <dir> [--apply]` — reads the month's plan `.docx`
   directly (minimal inline zip reader, no dependency) and writes each numbered
   row onto its piece as `Task.brief`, production AND publish card. Re-run monthly.
+- `cycle-status.ts [year month0] [--current]` — production **per cycle, never
+  summed across months**. A contract is monthly, so «Phoenitech 8/12 بوست» is a
+  number that matches no agreement — the lead caught exactly that («انت عم تدمج
+  الخطط كلها؟ مو حسب الشهر يعني؟»). Prints each company's monthly plan, then one
+  line per cycle, and flags a cycle whose card count ≠ the contracted figure.
 - `company-status.ts [company]` · `ready-to-publish.ts [company]` — the review
   sheets for going through the roster; the second lists pieces whose production
   is DONE and are only waiting to be published (the fastest daily win).
+- `set-done-counts.ts <co> STORY=6 POST=9 [--apply]` — **stories are counted,
+  not numbered**: «بالستوري مو مهم الترتيب، المهم الكمية». For any type without a
+  numbered brief, asking WHICH file is story #4 is a question with no answer —
+  ask HOW MANY are done. Closes oldest-first, and reopens (publish card too) when
+  the recorded figure is higher than reality.
 - `mark-pieces-done.ts <co> <TYPE> <n> [--apply] [--publish]` — the lead knows
   totals («عملنا 4 ريلات») far better than which numbered piece each was; closes
   the oldest open pieces of that type.
@@ -621,6 +656,21 @@ invisible. Recovered from a **Telegram Desktop export**:
   reopen at IMPORTANT with the reason on the card. Rare by design: the lead
   declined a «مرفوض» button, the card simply stays put and is not moved to نشر.
 - `set-off-plan.ts <co> "kw,kw" [--apply] [--reset]` — declare off-plan content.
+
+### When the delay is the CLIENT's (`Company.lateExemptReason`)
+Different from pausing: the team keeps producing, but nothing may be counted
+against them. جدارات's page access never arrived, so its pieces can be made and
+not published — a non-null reason takes the whole company out of every «متأخر»
+list (brief, per-company sheet, her risk report) while leaving the real
+deadlines underneath intact. The company sheet prints the reason, so a clean
+sheet never reads as an oversight. Clear the field the day the blocker lifts.
+
+### Shooting and editing run in parallel (`DEFAULT_RATES.REEL`)
+`REEL` was `3/2` (three reels per two days) from when ONE person shot and cut
+the same reel. ماجد shoots 3/day and أليسار edits 3/day as separate people, so
+the rate is now `3` and `isExclusiveDayTask` no longer hard-codes REEL/AI_REEL —
+exclusivity follows the rate (AI_REEL is still 1/day, so it still owns its day).
+Editing stays derived from completed shoots (`EDITS_PER_DAY`), not scheduled.
 
 ### Paused companies (`Company.status`)
 `scheduler.ts` plans only `managed && status === "active"`. Pausing is the right

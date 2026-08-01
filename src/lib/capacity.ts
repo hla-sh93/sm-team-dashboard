@@ -7,14 +7,18 @@
  * duration of a task in working days (quantity ÷ rate).
  *
  * Designer capacity (items/day): 10 posts OR 10 stories OR 1 AI-reel on an
- * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 3 reels every
- * 2 working days.
+ * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 3 reels/day.
+ *
+ * REEL was 3-per-2-days back when ONE person shot and cut the same reel. Since
+ * shooting (ماجد) and editing (أليسار) are separate people working in parallel,
+ * each does 3 reels in a day — the lead's own figure. Editing is derived from
+ * completed shoots (see brief.ts EDITS_PER_DAY), so this rate is the shoot.
  */
 export const DEFAULT_RATES: Record<string, number> = {
   POST: 10, // 10 posts/day
   STORY: 10, // 10 stories/day
   AI_REEL: 1, // 1 AI reel/day
-  REEL: 3 / 2, // photographer: 3 reels per 2 days
+  REEL: 3, // photographer: 3 reels/day (shooting only — editing is أليسار's)
   PLAN: 0.5, // 1 company plan per 2 working days
 };
 

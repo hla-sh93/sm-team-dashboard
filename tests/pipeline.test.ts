@@ -98,6 +98,24 @@ describe("pipeline expansion", () => {
     );
   });
 
+  /**
+   * The plan text is imported once a month from the client's .docx and cannot be
+   * re-derived by the engine. A regeneration that dropped it silently turned
+   * honest delivery-matching back into blind type-matching and inflated every
+   * figure — it wiped all 29 of مركز البلسم's rows before anyone noticed.
+   */
+  it("keeps the plan's own words (brief) across regeneration, pinned or not", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
+
+    applyPipelinePreservation(pipe, [
+      saved({ isPinned: false, brief: "حالة فيلر قبل وبعد — إجراء بسيط ومن دون ألم" }),
+    ]);
+
+    expect(pipe.find((task) => task.stage === "DESIGN")?.brief).toBe(
+      "حالة فيلر قبل وبعد — إجراء بسيط ومن دون ألم",
+    );
+  });
+
   it("preserves pinned carousel slide quantity across regeneration", () => {
     const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
 

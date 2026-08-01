@@ -20,6 +20,8 @@ model Employee {
   workDays       String   @default("[6,0,1,2,3]")
   isScheduled    Boolean  @default(true)
   isPhotographer Boolean  @default(false)
+  telegramUsername String?
+  telegramUserId String?
   salary         Float    @default(0)
   costPerReel    Float?
   color          String?
@@ -63,6 +65,7 @@ model Company {
   // Content plan is supplied externally (client/trainer) — the writer's plan
   // cards (كتابة) are skipped for this company.
   contentSupplied Boolean @default(false)
+  lateExemptReason String?
 
   // === Telegram follow-up (§14) — keep in sync with schema.prisma ===
   slug            String?

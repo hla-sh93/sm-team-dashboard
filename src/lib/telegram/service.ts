@@ -7,10 +7,12 @@
 import { prisma } from "@/lib/db";
 import { loadLiveTasks } from "@/lib/live-tasks";
 import type { Company, Employee, Task } from "@/types";
-import { buildDailyBrief, type DailyBrief } from "./brief";
+import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
 import { sendMessage, isTelegramConfigured } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
+
+export type { BriefWave };
 
 /** Where the brief goes. Env wins so a deploy can be pointed without the DB. */
 export async function getLeadChatId(): Promise<string | null> {
@@ -61,28 +63,19 @@ export type SendBriefResult =
   | { ok: true; sent: number }
   | { ok: false; error: string };
 
-/**
- * Send the brief to the lead — the lead report first, then one message per
- * company and per employee so each can be forwarded on its own.
- */
-export async function sendDailyBrief(today = new Date()): Promise<SendBriefResult> {
+/** Send one wave of the brief to the lead's private chat. */
+export async function sendDailyBrief(
+  today = new Date(),
+  wave: BriefWave = "all",
+): Promise<SendBriefResult> {
   if (!isTelegramConfigured()) return { ok: false, error: "البوت غير مضبوط (TELEGRAM_BOT_TOKEN)" };
   const chatId = await getLeadChatId();
   if (!chatId)
     return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
 
   const brief = await buildTodayBrief(today);
-  // Order matters: the headline schedule first, the detail right after it, then
-  // the sheets she forwards. That is the sequence the lead reads at 07:45.
-  const messages = [
-    brief.schedule,
-    brief.detail,
-    brief.lead,
-    ...brief.companies,
-    ...brief.employees,
-  ];
   let sent = 0;
-  for (const m of messages) {
+  for (const m of briefMessagesFor(brief, wave)) {
     const res = await sendMessage(chatId, m.text);
     if (!res.ok) return sent ? { ok: true, sent } : { ok: false, error: res.error };
     sent++;

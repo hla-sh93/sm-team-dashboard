@@ -140,7 +140,9 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
   // five units of أيمن's day even though the client sees one post.
   if (match) await recordCarouselSlides(match.taskId, delivery);
 
-  const advanced = match ? await closeProductionCard(match.taskId, delivery.sentAt) : false;
+  const advanced = match
+    ? await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId)
+    : false;
 
   return {
     stored: true,
@@ -260,10 +262,26 @@ async function recordCarouselSlides(taskId: string, delivery: Delivery): Promise
  * real delivery time, so «جاهزية القطعة» and the lateness reports reflect what
  * actually happened in the group rather than when someone remembered to move a
  * card. Never touches an already-closed card.
+ *
+ * The card is also re-credited to WHOEVER ACTUALLY SENT IT. The plan says who
+ * was supposed to do a piece; the group says who did. When سابين delivered the
+ * Jobs posts they closed حلا's cards and the reports read as حلا's work — the
+ * lead caught it. The sender is matched by numeric Telegram id
+ * (`Employee.telegramUserId`); an unknown sender leaves the owner untouched,
+ * because a wrong name is worse than a stale one. Pinned, so regenerating the
+ * month can't hand the piece back to the planned owner.
  */
-async function closeProductionCard(taskId: string, at: Date): Promise<boolean> {
+async function closeProductionCard(
+  taskId: string,
+  at: Date,
+  senderId?: string | null,
+): Promise<boolean> {
   const t = await prisma.task.findUnique({ where: { id: taskId } });
   if (!t || isTaskDoneState(t)) return false;
+  const doer = senderId
+    ? await prisma.employee.findFirst({ where: { telegramUserId: senderId } })
+    : null;
+  const credited = doer && doer.id !== t.assigneeId ? doer.id : null;
   await prisma.task.update({
     where: { id: taskId },
     data: {
@@ -272,6 +290,7 @@ async function closeProductionCard(taskId: string, at: Date): Promise<boolean> {
       startedAt: t.startedAt ?? at,
       finishedAt: at,
       completedAt: t.completedAt ?? at,
+      ...(credited ? { assigneeId: credited, isPinned: true } : {}),
     },
   });
   return true;

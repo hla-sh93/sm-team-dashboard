@@ -6,10 +6,15 @@
  * she can forward the ones she wants. Nothing here sends anything — this module
  * is pure text assembly and is unit-tested as such.
  *
- * Two messages, in this order, by her instruction:
- *   1. جدول المهام — one line per person: name + headline, NO detail.
- *   2. التفصيلي    — today's publishing and today's deliveries, piece by piece.
- * Then the per-company sheets she forwards, and her own risk report.
+ * Sent in TWO WAVES (§14), because that is how the lead actually works:
+ *   07:45 — «العام»: صباح الخير + ONE line per person, written the way she
+ *           writes it by hand — «أيمن ريلات جدارات». No bullets, no emoji, no
+ *           counts, no dates, no lateness figures. Just who owes what today.
+ *           Her own risk report rides along (it is for her eyes, not the group).
+ *   08:00 — «التفصيلي»: the per-person sheets, which DO carry the piece names,
+ *           the plan's words and what is late on each person.
+ * The per-company sheets go with the second wave too — same audience, same
+ * level of detail.
  *
  * Pieces are named with the canonical «Agalia 7-1» so the brief, the dashboard
  * and the delivered file all say the same thing.
@@ -37,9 +42,9 @@ export type BriefMessage = {
 
 export type DailyBrief = {
   dateLabel: string;
-  /** Message 1 — the headline schedule, no detail. */
+  /** Wave 1 (07:45) — the one-line-per-person message she forwards as-is. */
   schedule: BriefMessage;
-  /** Message 2 — today's publishing and deliveries, piece by piece. */
+  /** Wave 2 (08:00) — today's publishing and deliveries, piece by piece. */
   detail: BriefMessage;
   companies: BriefMessage[];
   employees: BriefMessage[];
@@ -47,6 +52,23 @@ export type DailyBrief = {
 };
 
 export type DeliveryStats = { matched: number; unmatched: number };
+
+/**
+ * Which wave to send. The lead sends the team two different things at two
+ * different times, so the bot hands her two different batches:
+ *   "general" (07:45) — the one-line-per-person message she forwards to the team
+ *                       group as-is, plus her own private risk report.
+ *   "detail"  (08:00) — the per-person and per-company sheets, with the piece
+ *                       names, the plan's words and what is late on whom.
+ *   "all"             — both, for the «ابعتيلي البريف هلق» button.
+ */
+export type BriefWave = "general" | "detail" | "all";
+
+export function briefMessagesFor(brief: DailyBrief, wave: BriefWave): BriefMessage[] {
+  if (wave === "general") return [brief.schedule, brief.lead];
+  if (wave === "detail") return [brief.detail, ...brief.companies, ...brief.employees];
+  return [brief.schedule, brief.lead, brief.detail, ...brief.companies, ...brief.employees];
+}
 
 /** Publish dates within this many days count as "about to slip". */
 const AT_RISK_DAYS = 2;
@@ -126,8 +148,26 @@ export function buildDailyBrief({
   const who = (t: Task): string =>
     (t.assigneeId ? empById.get(t.assigneeId)?.name : null) ?? "غير مُسند";
 
-  const open = tasks.filter((t) => !isTaskDoneState(t) && t.status !== "CANCELED");
-  const late = open.filter((t) => isTaskLateState(t, today));
+  // A paused or archived company is not being worked on at all: Siizen has not
+  // started and المول الصيني did not renew. Their cards must not surface
+  // ANYWHERE in the brief — «Siizen 7-3 ينزل اليوم» in a message the lead
+  // forwards is simply wrong.
+  const dormant = new Set(companies.filter((c) => c.status !== "active").map((c) => c.id));
+  const open = tasks.filter(
+    (t) =>
+      !isTaskDoneState(t) &&
+      t.status !== "CANCELED" &&
+      !(t.companyId && dormant.has(t.companyId)),
+  );
+  // A company whose delay is the CLIENT's (جدارات — the page access never came)
+  // is exempt everywhere lateness is reported, «معرّض للتأخير» included. The
+  // deadlines underneath are untouched; clearing the reason restores them.
+  const lateExempt = new Set(
+    companies.filter((c) => c.lateExemptReason?.trim()).map((c) => c.id),
+  );
+  const late = open.filter(
+    (t) => isTaskLateState(t, today) && !(t.companyId && lateExempt.has(t.companyId)),
+  );
   const publishingToday = open.filter(
     (t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO,
   );
@@ -157,40 +197,34 @@ export function buildDailyBrief({
     return shot.slice(0, EDITS_PER_DAY);
   })();
 
-  // ---------------------------------------------------- 1. جدول المهام (ملخّص)
-  const scheduleLines: string[] = [`🗓️ جدول ${dateLabel}`, ""];
+  // ------------------------------------------------- 1. العام (07:45) — «صباح الخير»
+  // Written the way the lead writes it by hand: a greeting, then one bare line
+  // per person — «أيمن ريلات جدارات». No bullets, no emoji, no counts, no dates,
+  // no «متأخر ١٣ يوم». Anything more than "who owes what" belongs in wave 2.
   const workingToday = (e: Employee) => parseWorkDays(e.workDays).includes(today.getDay());
-  for (const emp of employees) {
-    // Someone who is off today does not belong on today's schedule at all —
-    // listing them as «عطلة» is noise the lead has to read past every morning.
-    if (!workingToday(emp)) continue;
-    // A freelance photographer has no standing schedule either; they appear
-    // only when work is actually assigned to them.
-    if (isFreelance(emp) && !late.some((t) => t.assigneeId === emp.id)) continue;
-    const todays = selectDailyWorkTasks({
-      employee: emp,
-      tasks: open,
-      allTasks: tasks,
-      companies,
-      today,
-    });
-    let headline: string;
-    if (isPublisher(emp)) {
-      // The publisher's day is always the same shape: chase the clients, publish.
-      const n = publishingToday.length;
-      headline = n ? `متابعة مع الزباين والنشر — ${n} قطعة اليوم` : "متابعة مع الزباين";
-    } else if (isEditor(emp)) {
-      headline = editQueue.length
-        ? `مونتاج ${editQueue.length} ريل — ${[...new Set(editQueue.map(coName))].join("، ")}`
-        : "ما في ريلات جاهزة للمونتاج";
-    } else if (!todays.length) {
-      headline = isPhotographer(emp) ? "ما في تصوير اليوم" : "ما في مهام مجدولة";
-    } else {
-      // Group into «تصاميم وصل» / «ريلات جدارات» — the headline, never the pieces.
-      const byCompany = new Map<string, Set<string>>();
-      for (const t of todays) {
-        const set = byCompany.get(coName(t)) ?? new Set<string>();
-        set.add(
+  /** «@Omar_ORR» when we know the handle — a real mention beats a name. */
+  const mention = (e: Employee) =>
+    e.telegramUsername?.trim() ? `@${e.telegramUsername.trim().replace(/^@/, "")}` : e.name;
+
+  /**
+   * «ريلات جدارات · تصاميم وصل» — kinds of work grouped by company, no pieces.
+   * Capped at `max` companies (busiest first): a line naming nine companies is
+   * the wall of text she asked us to stop sending. The rest is «وغيرها».
+   */
+  const groupByCompany = (list: Task[], max = 2): string => {
+    // A bare «تصاميم» tells her nothing — every entry must name WHO it is for.
+    // A company card names its company; an ad-hoc card has no company, so its
+    // own title is the name (and already says what the work is).
+    const named = new Map<string, { kinds: Set<string>; n: number }>();
+    for (const t of list) {
+      const co = t.companyId ? coById.get(t.companyId)?.name : null;
+      const label = co ?? t.title?.trim() ?? "";
+      if (!label || label === "—") continue; // unnameable → better silent than bare
+      const entry = named.get(label) ?? { kinds: new Set<string>(), n: 0 };
+      entry.n++;
+      // Only a company entry takes a kind word in front of it.
+      if (co)
+        entry.kinds.add(
           t.stage === "SHOOT"
             ? "تصوير"
             : t.type === "REEL" || t.type === "AI_REEL"
@@ -199,60 +233,165 @@ export function buildDailyBrief({
                 ? "كتابة"
                 : "تصاميم",
         );
-        byCompany.set(coName(t), set);
-      }
-      headline = [...byCompany.entries()]
-        .map(([co, kinds]) => `${[...kinds].join(" و")}${co && co !== "—" ? ` ${co}` : ""}`)
-        .join(" · ");
+      named.set(label, entry);
     }
-    // Deliberately no lateness here: this message tells each person what their
-    // job is today, nothing else. The delays live in the detailed message.
-    scheduleLines.push(`• ${emp.name}: ${headline}`);
+    const ordered = [...named.entries()].sort((a, b) => b[1].n - a[1].n);
+    const shown = ordered
+      .slice(0, max)
+      .map(([label, { kinds }]) => [[...kinds].join(" و"), label].filter(Boolean).join(" "));
+    if (ordered.length > max) shown.push("وغيرها");
+    return shown.join(" · ");
+  };
+
+  const scheduleLines: string[] = ["صباح الخير", ""];
+  const idleToday: string[] = [];
+  for (const emp of employees) {
+    const mineLate = late.filter((t) => t.assigneeId === emp.id);
+    // Off today → not on today's list at all. A freelancer has no standing
+    // schedule either; they appear only when work is actually on them.
+    if (!workingToday(emp) && !mineLate.length) continue;
+    if (isFreelance(emp) && !mineLate.length) continue;
+    const todays = selectDailyWorkTasks({
+      employee: emp,
+      tasks: open,
+      allTasks: tasks,
+      companies,
+      today,
+    });
+
+    // What they owe, as a bare noun phrase — «ريلات أغاليا المتأخرة». Never a
+    // day count: she chases people, she doesn't invoice them.
+    const owed = mineLate.filter((t) => !todays.some((x) => x.id === t.id));
+
+    // The chase names COMPANIES only — what kind of work it is, is obvious from
+    // whose line it is. «المتأخر التوظيف ووصل وغيرها». A company already named
+    // in today's part is dropped: repeating it reads like a stutter.
+    const todayCompanies = new Set(todays.map(coName));
+    const owedCompanies = [
+      ...new Set(owed.map((t) => (t.companyId ? coName(t) : (t.title?.trim() || "—")))),
+    ].filter((c) => c && c !== "—" && !todayCompanies.has(c));
+    let headline: string;
+    let chase = owedCompanies.length
+      ? `المتأخر ${owedCompanies.slice(0, 2).join(" و")}${owedCompanies.length > 2 ? " وغيرها" : ""}`
+      : "";
+    if (isPublisher(emp)) {
+      // The publisher's day is always the same shape — the count is noise, and
+      // his "late" list is the standing publish backlog, not a daily chase.
+      headline = "متابعة الصفحات والنشر";
+      chase = "";
+    } else if (isEditor(emp)) {
+      headline = editQueue.length
+        ? `مونتاج ريلات ${[...new Set(editQueue.map(coName))].join(" و")}`
+        : "";
+    } else {
+      headline = groupByCompany(todays);
+    }
+    if (chase) headline = headline ? `${headline}، و${chase}` : chase;
+    // Nothing today and nothing owed → not worth a line. Idle capacity is real
+    // information though, so it goes to her private report instead.
+    if (!headline) {
+      if (workingToday(emp) && emp.isScheduled) idleToday.push(emp.name);
+      continue;
+    }
+    scheduleLines.push(`${mention(emp)} ${headline}`);
   }
 
-  // ------------------------------------------------------- 2. التقرير التفصيلي
+  // -------------------------- 2. التقرير التفصيلي (٨:٠٠) — أقسام، بطلب القائدة
+  // «التصميم: أيمن، سابين · التصوير والمونتاج: ماجد (شو يصوّر)، أليسار (شو
+  // تسلّم) · النشر: عمر — شو ننشر لكل شركة». كل بند مع موعده.
   const detailLines: string[] = [`📋 تفاصيل ${dateLabel}`];
 
-  if (publishingToday.length) {
-    detailLines.push("", "🚀 النشر اليوم:");
-    for (const t of publishingToday.sort((a, b) => coName(a).localeCompare(coName(b))))
-      detailLines.push(`• ${pieceLabel(t)} — ${coName(t)}`);
-  } else {
-    detailLines.push("", "🚀 النشر اليوم: ما في شي مجدول.");
+  /** بنود شخص: مهام اليوم بموعدها، وبعدها المتأخر عليه (بحد أقصى 6 + عدّاد). */
+  const personItems = (emp: Employee): string[] => {
+    const todays = selectDailyWorkTasks({ employee: emp, tasks: open, allTasks: tasks, companies, today });
+    const mineLate = late
+      .filter((t) => t.assigneeId === emp.id && !todays.some((x) => x.id === t.id))
+      .sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
+    const out: string[] = [];
+    for (const t of todays) {
+      const due = deadlineOf(t);
+      out.push(`   • ${pieceLabel(t)} · ${coName(t)}${due ? ` — التسليم ${relativeDayLabel(due, today)}` : ""}`);
+    }
+    for (const t of mineLate.slice(0, 6))
+      out.push(`   • ${pieceLabel(t)} · ${coName(t)} — متأخر ${daysLateOfState(t, today)} يوم`);
+    if (mineLate.length > 6) out.push(`   … و${mineLate.length - 6} متأخرات غيرها على اللوحة`);
+    return out;
+  };
+
+  const isDesigner = (e: Employee) =>
+    /designer|مصمم/i.test(e.role) && !isPublisher(e) && !isPhotographer(e) && !isEditor(e);
+  const isWriter = (e: Employee) => /كات|writer/i.test(e.role);
+
+  // — التصميم —
+  const designers = employees.filter((e) => isDesigner(e) && workingToday(e));
+  const designBlocks = designers
+    .map((e) => ({ e, items: personItems(e) }))
+    .filter((b) => b.items.length);
+  if (designBlocks.length) {
+    detailLines.push("", "🎨 التصميم:");
+    designBlocks.forEach((b, i) => {
+      detailLines.push(`${i + 1}- ${b.e.name}:`);
+      detailLines.push(...b.items);
+    });
   }
 
-  const deliveringToday = open.filter(
-    (t) => t.stage !== "PUBLISH" && dISO(deadlineOf(t)) === todayISO,
-  );
-  if (deliveringToday.length) {
-    detailLines.push("", "🎯 تسليم اليوم:");
-    const byPerson = new Map<string, Task[]>();
-    for (const t of deliveringToday) {
-      const arr = byPerson.get(who(t)) ?? [];
-      arr.push(t);
-      byPerson.set(who(t), arr);
-    }
-    for (const [person, list] of byPerson) {
-      detailLines.push(`${person}:`);
-      for (const t of list) detailLines.push(`   • ${pieceLabel(t)} — ${coName(t)}`);
+  // — الكتابة — (مو بهيكل القائدة الحرفي، بس نوال لازم مكان لما يكون عندها شغل)
+  const writers = employees.filter((e) => isWriter(e) && workingToday(e));
+  const writeBlocks = writers.map((e) => ({ e, items: personItems(e) })).filter((b) => b.items.length);
+  if (writeBlocks.length) {
+    detailLines.push("", "✍️ الكتابة:");
+    for (const b of writeBlocks) {
+      detailLines.push(`${b.e.name}:`);
+      detailLines.push(...b.items);
     }
   }
 
-  if (editQueue.length) {
-    detailLines.push("", "🎬 مونتاج اليوم:");
-    for (const t of editQueue) {
-      const shotOn = new Date(t.finishedAt!);
-      detailLines.push(`• ${pieceLabel(t)} — ${coName(t)} (تصوير ${dayLabel(shotOn)})`);
+  // — التصوير والمونتاج —
+  const shooters = employees.filter((e) => isPhotographer(e) && e.isScheduled);
+  const shootBlocks = shooters.map((e) => ({ e, items: personItems(e) })).filter((b) => b.items.length);
+  const editors = employees.filter((e) => isEditor(e));
+  if (shootBlocks.length || editQueue.length) {
+    detailLines.push("", "🎬 التصوير والمونتاج:");
+    let n = 0;
+    for (const b of shootBlocks) {
+      detailLines.push(`${++n}- تصوير (${b.e.name}):`);
+      detailLines.push(...b.items);
+    }
+    for (const ed of editors) {
+      detailLines.push(`${++n}- مونتاج (${ed.name}):`);
+      if (editQueue.length)
+        for (const t of editQueue)
+          detailLines.push(`   • ${pieceLabel(t)} · ${coName(t)} (تصوير ${dayLabel(new Date(t.finishedAt!))})`);
+      else detailLines.push("   ما في ريلات جاهزة للمونتاج.");
     }
   }
 
-  if (late.length) {
-    detailLines.push("", `⏰ متأخر (${late.length}):`);
-    for (const t of late.slice(0, 12))
-      detailLines.push(
-        `• ${pieceLabel(t)} — ${coName(t)} · ${who(t)} · ${daysLateOfState(t, today)} يوم`,
-      );
-    if (late.length > 12) detailLines.push(`… و${late.length - 12} غيرها على اللوحة`);
+  // — النشر — «شو لازم ننشر لكل شركة»: قطع اليوم بالتفصيل، والمتراكم عدّاد لكل
+  // شركة (تعدادو قطعة قطعة هو جدار الـ٩٣ سطر يلي منعنا عنه).
+  const publisher = employees.find((e) => isPublisher(e));
+  // شركة معفاة (جدارات) ما بتدخل قسم النشر إطلاقاً: العميل لسا ما بلّش ينشر،
+  // فما في شي «لازم ينتشر» عندها لحد ما توصل الإشارة.
+  const publishable = (t: Task) => !(t.companyId && lateExempt.has(t.companyId));
+  const latePublish = late.filter((t) => t.stage === "PUBLISH" && publishable(t));
+  if (publisher) {
+    detailLines.push("", `🚀 النشر (${publisher.name}):`);
+    const byCo = new Map<string, { today: Task[]; lateN: number }>();
+    for (const t of publishingToday.filter(publishable)) {
+      const g = byCo.get(coName(t)) ?? { today: [], lateN: 0 };
+      g.today.push(t);
+      byCo.set(coName(t), g);
+    }
+    for (const t of latePublish) {
+      const g = byCo.get(coName(t)) ?? { today: [], lateN: 0 };
+      g.lateN++;
+      byCo.set(coName(t), g);
+    }
+    if (!byCo.size) detailLines.push("   ما في شي مجدول للنشر اليوم.");
+    for (const [co, g] of [...byCo.entries()].sort((a, b) => b[1].today.length - a[1].today.length || b[1].lateN - a[1].lateN)) {
+      const pieces = g.today.map((t) => pieceLabel(t)).join(" · ");
+      const tail = g.lateN ? ` (ومتراكم ${g.lateN})` : "";
+      detailLines.push(`   • ${co}: ${pieces || "—"}${tail}`);
+    }
   }
 
   // ---------------------------------------------------------------- companies
@@ -263,12 +402,16 @@ export function buildDailyBrief({
 
     const publishing = mine.filter((t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO);
     const delivering = mine.filter((t) => t.stage !== "PUBLISH" && dISO(deadlineOf(t)) === todayISO);
-    const overdue = mine
-      .filter((t) => isTaskLateState(t, today))
-      .sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
+    const overdue = lateExempt.has(co.id)
+      ? []
+      : mine
+          .filter((t) => isTaskLateState(t, today))
+          .sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
     if (!publishing.length && !delivering.length && !overdue.length) continue;
 
     const lines: string[] = [`📅 ${co.name} — ${dateLabel}`];
+    // Say WHY nothing is late here, or the sheet looks like an oversight.
+    if (lateExempt.has(co.id)) lines.push(`(${co.lateExemptReason} — التأخير مو محسوب)`);
     if (publishing.length) {
       lines.push("", "🚀 ينزل اليوم:");
       for (const t of publishing) lines.push(`• ${pieceLabel(t)} — ${who(t)}`);
@@ -278,9 +421,13 @@ export function buildDailyBrief({
       for (const t of delivering) lines.push(`• ${pieceLabel(t)} — ${who(t)}`);
     }
     if (overdue.length) {
-      lines.push("", "⏰ متأخر:");
-      for (const t of overdue)
+      // Worst 8 only — وصل's sheet once ran 35 lines, and a wall of overdue
+      // rows is exactly the noise the lead told us to stop sending. The full
+      // list lives on the board; the sheet's job is «شو أهم شي وقف».
+      lines.push("", `⏰ متأخر (${overdue.length}):`);
+      for (const t of overdue.slice(0, 8))
         lines.push(`• ${pieceLabel(t)} — متأخر ${daysLateOfState(t, today)} يوم · ${who(t)}`);
+      if (overdue.length > 8) lines.push(`… و${overdue.length - 8} غيرها على اللوحة`);
     }
     companyMessages.push({ key: co.id, title: co.name, text: lines.join("\n") });
   }
@@ -335,6 +482,9 @@ export function buildDailyBrief({
   const atRisk = open
     .filter((t) => {
       if (t.stage !== "PUBLISH") return false;
+      // جدارات-style exemption: the client is the blocker, so «about to slip»
+      // is as meaningless for it as «late» — nothing can be published anyway.
+      if (t.companyId && lateExempt.has(t.companyId)) return false;
       const pd = dISO(t.publishDate);
       if (!pd || pd < todayISO || pd > horizonISO) return false;
       const siblings = t.pipelineKey ? (openByPipeline.get(t.pipelineKey) ?? []) : [];
@@ -370,11 +520,14 @@ export function buildDailyBrief({
         (deliveries.unmatched ? ` (${deliveries.unmatched} غير مطابق)` : ""),
     );
   }
+  // Who is free today. Deliberately absent from the group-facing message — but
+  // she is the one who reassigns work, so she needs to know there is slack.
+  if (idleToday.length) leadLines.push("", `🟢 فاضي اليوم: ${idleToday.join("، ")}`);
 
   return {
     dateLabel,
-    schedule: { key: "schedule", title: "جدول المهام", text: scheduleLines.join("\n") },
-    detail: { key: "detail", title: "التقرير التفصيلي", text: detailLines.join("\n") },
+    schedule: { key: "schedule", title: "العام (٧:٤٥)", text: scheduleLines.join("\n") },
+    detail: { key: "detail", title: "التفصيلي (٨:٠٠)", text: detailLines.join("\n") },
     companies: companyMessages,
     employees: employeeMessages,
     lead: { key: "lead", title: "تقرير القائد", text: leadLines.join("\n") },

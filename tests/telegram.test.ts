@@ -11,7 +11,7 @@ import {
   slugMatches,
 } from "@/lib/asset-name";
 import { matchDelivery, normalizeMessage, typeHintFrom, type Delivery } from "@/lib/telegram/match";
-import { buildDailyBrief } from "@/lib/telegram/brief";
+import { buildDailyBrief, briefMessagesFor } from "@/lib/telegram/brief";
 import type { Company, Employee, Task } from "@/types";
 
 const company = (over: Partial<Company> = {}): Company =>
@@ -385,5 +385,195 @@ describe("morning brief", () => {
     const brief = buildDailyBrief({ ...base, tasks: [publish] });
     expect(brief.companies[0].key).toBe("co1");
     expect(JSON.stringify(brief)).not.toContain("-100123");
+  });
+});
+
+/**
+ * The 07:45 message is the one the lead forwards to the team group verbatim, so
+ * it has to read like she wrote it: «صباح الخير» then one bare line per person
+ * («أيمن ريلات جدارات»). Everything with a piece name, a date or a day-count in
+ * it belongs to the 08:00 wave. These tests pin that boundary.
+ */
+describe("العام (07:45) — the message the lead forwards as-is", () => {
+  const workday = new Date(2026, 6, 11); // Saturday — a work day for [6,0,1,2,3]
+  const designer = employee({
+    id: "d1",
+    name: "أيمن",
+    role: "designer",
+    isPhotographer: false,
+    rates: null,
+  });
+  const base = { today: workday, companies: [company()], employees: [designer] };
+
+  it("opens with صباح الخير and carries no header emoji or date", () => {
+    const brief = buildDailyBrief({ ...base, tasks: [] });
+    expect(brief.schedule.text.split("\n")[0]).toBe("صباح الخير");
+    expect(brief.schedule.text).not.toContain("🗓️");
+    expect(brief.schedule.text).not.toContain("11/7");
+  });
+
+  it("writes «<اسم> <شغل> <شركة>» with no bullet and no colon", () => {
+    const design = task({
+      id: "d",
+      stage: "DESIGN",
+      type: "POST",
+      readyDate: workday,
+      workDate: workday,
+      assigneeId: "d1",
+    });
+    const line = buildDailyBrief({ ...base, tasks: [design] }).schedule.text
+      .split("\n")
+      .find((l) => l.includes("أيمن"))!;
+    expect(line).toBe("أيمن تصاميم أغاليا");
+  });
+
+  it("mentions the person by @handle when one is stored", () => {
+    const withHandle = employee({ ...designer, telegramUsername: "Ayman_D" } as Partial<Employee>);
+    const design = task({ id: "d", stage: "DESIGN", type: "POST", readyDate: workday, assigneeId: "d1" });
+    const brief = buildDailyBrief({ ...base, employees: [withHandle], tasks: [design] });
+    expect(brief.schedule.text).toContain("@Ayman_D تصاميم أغاليا");
+  });
+
+  // ماجد shoots THREE reels a day, so with more overdue reels than that, the
+  // first three land in today's queue and the rest become the chase — the very
+  // situation the lead writes «الريلات يلي خبرتني انن جاهزين ما بعتوهن» about.
+  const photographer = employee({ rates: '{"REEL":3}' }); // ماجد
+  const reels = (specs: { id: string; co: Company; day: number }[]) =>
+    specs.map((s) =>
+      task({
+        id: s.id,
+        stage: "SHOOT",
+        type: "REEL",
+        readyDate: new Date(2026, 6, s.day),
+        companyId: s.co.id,
+        assigneeId: "e1",
+        pipelineKey: `${s.co.id}|REEL`,
+      }),
+    );
+  const wasl = company({ id: "co2", name: "وصل", slug: "Wasl", telegramChatId: null });
+  const bru = company({ id: "co3", name: "برو", slug: "Bru", telegramChatId: null });
+  const jadarat = company({ id: "co4", name: "جدارات", slug: "Jadarat", telegramChatId: null });
+
+  // Three وصل reels fill the shooting day; برو's is pushed out and chased.
+  const overloadedDay = () =>
+    reels([
+      { id: "r1", co: wasl, day: 1 },
+      { id: "r2", co: wasl, day: 1 },
+      { id: "r3", co: wasl, day: 1 },
+      { id: "r4", co: bru, day: 2 },
+    ]);
+
+  it("turns work it can't reach today into a bare chase clause", () => {
+    const brief = buildDailyBrief({
+      today: workday,
+      companies: [company(), wasl, bru],
+      employees: [photographer],
+      tasks: overloadedDay(),
+    });
+    expect(brief.schedule.text).toContain("ماجد تصوير وصل، والمتأخر برو");
+  });
+
+  it("never puts piece names or day-counts in the general message", () => {
+    const brief = buildDailyBrief({
+      today: workday,
+      companies: [company(), wasl, bru],
+      employees: [photographer],
+      tasks: overloadedDay(),
+    });
+    expect(brief.schedule.text).not.toMatch(/\d+-\d+/);
+    expect(brief.schedule.text).not.toMatch(/\d+ يوم/);
+    // …while the detailed wave still carries exactly that.
+    expect(brief.employees[0].text).toMatch(/Bru 7-\d/);
+    expect(brief.employees[0].text).toMatch(/متأخر \d+ يوم/);
+  });
+
+  it("caps the chase at two companies so one line can't become a wall", () => {
+    const tasks = [
+      ...overloadedDay(),
+      ...reels([
+        { id: "r5", co: jadarat, day: 3 },
+        { id: "r6", co: company(), day: 4 },
+      ]),
+    ];
+    const brief = buildDailyBrief({
+      today: workday,
+      companies: [company(), wasl, bru, jadarat],
+      employees: [photographer],
+      tasks,
+    });
+    const line = brief.schedule.text.split("\n").find((l) => l.includes("ماجد"))!;
+    expect(line).toContain("وغيرها");
+    expect(line.length).toBeLessThan(60);
+  });
+
+  it("drops a company whose delay is the client's fault, not ours", () => {
+    const blocked = company({
+      id: "co4",
+      name: "جدارات",
+      slug: "Jadarat",
+      telegramChatId: null,
+      lateExemptReason: "الزبون لسا ما أعطانا أكسس على الصفحة",
+    });
+    const tasks = reels([
+      { id: "r1", co: wasl, day: 1 },
+      { id: "r2", co: blocked, day: 1 }, // overdue, but not our fault
+      { id: "r3", co: blocked, day: 11 }, // due today → its sheet is rendered
+    ]);
+    const brief = buildDailyBrief({
+      today: workday,
+      companies: [company(), wasl, blocked],
+      employees: [photographer],
+      tasks,
+    });
+    // Still real work that still has to be shot — it just never counts as late,
+    // so it stays out of the chase clause and out of her overdue list.
+    expect(brief.schedule.text).toContain("تصوير جدارات");
+    expect(brief.schedule.text).not.toMatch(/المتأخر[^\n]*جدارات/);
+    // Both reels are past due, but only وصل's is counted — جدارات's is the
+    // client's hold-up, so it is absent from her overdue list entirely.
+    expect(brief.lead.text).toContain("متأخرات (1)");
+    expect(brief.lead.text).not.toContain("جدارات");
+    // …and its own company sheet says why it shows nothing overdue.
+    const sheet = brief.companies.find((c) => c.title === "جدارات");
+    expect(sheet?.text).toContain("التأخير مو محسوب");
+  });
+
+  it("leaves idle people out of the group message but tells the lead privately", () => {
+    const brief = buildDailyBrief({ ...base, tasks: [] });
+    expect(brief.schedule.text).not.toContain("أيمن");
+    expect(brief.lead.text).toContain("فاضي اليوم: أيمن");
+  });
+
+  it("gives the publisher his standing line without a piece count", () => {
+    const publisher = employee({ id: "p1", name: "عمر", role: "publisher", isPhotographer: false, telegramUsername: "Omar_ORR" } as Partial<Employee>);
+    const publish = task({ id: "pub", stage: "PUBLISH", publishDate: workday, assigneeId: "p1" });
+    const brief = buildDailyBrief({ ...base, employees: [publisher], tasks: [publish] });
+    expect(brief.schedule.text).toContain("@Omar_ORR متابعة الصفحات والنشر");
+    expect(brief.schedule.text).not.toMatch(/\d+ قطعة/);
+  });
+});
+
+describe("brief waves", () => {
+  const brief = {
+    schedule: { key: "schedule", title: "", text: "s" },
+    detail: { key: "detail", title: "", text: "d" },
+    lead: { key: "lead", title: "", text: "l" },
+    companies: [{ key: "co1", title: "", text: "c" }],
+    employees: [{ key: "e1", title: "", text: "e" }],
+    dateLabel: "",
+  };
+
+  it("sends the forwardable message and her private report at 07:45", () => {
+    expect(briefMessagesFor(brief, "general").map((m) => m.key)).toEqual(["schedule", "lead"]);
+  });
+
+  it("sends the detail and the per-person sheets at 08:00", () => {
+    expect(briefMessagesFor(brief, "detail").map((m) => m.key)).toEqual(["detail", "co1", "e1"]);
+  });
+
+  it("«ابعتيلي البريف هلق» sends everything, each message exactly once", () => {
+    const keys = briefMessagesFor(brief, "all").map((m) => m.key);
+    expect(keys).toEqual(["schedule", "lead", "detail", "co1", "e1"]);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
