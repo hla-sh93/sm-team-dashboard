@@ -11,6 +11,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { isTaskDoneState } from "../src/lib/constants";
+import { cycleForBucket } from "../src/lib/contract";
 
 const prisma = new PrismaClient();
 const argv = process.argv.slice(2);
@@ -61,6 +62,12 @@ async function main() {
     }
     for (const [k, list] of [...buckets.entries()].sort()) {
       const [y, m] = k.split("-").map(Number);
+      // اسم الشهر لحالو مضلّل: دورة برو «تموز» بتمشي 18/7 ← 17/8، فالقائدة سألت
+      // «قصدك هي الدورة ولا الماضية؟». منطبع تواريخ الدورة الحقيقية معه.
+      const cyc = cycleForBucket(co as never, y, m);
+      const span = cyc
+        ? ` (${cyc.start.getDate()}/${cyc.start.getMonth() + 1} ← ${new Date(cyc.end.getTime() - 864e5).getDate()}/${new Date(cyc.end.getTime() - 864e5).getMonth() + 1})`
+        : "";
       const by: Record<string, { d: number; t: number }> = {};
       for (const c of list) {
         const t = c.type ?? "?";
@@ -77,7 +84,7 @@ async function main() {
       const done = Object.values(by).reduce((a, v) => a + v.d, 0);
       const total = Object.values(by).reduce((a, v) => a + v.t, 0);
       const pct = total ? Math.round((done / total) * 100) : 0;
-      console.log(`   ${AR_MONTH[m]} ${y}:  ${parts.join(" · ")}   →  ${done}/${total} (${pct}%)`);
+      console.log(`   ${AR_MONTH[m]} ${y}${span}:  ${parts.join(" · ")}   →  ${done}/${total} (${pct}%)`);
     }
   }
   await prisma.$disconnect();

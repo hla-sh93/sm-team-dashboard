@@ -133,6 +133,29 @@ describe("pipeline expansion", () => {
     expect(pipe.find((task) => task.stage === "DESIGN")?.brief).toBe("نص الخطة الأصلي");
   });
 
+  /**
+   * A company legitimately ships several pieces on one day (برو: three reels
+   * on the same date), so the publish date alone identifies nothing — matching
+   * on it handed a card its neighbour's state and dropped the real one's script.
+   */
+  it("prefers the piece number over a shared publish date", () => {
+    const pipe = expandPipeline(
+      [
+        { ...baseItem, id: "c|POST|2026-07-09|1", publishDate: "2026-07-09" },
+        { ...baseItem, id: "c|POST|2026-07-09|2", publishDate: "2026-07-09" },
+      ],
+      opts,
+    );
+    // Both saved rows share the date; only the piece number tells them apart.
+    applyPipelinePreservation(pipe, [
+      saved({ pipelineKey: "old-1", pieceNo: 1, brief: "نص القطعة الأولى" }),
+      saved({ pipelineKey: "old-2", pieceNo: 2, brief: "نص القطعة التانية" }),
+    ]);
+
+    const design = pipe.filter((t) => t.stage === "DESIGN").sort((a, b) => (a.pieceNo ?? 0) - (b.pieceNo ?? 0));
+    expect(design.map((t) => t.brief)).toEqual(["نص القطعة الأولى", "نص القطعة التانية"]);
+  });
+
   it("preserves pinned carousel slide quantity across regeneration", () => {
     const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
 

@@ -179,16 +179,21 @@ export function applyPipelinePreservation(
     if (!byPiece.has(key)) byPiece.set(key, task);
   }
 
+  // Order matters, most precise first. The PIECE key beats the plan-date key:
+  // several pieces of one company legitimately share a publish date (برو ships
+  // three reels on the same day), so the date alone can hand a card the wrong
+  // row's state — that is how برو's «قهوتك مو طلب» script vanished on a re-time
+  // even after the piece key existed. «ريل 3» is unambiguous; a date is not.
   const preservedStateOf = (task: PipelineTask) => {
     const direct = byPipelineStage.get(`${task.pipelineKey}|${task.stage}`);
     if (direct) return direct;
     if (task.companyId && task.type && task.stage !== "WRITE") {
-      const byDate =
-        task.publishDate &&
-        byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
-      if (byDate) return byDate;
-      if (task.pieceNo != null)
-        return byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
+      if (task.pieceNo != null) {
+        const byNo = byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
+        if (byNo) return byNo;
+      }
+      if (task.publishDate)
+        return byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
     }
     return undefined;
   };
