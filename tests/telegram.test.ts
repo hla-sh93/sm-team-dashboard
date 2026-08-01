@@ -175,14 +175,44 @@ describe("delivery matching", () => {
     expect(res).toEqual({ taskId: "r1", by: "NAME" });
   });
 
-  it("does not fall back to another type once the right piece is closed", () => {
-    // ريل-1 already done → «Bru1-7.mp4» must NOT close ستوري-1 instead.
+  it("picks the reel, not the story, when both carry the named number", () => {
+    const story1 = task({ id: "s1", type: "STORY", pieceNo: 1, stage: "DESIGN" });
+    const reel1 = task({ id: "r1", type: "REEL", pieceNo: 1, stage: "SHOOT" });
+    expect(matchDelivery(delivery({ fileName: "Bru1-7.mp4" }), "Bru", [story1, reel1])).toEqual({
+      taskId: "r1",
+      by: "NAME",
+    });
+  });
+
+  it("stops instead of sliding to another piece when the named one is closed", () => {
+    // ريل-1 is already done, so «Bru1-7.mp4» is a re-send of it — never ريل-2.
+    // This is what keeps five carousel slides from closing five posts.
     const story1 = task({ id: "s1", type: "STORY", pieceNo: 1, stage: "DESIGN" });
     const reel2 = task({ id: "r2", type: "REEL", pieceNo: 2, readyDate: new Date(2026, 6, 20) });
-    expect(matchDelivery(delivery({ fileName: "Bru1-7.mp4" }), "Bru", [story1, reel2])).toEqual({
-      taskId: "r2",
-      by: "TYPE",
-    });
+    expect(
+      matchDelivery(delivery({ fileName: "Bru1-7.mp4" }), "Bru", [story1, reel2]),
+    ).toBeNull();
+  });
+
+  it("gives every slide of a carousel the SAME post", () => {
+    const post2 = task({ id: "p2", type: "POST", pieceNo: 2, month: 7, stage: "DESIGN" });
+    const post3 = task({ id: "p3", type: "POST", pieceNo: 3, month: 7, stage: "DESIGN" });
+    const slide = (n: string) =>
+      matchDelivery(
+        delivery({ kind: "PHOTO", fileName: `al balsam-carousel ${n} -8-2.jpg` }),
+        "Balsam",
+        [post2, post3],
+      );
+    expect(slide("01")).toEqual({ taskId: "p2", by: "NAME" });
+    expect(slide("05")).toEqual({ taskId: "p2", by: "NAME" });
+    // …and the next file is its own piece.
+    expect(
+      matchDelivery(
+        delivery({ kind: "PHOTO", fileName: "al balsam-post -8-3.jpg" }),
+        "Balsam",
+        [post2, post3],
+      ),
+    ).toEqual({ taskId: "p3", by: "NAME" });
   });
 
   it("ignores a name that belongs to another company", () => {

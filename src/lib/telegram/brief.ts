@@ -161,10 +161,12 @@ export function buildDailyBrief({
   const scheduleLines: string[] = [`🗓️ جدول ${dateLabel}`, ""];
   const workingToday = (e: Employee) => parseWorkDays(e.workDays).includes(today.getDay());
   for (const emp of employees) {
-    const assignedLate = late.filter((t) => t.assigneeId === emp.id).length;
-    // A freelance photographer has no standing schedule; list them only when
-    // there is actually something on their plate.
-    if (isFreelance(emp) && !assignedLate) continue;
+    // Someone who is off today does not belong on today's schedule at all —
+    // listing them as «عطلة» is noise the lead has to read past every morning.
+    if (!workingToday(emp)) continue;
+    // A freelance photographer has no standing schedule either; they appear
+    // only when work is actually assigned to them.
+    if (isFreelance(emp) && !late.some((t) => t.assigneeId === emp.id)) continue;
     const todays = selectDailyWorkTasks({
       employee: emp,
       tasks: open,
@@ -181,8 +183,6 @@ export function buildDailyBrief({
       headline = editQueue.length
         ? `مونتاج ${editQueue.length} ريل — ${[...new Set(editQueue.map(coName))].join("، ")}`
         : "ما في ريلات جاهزة للمونتاج";
-    } else if (!workingToday(emp)) {
-      headline = "عطلة";
     } else if (!todays.length) {
       headline = isPhotographer(emp) ? "ما في تصوير اليوم" : "ما في مهام مجدولة";
     } else {
@@ -205,9 +205,9 @@ export function buildDailyBrief({
         .map(([co, kinds]) => `${[...kinds].join(" و")}${co && co !== "—" ? ` ${co}` : ""}`)
         .join(" · ");
     }
-    scheduleLines.push(
-      `• ${emp.name}: ${headline}${assignedLate ? `  (متأخر ${assignedLate})` : ""}`,
-    );
+    // Deliberately no lateness here: this message tells each person what their
+    // job is today, nothing else. The delays live in the detailed message.
+    scheduleLines.push(`• ${emp.name}: ${headline}`);
   }
 
   // ------------------------------------------------------- 2. التقرير التفصيلي

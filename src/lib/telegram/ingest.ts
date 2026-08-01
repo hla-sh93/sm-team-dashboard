@@ -10,7 +10,7 @@
  */
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
-import { companySlug } from "@/lib/asset-name";
+import { companySlug, parseAssetName } from "@/lib/asset-name";
 import type { TelegramUpdate } from "./client";
 import { matchDelivery, normalizeMessage, parseOffPlanKeywords, type Delivery } from "./match";
 
@@ -119,6 +119,11 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
     },
   });
 
+  // A carousel arrives as several files for ONE post. Record the slide count on
+  // the design card: §5 charges a design unit per slide, so «كاروسيل من ٥» is
+  // five units of أيمن's day even though the client sees one post.
+  if (match) await recordCarouselSlides(match.taskId, delivery);
+
   const advanced = match ? await closeProductionCard(match.taskId, delivery.sentAt) : false;
 
   return {
@@ -166,6 +171,22 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
     candidates,
     parseOffPlanKeywords(company.offPlanKeywords),
   );
+}
+
+/**
+ * Keep the design card's slide count in step with what actually arrived.
+ *
+ * Slides land one message at a time, so the count only ever grows: slide 5 of a
+ * carousel raises the card to 5 design units. Never lowers it — a re-sent single
+ * slide must not shrink a five-slide carousel back to one.
+ */
+async function recordCarouselSlides(taskId: string, delivery: Delivery): Promise<void> {
+  const parsed = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  const slide = parsed?.slideNo;
+  if (!slide || slide < 2) return;
+  const t = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!t || t.stage === "PUBLISH" || (t.quantity ?? 1) >= slide) return;
+  await prisma.task.update({ where: { id: taskId }, data: { quantity: slide, isPinned: true } });
 }
 
 /**

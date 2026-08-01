@@ -276,6 +276,11 @@ export function matchDelivery(
         .sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
       if (hit) return { taskId: hit.id, by: "NAME" };
     }
+    // The name states which piece this is. If that piece is not in the open set
+    // it is already closed — by an earlier carousel slide, or by a first send
+    // being revised — so STOP. Falling through would hand slide 2 of a carousel
+    // to the next unrelated post and report five pieces done instead of one.
+    if (parsed.readings.length) return null;
   }
 
   // ---- 2. by content ---------------------------------------------------

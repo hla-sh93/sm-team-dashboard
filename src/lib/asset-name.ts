@@ -79,6 +79,12 @@ export type ParsedAssetName = {
   slug: string;
   /** Candidate readings, best first. See `parseAssetName`. */
   readings: AssetReading[];
+  /**
+   * Slide index inside a carousel («al balsam-carousel 03 -8-2» → 3). A carousel
+   * is ONE client-facing post delivered as several files, so the slide number
+   * must never be mistaken for the piece number.
+   */
+  slideNo?: number;
 };
 
 /** English month names as they appear in the team's files (`balsam r2 julyy`). */
@@ -102,6 +108,7 @@ function monthWordIn(text: string): number | null {
  *   `Bru1-7`            no separator
  *   `agalya laser reel 14-7`   extra words in between
  *   `balsam r2 julyy`   piece marked `r<N>`, month spelled out
+ *   `al balsam-carousel 03 -8-2`   carousel slide 3 of month 8's piece 2
  *
  * `N-N` is genuinely ambiguous whenever both numbers are ≤ 12, so instead of
  * guessing this returns EVERY plausible reading, best first, and lets the
@@ -112,10 +119,24 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
   if (!text) return null;
   // Drop a trailing file extension so `.mp4` never eats a number.
   const base = text.trim().replace(/\.[A-Za-z0-9]{2,4}$/, "");
-  // The company is the FIRST latin word ("agalya laser reel 7-14" → agalya).
-  const slugMatch = base.match(/[A-Za-z]{2,}/);
+
+  // A carousel is ONE post split across slides: «carousel 03» is the slide, not
+  // the piece. Pull it out first so it can never be read as a piece number.
+  const slide = base.match(/\b(?:carousel|slide|كاروسيل|شريحة)\s*[-_]?\s*(\d{1,3})\b/i);
+  const slideNo = slide ? Number(slide[1]) : undefined;
+  const withoutSlide = slide ? base.replace(slide[0], " ") : base;
+
+  // The company is the latin text BEFORE the type word — «al balsam-carousel …»
+  // is "al balsam", not "al". Fall back to the first latin run.
+  const beforeType = withoutSlide.split(/[-_\s]*\b(?:carousel|post|story|reel|ai)\b/i)[0];
+  const slugMatch =
+    beforeType.match(/[A-Za-z][A-Za-z\s]*[A-Za-z]|[A-Za-z]{2,}/) ??
+    withoutSlide.match(/[A-Za-z]{2,}/);
   if (!slugMatch) return null;
-  const slug = slugMatch[0];
+  // A trailing lone letter is a piece marker, not part of the name:
+  // «balsam r2 julyy» is balsam, not "balsam r".
+  const slug = slugMatch[0].trim().replace(/\s+[A-Za-z]$/, "");
+
   const readings: AssetReading[] = [];
   const push = (month1: number, piece: number) => {
     if (month1 < 1 || month1 > 12 || piece < 1 || piece > 200) return;
@@ -123,7 +144,10 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
     readings.push({ month0: month1 - 1, pieceNo: piece });
   };
 
-  const pair = base.match(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/);
+  // Read the numbering from the END: the team writes trailing «-8-2», and a
+  // leading slide/sequence number would otherwise win.
+  const pairs = [...withoutSlide.matchAll(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/g)];
+  const pair = pairs[pairs.length - 1];
   if (pair) {
     const a = Number(pair[1]);
     const b = Number(pair[2]);
@@ -132,13 +156,15 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
   }
 
   // `r2 july` / `reel 3 aug` — an explicit piece marker plus a spelled month.
-  const word = monthWordIn(base);
+  const word = monthWordIn(withoutSlide);
   if (word != null) {
-    const rn = base.match(/\br\s*(\d{1,3})\b/i) ?? base.match(/\b(?:reel|post|story)\s*(\d{1,3})\b/i);
+    const rn =
+      withoutSlide.match(/\br\s*(\d{1,3})\b/i) ??
+      withoutSlide.match(/\b(?:reel|post|story)\s*(\d{1,3})\b/i);
     if (rn) push(word + 1, Number(rn[1]));
   }
 
-  return readings.length ? { slug, readings } : null;
+  return readings.length ? { slug, readings, ...(slideNo ? { slideNo } : {}) } : null;
 }
 
 const normSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -171,6 +197,11 @@ export function slugMatches(a: string, b: string): boolean {
   const x = normSlug(a);
   const y = normSlug(b);
   if (x === y) return true;
+  // One name containing the other is the same client written longer:
+  // «al balsam» ⊃ «balsam», «phoenijobs» ⊃ «jobs». Guarded by a 4-character
+  // floor so short names can never swallow each other.
+  const [shorter, longer] = x.length <= y.length ? [x, y] : [y, x];
+  if (shorter.length >= 4 && longer.includes(shorter)) return true;
   if (x.length < 5 || y.length < 5) return false;
   return editDistance(x, y) <= 1;
 }
