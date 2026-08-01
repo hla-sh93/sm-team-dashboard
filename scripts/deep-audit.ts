@@ -169,11 +169,11 @@ async function main() {
   // المطابقة بالمحتوى: كلمات بريف وصل بتلاقي صف الخطة الصح
   const wasl = companies.find((c) => c.name.includes("وصل"))!;
   const waslCands = tasks.filter((t) => t.companyId === wasl.id && t.kind === "CONTENT" && ["DESIGN", "SHOOT"].includes(t.stage ?? "") && !isTaskDoneState(t));
-  const m2 = matchDelivery(mkDelivery("POST مساعد الذكاء الاصطناعي.jpg", "PHOTO"), companySlug(wasl as never), waslCands as never);
+  const m2 = matchDelivery(mkDelivery("POST حسابات تداول إسلامية.jpg", "PHOTO"), companySlug(wasl as never), waslCands as never);
   const m2Task = waslCands.find((t) => t.id === m2?.taskId);
   check(
-    "مطابقة بالمحتوى: «مساعد الذكاء الاصطناعي» → صف الخطة الصح",
-    m2?.by === "BRIEF" && !!m2Task?.brief?.includes("مساعد الذكاء الاصطناعي"),
+    "مطابقة بالمحتوى: «حسابات تداول إسلامية» → صف الخطة الصح",
+    m2?.by === "BRIEF" && !!m2Task?.brief?.includes("حسابات تداول إسلامية"),
     `${m2?.by ?? "—"} → «${m2Task?.brief?.slice(0, 30) ?? "؟"}»`,
   );
   // المحتوى خارج الخطة بينحجب
