@@ -8,12 +8,11 @@ import { isTrainerSuppliedContentCompany } from "@/lib/content-source";
 import { loadState } from "@/lib/schedule-data";
 import {
   backWorkday,
-  companyCycle,
-  contractDayOf,
   formatDateShort,
   forwardWorkday,
   parseWorkDays,
 } from "@/lib/dates";
+import { cycleForBucket } from "@/lib/contract";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -209,7 +208,9 @@ export async function generateSchedule(year: number, month: number) {
     const cycleLabel = (id: string) => {
       const co = state.companies.find((c) => c.id === id);
       if (!co) return null;
-      const { start, end } = companyCycle(year, month, contractDayOf(co.contractStartDate));
+      const cyc = cycleForBucket(co, year, month);
+      if (!cyc) return null; // no cycle here (awaiting renewal) → no writer card
+      const { start, end } = cyc;
       const last = new Date(end);
       last.setDate(last.getDate() - 1);
       return `دورة ${formatDateShort(start)} – ${formatDateShort(last)}`;

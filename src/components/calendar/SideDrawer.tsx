@@ -57,7 +57,7 @@ export default function SideDrawer({
           </div>
           <button
             onClick={onClose}
-            className="shrink-0 p-1.5 rounded-lg text-fg-dim hover:text-fg hover:bg-bg-elev-2 transition"
+            className="shrink-0 p-1.5 rounded-lg text-fg-dim hover:text-fg hover:bg-bg-elev2 transition"
             aria-label="إغلاق"
           >
             <X className="w-5 h-5" />

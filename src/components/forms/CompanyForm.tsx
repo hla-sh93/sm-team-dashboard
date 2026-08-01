@@ -7,7 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Company, Employee } from "@/types";
 import { companySchema, type CompanyInput } from "@/lib/schemas";
 import { createCompany, updateCompany } from "@/server/actions/companies";
-import { toISODate } from "@/lib/dates";
+import { toISODate, formatDateShort } from "@/lib/dates";
+import { cyclesOf } from "@/lib/contract";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
 import {
@@ -31,6 +32,9 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
   const router = useRouter();
   const [isPending, start] = useTransition();
   const isEdit = !!company;
+  // Read-only audit trail of the contract's cycles (renewals are recorded from
+  // the companies screen, not typed here).
+  const cycleList = company ? cyclesOf(company) : [];
 
   const defaults: Partial<CompanyInput> = company
     ? {
@@ -180,6 +184,30 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
                 تُوزَّع الخطة على دورة 30 يوماً من تاريخ العقد (مثال: من 20 لـ 20). قيمة
                 العقد تُستخدم في حساب الربح/الخسارة في صفحة المالية.
               </p>
+              {company && cycleList.length > 0 && (
+                <div className="col-span-2 rounded-lg bg-bg-elev2 p-3">
+                  <p className="text-[11px] font-semibold text-fg-dim mb-1.5">
+                    دورات العقد ({cycleList.length})
+                  </p>
+                  <ul className="text-[11px] text-fg-muted space-y-0.5">
+                    {cycleList.map((c, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <span className="text-fg-dim">{i + 1}.</span>
+                        <span>
+                          {formatDateShort(c.start)} → {formatDateShort(c.end)}
+                        </span>
+                        {c.coldStart && i > 0 && (
+                          <span className="text-warning">· تجديد بعد انقطاع</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-fg-dim mt-1.5">
+                    التجديد يُسجَّل من صفحة الشركات (زر «جدّد») — لا يبدأ النظام دورة
+                    جديدة قبل تأكيدها.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

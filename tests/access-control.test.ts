@@ -24,7 +24,7 @@ describe("access control — employee area must not expose the admin dashboard",
   const employeeHrefs = flat(employeeNav);
 
   it("employee nav contains ONLY the daily-work root routes", () => {
-    expect(employeeHrefs).toEqual(["/", "/tasks", "/publishing", "/reports"]);
+    expect(employeeHrefs).toEqual(["/", "/today", "/tasks", "/publishing", "/reports"]);
   });
 
   it("no employee href points at the admin base or any /admin route", () => {
@@ -51,7 +51,7 @@ describe("access control — employee area must not expose the admin dashboard",
   it("the FULL employee sidebar (nav + area switch) has zero /admin hrefs", () => {
     const all = sidebarHrefs(false);
     expect(all.some((h) => h.startsWith("/admin"))).toBe(false);
-    expect(all).toEqual(["/", "/tasks", "/publishing", "/reports"]);
+    expect(all).toEqual(["/", "/today", "/tasks", "/publishing", "/reports"]);
   });
 });
 

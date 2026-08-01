@@ -204,7 +204,7 @@ export default async function FinancePage({
                     {Math.round(c.usedDays)}/{c.capacityDays} يوم · {c.pct}%
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden">
+                <div className="h-2 rounded-full bg-bg-elev2 overflow-hidden">
                   <div
                     className={"h-full " + (c.pct > 100 ? "bg-danger" : c.pct > 85 ? "bg-warning" : "bg-accent")}
                     style={{ width: `${Math.min(100, c.pct)}%` }}

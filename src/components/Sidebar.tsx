@@ -93,7 +93,7 @@ export default function Sidebar() {
                   "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all border border-transparent",
                   active
                     ? "bg-gradient-to-l from-accent/10 to-accent/5 text-accent border-accent/20"
-                    : "text-fg-dim hover:bg-bg-elev-2 hover:text-fg",
+                    : "text-fg-dim hover:bg-bg-elev2 hover:text-fg",
                 )}
               >
                 <Icon className="w-[18px] h-[18px] flex-shrink-0 opacity-85" />
@@ -111,7 +111,7 @@ export default function Sidebar() {
       <div className="mt-6 pt-4 border-t border-border-soft">
         <Link
           href={switchHref}
-          className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition border border-transparent"
+          className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-fg-dim hover:bg-bg-elev2 hover:text-fg transition border border-transparent"
         >
           <UserCog className="w-[18px] h-[18px] flex-shrink-0 opacity-85" />
           <span>واجهة الموظفين</span>
@@ -140,7 +140,7 @@ export default function Sidebar() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="فتح القائمة"
-          className="h-11 w-11 -mr-1 flex items-center justify-center rounded-lg text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition"
+          className="h-11 w-11 -mr-1 flex items-center justify-center rounded-lg text-fg-dim hover:bg-bg-elev2 hover:text-fg transition"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -161,7 +161,7 @@ export default function Sidebar() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="إغلاق القائمة"
-                className="h-10 w-10 flex items-center justify-center rounded-lg text-fg-dim hover:bg-bg-elev-2 hover:text-fg transition"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-fg-dim hover:bg-bg-elev2 hover:text-fg transition"
               >
                 <X className="w-5 h-5" />
               </button>

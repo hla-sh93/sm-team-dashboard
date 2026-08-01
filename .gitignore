@@ -4,6 +4,10 @@ out/
 .env
 .env.local
 .env.*.local
+# Catch-all: any *.env / *.env.local scratch file (a secret pasted into
+# `telegram.env.local` slipped past the patterns above once — never again).
+*.env
+*.env.local
 *.db
 *.db-journal
 .DS_Store
@@ -25,3 +29,10 @@ tmp/
 # Local DB snapshot IS tracked on purpose: the Vercel build imports it into
 # production Postgres (IMPORT_LOCAL_SNAPSHOT=1, hash-guarded so it runs once per
 # unique export). Re-sync prod = `npm run db:export-local` then commit + push.
+#
+# The dated safety copies taken before each risky data change are NOT: they are
+# multi-megabyte SQLite binaries that only matter on this machine. `*.db` above
+# misses them because they carry a suffix (dev.db.before-…).
+backups/dev.db.*
+backups/local-db-snapshot.*.json
+backups/baseline-task-counts.json

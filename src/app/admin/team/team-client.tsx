@@ -81,7 +81,7 @@ export default function TeamClient({ employees }: { employees: Employee[] }) {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    className="p-1.5 rounded-md hover:bg-bg-elev-2 text-fg-dim"
+                    className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
                     onClick={() => {
                       setEditing(e);
                       setOpen(true);
@@ -101,7 +101,7 @@ export default function TeamClient({ employees }: { employees: Employee[] }) {
                 {wd.map((d) => (
                   <span
                     key={d}
-                    className="text-[10px] px-1.5 py-0.5 rounded bg-bg-elev-2 text-fg-dim"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-bg-elev2 text-fg-dim"
                   >
                     {WEEKDAY_LABELS[d]}
                   </span>

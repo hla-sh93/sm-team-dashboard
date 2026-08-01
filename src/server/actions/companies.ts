@@ -3,6 +3,9 @@
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
+import { cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
+import { formatDateShort } from "@/lib/dates";
+import { generateSchedule } from "./schedule";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -38,6 +41,12 @@ export async function createCompany(input: CompanyInput) {
         stories: d.stories,
         contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
+        // Only written when explicitly supplied — the company form does not send
+        // these, and a plain edit must never wipe the contract's cycle history.
+        ...(d.renewals !== undefined ? { renewals: d.renewals } : {}),
+        ...(d.contractEndedAt !== undefined
+          ? { contractEndedAt: parseContractDate(d.contractEndedAt) }
+          : {}),
         preferredShootDay: d.preferredShootDay ?? null,
         contentSupplied: d.contentSupplied,
         color: d.color,
@@ -80,6 +89,12 @@ export async function updateCompany(id: string, input: CompanyInput) {
         stories: d.stories,
         contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
+        // Only written when explicitly supplied — the company form does not send
+        // these, and a plain edit must never wipe the contract's cycle history.
+        ...(d.renewals !== undefined ? { renewals: d.renewals } : {}),
+        ...(d.contractEndedAt !== undefined
+          ? { contractEndedAt: parseContractDate(d.contractEndedAt) }
+          : {}),
         preferredShootDay: d.preferredShootDay ?? null,
         contentSupplied: d.contentSupplied,
         color: d.color,
@@ -125,6 +140,88 @@ export async function deleteCompany(id: string) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل حذف الشركة" };
+  }
+}
+
+/**
+ * CONTRACT RENEWED — record a new cycle starting on `startDateISO`.
+ *
+ * A cycle never continues on its own: until this runs, the engine generates
+ * nothing past the last recorded cycle. The new cycle runs from the given date
+ * (day→day), so renewing late leaves a real, empty gap — which is the point.
+ */
+export async function renewContract(companyId: string, startDateISO: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateISO)) {
+    return { ok: false as const, error: "تاريخ غير صالح" };
+  }
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+    if (!co.contractStartDate) {
+      return {
+        ok: false as const,
+        error: "هذه الشركة بلا تاريخ عقد (توزيع شهري) — لا تحتاج تجديداً",
+      };
+    }
+    const start = parseContractDate(startDateISO)!;
+    const cycles = cyclesOf(co);
+    const last = cycles[cycles.length - 1];
+    // A renewal must not start before the CURRENT cycle ends — otherwise it
+    // would silently truncate work already planned and published.
+    if (last && start.getTime() < last.end.getTime()) {
+      return {
+        ok: false as const,
+        error: `الدورة الحالية تنتهي ${formatDateShort(last.end)} — لا يمكن بدء دورة جديدة قبلها`,
+      };
+    }
+    const starts = [...parseRenewals(co), start];
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        renewals: serializeRenewals(starts),
+        contractEndedAt: null, // renewing revives a contract marked "not renewed"
+        status: co.status === "paused" ? "active" : co.status,
+      },
+    });
+    revalidateAll();
+    // Build the new cycle's tasks right away so the renewal is visible without
+    // a manual «إعادة الجدولة».
+    await generateSchedule(start.getFullYear(), start.getMonth());
+    return { ok: true as const, data: updated };
+  } catch {
+    return { ok: false as const, error: "فشل تسجيل التجديد" };
+  }
+}
+
+/**
+ * CONTRACT NOT RENEWED — stop here. Sets a hard cutoff so no cycle can begin
+ * on/after today and pauses the company (out of scheduling and finance). Fully
+ * reversible: recording a renewal later clears the cutoff and reactivates it.
+ */
+export async function endContract(companyId: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  try {
+    const now = new Date();
+    await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        contractEndedAt: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+        status: "paused",
+      },
+    });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل إيقاف العقد" };
   }
 }
 

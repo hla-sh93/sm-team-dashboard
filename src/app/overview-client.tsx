@@ -323,7 +323,7 @@ export default function OverviewClient({
                       </span>
                     )}
                     {counts.soon > 0 && (
-                      <span className="rounded-full px-1.5 py-0.5 bg-bg-elev-2 text-fg-muted">
+                      <span className="rounded-full px-1.5 py-0.5 bg-bg-elev2 text-fg-muted">
                         الأسبوع {counts.soon}
                       </span>
                     )}
@@ -453,11 +453,11 @@ export default function OverviewClient({
                     state === "TASKS"
                       ? active
                         ? "bg-accent/15 text-accent"
-                        : "bg-bg-elev-2 text-fg-muted"
+                        : "bg-bg-elev2 text-fg-muted"
                       : state === "BACKLOG"
                         ? "bg-warning/10 text-warning"
                       : state === "OFF"
-                        ? "bg-bg-elev-2 text-fg-muted"
+                        ? "bg-bg-elev2 text-fg-muted"
                         : "bg-success/10 text-success";
                   return (
                     <button
@@ -574,7 +574,7 @@ export default function OverviewClient({
                   {pct}%
                 </span>
               </div>
-              <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden mb-1.5">
+              <div className="h-2 rounded-full bg-bg-elev2 overflow-hidden mb-1.5">
                 <div
                   className={"h-full " + (pct >= 100 ? "bg-success" : "bg-accent")}
                   style={{ width: `${Math.min(100, pct)}%` }}
@@ -715,7 +715,7 @@ export default function OverviewClient({
                         {hasExclusiveSel ? "مهمة يوم كامل · 100%" : `${pct}% من يوم عمل`}
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden">
+                    <div className="h-2 rounded-full bg-bg-elev2 overflow-hidden">
                       <div
                         className={"h-full " + meterColor}
                         style={{ width: `${Math.min(100, pct)}%` }}
@@ -741,7 +741,7 @@ export default function OverviewClient({
 
                     {/* Add-list — gated by remaining capacity. */}
                     {hasExclusiveSel ? (
-                      <p className="text-[11px] text-fg-muted bg-bg-elev-2 rounded-md px-2.5 py-2">
+                      <p className="text-[11px] text-fg-muted bg-bg-elev2 rounded-md px-2.5 py-2">
                         اخترت مهمة بتاخد اليوم كامل — باقي القائمة مقفولة. فكّها لإضافة
                         مهام أصغر.
                       </p>

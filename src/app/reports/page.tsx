@@ -267,7 +267,7 @@ export default async function ReportsPage({
                     {pct}%
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-bg-elev-2 overflow-hidden mb-2">
+                <div className="h-2 rounded-full bg-bg-elev2 overflow-hidden mb-2">
                   <div
                     className={"h-full " + (pct >= 100 ? "bg-success" : "bg-accent")}
                     style={{ width: `${Math.min(100, pct)}%` }}

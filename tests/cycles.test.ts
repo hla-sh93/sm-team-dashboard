@@ -210,11 +210,29 @@ describe("new contract — NO work before the contract start date", () => {
   it("an ONGOING contract keeps its pre-cycle prep (prior-month shoots unchanged)", () => {
     // Contract signed back in January — by July the client is ongoing, so the
     // photoshoot may still be staged in the prior month's tail (June).
+    // Cycles no longer continue automatically: an ongoing client is one whose
+    // renewals were recorded each month (what backfill-contract-cycles.ts writes
+    // for every pre-existing company), so July is a WARM cycle, not a cold start.
     const r = buildSchedule({
       year: 2026,
       month: 6,
       employees: [emp(), photographer()],
-      companies: [co({ contractStartDate: new Date(2026, 0, 20), posts: 4, stories: 0, reels: 4 })],
+      companies: [
+        co({
+          contractStartDate: new Date(2026, 0, 20),
+          renewals: JSON.stringify([
+            "2026-02-20",
+            "2026-03-20",
+            "2026-04-20",
+            "2026-05-20",
+            "2026-06-20",
+            "2026-07-20",
+          ]),
+          posts: 4,
+          stories: 0,
+          reels: 4,
+        }),
+      ],
     });
     const cycleStart = new Date(2026, 6, 20).getTime();
     const photoshoot = r.sessions.find((s) => s.kind === "PHOTOSHOOT")!;

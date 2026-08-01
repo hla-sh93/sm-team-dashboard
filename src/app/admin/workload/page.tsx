@@ -83,7 +83,7 @@ export default async function WorkloadPage({
               </div>
 
               {/* Burndown bar: done (green) · remaining (load color) · free (track) */}
-              <div className="h-2.5 rounded-full bg-bg-elev-2 overflow-hidden mb-1 flex">
+              <div className="h-2.5 rounded-full bg-bg-elev2 overflow-hidden mb-1 flex">
                 <div className="h-full bg-success" style={{ width: `${donePctCap}%` }} />
                 <div
                   className={

@@ -33,17 +33,36 @@ describe("DB → engine integration (real seed)", () => {
     const r = buildSchedule(state);
     expect(r.tasks.length).toBeGreaterThan(0);
 
-    const v = validatePublishing(r.tasks, state.companies);
+    // Pass the bucket so companies awaiting a renewal (no cycle here — e.g.
+    // المول الصيني) are skipped rather than reported as "0 مجدول مقابل الخطة".
+    const v = validatePublishing(r.tasks, state.companies, { year: 2026, month: 6 });
     expect(v.problems).toEqual([]);
     expect(v.ok).toBe(true);
 
-    // Photographer invariants hold on real data too.
+    // Photographer invariants on real data. shoot ≤ deliver always holds — it is
+    // enforced unconditionally. deliver < publish, however, is NOT always
+    // satisfiable on live data: a company that renews late (برو renewed 19 July
+    // after its cycle ended on the 7th) restarts cold, so its first reels can be
+    // published sooner than a contended photographer can shoot AND deliver them.
+    // The engine's documented contract (§4.6) is to WARN in that case rather than
+    // invent a schedule that cannot happen — so assert exactly that: every
+    // violation must be surfaced as a warning naming the company.
     const reels = r.tasks.filter((t) => t.type === "REEL");
+    const warnedCompanies = new Set(
+      r.warnings
+        .filter((w) => /تسليم ريلات بعد موعد النشر/.test(w.message))
+        .map((w) => w.companyId ?? ""),
+    );
     for (const x of reels) {
       expect(x.workDate).toBeTruthy();
       expect(x.readyDate).toBeTruthy();
-      expect(x.readyDate!.getTime()).toBeLessThan(x.publishDate!.getTime());
       expect(x.workDate!.getTime()).toBeLessThanOrEqual(x.readyDate!.getTime());
+      if (x.readyDate!.getTime() >= x.publishDate!.getTime()) {
+        expect(
+          warnedCompanies.has(x.companyId ?? ""),
+          `reel ${x.detKey} delivers on/after publish with no warning`,
+        ).toBe(true);
+      }
     }
   });
 });

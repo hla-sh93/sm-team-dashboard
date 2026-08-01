@@ -37,9 +37,19 @@ export type Company = {
   aiReels: number;
   contractValue: number;
   contractStartDate: Date | null;
+  /** JSON array of ISO cycle starts after the first — see lib/contract.ts. */
+  renewals: string | null;
+  /** "Not renewed" decision — no cycle may begin on/after this date. */
+  contractEndedAt: Date | null;
   preferredShootDay: number | null;
   /** Content plan supplied externally — writer plan cards skipped. */
   contentSupplied: boolean;
+  /** Latin short name for the canonical asset name «Agalia 7-1» (§14). */
+  slug: string | null;
+  /** This company's Telegram group id (§14). */
+  telegramChatId: string | null;
+  /** JSON array of keywords marking content published outside the paid plan. */
+  offPlanKeywords: string | null;
   color: string | null;
   priority: number;
   status: string;
@@ -83,6 +93,8 @@ export type Task = {
   pipelineKey: string | null;
   detKey: string | null;
   notes: string | null;
+  /** Hook / script / caption for this piece, lifted from the content plan. */
+  brief: string | null;
   completedAt: Date | null;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -113,4 +125,41 @@ export type Setting = {
   key: string;
   value: string;
   updatedAt: Date;
+};
+
+/** A Telegram chat the bot has seen (§14) — linked to a company from /admin. */
+export type TelegramChat = {
+  /** "<chatId>" for a plain chat, "<chatId>#<threadId>" for a forum topic. */
+  id: string;
+  chatId: string;
+  threadId: number | null;
+  title: string | null;
+  type: string;
+  companyId: string | null;
+  isTeam: boolean;
+  lastText: string | null;
+  lastSeenAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** One delivery seen in a watched chat (§14). */
+export type TelegramMessage = {
+  id: string;
+  chatId: string;
+  threadId: number | null;
+  messageId: number;
+  sentAt: Date;
+  senderId: string | null;
+  senderName: string | null;
+  kind: string; // PHOTO | VIDEO | DOCUMENT | AUDIO | TEXT
+  fileName: string | null;
+  caption: string | null;
+  fileId: string | null;
+  mediaGroupId: string | null;
+  companyId: string | null;
+  taskId: string | null;
+  matchedBy: string | null; // NAME | TYPE | MANUAL
+  confirmed: boolean;
+  createdAt: Date;
 };

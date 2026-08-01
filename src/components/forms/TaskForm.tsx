@@ -298,6 +298,17 @@ export default function TaskForm({
             </div>
           )}
 
+          {/* The content brief lifted from the month's plan — read-only here:
+              it belongs to the plan document, not to a single card. */}
+          {task?.brief && (
+            <div className="space-y-1.5">
+              <Label>المطلوب من الخطة</Label>
+              <pre className="text-[11px] whitespace-pre-wrap font-sans text-fg-dim bg-bg border border-border-soft rounded-md p-2 max-h-56 overflow-y-auto leading-relaxed">
+                {task.brief}
+              </pre>
+            </div>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
               إلغاء

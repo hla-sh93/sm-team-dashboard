@@ -67,6 +67,18 @@ export const companySchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
+  // Cycle starts AFTER the first, as a JSON array of ISO dates. Owned by the
+  // renew/end actions, NOT by this form. Left `undefined` when absent (never
+  // coerced to null) so that saving the company form cannot wipe the contract's
+  // cycle history — updateCompany only writes it when explicitly supplied.
+  renewals: z.string().nullable().optional(),
+  // "Not renewed" decision — no cycle may begin on/after this date. Same
+  // undefined-means-untouched rule as `renewals`.
+  contractEndedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+    .nullable()
+    .optional(),
   // Soft preferred shoot weekday (getDay 0..6); "" / null = no preference.
   preferredShootDay: z.preprocess(
     (v) => (v === "" || v == null ? null : Number(v)),

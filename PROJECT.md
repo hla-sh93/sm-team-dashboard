@@ -23,7 +23,14 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**132**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**204**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- Two suites go beyond fixtures: **`tests/data-integrity.test.ts`** audits the REAL
+  database read-only (orphan refs, duplicate detKeys, cycle sanity, piece
+  numbering, impossible timestamps) — a failure there is a DATA problem to fix
+  with a script, not a code bug. **`tests/operations-e2e.test.ts`** drives the
+  real server actions (company CRUD, generate, pin, delete, renew, end, archive)
+  against a scratch COPY of `dev.db`; it mocks `@/lib/db`, `next/cache` and
+  `@/lib/auth` and never touches `process.env`, so it cannot leak into the real DB.
 
 ### Two Prisma schemas (keep models in sync!)
 - `prisma/schema.prisma` — SQLite (local). `prisma/schema.postgres.prisma` —
@@ -32,7 +39,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (132)
+npm test             # vitest (204)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -105,9 +112,10 @@ defaultOwner/**photographer**.
 ### Company
 `id, name (unique), managed, posts, reels, stories, aiReels (monthly plan),
 contractValue (monthly $), contractStartDate (drives the 30‑day cycle),
-preferredShootDay (getDay 0..6, soft, nullable), color, priority, status,
-postOwnerId, storyOwnerId, aiReelOwnerId, defaultOwnerId, photographerId,
-tasks[], photoSessions[]`
+**renewals** (JSON ISO dates — every cycle start AFTER the first),
+**contractEndedAt** ("not renewed" cutoff), preferredShootDay (getDay 0..6, soft,
+nullable), color, priority, status, postOwnerId, storyOwnerId, aiReelOwnerId,
+defaultOwnerId, photographerId, tasks[], photoSessions[]`
 
 ### Task (central entity = kanban card; one card per content PIECE)
 `id, kind, type, title, hours, quantity, priority, status, publishDate, readyDate,
@@ -185,6 +193,35 @@ allowed up to 8h). Per-employee rates can override these defaults. The two model
 ## 6. Scheduling engine (`lib/scheduler.ts`, `lib/photographer.ts`)
 
 `buildSchedule(state)` is **pure & deterministic** (no DB, no `Date.now()`).
+
+### Contract renewals — cycles do NOT continue automatically 🆕 (`lib/contract.ts`)
+A cycle used to be pure arithmetic on the contract's day-of-month, so every month
+bucket produced one forever, as if every contract auto-renewed. Now cycle starts
+are an **explicit list** — `[contractStartDate, ...renewals]` — and
+`cycleForBucket(co, year, month)` returns **null** when no cycle owns that bucket:
+the engine then generates **nothing at all** for that company (no tasks, no
+shoots, no writer card) until a renewal is recorded.
+- Cycle N runs `[start_N → min(natural day→day end, start_{N+1}))`, so an early
+  renewal truncates instead of overlapping. A cycle belongs to the bucket of its
+  **start month**.
+- **Cold start** = the first cycle, or one beginning after a gap **> 1 day**
+  (nobody wrote a plan while the contract sat unrenewed) → the full pipeline lead
+  re-applies (كتابة يومان → إنتاج → نشر, per-type publish floors). A contiguous
+  renewal is **warm** and behaves exactly like the pre-renewal engine — including
+  an ongoing client's prior-month prep. The >1-day tolerance exists because a
+  day-31 contract chains 31→30→30 while the old per-bucket formula gave 31→30→31.
+- `contractEndedAt` ("لم يُجدد") is a hard stop; recording a renewal later clears
+  it and reactivates the company. Companies with **no** `contractStartDate`
+  (المدارس, كابرياني) have no contract concept — ungated calendar months forever.
+- Recorded from **/admin/companies** (`renewContract` / `endContract`), which
+  regenerate the new cycle's month immediately. `contractStateOf` drives the card
+  chip: نشط · تنتهي خلال N يوم (≤ `RENEWAL_NOTICE_DAYS` = 3) · بانتظار التجديد ·
+  موقوف. `CompanyForm` lists the cycle history read-only.
+- Migration: `scripts/backfill-contract-cycles.ts` (`db:backfill-cycles[:prod]`,
+  idempotent) materialised the cycles every existing company had already run, up
+  to the one containing today — using the OLD per-bucket formula so nothing
+  shifted — and corrected **برو** to `["2026-07-19"]` (cycle 1 ended 7 July, it
+  renewed on the 19th → a real 7–19 July gap with no work).
 
 ### Contract cycles (`lib/dates.ts`)
 Each company distributes its plan over its **contract cycle**:
@@ -380,11 +417,28 @@ Mobile-first, verified at 360/768/1280.
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
   20→20); else calendar month. Consecutive cycles are contiguous — no gap, no
   overlap.
+- **No new cycle without a renewal** 🆕: when a cycle ends, NOTHING is generated
+  for that company until the renewal question is answered on /admin/companies.
+  Renewing from a later date starts the cycle **from that date** and leaves the
+  in-between days genuinely empty; a cycle resumed after a gap re-runs the full
+  writing→production→publishing lead. «لم يُجدد» pauses the company and blocks
+  every later cycle until a renewal is recorded.
 - **New-contract pipeline lead**: the first cycle sequences
   عقد → كتابة (يومان) → تصميم/تصوير → نشر. No auto-generated date precedes
   `contractStartDate`; no production date precedes contract+2 (the written
   plan); first publishes per type: STORY day 4, POST/AI day 5, REEL day 6.
   Ongoing clients keep prior-month prep.
+- **PREP WEEK for contracts signed from 2026-07-20** 🆕: signing does not start
+  publishing. The writer needs ~2 days for the plan, then the client approves it,
+  and only then may design/shoot begin — so **design/shoot waits 3 WORKING days**
+  (`PREP_PRODUCTION_WORKDAYS`) and **nothing publishes for 7 CALENDAR days**
+  (`PREP_PUBLISH_DAYS`), for every type. A client signed on 20 July first
+  publishes on the **27th**; its first week is full of WRITE tasks, just no
+  published pieces. Gated by `PREP_WEEK_RULE_FROM` in `lib/scheduler.ts`: cycles
+  that began BEFORE that date keep the older, shorter leads, so contracts already
+  running (أغاليا, التوظيف, وصل, جدارات) and برو's 19 July renewal are never
+  re-planned retroactively. Applies to any cold start — a new contract OR a
+  renewal resumed after a gap.
 - **Open-work carryover (dynamic)**: unfinished work from ANY earlier cycle
   bucket follows the team into the current month's board/overview until it is
   finished or deleted — never month-specific; in August the carryover shows
@@ -410,6 +464,11 @@ Mobile-first, verified at 360/768/1280.
 - **Cards**: one numbered card per piece (no batching); writing per company.
 - **Multiple photographers**: assign reels per company; optional **soft preferred
   shoot day** per company (editable).
+- **Company priority order** (2026-07-20): وصل للتداول · أغاليا · جدارات ·
+  برو · مخبر د.نور · مركز البلسم · Siizen · المول الصيني — then OUR OWN
+  companies التوظيف · التدريب · Phoenitech · BW — then on-demand only
+  كابرياني · المدارس. Priority is a tie-breaker for placement/stagger, not a
+  hard gate (see priority.test.ts).
 - **Company achievement = publish-card completion**. A content piece counts when
   its PUBLISH card is done/published; upstream production closure is operational
   state and is not required for company-facing progress.
@@ -431,8 +490,19 @@ Mobile-first, verified at 360/768/1280.
 ## 12. Known limitations / TODO
 
 - No login — the obscure `/admin` URL is the only gate for sensitive data.
-- Photographer “week 4 no‑shoot” is computed on the **calendar month**, not the
-  contract cycle (safe — only pulls shoots earlier). Preferred shoot day is soft.
+- Photographer “week 4 no‑shoot” is computed per company on its **contract
+  cycle** (`shootCapFor`), falling back to the calendar month only when the
+  company has no cycle. Preferred shoot day is soft.
+- **Two cycles in one calendar month** (a very early renewal) share a bucket;
+  `cycleForBucket` returns the first. Tasks stay distinct via `detKey`, but
+  per-cycle piece numbering could repeat inside that bucket. Not handled.
+- A **late renewal can outrun the photographer**: a cold restart compresses
+  shoot+deliver, and the per-type publish floors are static offsets that ignore
+  photographer contention, so the first reels of a resumed cycle may deliver
+  on/after their publish date. The engine WARNS
+  («تسليم ريلات بعد موعد النشر — هامش غير كافٍ») rather than inventing an
+  impossible schedule; `db-integration.test.ts` asserts every violation is warned.
+  Fix manually (move the reel, or reassign the shoot).
 - Late tasks are flagged/diagnosed but **not auto‑rescheduled** — a separate
   “معالجة المتأخرات” recovery action (re‑pack overdue forward with overtime) is a
   planned, deliberate step kept out of the deterministic regenerate. (They DO
@@ -450,6 +520,122 @@ Mobile-first, verified at 360/768/1280.
 - No ESLint config — `npm run lint` opens an interactive setup prompt.
 
 ---
+
+## 14. Telegram follow-up + «متابعة اليوم» 🆕 (2026-08-01)
+
+The team runs **ONE forum supergroup** («Desgin only (Team)»), where each
+company is a **topic**, not a separate group — so the unit of linking is the
+topic (`TelegramChat.id` = `<chatId>#<threadId>`). Plans, designs and reels are
+all delivered there. The dashboard watches those topics so it knows what ACTUALLY
+went out, and builds the morning brief the lead used to write by hand.
+
+### Canonical asset name — «Agalia 7-1» (`lib/asset-name.ts`)
+Every delivered file is named `<Slug> <month>-<pieceNo>`: the LATIN company short
+name (`Company.slug`, editable; `SLUG_BY_NAME` seeds it), the 1-based month, and
+the piece number inside that month's plan. The name does NOT encode the type —
+the file does (mp4 → ريل, jpg → بوست). `parseAssetName` reads it back and is
+deliberately forgiving (`Bru1-7`, `agalya laser reel 7-14`, and the old
+piece-first `wasl 14-7`). Same vocabulary in the cards, the brief and the matcher.
+
+### Ingest (`lib/telegram/{client,match,ingest}.ts`, `/api/telegram/webhook`)
+Bot token in `TELEGRAM_BOT_TOKEN`, webhook authenticated with
+`TELEGRAM_WEBHOOK_SECRET`. Rows are keyed `<chatId>:<messageId>` so Telegram's
+retries can't double-count. A chat is auto-discovered on first message and
+linked to a company from `/admin/telegram`. Matching runs in three tiers:
+1. **NAME** — the canonical name, type-aware (a VIDEO named `wasl 4-7` is reel 4,
+   never story 4) and tolerant of one typo in the slug (`Agalya`≈`Agalia`).
+   `N-N` is ambiguous while the team migrates from piece-first to month-first, so
+   BOTH readings are tried and the one naming a real open piece wins.
+2. **BRIEF** — the plan's own words (`Task.brief`) matched against the file
+   name/caption, Arabic-normalised and rarity-weighted. This is what makes the
+   accounting honest: four «خبر عاجل» plan rows absorb four files and no more.
+3. **TYPE** — video → reel, photo → post/story, refined by a type word in the
+   name (`POST صرف تركيا`, `… july 3rd reel`). **Only for companies whose cards
+   carry no brief yet**: once the plan text is in the system it is the authority,
+   and a delivery matching no plan row is simply not a planned piece.
+
+**Off-plan content** (`Company.offPlanKeywords`, JSON array): وصل publishes the
+client's own exchange-rate bulletins, «المفكرة الاقتصادية», «نتيجة الخبر» and
+«التحليل الفني» on the same channels. They go out but are NOT what the contract
+counts, so a keyword hit blocks matching entirely. Set with
+`scripts/set-off-plan.ts`. Ignoring this once reported وصل at 29/43 produced when
+the real figure was 4/43.
+
+A match **closes the piece's production card** (READY/DONE,
+`finishedAt` = the real delivery time) — reversible with «مو هي» on the اليوم
+screen (`unmatchMessage`). Albums (carousels) close their piece once.
+
+### Morning brief (`lib/telegram/brief.ts` + `service.ts`, `/api/cron/daily-brief`)
+**The bot never posts into a client group.** Every message goes to the LEAD's
+private chat (`Setting["telegram.leadChatId"]` or `TELEGRAM_LEAD_CHAT_ID`), one
+Telegram message each, so she forwards what she wants — by her rule, nothing may
+look machine-written to a client. Sent in this order:
+1. **جدول المهام** — one line per person, name + headline, NO detail
+   («عمر: متابعة مع الزباين والنشر — 4 قطعة اليوم», «أيمن: تصاميم وصل»). A day
+   off reads «عطلة»; freelancers appear only when they actually hold work.
+2. **التفصيلي** — النشر اليوم / تسليم اليوم / مونتاج اليوم / المتأخر, piece by
+   piece with the canonical name and the company.
+3. The lead's risk report, then the per-company and per-employee sheets she
+   forwards (the employee sheet inlines the piece's `brief`, so nobody opens a
+   Word file to start).
+
+**Editing queue**: montage starts the DAY AFTER the shoot and the editor gets
+through 3 reels/day (`EDIT_STARTS_AFTER_DAYS`, `EDITS_PER_DAY`), so أليسار's list
+is derived from ماجد's completed shoots rather than scheduled separately.
+
+Vercel cron at `45 4 * * *` (**07:45 Damascus**, the lead's chosen time);
+`/admin/telegram` previews the exact text and has «ابعتيلي البريف هلق».
+
+### Recovering history + one-off reconciliation tools (`scripts/`)
+A bot cannot read messages sent before it joined, so the July backlog was
+invisible. Recovered from a **Telegram Desktop export**:
+- `telegram-html-to-json.ts <ChatExport dir>` — the export is HTML by default;
+  this converts it to the JSON the importer eats, keeping the ORIGINAL file name
+  (the visible title, not the de-duplicated path on disk). Works even when the
+  media itself was too large to download — the names are all that matter.
+- `import-telegram-export.ts <result.json> [--apply] [--strict]` — topics →
+  companies (alias table + fuzzy), then the three-tier matcher. Fenced by: the
+  piece must belong to the delivery's own cycle (±10/25 days), the file must look
+  like finished work (not `WhatsApp Image…`, `IMG_…`, logos, link previews), and
+  the sender must be someone who produces content. **Re-sending the same file
+  name within 14 days is a REVISION, not a second piece** — the run collapses
+  them and the LAST send is the one that counts.
+- `telegram-relink.ts [--apply]` — the HTML export carries no Bot-API chat id, so
+  imported topics were keyed `export#N` while live updates arrive as
+  `-100…#N`; this merges them and re-matches messages stored while unlinked.
+- `telegram-poll.ts [--watch]` — local stand-in for the webhook (Telegram cannot
+  reach `localhost`). Same ingest path as production.
+- `reconcile-from-downloads.ts` — closes pieces from files already downloaded to
+  `Downloads/Telegram Desktop`, name evidence only.
+- `import-plan-briefs.ts <dir> [--apply]` — reads the month's plan `.docx`
+  directly (minimal inline zip reader, no dependency) and writes each numbered
+  row onto its piece as `Task.brief`, production AND publish card. Re-run monthly.
+- `company-status.ts [company]` · `ready-to-publish.ts [company]` — the review
+  sheets for going through the roster; the second lists pieces whose production
+  is DONE and are only waiting to be published (the fastest daily win).
+- `mark-pieces-done.ts <co> <TYPE> <n> [--apply] [--publish]` — the lead knows
+  totals («عملنا 4 ريلات») far better than which numbered piece each was; closes
+  the oldest open pieces of that type.
+- `reject-pieces.ts <co> <TYPE> <nums> "reason" [--apply]` — a delivery landing
+  in the group proves it was SENT, never that it was ACCEPTED. Rejected pieces
+  reopen at IMPORTANT with the reason on the card. Rare by design: the lead
+  declined a «مرفوض» button, the card simply stays put and is not moved to نشر.
+- `set-off-plan.ts <co> "kw,kw" [--apply] [--reset]` — declare off-plan content.
+
+### Paused companies (`Company.status`)
+`scheduler.ts` plans only `managed && status === "active"`. Pausing is the right
+tool for a **signed but not-yet-started** client (Siizen: contract dated, but the
+page details and product list never arrived) — the contract dates stay intact and
+one flag resumes it. Caveat: regenerating does NOT clear a paused company's
+existing cards, so untouched auto work must be deleted explicitly (step 11 of
+`apply-2026-08-updates.ts` does this: only `isAuto && !isPinned && NOT_STARTED`
+with no timestamps, and its stray `blockedById` refs are nulled first).
+
+### Screen — `/today` · `/admin/today` (employee + admin, shared view)
+Per company: ينزل اليوم (with a **readiness** signal from the piece's open
+production siblings) · تسليم اليوم · معرّض للتأخير · متأخر (capped at 5 + tail
+count) · **شو وصل على المجموعة اليوم**. One-click «تم النشر». `lib/live-tasks.ts`
+extracts the bucket+continuation+carryover rule the other screens already used.
 
 ## 13. Conventions for the next session
 

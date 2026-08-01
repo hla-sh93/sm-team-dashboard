@@ -13,6 +13,7 @@ import type { ScheduledTask } from "./scheduler";
 import type { ContentType } from "./constants";
 import { CONTENT_TYPE_LABELS, WEEKDAY_LABELS } from "./constants";
 import { toISODate, weekOf } from "./dates";
+import { cycleForBucket } from "./contract";
 
 type PublishingSourceTask = Omit<ScheduledTask, "status"> & { status: string };
 
@@ -97,7 +98,12 @@ export function validatePublishing(
     reels: number;
     stories: number;
     aiReels: number;
+    contractStartDate?: Date | string | null;
+    renewals?: string | string[] | null;
+    contractEndedAt?: Date | string | null;
   }[],
+  /** Bucket being validated — required to skip contracts with no cycle here. */
+  period?: { year: number; month: number },
 ): PublishValidation {
   const schedule = derivePublishingSchedule(tasks);
   const problems: string[] = [];
@@ -106,6 +112,11 @@ export function validatePublishing(
 
   for (const co of companies) {
     if (!co.managed || (co.status ?? "active") !== "active") continue;
+    // A contract with no cycle in this bucket is AWAITING RENEWAL (or hasn't
+    // started): the engine deliberately generates nothing for it, so "0 مجدول
+    // مقابل خطة N" and the weekly-interruption checks are meaningless here —
+    // the plan describes a cycle that has not been agreed to yet.
+    if (period && cycleForBucket(co, period.year, period.month) === null) continue;
     const entry = schedule.get(co.id);
     const counts = entry?.counts ?? { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0 };
 

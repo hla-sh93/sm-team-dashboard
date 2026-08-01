@@ -17,7 +17,9 @@ import {
   FileBarChart,
   LayoutDashboard,
   ListOrdered,
+  MessageCircle,
   Send,
+  Sunrise,
   TrendingUp,
   Users,
   Wallet,
@@ -37,6 +39,7 @@ export const employeeNav: NavSection[] = [
     title: "العمل اليومي",
     items: [
       { href: "/", label: "نظرة عامة", icon: LayoutDashboard },
+      { href: "/today", label: "متابعة اليوم", icon: Sunrise },
       { href: "/tasks", label: "جدول المهام", icon: CheckSquare },
       { href: "/publishing", label: "جدول النشر", icon: Send },
       { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
@@ -50,6 +53,7 @@ export const adminNav: NavSection[] = [
     title: "العمل اليومي",
     items: [
       { href: ADMIN_BASE, label: "نظرة عامة", icon: LayoutDashboard },
+      { href: `${ADMIN_BASE}/today`, label: "متابعة اليوم", icon: Sunrise },
       { href: `${ADMIN_BASE}/tasks`, label: "جدول المهام", icon: CheckSquare },
       { href: `${ADMIN_BASE}/publishing`, label: "جدول النشر", icon: Send },
       { href: `${ADMIN_BASE}/workload`, label: "أحمال العمل", icon: TrendingUp },
@@ -63,6 +67,7 @@ export const adminNav: NavSection[] = [
       { href: `${ADMIN_BASE}/priorities`, label: "الأولويات", icon: ListOrdered },
       { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
       { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
+      { href: `${ADMIN_BASE}/telegram`, label: "تلغرام", icon: MessageCircle },
     ],
   },
 ];

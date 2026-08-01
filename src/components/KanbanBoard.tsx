@@ -16,12 +16,8 @@ import {
   type Board,
   type Stage,
 } from "@/lib/constants";
-import {
-  ARABIC_MONTHS,
-  companyCycle,
-  contractDayOf,
-  formatDateShort,
-} from "@/lib/dates";
+import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
+import { cycleForBucket } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
@@ -202,11 +198,10 @@ export default function KanbanBoard({
     if (!t.companyId) return false;
     const co = coById.get(t.companyId);
     if (!co?.contractStartDate) return false;
-    const contractDay = contractDayOf(co.contractStartDate);
-    if (contractDay <= 1) return false;
-    const { start, end } = companyCycle(t.year, t.month, contractDay);
+    const cyc = cycleForBucket(co, t.year, t.month);
+    if (!cyc) return false;
     const today = new Date();
-    return today >= start && today < end;
+    return today >= cyc.start && today < cyc.end;
   };
   const isLate = (t: Task) => {
     if (!isTaskLateState(t)) return false;

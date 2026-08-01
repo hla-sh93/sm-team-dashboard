@@ -74,6 +74,16 @@ model Company {
   // (default / back-compatible behaviour).
   contractStartDate DateTime?
 
+  // Contract RENEWAL history. A cycle no longer continues automatically: after
+  // one ends, the next starts ONLY when a renewal is recorded, from the renewal
+  // date (so a client renewed late leaves a real gap with no generated work).
+  // JSON Int[]-style string of ISO dates for every cycle start AFTER the first,
+  // e.g. "[\"2026-07-19\"]" (SQLite has no String[]). Parse with lib/contract.ts.
+  renewals String?
+  // Set when the answer to "is it renewed?" was NO — a hard stop: no cycle may
+  // begin on/after this date. Cleared if the client later renews.
+  contractEndedAt DateTime?
+
   // Preferred shoot weekday (getDay 0=Sun..6=Sat) for this company's reels — a
   // SOFT preference: the photographer snaps to it when possible, but it's not
   // mandatory and any shoot can be edited manually. Null = no preference.
@@ -82,6 +92,21 @@ model Company {
   // Content plan is supplied externally (client/trainer) — the writer's plan
   // cards (كتابة) are skipped for this company.
   contentSupplied Boolean @default(false)
+
+  // === Telegram follow-up (§14) ===
+  // Latin short name used to build the canonical asset name «Agalia 7-1»
+  // (= "<slug> <month>-<pieceNo>") that the team writes on every delivered
+  // file. Null → derived from the company name at read time.
+  slug String?
+  // This company's Telegram group. Discovered automatically the first time the
+  // bot sees a message there, then linked from /admin/telegram.
+  telegramChatId String?
+  // Content this company publishes that is NOT part of the paid plan — for
+  // وصل, the client's own exchange-rate bulletins and economic analysis. It
+  // goes out on the same channels and lands in the same group, but it must
+  // never be credited to a plan piece or the achievement figures lie.
+  // JSON array of keywords matched against a delivery's file name/caption.
+  offPlanKeywords String?
 
   // Carried-over UI / deterministic-ordering fields (not part of §3 plan but
   // used by screens and to give the engine a stable company order).
@@ -152,6 +177,10 @@ model Task {
   // Deterministic match key: companyId|type|YYYY-MM-DD(publishDate)|seq (§3)
   detKey      String?
   notes       String?
+  // What this piece actually has to SAY — the hook, script and caption lifted
+  // from the month's content plan (§14). The designer/photographer shouldn't
+  // have to open a Word file to know what they are producing.
+  brief       String?
   completedAt DateTime?
   startedAt   DateTime?                            // when work began (→ IN_PROGRESS)
   finishedAt  DateTime?                            // when work finished (→ READY/PUBLISHED)
@@ -206,4 +235,65 @@ model Setting {
   key       String   @id
   value     String                            // JSON
   updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// TELEGRAM (§14) — daily follow-up feed
+//
+// The team already runs one Telegram group per company: plans, designs and
+// reels are all delivered there. The bot watches those groups so the dashboard
+// knows what ACTUALLY went out each day, and builds the morning brief.
+//
+// No foreign keys on purpose: these rows are an external-system mirror, they
+// must survive a company being renamed/re-created and the local→prod snapshot
+// import, and nothing in the scheduling engine depends on them.
+// ============================================
+
+/// A Telegram conversation the bot has seen, linked to a company.
+///
+/// The team runs ONE forum supergroup («Desgin only (Team)») where each company
+/// is a TOPIC, not a separate group — so the unit of linking is the topic, not
+/// the chat. `id` is therefore composite: "<chatId>" for a plain group/private
+/// chat, "<chatId>#<threadId>" for a forum topic.
+model TelegramChat {
+  id         String   @id
+  chatId     String                           // Telegram chat id (groups are negative)
+  threadId   Int?                             // forum topic id (null = plain chat / General)
+  title      String?                          // topic name when known, else chat title
+  type       String   @default("group")       // group | supergroup | channel | private
+  companyId  String?                          // linked company (null = unlinked)
+  isTeam     Boolean  @default(false)         // the General/team topic, not a client's
+  lastText   String?                          // last message snippet — helps identify a topic
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([chatId])
+}
+
+/// One message seen in a watched chat — the "what actually got delivered" log.
+model TelegramMessage {
+  id           String   @id                   // "<chatId>:<messageId>" — idempotent ingest
+  chatId       String                         // composite TelegramChat.id (may carry #thread)
+  threadId     Int?
+  messageId    Int
+  sentAt       DateTime
+  senderId     String?
+  senderName   String?
+  kind         String                         // PHOTO | VIDEO | DOCUMENT | AUDIO | TEXT
+  fileName     String?
+  caption      String?
+  fileId       String?
+  mediaGroupId String?                        // album → many messages, one piece
+  companyId    String?                        // resolved from chatId at ingest
+  // Auto-match result: which piece this delivery belongs to.
+  taskId       String?
+  matchedBy    String?                        // NAME | TYPE | MANUAL
+  confirmed    Boolean  @default(false)        // the lead accepted the match
+  createdAt    DateTime @default(now())
+
+  @@index([chatId, sentAt])
+  @@index([companyId, sentAt])
+  @@index([taskId])
 }

@@ -286,7 +286,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                   key={p.label}
                   type="button"
                   onClick={() => setValue("workDays", p.days, { shouldValidate: true })}
-                  className="text-[11px] px-2 py-1 rounded-md bg-bg-elev-2 text-fg-dim hover:text-fg"
+                  className="text-[11px] px-2 py-1 rounded-md bg-bg-elev2 text-fg-dim hover:text-fg"
                 >
                   {p.label}
                 </button>

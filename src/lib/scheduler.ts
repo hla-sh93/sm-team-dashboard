@@ -24,15 +24,15 @@ import {
   hoursForType,
 } from "./constants";
 import {
+  addWorkingDays,
   backWorkday,
-  companyCycle,
-  contractDayOf,
   forwardWorkday,
   packingWindowDays,
   parseWorkDays,
   shiftDays,
   toISODate,
 } from "./dates";
+import { cycleForBucket } from "./contract";
 import {
   buildPhotoSessions,
   type GeneratedPhotoSession,
@@ -65,6 +65,11 @@ export type CompanyInput = {
   /** Contract start date — when set, the plan distributes over the company's
    *  30-day contract cycle (day→day next month) instead of the calendar month. */
   contractStartDate?: Date | string | null;
+  /** Cycle starts after the first, as a JSON array of ISO dates. A cycle does
+   *  NOT continue automatically — see lib/contract.ts. */
+  renewals?: string | string[] | null;
+  /** "Not renewed" — hard stop; no cycle may begin on/after this date. */
+  contractEndedAt?: Date | string | null;
   /** Soft preferred shoot weekday (getDay 0..6) for reels; null = none. */
   preferredShootDay?: number | null;
   /** Content plan supplied externally — writer plan cards skipped. */
@@ -153,6 +158,30 @@ const EPS = 1e-9;
  *  production (design/shoot) can start — drives the first-cycle floors. */
 const WRITE_LEAD_DAYS = 2;
 
+/**
+ * PREP WEEK — the first week of a new contract is preparation only.
+ *
+ * Signing a contract does not mean publishing starts: the writer needs ~2 days
+ * for the plan, the client then approves it, and only after that may design or
+ * shooting begin. So a new client gets NO published piece in its first week —
+ * there is plenty of work on the boards, just nothing going out.
+ *
+ * `PREP_PRODUCTION_WORKDAYS` — design/shoot cannot start before this many
+ * WORKING days have passed (plan + approval).
+ * `PREP_PUBLISH_DAYS` — nothing publishes before this many CALENDAR days, for
+ * every content type (a client signed on the 20th first publishes on the 27th).
+ *
+ * `PREP_WEEK_RULE_FROM` is the date the rule was adopted. Cycles that began
+ * BEFORE it keep the older, shorter leads: contracts already running (أغاليا,
+ * التوظيف, وصل, جدارات) and برو's 19 July renewal were planned under the old
+ * rule and must not be re-planned retroactively — their pieces are already
+ * scheduled, worked on and in some cases late. Everything from 20 July 2026
+ * onwards gets the prep week.
+ */
+const PREP_PRODUCTION_WORKDAYS = 3;
+const PREP_PUBLISH_DAYS = 7;
+const PREP_WEEK_RULE_FROM = new Date(2026, 6, 20);
+
 const PLAN_KEYS: Record<ContentType, "posts" | "reels" | "stories" | "aiReels"> = {
   POST: "posts",
   REEL: "reels",
@@ -215,29 +244,42 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // ongoing clients whose contract is long past).
   const productionFloorByCompany = new Map<string, Date>();
   for (const co of managed) {
-    const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
-    // Contract not started yet for this bucket: if the whole cycle window ends
-    // on/before the contractStartDate, this client's execution cycle begins in a
-    // LATER month — emit nothing now (no phantom "late" tasks before day one).
+    // No cycle owns this bucket → generate NOTHING. Either the contract starts
+    // later, or the previous cycle ended and no renewal has been recorded yet
+    // (the contract is waiting on a "هل تم التجديد؟" answer). Both cases must
+    // stay silent — no phantom "late" tasks before day one, and no work
+    // invented for a cycle nobody has agreed to.
+    const cyc = cycleForBucket(co, year, month);
+    if (!cyc) continue;
     const cs = co.contractStartDate ? new Date(co.contractStartDate) : null;
     const csMidnight = cs
       ? new Date(cs.getFullYear(), cs.getMonth(), cs.getDate())
       : null;
-    if (csMidnight && cyc.end.getTime() <= csMidnight.getTime()) continue;
-    // First cycle of the contract = the bucket whose cycle starts ON the
-    // contract start date.
-    const firstCycle =
-      !!csMidnight && cyc.start.getTime() === csMidnight.getTime();
-    // Production can start only after the plan is WRITTEN (first cycle).
-    const productionFloor =
-      csMidnight && firstCycle ? shiftDays(csMidnight, WRITE_LEAD_DAYS) : csMidnight;
+    // A cycle with no written plan going in — the very first one, or one that
+    // begins after a renewal GAP (nobody wrote a plan while the contract sat
+    // unrenewed) — gets the full pipeline lead, measured from THIS cycle's start.
+    const firstCycle = cyc.coldStart;
+    // Contracts started on/after the rule's adoption date get the PREP WEEK;
+    // older ones keep the leads they were planned under (see the constants).
+    const prepWeek = firstCycle && cyc.start.getTime() >= PREP_WEEK_RULE_FROM.getTime();
+    // Production can start only after the plan is WRITTEN (cold-start cycle) —
+    // and under the prep-week rule, only after the client has also APPROVED it,
+    // which is counted in working days rather than calendar days.
+    // A warm (contiguous) cycle keeps the plain contract-start floor, which is
+    // a no-op for ongoing clients and preserves their prior-month prep.
+    const productionFloor = prepWeek
+      ? addWorkingDays(cyc.start, PREP_PRODUCTION_WORKDAYS)
+      : firstCycle
+        ? shiftDays(cyc.start, WRITE_LEAD_DAYS)
+        : csMidnight;
     if (productionFloor) productionFloorByCompany.set(co.id, productionFloor);
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
     const cycleDays = cyc.days.filter((d) => d.getDay() !== 5);
     const cycleLen = cycleDays.length;
-    // First-cycle publish floors per type: writing (2d) + the type's own
-    // production lead must fit INSIDE the contract. POST/AI 2+2, STORY 2+1,
-    // REEL 2 (scenario) + 3 (shoot→publish).
+    // Cold-start publish floors per type: writing (2d) + the type's own
+    // production lead must fit INSIDE the cycle. POST/AI 2+2, STORY 2+1,
+    // REEL 2 (scenario) + 3 (shoot→publish). Applies to a brand-new contract
+    // AND to a cycle resumed after a renewal gap.
     const minIdxOf: Record<ContentType, number> = { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0 };
     if (firstCycle) {
       const offs: Record<ContentType, number> = {
@@ -246,6 +288,11 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         STORY: WRITE_LEAD_DAYS + LEAD.STORY,
         REEL: WRITE_LEAD_DAYS + PHOTO_SHOOT_LEAD,
       };
+      // Prep week: whatever the per-type lead works out to, NOTHING publishes
+      // inside the first week of the contract.
+      if (prepWeek) {
+        for (const ty of TYPE_ORDER) offs[ty] = Math.max(offs[ty], PREP_PUBLISH_DAYS);
+      }
       for (const ty of TYPE_ORDER) {
         const minDate = shiftDays(cyc.start, offs[ty]);
         const idx = cycleDays.findIndex((d) => d.getTime() >= minDate.getTime());
@@ -349,7 +396,9 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   for (const co of reelCompanies) {
     const pid = photographerOf(co);
     if (!pid) continue; // no photographer at all — warned below
-    const cyc = companyCycle(year, month, contractDayOf(co.contractStartDate));
+    // Same gate as the publishing loop: no cycle in this bucket → no shoots.
+    const cyc = cycleForBucket(co, year, month);
+    if (!cyc) continue;
     const entry = {
       companyId: co.id,
       companyName: co.name,

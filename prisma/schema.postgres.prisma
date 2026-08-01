@@ -51,12 +51,23 @@ model Company {
   // over its 30-day CONTRACT CYCLE ([contractDay → contractDay next month])
   // instead of the calendar month. Null = calendar-month (default).
   contractStartDate DateTime?
+  // Contract RENEWAL history — cycles do NOT continue automatically. JSON array
+  // of ISO dates for every cycle start AFTER the first, e.g. "[\"2026-07-19\"]".
+  // Kept as a JSON string (not String[]) to mirror the SQLite schema exactly.
+  renewals String?
+  // "Not renewed" answer — a hard stop; no cycle may begin on/after this date.
+  contractEndedAt DateTime?
   // Soft preferred shoot weekday (getDay 0..6) for reels; null = none.
   preferredShootDay Int?
 
   // Content plan is supplied externally (client/trainer) — the writer's plan
   // cards (كتابة) are skipped for this company.
   contentSupplied Boolean @default(false)
+
+  // === Telegram follow-up (§14) — keep in sync with schema.prisma ===
+  slug            String?
+  telegramChatId  String?
+  offPlanKeywords String?
 
   color    String? @default("#C8A84E")
   priority Int     @default(99)
@@ -106,6 +117,8 @@ model Task {
   pipelineKey String?
   detKey      String?
   notes       String?
+  // Content brief lifted from the month's plan (§14) — keep in sync.
+  brief       String?
   completedAt DateTime?
   startedAt   DateTime?
   finishedAt  DateTime?
@@ -151,4 +164,48 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// TELEGRAM (§14) — keep in sync with schema.prisma
+// ============================================
+model TelegramChat {
+  id         String   @id
+  chatId     String
+  threadId   Int?
+  title      String?
+  type       String   @default("group")
+  companyId  String?
+  isTeam     Boolean  @default(false)
+  lastText   String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([chatId])
+}
+
+model TelegramMessage {
+  id           String   @id
+  chatId       String
+  threadId     Int?
+  messageId    Int
+  sentAt       DateTime
+  senderId     String?
+  senderName   String?
+  kind         String
+  fileName     String?
+  caption      String?
+  fileId       String?
+  mediaGroupId String?
+  companyId    String?
+  taskId       String?
+  matchedBy    String?
+  confirmed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([chatId, sentAt])
+  @@index([companyId, sentAt])
+  @@index([taskId])
 }

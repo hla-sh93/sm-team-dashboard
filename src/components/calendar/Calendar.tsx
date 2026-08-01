@@ -174,7 +174,7 @@ function NavBar({
     <div className="flex items-center justify-between bg-bg-elev border border-border rounded-lg px-2 py-1.5">
       <button
         onClick={onPrev}
-        className="p-1.5 rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev-2 transition"
+        className="p-1.5 rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev2 transition"
         aria-label="السابق"
       >
         <ChevronRight className="w-4 h-4" />
@@ -182,7 +182,7 @@ function NavBar({
       <span className="text-sm font-medium">{label}</span>
       <button
         onClick={onNext}
-        className="p-1.5 rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev-2 transition"
+        className="p-1.5 rounded-md text-fg-dim hover:text-fg hover:bg-bg-elev2 transition"
         aria-label="التالي"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -235,9 +235,9 @@ function MonthGrid<T>({
               key={iso}
               onClick={() => onCellClick(d)}
               className={
-                "min-h-[92px] text-right p-1.5 border-b border-l border-border-soft/60 align-top transition hover:bg-bg-elev-2/50 flex flex-col gap-1 " +
+                "min-h-[92px] text-right p-1.5 border-b border-l border-border-soft/60 align-top transition hover:bg-bg-elev2/50 flex flex-col gap-1 " +
                 (inMonth ? "" : "bg-bg-elev/40 opacity-50 ") +
-                (isFri ? "bg-bg-elev-2/30 " : "")
+                (isFri ? "bg-bg-elev2/30 " : "")
               }
             >
               <span
