@@ -116,6 +116,23 @@ describe("pipeline expansion", () => {
     );
   });
 
+  /**
+   * Changing a company's designer re-times every card, so both schedule-based
+   * keys (pipelineKey, which embeds the publish date, and the plan-date key)
+   * miss — and the brief was thrown away with them. مخبر lost all 12 rows that
+   * way. The piece's identity («بوست ٣») is what must carry the plan text.
+   */
+  it("keeps the brief when the whole plan is re-timed to different dates", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-20|1", publishDate: "2026-07-20" }], opts);
+
+    // Saved state from a run where the same piece sat on a different date.
+    applyPipelinePreservation(pipe, [
+      saved({ publishDate: new Date(2026, 6, 7), pieceNo: 1, brief: "نص الخطة الأصلي" }),
+    ]);
+
+    expect(pipe.find((task) => task.stage === "DESIGN")?.brief).toBe("نص الخطة الأصلي");
+  });
+
   it("preserves pinned carousel slide quantity across regeneration", () => {
     const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
 

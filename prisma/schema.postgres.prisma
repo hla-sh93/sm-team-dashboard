@@ -34,6 +34,7 @@ model Employee {
   aiReelCompanies  Company[] @relation("aiReelOwner")
   defaultCompanies Company[] @relation("defaultOwner")
   photographerCompanies Company[] @relation("photographer")
+  accountCompanies      Company[] @relation("accountOwner")
   tasks            Task[]
 }
 
@@ -89,6 +90,8 @@ model Company {
   defaultOwner   Employee? @relation("defaultOwner", fields: [defaultOwnerId], references: [id], onDelete: SetNull)
   photographerId String?
   photographer   Employee? @relation("photographer", fields: [photographerId], references: [id], onDelete: SetNull)
+  accountOwnerId String?
+  accountOwner   Employee? @relation("accountOwner", fields: [accountOwnerId], references: [id], onDelete: SetNull)
 
   tasks         Task[]
   photoSessions PhotoSession[]

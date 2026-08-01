@@ -50,12 +50,15 @@ export default function TodayClient({
   companies,
   tasks,
   deliveries,
+  ignoredChatIds = [],
 }: {
   todayISO: string;
   employees: Employee[];
   companies: Company[];
   tasks: Task[];
   deliveries: TelegramMessage[];
+  /** Chats marked «مو تبع شركة» — their traffic never counts as unlinked. */
+  ignoredChatIds?: string[];
 }) {
   const router = useRouter();
   const [busy, start] = useTransition();
@@ -138,7 +141,13 @@ export default function TodayClient({
       );
   }, [companies, open, deliveries, todayISO, horizonISO, onlyActive, today, blockersOf]);
 
-  const unlinked = useMemo(() => deliveries.filter((d) => d.companyId == null), [deliveries]);
+  // Only a CLIENT topic with no company is a problem worth flagging. The team's
+  // own room, private chats and retired clients are marked «مو تبع شركة» and
+  // must stay silent — otherwise the banner asks her to link her own group.
+  const unlinked = useMemo(() => {
+    const ignored = new Set(ignoredChatIds);
+    return deliveries.filter((d) => d.companyId == null && !ignored.has(d.chatId));
+  }, [deliveries, ignoredChatIds]);
   const unmatched = useMemo(
     () => deliveries.filter((d) => d.companyId != null && d.taskId == null && d.kind !== "TEXT"),
     [deliveries],

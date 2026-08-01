@@ -287,6 +287,8 @@ export async function generateSchedule(year: number, month: number) {
         // Imported once a month from the client's plan and not re-derivable —
         // dropping it here is what turned honest matching back into guessing.
         brief: true,
+        // Piece identity — survives a re-timing that moves every date.
+        pieceNo: true,
       },
     });
     applyPipelinePreservation(pipe, existing);

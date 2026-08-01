@@ -29,6 +29,8 @@ export type ExistingPipelineTaskState = {
   // matcher falls back to blind type-matching and inflates every figure. This
   // silently wiped 29 rows of مركز البلسم and all of التوظيف before it was found.
   brief?: string | null;
+  // Stable piece identity — see PIECE-KEY note in applyPipelinePreservation.
+  pieceNo?: number | null;
 };
 
 type CanceledPiece = {
@@ -163,12 +165,30 @@ export function applyPipelinePreservation(
     const key = `${task.companyId}|${task.type}|${iso(task.publishDate)}|${task.stage}`;
     if (!byPlanDateStage.has(key)) byPlanDateStage.set(key, task);
   }
+  // PIECE-KEY — the last resort, and the only one tied to the piece's IDENTITY
+  // rather than to its schedule. Both keys above move when the plan is
+  // re-timed: `pipelineKey` embeds the publish date, and the plan-date key is
+  // the date itself. So changing a company's designer (which re-times every
+  // card) silently orphaned the saved state and threw the plan text away —
+  // مخبر lost all 12 briefs, أغاليا 11, برو and جدارات 10 each. «بوست ٣ من دورة
+  // تموز» is the same piece whatever day it ends up on; that is what we key on.
+  const byPiece = new Map<string, ExistingPipelineTaskState>();
+  for (const task of existing) {
+    if (!task.companyId || !task.type || task.pieceNo == null || !task.stage) continue;
+    const key = `${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`;
+    if (!byPiece.has(key)) byPiece.set(key, task);
+  }
 
   const preservedStateOf = (task: PipelineTask) => {
     const direct = byPipelineStage.get(`${task.pipelineKey}|${task.stage}`);
     if (direct) return direct;
-    if (task.companyId && task.type && task.publishDate && task.stage !== "WRITE") {
-      return byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
+    if (task.companyId && task.type && task.stage !== "WRITE") {
+      const byDate =
+        task.publishDate &&
+        byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
+      if (byDate) return byDate;
+      if (task.pieceNo != null)
+        return byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
     }
     return undefined;
   };

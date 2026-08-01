@@ -11,7 +11,7 @@ export default async function TodayView() {
   const today = new Date();
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const [employees, companies, tasks, deliveries] = await Promise.all([
+  const [employees, companies, tasks, deliveries, ignoredChats] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     loadLiveTasks(today.getFullYear(), today.getMonth()),
@@ -21,6 +21,10 @@ export default async function TodayView() {
       orderBy: { sentAt: "desc" },
       take: 200,
     }),
+    // Chats that are NOT a client's: the team's own group, private chats, and
+    // old/non-client topics. Their chatter must never be counted as «رسائل من
+    // مجموعات غير مربوطة» — that nagged the lead to link her own team room.
+    prisma.telegramChat.findMany({ where: { isTeam: true }, select: { id: true } }),
   ]);
 
   return (
@@ -33,6 +37,7 @@ export default async function TodayView() {
       companies={companies}
       tasks={tasks}
       deliveries={deliveries}
+      ignoredChatIds={ignoredChats.map((c) => c.id)}
     />
   );
 }

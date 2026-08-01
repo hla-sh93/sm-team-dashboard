@@ -58,6 +58,7 @@ model Employee {
   aiReelCompanies Company[] @relation("aiReelOwner")
   defaultCompanies Company[] @relation("defaultOwner")
   photographerCompanies Company[] @relation("photographer")
+  accountCompanies      Company[] @relation("accountOwner")
   tasks           Task[]
 }
 
@@ -147,6 +148,12 @@ model Company {
   // photographer. Lets reel work be split across multiple freelance photographers.
   photographerId String?
   photographer   Employee? @relation("photographer", fields: [photographerId], references: [id], onDelete: SetNull)
+  // Who OWNS the client relationship — the salesperson who brought them in and
+  // still talks to them (مايكل / سارة), or the lead herself for the agency's own
+  // brands. Not a producer: this person never gets content cards, they are who
+  // you chase for an appointment, an approval or a renewal.
+  accountOwnerId String?
+  accountOwner   Employee? @relation("accountOwner", fields: [accountOwnerId], references: [id], onDelete: SetNull)
 
   tasks         Task[]
   photoSessions PhotoSession[]
