@@ -48,6 +48,17 @@ const shift = (d: Date, days: number) => {
 };
 const iso = (d: Date) => d.toLocaleDateString("en-CA");
 
+/**
+ * «قبل الدورة بـ10 أيام» ممكن يوقع بعطلة الناشر (عمر بيداوم السبت←الأربعاء،
+ * فالخميس مستحيل). منرجع لأقرب يوم دوام **قبله** — النشر الأبكر بيحترم القاعدة،
+ * والتأخير لأ.
+ */
+const backToWorkday = (d: Date, workDays: number[]) => {
+  const x = new Date(d);
+  for (let i = 0; i < 7 && !workDays.includes(x.getDay()); i++) x.setDate(x.getDate() - 1);
+  return x;
+};
+
 async function main() {
   const co = await prisma.company.findFirst({ where: { name: "التدريب" } });
   if (!co) throw new Error("ما لقيت التدريب");
@@ -64,17 +75,20 @@ async function main() {
     return;
   }
 
+  const pubDays: number[] = JSON.parse((publisher.workDays as string) ?? "[6,0,1,2,3]");
+  const desDays: number[] = JSON.parse((designer.workDays as string) ?? "[6,0,1,2,3]");
+
   let created = 0, skipped = 0;
   for (const c of COURSES) {
     const start = new Date(c.start[0], c.start[1], c.start[2]);
-    const publishOn = shift(start, -PUBLISH_DAYS_BEFORE);
-    const designBy = shift(publishOn, -DESIGN_DAYS_BEFORE_PUBLISH);
+    const publishOn = backToWorkday(shift(start, -PUBLISH_DAYS_BEFORE), pubDays);
+    const designBy = backToWorkday(shift(publishOn, -DESIGN_DAYS_BEFORE_PUBLISH), desDays);
 
     const rows: { id: string; stage: "DESIGN" | "PUBLISH"; title: string; who: string; work: Date; due: Date; hours: number }[] = [
       {
         id: `course_${c.slug}_design`, stage: "DESIGN",
         title: `تصميم إعلان: ${c.title}`, who: designer.id,
-        work: shift(designBy, -1), due: designBy, hours: 2,
+        work: backToWorkday(shift(designBy, -1), desDays), due: designBy, hours: 2,
       },
       {
         id: `course_${c.slug}_publish`, stage: "PUBLISH",
