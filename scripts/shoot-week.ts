@@ -52,7 +52,12 @@ async function main() {
 
   const AR_MONTH = ["ك٢", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "ت١", "ت٢", "ك١"];
 
-  /** يحجز جلسة (2–3 ريل) بأول يوم مناسب — بيرجع [التاريخ، كم ريل]. */
+  /**
+   * يحجز جلسة بأول يوم مناسب — بيرجع [التاريخ، كم ريل].
+   * قاعدة القائدة (1/8): «وقت نروح لعند زبون منصور 3 ريلات أو 2 في حال ما كان
+   * في 3» — الزيارة بريل واحد ممنوعة إلا إذا الشركة كلها ما ضل عندها غيرو،
+   * فيوم ما بيسع إلا ريل واحد بينتخطى لصالح يوم أوسع.
+   */
   const bookSession = (queueLen: number, preferredDay: number | null): [Date, number] | null => {
     let cursor = D(START, REQUEST_DAYS_BEFORE);
     while (cursor <= weekEnd) {
@@ -60,8 +65,9 @@ async function main() {
       const free = REELS_PER_DAY - (booked.get(day) ?? 0);
       const dayOk = majedDays.includes(cursor.getDay()) &&
         (preferredDay == null || cursor.getDay() === preferredDay);
-      if (dayOk && free > 0) {
-        const n = Math.min(SESSION_MAX, free, queueLen);
+      const n = Math.min(SESSION_MAX, free, queueLen);
+      const bigEnough = n >= 2 || queueLen === 1;
+      if (dayOk && free > 0 && bigEnough) {
         booked.set(day, (booked.get(day) ?? 0) + n);
         return [new Date(cursor), n];
       }
