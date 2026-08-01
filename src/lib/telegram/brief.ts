@@ -375,22 +375,35 @@ export function buildDailyBrief({
   const latePublish = late.filter((t) => t.stage === "PUBLISH" && publishable(t));
   if (publisher) {
     detailLines.push("", `🚀 النشر (${publisher.name}):`);
-    const byCo = new Map<string, { today: Task[]; lateN: number }>();
-    for (const t of publishingToday.filter(publishable)) {
-      const g = byCo.get(coName(t)) ?? { today: [], lateN: 0 };
-      g.today.push(t);
+    const byCo = new Map<string, { today: Task[]; late: Task[]; lateN: number }>();
+    const bucket = (t: Task) => {
+      const g = byCo.get(coName(t)) ?? { today: [], late: [], lateN: 0 };
       byCo.set(coName(t), g);
-    }
-    for (const t of latePublish) {
-      const g = byCo.get(coName(t)) ?? { today: [], lateN: 0 };
-      g.lateN++;
-      byCo.set(coName(t), g);
-    }
+      return g;
+    };
+    for (const t of publishingToday.filter(publishable)) bucket(t).today.push(t);
+    for (const t of latePublish) { const g = bucket(t); g.late.push(t); g.lateN++; }
     if (!byCo.size) detailLines.push("   ما في شي مجدول للنشر اليوم.");
     for (const [co, g] of [...byCo.entries()].sort((a, b) => b[1].today.length - a[1].today.length || b[1].lateN - a[1].lateN)) {
-      const pieces = g.today.map((t) => pieceLabel(t)).join(" · ");
-      const tail = g.lateN ? ` (ومتراكم ${g.lateN})` : "";
-      detailLines.push(`   • ${co}: ${pieces || "—"}${tail}`);
+      // «شو لازم ينشر بوستات وريلات وستوريز لكل شركة» — العدد بالنوع، مو أسماء
+      // القطع وحدة وحدة. متراكم 24 قطعة بيصير «متراكم: 9 بوست · 13 ستوري · 2 ريل».
+      const byType = (list: Task[]) => {
+        const m = new Map<string, number>();
+        for (const t of list) m.set(typeLabel(t), (m.get(typeLabel(t)) ?? 0) + 1);
+        return [...m.entries()].map(([k, n]) => `${n} ${k}`).join(" · ");
+      };
+      const todayPart = g.today.length ? byType(g.today) : "—";
+      const latePart = g.lateN ? ` · متراكم: ${byType(g.late)}` : "";
+      detailLines.push(`   • ${co}: ${todayPart}${latePart}`);
+    }
+    // «وشو لازم يتابع مع العملاء» — مهامه اليدوية (تثبيت مواعيد، استلام مواد،
+    // متابعة موافقات) بتنعرض لحالها؛ كانت مندمجة بسطر «متابعة» بلا تفاصيل.
+    const followUps = selectDailyWorkTasks({ employee: publisher, tasks: open, allTasks: tasks, companies, today })
+      .filter((t) => t.kind === "ADHOC");
+    if (followUps.length) {
+      detailLines.push("   متابعة مع العملاء:");
+      for (const t of followUps)
+        detailLines.push(`     – ${t.title ?? "—"}${t.companyId ? ` (${coName(t)})` : ""}`);
     }
   }
 
