@@ -39,3 +39,5 @@ backups/baseline-task-counts.json
 
 # سكربتات استعلام مؤقتة أثناء الجلسة — مو جزء من المشروع
 scripts/_tmp-*.ts
+backups/pre-*.json
+backups/dev-*.db
