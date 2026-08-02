@@ -323,3 +323,77 @@ describe("مرحلة المونتاج بين التصوير والنشر", () =>
     expect(nums.size).toBe(1);
   });
 });
+
+/**
+ * تصحيح تاريخ عقد وصل (13/7 → 21/7) زحّل كل تواريخ النشر ثمن أيام، فصار المفتاح
+ * الجديد لقطعة يساوي المفتاح القديم لقطعة تانية — و13 كرت منجز رجعوا مفتوحين،
+ * منهم القطعة الوحيدة يلي انتشرت فعلاً. كل المفاتيح كانت موجودة؛ الغلط ربح.
+ */
+describe("إعادة التوقيت ما بتخلط حالة القطع", () => {
+  const item = (publishDate: string, readyDate: string) => ({
+    ...baseItem,
+    publishDate,
+    readyDate,
+    workDate: readyDate,
+  });
+
+  it("القطعة بتحتفظ بحالتها لما مفتاحها الجديد يساوي مفتاح غيرها القديم", () => {
+    // قبل: قطعة 1 تنشر 16/7 ومنجزة · قطعة 2 تنشر 18/7 ومفتوحة
+    const before = [
+      saved({
+        pipelineKey: "c|POST|2026-07-16",
+        publishDate: new Date(2026, 6, 16),
+        pieceNo: 1,
+        status: "READY",
+        board: "DONE",
+      }),
+      saved({
+        pipelineKey: "c|POST|2026-07-18",
+        publishDate: new Date(2026, 6, 18),
+        pieceNo: 2,
+        status: "NOT_STARTED",
+        board: "TODO",
+      }),
+    ];
+    // بعد الإزاحة: قطعة 1 صارت 18/7 — نفس مفتاح قطعة 2 القديم
+    const pipe = expandPipeline(
+      [item("2026-07-18", "2026-07-17"), item("2026-07-20", "2026-07-19")],
+      opts,
+    );
+    applyPipelinePreservation(pipe, before);
+
+    const design = pipe.filter((t) => t.stage === "DESIGN").sort((a, b) => a.pieceNo! - b.pieceNo!);
+    expect(design[0].pieceNo).toBe(1);
+    expect(design[0].board, "قطعة 1 لازم تضل منجزة").toBe("DONE");
+    expect(design[1].pieceNo).toBe(2);
+    expect(design[1].board, "قطعة 2 لازم تضل مفتوحة").toBe("TODO");
+  });
+
+  it("رقم القطعة بيغلب المفتاح حتى لما الاتنين موجودين", () => {
+    const before = [
+      saved({
+        pipelineKey: "c|POST|2026-07-18",
+        publishDate: new Date(2026, 6, 18),
+        pieceNo: 2,
+        status: "NOT_STARTED",
+        board: "TODO",
+        brief: "نصّ قطعة 2",
+      }),
+      saved({
+        pipelineKey: "c|POST|2026-07-16",
+        publishDate: new Date(2026, 6, 16),
+        pieceNo: 1,
+        status: "READY",
+        board: "DONE",
+        brief: "نصّ قطعة 1",
+      }),
+    ];
+    const pipe = expandPipeline(
+      [item("2026-07-18", "2026-07-17"), item("2026-07-20", "2026-07-19")],
+      opts,
+    );
+    applyPipelinePreservation(pipe, before);
+    const one = pipe.find((t) => t.stage === "DESIGN" && t.pieceNo === 1)!;
+    expect(one.brief, "النصّ لازم يتبع رقم القطعة مو التاريخ").toBe("نصّ قطعة 1");
+  });
+});

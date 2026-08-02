@@ -187,16 +187,23 @@ export function applyPipelinePreservation(
   // row's state — that is how برو's «قهوتك مو طلب» script vanished on a re-time
   // even after the piece key existed. «ريل 3» is unambiguous; a date is not.
   const preservedStateOf = (task: PipelineTask) => {
+    // IDENTITY BEFORE SCHEDULE. `pipelineKey` embeds the publish date, so after a
+    // re-time a card's NEW key can equal some OTHER piece's OLD key — the lookup
+    // then succeeds with the wrong row and the card inherits a stranger's state.
+    // Moving وصل's contract start 13/7 → 21/7 shifted every date by eight days
+    // and did exactly that: 13 finished cards came back open, including the one
+    // piece the client had actually published. Every key still existed; the
+    // wrong one just won. «ستوري ٩ من دورة تموز» is the same piece whatever day
+    // it lands on, so the piece number decides first and the schedule only fills
+    // in for cards that have no number (they cannot collide this way).
+    if (task.companyId && task.type && task.stage !== "WRITE" && task.pieceNo != null) {
+      const byNo = byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
+      if (byNo) return byNo;
+    }
     const direct = byPipelineStage.get(`${task.pipelineKey}|${task.stage}`);
     if (direct) return direct;
-    if (task.companyId && task.type && task.stage !== "WRITE") {
-      if (task.pieceNo != null) {
-        const byNo = byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
-        if (byNo) return byNo;
-      }
-      if (task.publishDate)
-        return byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
-    }
+    if (task.companyId && task.type && task.stage !== "WRITE" && task.publishDate)
+      return byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
     return undefined;
   };
 

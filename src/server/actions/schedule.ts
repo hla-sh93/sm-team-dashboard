@@ -464,6 +464,24 @@ function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays: numbe
     t.status = "READY";
   }
 
+  // …وبالعكس: مونتاج مسجّل «منجز» وتصويره لسا ما صار وقطعته ما انتشرت هو حالة
+  // مستحيلة. صارت لما كرت مونتاج انسكّر بجولة سابقة ثم رجع التصوير مفتوح —
+  // وخطوة الحفظ بتعيد تثبيت الإغلاق للأبد. القاعدة: ما في كرت بيضل منجز
+  // وحاجزه مفتوح إلا إذا النشر أثبت إنّو صار.
+  const shotDone = new Set(
+    pipe.filter((t) => t.stage === "SHOOT" && (t.board === "DONE" || t.status === "READY"))
+      .map((t) => t.pipelineKey),
+  );
+  for (const t of pipe) {
+    if (t.stage !== "EDIT" || t.board !== "DONE") continue;
+    if (publishedKeys.has(t.pipelineKey) || shotDone.has(t.pipelineKey)) continue;
+    t.board = "TODO";
+    t.status = "NOT_STARTED";
+    t.startedAt = null;
+    t.finishedAt = null;
+    t.completedAt = null;
+  }
+
   const shotAt = new Map<string, Date>();
   for (const t of pipe) {
     if (t.stage !== "SHOOT" || !t.pipelineKey || !t.finishedAt) continue;

@@ -78,13 +78,17 @@ export async function rotateAuthSecret(): Promise<void> {
 
 // --- password ---------------------------------------------------------------
 
-function hashPassword(password: string): string {
+/**
+ * مُصدّرة للاختبار: دالتان نقيّتان وما بتلمسا لا قاعدة بيانات ولا كوكيز، وهنّ
+ * قلب حماية لوحة الإدارة — فبتستاهلا اختبارات مباشرة بدل ما ينحكم عليهن من بعيد.
+ */
+export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${hash}`;
 }
 
-function verifyPasswordHash(password: string, stored: string): boolean {
+export function verifyPasswordHash(password: string, stored: string): boolean {
   const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
   const expected = Buffer.from(hash, "hex");

@@ -116,6 +116,19 @@ async function main() {
     }
     ok("ولا حلقة حجز مغلقة", cycles.length === 0, ev(cycles));
 
+    // ولا كرت منجز وحاجزه لسا مفتوح — «مونتاج خالص وتصويره ما صار» حالة
+    // مستحيلة، وصارت فعلاً لما إغلاق قديم ثبّتته خطوة الحفظ.
+    const doneWhileBlocked = live.filter((t) => {
+      if (!isTaskDoneState(t) || !t.blockedById) return false;
+      const b = taskById.get(t.blockedById);
+      return !!b && !isTaskDoneState(b);
+    });
+    ok(
+      "ولا كرت منجز وحاجزه مفتوح",
+      doneWhileBlocked.length === 0,
+      ev(doneWhileBlocked.map((t) => `${t.stage}←${taskById.get(t.blockedById!)?.stage}`), 4),
+    );
+
     // كرت ما بيحجز حالو ولا بيحجز كرت من قطعة تانية بمرحلة أبكر
     // بس على خط الإنتاج: كرت «استلام اللوغو» اليدوي مسجّل PUBLISH كبند متابعة،
     // فترتيب المراحل ما إلو معنى عليه — المهم إنّ الحاجز موجود ومنطقي.
@@ -713,6 +726,53 @@ async function main() {
   }
 
   // ══════════════════════════════════════════════════════════
+  if (want("13")) {
+    sec("13. الإنجاز المسجّل — ما بيضيع بإعادة التوليد");
+
+    // إعادة التوليد لازم تكون **حافظة**: ولا كرت منجز بيرجع مفتوح، وولا كرت
+    // مفتوح بينسكّر. مقارنة مع آخر لقطة محفوظة، بمفتاح فيه **الدورة** كمان —
+    // «بوست ١» بتموز غير «بوست ١» بتشرين٢، والخلط بينهن هو نفس الباغ يلي ضيّع
+    // 13 كرت وصل لما انزاح تاريخ العقد.
+    const fs3 = await import("node:fs");
+    let snapTasks: Record<string, unknown>[] = [];
+    try {
+      snapTasks = JSON.parse(fs3.readFileSync("backups/local-db-snapshot.json", "utf8")).tasks ?? [];
+    } catch {
+      /* ما في لقطة — الفحص بينتخطّى */
+    }
+    if (!snapTasks.length) {
+      console.log("  ⏭️ ما في لقطة للمقارنة");
+    } else {
+      const wasDone = (t: Record<string, unknown>) =>
+        ["READY", "PUBLISHED", "DONE"].includes(String(t.status)) || t.board === "DONE";
+      const pk = (t: Record<string, unknown>) =>
+        `${t.companyId}|${t.type}|${t.pieceNo}|${t.stage}|${t.year}-${t.month}`;
+      const snapMap = new Map(snapTasks.filter((t) => t.pieceNo != null).map((t) => [pk(t), t]));
+      const nowKeyed = live.filter((t) => t.pieceNo != null);
+
+      const lost = nowKeyed.filter((t) => {
+        const o = snapMap.get(pk(t as never));
+        return o && wasDone(o) && !isTaskDoneState(t);
+      });
+      ok("ولا إنجاز مسجّل رجع مفتوح", lost.length === 0,
+        ev(lost.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));
+
+      const overClosed = nowKeyed.filter((t) => {
+        const o = snapMap.get(pk(t as never));
+        return o && !wasDone(o) && isTaskDoneState(t);
+      });
+      ok("ولا كرت انسكّر بلا سبب مسجّل", overClosed.length === 0,
+        ev(overClosed.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));
+
+      // القطع الجديدة (المونتاج) ما إلها مقابل باللقطة — بتتعدّ ولا بتنحسب خطأ.
+      const fresh = nowKeyed.filter((t) => !snapMap.has(pk(t as never)));
+      const freshStages = new Set(fresh.map((t) => t.stage));
+      ok("الكروت الجديدة كلها من مراحل مضافة عن قصد", [...freshStages].every((s) => s === "EDIT"),
+        `مراحل: ${[...freshStages].join("، ")}`);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
   if (want("12")) {
     sec("12. البوت — هل الإنجاز فعلاً بينمسك أول بأول");
 
@@ -757,6 +817,32 @@ async function main() {
     const missed = files.filter((m) => linkedIds.has(m.chatId) && !m.taskId);
     ok("ولا ملف وصل لتوبيك مربوط وضل بلا كرت", missed.length === 0,
       ev(missed.map((m) => `${m.fileName ?? m.kind}`), 4));
+
+    // ---- الاتصال الحي بتلغرام (بيحتاج التوكن؛ بينتخطّى بلاه بدل ما يفشل) ----
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (!token) {
+      console.log("  ⏭️ فحص الاتصال الحي متخطّى — شغّل: npx tsx --env-file=.env.local scripts/telegram-health.ts");
+    } else {
+      const call = async (m: string) =>
+        (await (await fetch(`https://api.telegram.org/bot${token}/${m}`)).json()) as {
+          ok: boolean;
+          result?: Record<string, unknown>;
+        };
+      const me = await call("getMe");
+      ok("البوت حي وبيرد", me.ok === true, me.ok ? `@${me.result?.username}` : "ما رد");
+      const wh = await call("getWebhookInfo");
+      const url = String(wh.result?.url ?? "");
+      ok("الويبهوك مسجّل", !!url, url || "ما في — ولا رسالة بتوصل النظام");
+      ok(
+        "ولا تحديث معلّق ولا خطأ تسليم",
+        (Number(wh.result?.pending_update_count ?? 0) === 0) && !wh.result?.last_error_message,
+        `معلّق ${wh.result?.pending_update_count ?? 0}${wh.result?.last_error_message ? ` · آخر خطأ: ${wh.result.last_error_message}` : ""}`,
+      );
+      // البوت بيقرأ الرسائل الجديدة والمعدّلة — بلا `message` ما بيوصلو ولا تسليم.
+      const allowed = (wh.result?.allowed_updates as string[] | undefined) ?? [];
+      ok("أنواع التحديثات بتشمل الرسائل", allowed.length === 0 || allowed.includes("message"),
+        allowed.join("، ") || "الكل");
+    }
   }
 
   // ══════════════════════════════════════════════════════════
