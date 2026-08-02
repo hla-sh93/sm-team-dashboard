@@ -665,6 +665,14 @@ async function main() {
     const exempt = companies.filter((c) => c.lateExemptReason?.trim());
     ok("الشركات المعفاة معرّفة بسبب مكتوب", exempt.every((c) => (c.lateExemptReason ?? "").length > 3),
       exempt.map((c) => c.name).join("، "));
+    // شارة الدورة بتقرأ الإعفاء كـ«لسا ما بلّش النشر» لأنّو ما في حقل مخصّص.
+    // أول ما يصير في شركة تانية معفاة لسبب مختلف، لازم ينضاف الحقل بدل التخمين.
+    const activeExempt = exempt.filter((c) => c.status === "active");
+    ok(
+      "شركة معفاة وحدة بس (وإلا لازم حقل مستقل لـ«النشر ما بلّش»)",
+      activeExempt.length <= 1,
+      activeExempt.map((c) => `${c.name}: ${c.lateExemptReason?.slice(0, 30)}`).join(" · "),
+    );
 
     // كرت متأخر لازم يكون تاريخه بالماضي فعلاً
     const fakeLate = live.filter((t) => {

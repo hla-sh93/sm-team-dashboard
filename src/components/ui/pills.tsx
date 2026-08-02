@@ -40,16 +40,20 @@ export function PriorityPill({ priority }: { priority: string }) {
  *  - on schedule — the planned TAIL of a prior-anchor contract cycle (e.g.
  *    برو's 7→6 cycle publishing on Jul 5) → neutral «دورة …», no delay implied. */
 export function CyclePill({ cycleLabel, late = false }: { cycleLabel: string; late?: boolean }) {
-  if (late) {
-    return (
-      <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-warning/10 text-warning font-semibold whitespace-nowrap">
-        متبقّي من دورة {cycleLabel}
-      </span>
-    );
-  }
+  // «دورة 21/7 → 20/8» صح، بس «دورة لسا ما بلّش النشر» مو جملة. الشارة بتسبق
+  // بـ«دورة» بس لما يكون النص مدى تواريخ؛ غير هيك بتعرضه متل ما هو.
+  const isSpan = /^\d/.test(cycleLabel);
+  const text = isSpan ? `${late ? "متبقّي من دورة " : "دورة "}${cycleLabel}` : cycleLabel;
   return (
-    <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-info/10 text-info font-medium whitespace-nowrap">
-      دورة {cycleLabel}
+    <span
+      className={
+        "text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 whitespace-nowrap " +
+        (late
+          ? "bg-warning/10 text-warning font-semibold"
+          : "bg-info/10 text-info font-medium")
+      }
+    >
+      {text}
     </span>
   );
 }

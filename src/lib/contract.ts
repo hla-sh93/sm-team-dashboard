@@ -226,11 +226,24 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
  * the plain name.
  */
 export function cycleSpanLabel(
-  co: ContractCompany & { contractStartDate?: Date | string | null },
+  co: ContractCompany & {
+    contractStartDate?: Date | string | null;
+    lateExemptReason?: string | null;
+  },
   year: number,
   month: number,
   _monthNames?: readonly string[],
 ): string {
+  // شركة لسا ما بلّش النشر عندها (جدارات) ما إلها دورة شغّالة تنعرض. تاريخ البدء
+  // مسجّل لأنّ الإنتاج صار فعلاً، بس «دورة 4/7 → 3/8» بتوحي إنّ عدّاد العقد ماشي
+  // وهو ما بلّش. القائدة: «جدارات لسا ما بلشنا نشر» — والدورات الجاية بتتحسب من
+  // تاريخ بدء النشر لما توصل الإشارة.
+  //
+  // ⚠️ الشرط مربوط بـ`lateExemptReason` لأنّو ما في حقل مخصّص لـ«النشر ما بلّش».
+  // اليوم جدارات هي الوحيدة الحاملة له وبنفس السبب بالضبط. لو انحطّ إعفاء لسبب
+  // تاني (العميل ما بعت المواد مثلاً) رح تطلع هالعبارة غلط — لهيك في فحص
+  // بـ`full-system-audit` بينبّه أول ما يصير في أكتر من شركة معفاة.
+  if (co.lateExemptReason?.trim()) return "لسا ما بلّش النشر";
   const d = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
   // Always a span, never a bare month name — even for a company that genuinely
   // runs the calendar month. «دورة تموز» reads the same whether it means 1→31 or

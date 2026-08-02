@@ -263,13 +263,23 @@ describe("contract cycles", () => {
 });
 
 describe("scheduling rules hold on the stored data", () => {
-  it("no auto-generated work predates its company's contract start", () => {
+  /**
+   * The floor applies to what is still SCHEDULED, not to what already happened.
+   *
+   * وصل's start moved 13/7 → 21/7 (the lead: «وصل 21/7 بلشنا»), and two design
+   * cards stayed on 16/7 — finished, pinned, and publishing on 28 and 30/7.
+   * That is not a scheduling error: production legitimately runs ahead of the
+   * publishing window, and a finished card is recorded history that regeneration
+   * must never rewrite. Only PUBLISHING is truly gated by the contract start.
+   */
+  it("no auto-generated work is still scheduled before its company's contract start", () => {
     if (skipIfEmpty()) return;
     const byId = new Map(companies.map((c) => [c.id, c]));
     const bad: string[] = [];
     for (const t of autoContent()) {
       const co = byId.get(t.companyId!);
       if (!co?.contractStartDate) continue;
+      if (isTaskDoneState(t) || t.isPinned) continue; // history, not a plan
       const floor = new Date(co.contractStartDate);
       const floorMid = new Date(floor.getFullYear(), floor.getMonth(), floor.getDate()).getTime();
       for (const k of ["publishDate", "workDate", "readyDate"] as const) {
@@ -278,6 +288,21 @@ describe("scheduling rules hold on the stored data", () => {
           bad.push(`${nameOf(t.companyId)} ${t.stage ?? t.kind} ${k}=${toISODate(d)} < العقد ${toISODate(floor)}`);
         }
       }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("nothing is PUBLISHED before its company's contract start", () => {
+    if (skipIfEmpty()) return;
+    const byId = new Map(companies.map((c) => [c.id, c]));
+    const bad: string[] = [];
+    for (const t of autoContent()) {
+      const co = byId.get(t.companyId!);
+      if (!co?.contractStartDate || t.stage !== "PUBLISH" || !t.publishDate) continue;
+      const floor = new Date(co.contractStartDate);
+      const floorMid = new Date(floor.getFullYear(), floor.getMonth(), floor.getDate()).getTime();
+      if (t.publishDate.getTime() < floorMid)
+        bad.push(`${nameOf(t.companyId)} نشر ${toISODate(t.publishDate)} < العقد ${toISODate(floor)}`);
     }
     expect(bad).toEqual([]);
   });

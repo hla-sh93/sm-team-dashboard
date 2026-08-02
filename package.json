@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate --schema=prisma/schema.postgres.prisma && prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss --skip-generate && IMPORT_LOCAL_SNAPSHOT=1 tsx scripts/seed-or-import.ts && tsx scripts/fix-offday-workdates.ts && tsx scripts/new-contract-prep-week.ts --all --repair-only --apply && next build",
+    "build": "prisma generate --schema=prisma/schema.postgres.prisma && prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss --skip-generate && IMPORT_LOCAL_SNAPSHOT=1 tsx scripts/seed-or-import.ts && tsx scripts/fix-offday-workdates.ts && tsx scripts/fix-contract-start-dates.ts --apply && tsx scripts/new-contract-prep-week.ts --all --repair-only --apply && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
