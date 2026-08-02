@@ -713,6 +713,53 @@ async function main() {
   }
 
   // ══════════════════════════════════════════════════════════
+  if (want("12")) {
+    sec("12. البوت — هل الإنجاز فعلاً بينمسك أول بأول");
+
+    const fs2 = await import("node:fs");
+    const ingestSrc = fs2.readFileSync("src/lib/telegram/ingest.ts", "utf8");
+
+    // قائمة مراحل الإنتاج بالبوت لازم تطابق مراحل الإنتاج بخط الأنابيب. زيادة
+    // مرحلة (المونتاج 2/8) بلا تحديثها بتخلي تسليماتها ما بتسكّر ولا كرت — بصمت.
+    const declared = ingestSrc.match(/PRODUCTION_STAGES\s*=\s*\[([^\]]*)\]/)?.[1] ?? "";
+    const inBot = new Set([...declared.matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]));
+    const production = STAGES.filter((s) => s !== "WRITE" && s !== "PUBLISH");
+    const missingInBot = production.filter((s) => !inBot.has(s));
+    ok(
+      "مراحل الإنتاج بالبوت مطابقة لخط الأنابيب",
+      missingInBot.length === 0,
+      `ناقص بالبوت: ${missingInBot.join("، ")}`,
+    );
+
+    // كل توبيك شركة لازم يكون مربوط، وإلا تسليماته بتنخزّن وما بتسكّر شي.
+    // توبيكات الفريق الداخلية (`isTeam`) مو شركات — بتنستثنى عن قصد.
+    const linkable = tgChats.filter(
+      (c) => c.threadId != null && !(c as { isTeam?: boolean }).isTeam,
+    );
+    const unlinked = linkable.filter((c) => !c.companyId);
+    ok(
+      `توبيكات الشركات مربوطة (${linkable.length - unlinked.length}/${linkable.length})`,
+      unlinked.length === 0,
+      ev(unlinked.map((c) => c.title ?? c.id), 5),
+    );
+
+    // نسبة المطابقة للملفات (النصوص محادثة، ما بتسكّر شي — وهاد صح).
+    const files = tgMessages.filter((m) => m.kind !== "TEXT");
+    const matchedFiles = files.filter((m) => m.taskId);
+    ok(
+      `الملفات الواصلة بتنطابق (${matchedFiles.length}/${files.length})`,
+      files.length === 0 || matchedFiles.length / files.length >= 0.5,
+      `${files.length - matchedFiles.length} ملف ما انطابق`,
+    );
+
+    // ملف واصل لتوبيك مربوط ومع هيك ما انطابق = خلل مطابقة حقيقي.
+    const linkedIds = new Set(linkable.filter((c) => c.companyId).map((c) => c.id));
+    const missed = files.filter((m) => linkedIds.has(m.chatId) && !m.taskId);
+    ok("ولا ملف وصل لتوبيك مربوط وضل بلا كرت", missed.length === 0,
+      ev(missed.map((m) => `${m.fileName ?? m.kind}`), 4));
+  }
+
+  // ══════════════════════════════════════════════════════════
   if (want("10")) {
     sec("10. النماذج — كل صف موجود بينقبل بشاشة التعديل");
 

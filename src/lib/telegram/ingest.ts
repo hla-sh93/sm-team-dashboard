@@ -27,8 +27,17 @@ export type IngestOutcome = {
   advanced: boolean;
 };
 
-/** Production cards a delivery can close: the design/shoot half of a piece. */
-const PRODUCTION_STAGES = ["DESIGN", "SHOOT"];
+/**
+ * Production cards a delivery can close.
+ *
+ * EDIT belongs here: what أليسار sends to the group IS the finished reel, so a
+ * montage delivery has to be able to close its own card. The stage was added to
+ * the pipeline on 2/8 without updating this list, which silently made every
+ * montage delivery unmatchable — the bot would store the file and close nothing.
+ * `full-system-audit` now pins this list to the pipeline's own stages so the two
+ * cannot drift again.
+ */
+const PRODUCTION_STAGES = ["DESIGN", "SHOOT", "EDIT"];
 
 /** One id for both shapes: a plain chat, or a topic inside a forum supergroup. */
 export function conversationKey(chatId: string, threadId: number | null | undefined): string {
@@ -293,6 +302,25 @@ async function closeProductionCard(
       ...(credited ? { assigneeId: credited, isPinned: true } : {}),
     },
   });
+  // A finished montage proves the shoot happened — closing the cut while its
+  // تصوير card stays open would leave ماجد "late" for footage the team already
+  // has. Only the upstream blocker, and only if it is still open; the credit
+  // stays with whoever the shoot was assigned to.
+  if (t.stage === "EDIT" && t.blockedById) {
+    const shoot = await prisma.task.findUnique({ where: { id: t.blockedById } });
+    if (shoot && !isTaskDoneState(shoot)) {
+      await prisma.task.update({
+        where: { id: shoot.id },
+        data: {
+          status: "READY",
+          board: "DONE",
+          startedAt: shoot.startedAt ?? at,
+          finishedAt: shoot.finishedAt ?? at,
+          completedAt: shoot.completedAt ?? at,
+        },
+      });
+    }
+  }
   return true;
 }
 

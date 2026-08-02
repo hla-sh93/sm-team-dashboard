@@ -1,3 +1,5 @@
+import { STAGES } from "@/lib/constants";
+import { readFileSync } from "node:fs";
 /**
  * Telegram follow-up (§14) — naming, delivery matching and the morning brief.
  * All three modules are pure, so this suite needs no DB.
@@ -608,5 +610,25 @@ describe("no sheet may be lost to Telegram's 4096 limit", () => {
     const parts = splitForTelegram("ا".repeat(1000), 300);
     expect(parts.length).toBe(4);
     for (const p of parts) expect([...p].length).toBeLessThanOrEqual(300 + 12);
+  });
+});
+
+/**
+ * المونتاج انضاف كمرحلة 2/8، و`PRODUCTION_STAGES` بالبوت ضلّت [DESIGN, SHOOT] —
+ * يعني كل ريل بتبعتو أليسار كان بينخزّن وما بيسكّر ولا كرت، بصمت.
+ */
+describe("مراحل الإنتاج بالبوت مربوطة بخط الأنابيب", () => {
+  const src = readFileSync("src/lib/telegram/ingest.ts", "utf8");
+  const declared = src.match(/PRODUCTION_STAGES\s*=\s*\[([^\]]*)\]/)?.[1] ?? "";
+  const inBot = [...declared.matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]);
+
+  it("بتشمل كل مرحلة إنتاج بخط الأنابيب", () => {
+    const production = STAGES.filter((s) => s !== "WRITE" && s !== "PUBLISH");
+    expect([...production].sort()).toEqual([...inBot].sort());
+  });
+
+  it("ما بتشمل الكتابة ولا النشر", () => {
+    expect(inBot).not.toContain("WRITE");
+    expect(inBot).not.toContain("PUBLISH");
   });
 });
