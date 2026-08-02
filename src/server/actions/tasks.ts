@@ -396,6 +396,72 @@ export async function moveCard(id: string, board: string) {
   }
 }
 
+/**
+ * «تم» على مرحلة وحدة من القطعة — الزرّ يلي بيضغطه صاحب المرحلة على الكرت.
+ *
+ * القائدة (2/8/2026): «بيبقى الأشخاص المسؤولين عنها هنن يلي يعملو done لكل
+ * مرحلة». `moveCard` بيلزمها عمود بورد؛ هون الفعل واحد وواضح: خلّصت أو رجعت.
+ */
+export async function setStageDone(id: string, done: boolean) {
+  try {
+    const t = await prisma.task.findUnique({ where: { id } });
+    if (!t) return { ok: false as const, error: "المهمة غير موجودة" };
+    const now = new Date();
+    const isPublish = t.stage === "PUBLISH";
+    await prisma.task.update({
+      where: { id },
+      data: done
+        ? {
+            board: "DONE",
+            status: isPublish ? "PUBLISHED" : "READY",
+            startedAt: t.startedAt ?? now,
+            finishedAt: t.finishedAt ?? now,
+            completedAt: t.completedAt ?? now,
+          }
+        : {
+            board: "TODO",
+            status: "NOT_STARTED",
+            finishedAt: null,
+            completedAt: null,
+          },
+    });
+    if (done) await completeProductionForPublishedTask(t);
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تحديث المرحلة" };
+  }
+}
+
+/**
+ * مراجعة القائدة للقطعة — إلزامية بالعرض و**مو حاجزة للنشر** (قرارها 2/8/2026:
+ * «الزامية أي… بس ما تحطها شرط حصري. عمر بيقدر ينشر بلاها أكيد»).
+ *
+ * بتتخزّن على صف النشر لما يكون موجود (هو الصف الأخير للقطعة)، وإلا على الصف
+ * الممرَّر — بلا ما ننشئ 386 صف مراجعة لشخص واحد بلا سقف طاقة.
+ */
+export async function setPieceReviewed(id: string, reviewed: boolean, reviewerId?: string | null) {
+  try {
+    const t = await prisma.task.findUnique({ where: { id } });
+    if (!t) return { ok: false as const, error: "المهمة غير موجودة" };
+    const target = t.pipelineKey
+      ? ((await prisma.task.findFirst({
+          where: { pipelineKey: t.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
+        })) ?? t)
+      : t;
+    await prisma.task.update({
+      where: { id: target.id },
+      data: reviewed
+        ? { reviewedAt: target.reviewedAt ?? new Date(), reviewedById: reviewerId ?? null }
+        : { reviewedAt: null, reviewedById: null },
+    });
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل تحديث المراجعة" };
+  }
+}
+
 /** Reassign a task to a different person (e.g. hand off when someone is busy).
  *  Pins the task so the auto-engine won't move it back. */
 export async function reassignTask(id: string, assigneeId: string) {

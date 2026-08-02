@@ -207,6 +207,13 @@ model Task {
   brief       String?
   completedAt DateTime?
   startedAt   DateTime?                            // when work began (→ IN_PROGRESS)
+  // مراجعة قائدة الفريق — مرحلة إلزامية بالعرض، **بس مو حاجزة**: القائدة بتراجع
+  // كل شي عالمجموعة وبتبعت ملاحظاتها، وعمر بيقدر ينشر بلا ما يستناها (قرارها
+  // 2/8/2026: «الزامية أي… بس ما تحطها شرط حصري»).
+  // محطوطة كحقلين على صف القطعة بدل مرحلة مستقلة — مرحلة بتعني 386 صف جديد
+  // لشخص واحد بلا سقف طاقة، وهاد بالضبط تكاثر الكروت يلي عم نتخلص منه.
+  reviewedAt   DateTime?
+  reviewedById String?
   finishedAt  DateTime?                            // when work finished (→ READY/PUBLISHED)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

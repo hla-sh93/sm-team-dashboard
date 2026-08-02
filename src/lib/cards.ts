@@ -94,3 +94,75 @@ export type GroupedCard = { key: string; ids: string[]; repr: Task; count: numbe
 export function groupTasksIntoCards(tasks: Task[]): GroupedCard[] {
   return tasks.map((t) => ({ key: t.id, ids: [t.id], repr: t, count: t.quantity ?? 1 }));
 }
+
+/** ترتيب خط الإنتاج — يلي بيقرّر «مين الدور عليه» ومين خلص. */
+const STAGE_ORDER = ["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"];
+const stageRank = (s: string | null) => {
+  const i = STAGE_ORDER.indexOf(s ?? "");
+  return i < 0 ? STAGE_ORDER.length : i;
+};
+
+/**
+ * القطعة كوحدة عرض واحدة.
+ *
+ * القائدة (2/8/2026): «نفس المحتوى بس مرة كتابة مرة تصميم أو تصوير ومرة نشر —
+ * المهمة الواحدة ممكن تاخد كاردين أو تلاتة». القياس أكّد: 386 قطعة موزّعة على
+ * 886 كرت، و94٪ منها بمسؤول مختلف لكل مرحلة و97٪ بتواريخ مختلفة — يعني الصفوف
+ * صحيحة، بس عرضها ككروت مستقلة هو الغلط.
+ *
+ * `stages` مرتّبة بترتيب خط الإنتاج. `active` هي المرحلة يلي الدور عليها فعلاً:
+ * أول مرحلة مو منجزة. القطعة كلها منجزة لما تخلص آخر مرحلة إلها.
+ */
+export type PieceStage = { task: Task; done: boolean; blocked: boolean };
+export type PieceCard = {
+  key: string;
+  ids: string[];
+  /** الصف الممثِّل — المرحلة النشطة، أو الأخيرة إذا خلصت القطعة. */
+  repr: Task;
+  stages: PieceStage[];
+  /** مراحل الإنتاج فقط (بلا نشر) — هي يلي بتاكل من أيام الفريق. */
+  production: PieceStage[];
+  /** كرت النشر إذا للقطعة نشر — نقطة تفتيش مو مهمة مجدولة. */
+  publish: PieceStage | null;
+  active: PieceStage | null;
+  done: boolean;
+  count: number;
+};
+
+export function groupTasksIntoPieces(
+  tasks: Task[],
+  isDone: (t: Task) => boolean,
+  allTasks: Task[] = tasks,
+): PieceCard[] {
+  const byId = new Map(allTasks.map((t) => [t.id, t]));
+  const groups = new Map<string, Task[]>();
+  for (const t of tasks) {
+    // مهمة بلا قطعة (إضافية/مطبوعات/بروفايل) بتضل كرت لحالها.
+    const k = t.pipelineKey ?? `solo:${t.id}`;
+    groups.set(k, [...(groups.get(k) ?? []), t]);
+  }
+  const out: PieceCard[] = [];
+  for (const [key, rows] of groups) {
+    const sorted = [...rows].sort(
+      (a, b) => stageRank(a.stage) - stageRank(b.stage) || a.id.localeCompare(b.id),
+    );
+    const stages: PieceStage[] = sorted.map((task) => {
+      const blocker = task.blockedById ? byId.get(task.blockedById) : null;
+      return { task, done: isDone(task), blocked: !!blocker && !isDone(blocker) };
+    });
+    const active = stages.find((s) => !s.done) ?? null;
+    const publish = stages.find((s) => s.task.stage === "PUBLISH") ?? null;
+    out.push({
+      key,
+      ids: sorted.map((t) => t.id),
+      repr: (active ?? stages[stages.length - 1]).task,
+      stages,
+      production: stages.filter((s) => s.task.stage !== "PUBLISH"),
+      publish,
+      active,
+      done: stages.every((s) => s.done),
+      count: sorted.reduce((a, t) => a + (t.quantity ?? 1), 0),
+    });
+  }
+  return out;
+}

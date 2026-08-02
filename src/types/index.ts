@@ -104,6 +104,9 @@ export type Task = {
   completedAt: Date | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  /** مراجعة القائدة — إلزامية بالعرض ومو حاجزة للنشر (قرار 2/8/2026). */
+  reviewedAt: Date | null;
+  reviewedById: string | null;
   createdAt: Date;
   updatedAt: Date;
   companyId: string | null;
