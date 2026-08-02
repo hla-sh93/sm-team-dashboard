@@ -101,6 +101,20 @@ export default function KanbanBoard({
   const empName = (id: string | null) => emp(id)?.name ?? "—";
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+  /**
+   * نصّ الخطة تبع **القطعة**: بينتخزّن على كرت التصميم بس، بس التصوير والمونتاج
+   * والنشر بدهم ياه كمان. منجيبه من أي مرحلة تانية بنفس `pipelineKey`.
+   */
+  const briefByPiece = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of allTasks) {
+      if (!t.pipelineKey || !t.brief?.trim() || m.has(t.pipelineKey)) continue;
+      m.set(t.pipelineKey, t.brief);
+    }
+    return m;
+  }, [allTasks]);
+  const pieceBrief = (t: Task): string | null =>
+    t.brief?.trim() || (t.pipelineKey ? (briefByPiece.get(t.pipelineKey) ?? null) : null);
   /** «13/7 → 12/8» — دورة الشركة الحقيقية، مو اسم الشهر التقويمي. */
   const cycleLabelFor = (companyId: string | null, y: number, m: number) => {
     // كرت بلا شركة (مهمة إضافية) دورتها الشهر التقويمي — بس بتنكتب مدى كمان،
@@ -340,13 +354,19 @@ export default function KanbanBoard({
           )}
         </div>
 
-        {/* وصف القطعة من نصّ الخطة — «حتى أعرف هي المهمة شو تفاصيلها» (القائدة
-            2/8/2026). بلاه الكرت بيقول «بوست-3» وبس، وما بتعرفي شو البوست.
-            سطران بحد أقصى، والباقي بيبان بشاشة التعديل. */}
-        {t.brief?.trim() && (
-          <p className="text-[10px] leading-snug text-fg-dim line-clamp-2" title={t.brief}>
-            {t.brief.trim().replace(/\s+/g, " ")}
+        {/* وصف القطعة من نصّ الخطة — «الوصف مهم للتصميم والنشر والتصوير
+            والمونتاج» (القائدة 2/8/2026). النصّ محطوط على كرت التصميم بس، فكرت
+            النشر كان بيقول «نشر ريل-5» وبس وعمر ما بيعرف شو الريل. الوصف تبع
+            **القطعة** مو تبع المرحلة، فبينعرض على كل مراحلها.
+            وكرت بلا وصف بيقول هيك صراحة بدل ما يضل فاضي بصمت. */}
+        {pieceBrief(t) ? (
+          <p className="text-[10px] leading-snug text-fg-dim line-clamp-2" title={pieceBrief(t)!}>
+            {pieceBrief(t)!.trim().replace(/\s+/g, " ")}
           </p>
+        ) : (
+          t.kind !== "CONTENT_WRITING" && (
+            <p className="text-[10px] leading-snug text-warning/80">⚠️ بلا وصف — نصّ الخطة ناقص</p>
+          )
         )}
 
         {c.blockedByLabel && (

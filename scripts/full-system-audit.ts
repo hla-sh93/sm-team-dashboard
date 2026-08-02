@@ -173,6 +173,29 @@ async function main() {
     const contentNoType = live.filter((t) => t.kind === "CONTENT" && !t.type);
     ok("كل كرت محتوى إلو نوع", contentNoType.length === 0, ev(contentNoType.map((t) => t.id)));
 
+    // «ممنوع كرت بلا وصف — كيف بدي أعرف شو الريل يلي تأخر؟» (القائدة 2/8/2026).
+    // الوصف تبع القطعة: كرت النشر/التصوير/المونتاج بياخده من كرت التصميم، فالنقص
+    // الحقيقي هو قطعة ما إلها نصّ خطة **بأي مرحلة**.
+    const briefOfPiece = new Map<string, string>();
+    for (const t of live) {
+      if (!t.pipelineKey || !t.brief?.trim() || briefOfPiece.has(t.pipelineKey)) continue;
+      briefOfPiece.set(t.pipelineKey, t.brief);
+    }
+    const openWork = live.filter((t) => !isTaskDoneState(t) && t.kind !== "CONTENT_WRITING");
+    const noBrief = openWork.filter(
+      (t) => !t.brief?.trim() && !(t.pipelineKey && briefOfPiece.has(t.pipelineKey)),
+    );
+    const byCoNoBrief = new Map<string, number>();
+    for (const t of noBrief) {
+      const n = t.companyId ? (coById.get(t.companyId)?.name ?? "—") : "بلا شركة";
+      byCoNoBrief.set(n, (byCoNoBrief.get(n) ?? 0) + 1);
+    }
+    ok(
+      `كل كرت مفتوح إلو وصف (${openWork.length - noBrief.length}/${openWork.length})`,
+      noBrief.length === 0,
+      [...byCoNoBrief].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${v}`).join(" · "),
+    );
+
     const adhocNoTitle = live.filter((t) => t.kind === "ADHOC" && !t.title?.trim());
     ok("كل كرت إضافي إلو عنوان", adhocNoTitle.length === 0, ev(adhocNoTitle.map((t) => t.id)));
 

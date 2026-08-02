@@ -74,6 +74,8 @@ export function briefMessagesFor(brief: DailyBrief, wave: BriefWave): BriefMessa
 const AT_RISK_DAYS = 2;
 /** How much of a piece's content brief to inline in a personal message. */
 const BRIEF_LINES = 6;
+/** The publisher gets a one-line reminder of WHICH piece, not the whole script. */
+const PUBLISH_BRIEF_CHARS = 90;
 /** Worst-N overdue rows any single sheet is allowed to print. */
 const LATE_IN_SHEET = 8;
 
@@ -154,6 +156,14 @@ export function buildDailyBrief({
   };
   const coName = (t: Task): string =>
     (t.companyId ? coById.get(t.companyId)?.name : null) ?? "—";
+  /** نصّ الخطة تبع القطعة — محطوط على كرت التصميم، وكل المراحل بدها ياه. */
+  const briefByPiece = new Map<string, string>();
+  for (const t of tasks) {
+    if (!t.pipelineKey || !t.brief?.trim() || briefByPiece.has(t.pipelineKey)) continue;
+    briefByPiece.set(t.pipelineKey, t.brief);
+  }
+  const pieceBrief = (t: Task): string | null =>
+    t.brief?.trim() || (t.pipelineKey ? (briefByPiece.get(t.pipelineKey) ?? null) : null);
   const who = (t: Task): string =>
     (t.assigneeId ? empById.get(t.assigneeId)?.name : null) ?? "غير مُسند";
 
@@ -475,13 +485,26 @@ export function buildDailyBrief({
       lines.push("", "مهامك اليوم:");
       todays.forEach((t, i) => {
         lines.push(`${i + 1}. ${pieceLabel(t)} · ${coName(t)}${dueSuffix(t, today)}`);
-        // The plan's own words, so nobody has to open a Word file to start —
-        // for whoever PRODUCES the piece. The publisher already has the design
-        // in hand; pasting the script under all 35 of his cards is what blew
-        // his sheet past Telegram's limit on the first real run.
-        if (t.brief && t.stage !== "PUBLISH") {
-          const trimmed = t.brief.trim().split("\n").slice(0, BRIEF_LINES).join("\n   ");
-          lines.push(`   ${trimmed}`);
+        // The plan's own words, so nobody has to open a Word file to start.
+        // The text lives on the DESIGN card, but «الوصف مهم للتصميم والنشر
+        // والتصوير والمونتاج» — so it is looked up per PIECE and every stage
+        // gets it. The publisher gets ONE line: he needs to know which piece he
+        // is posting, and pasting full scripts under all 35 of his cards is
+        // what blew his sheet past Telegram's limit on the first real run.
+        const bf = pieceBrief(t);
+        if (bf) {
+          const flat = bf.trim();
+          if (t.stage === "PUBLISH") {
+            const head = flat.split("\n").map((l) => l.trim()).find((l) => l.length > 2) ?? "";
+            if (head)
+              lines.push(
+                `   ${head.slice(0, PUBLISH_BRIEF_CHARS)}${head.length > PUBLISH_BRIEF_CHARS ? "…" : ""}`,
+              );
+          } else {
+            lines.push(`   ${flat.split("\n").slice(0, BRIEF_LINES).join("\n   ")}`);
+          }
+        } else {
+          lines.push("   ⚠️ بلا وصف — نصّ الخطة ناقص");
         }
       });
     } else {
