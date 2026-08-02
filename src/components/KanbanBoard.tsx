@@ -17,7 +17,7 @@ import {
   type Stage,
 } from "@/lib/constants";
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
-import { cycleForBucket } from "@/lib/contract";
+import { cycleForBucket, cycleSpanLabel } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
@@ -101,6 +101,15 @@ export default function KanbanBoard({
   const empName = (id: string | null) => emp(id)?.name ?? "—";
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+  /** «13/7 → 12/8» — دورة الشركة الحقيقية، مو اسم الشهر التقويمي. */
+  const cycleLabelFor = (companyId: string | null, y: number, m: number) => {
+    // كرت بلا شركة (مهمة إضافية) دورتها الشهر التقويمي — بس بتنكتب مدى كمان،
+    // ما بيصير سطر يقول «دورة تموز» وجنبو «دورة 13/7 → 12/8».
+    const co = (companyId ? companies.find((c) => c.id === companyId) : null) ?? {
+      contractStartDate: null,
+    };
+    return cycleSpanLabel(co, y, m);
+  };
   const writeScopeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const t of allTasks) {
@@ -331,6 +340,15 @@ export default function KanbanBoard({
           )}
         </div>
 
+        {/* وصف القطعة من نصّ الخطة — «حتى أعرف هي المهمة شو تفاصيلها» (القائدة
+            2/8/2026). بلاه الكرت بيقول «بوست-3» وبس، وما بتعرفي شو البوست.
+            سطران بحد أقصى، والباقي بيبان بشاشة التعديل. */}
+        {t.brief?.trim() && (
+          <p className="text-[10px] leading-snug text-fg-dim line-clamp-2" title={t.brief}>
+            {t.brief.trim().replace(/\s+/g, " ")}
+          </p>
+        )}
+
         {c.blockedByLabel && (
           <div className="flex items-center gap-1 text-[10px] text-warning">
             <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
@@ -347,7 +365,10 @@ export default function KanbanBoard({
         {/* dates · duration · lateness */}
         <div className="flex items-center gap-1 flex-wrap">
           {year != null && month != null && (t.year !== year || t.month !== month) && (
-            <CyclePill monthLabel={ARABIC_MONTHS[t.month]} late={isLate(t)} />
+            <CyclePill
+              cycleLabel={cycleLabelFor(t.companyId, t.year, t.month)}
+              late={isLate(t)}
+            />
           )}
           {t.kind === "CONTENT" && t.stage !== "PUBLISH" && (t.quantity ?? 1) > 1 && (
             <Pill>{t.quantity} وحدات تصميم</Pill>

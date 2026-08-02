@@ -1,5 +1,6 @@
 "use client";
 
+import { cycleSpanLabel } from "@/lib/contract";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,15 @@ export default function OverviewClient({
     employees.find((e) => e.id === id)?.color ?? undefined;
   const coName = (id: string | null) =>
     companies.find((c) => c.id === id)?.name ?? "";
+  /** «13/7 → 12/8» — دورة الشركة الحقيقية، مو اسم الشهر التقويمي. */
+  const cycleLabelFor = (companyId: string | null, y: number, m: number) => {
+    // كرت بلا شركة (مهمة إضافية) دورتها الشهر التقويمي — بس بتنكتب مدى كمان،
+    // ما بيصير سطر يقول «دورة تموز» وجنبو «دورة 13/7 → 12/8».
+    const co = (companyId ? companies.find((c) => c.id === companyId) : null) ?? {
+      contractStartDate: null,
+    };
+    return cycleSpanLabel(co, y, m);
+  };
 
   // ---- إنجاز الفريق: per-person task completion (counts ALL assigned tasks, so
   // the publisher عمر — whose work is the PUBLISH cards — shows up too). منجز =
@@ -397,7 +407,10 @@ export default function OverviewClient({
                           {cardLabelFor(card.repr, card.count, reelNum, coName)}
                         </span>
                         {(card.repr.year !== year || card.repr.month !== month) && (
-                          <CyclePill monthLabel={ARABIC_MONTHS[card.repr.month]} late={overdue} />
+                          <CyclePill
+                            cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
+                            late={overdue}
+                          />
                         )}
                         {dl && (
                           <span
@@ -563,7 +576,7 @@ export default function OverviewClient({
                       </span>
                       {(card.repr.year !== year || card.repr.month !== month) && (
                         <CyclePill
-                          monthLabel={ARABIC_MONTHS[card.repr.month]}
+                          cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
                           late={isTaskLateState(card.repr)}
                         />
                       )}

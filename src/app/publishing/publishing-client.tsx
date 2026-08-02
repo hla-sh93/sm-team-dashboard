@@ -1,5 +1,6 @@
 "use client";
 
+import { cycleSpanLabel } from "@/lib/contract";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/input";
@@ -47,6 +48,15 @@ export default function PublishingClient({
     employees.find((e) => e.id === id)?.name ?? "—";
   const coName = (id: string | null) =>
     companies.find((c) => c.id === id)?.name ?? "";
+  /** «13/7 → 12/8» — دورة الشركة الحقيقية، مو اسم الشهر التقويمي. */
+  const cycleLabelFor = (companyId: string | null, y: number, m: number) => {
+    // كرت بلا شركة (مهمة إضافية) دورتها الشهر التقويمي — بس بتنكتب مدى كمان،
+    // ما بيصير سطر يقول «دورة تموز» وجنبو «دورة 13/7 → 12/8».
+    const co = (companyId ? companies.find((c) => c.id === companyId) : null) ?? {
+      contractStartDate: null,
+    };
+    return cycleSpanLabel(co, y, m);
+  };
   const managed = companies.filter((c) => c.managed && c.status === "active");
 
   // Publishing items = the actual PUBLISH pipeline cards. Updating these cards
@@ -224,7 +234,7 @@ export default function PublishingClient({
                     {seqLabel(t)} · {coName(t.companyId)}
                   </span>
                   {(t.year !== year || t.month !== month) && (
-                    <CyclePill monthLabel={ARABIC_MONTHS[t.month]} late />
+                    <CyclePill cycleLabel={cycleLabelFor(t.companyId, t.year, t.month)} late />
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">

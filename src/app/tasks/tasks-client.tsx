@@ -144,6 +144,15 @@ export default function TasksClient({
     });
   };
 
+  // فلتر الأشخاص: الطاقم المجدول + أي حدا فعلاً ماسك شغل هون. الفريلانسر
+  // (غسان+مايك، ألبير) بينشتغل معنا عند الحاجة، فوجوده دايماً بالقائمة بيوحي
+  // إنّو ضمن الفريق — نفس قاعدة «الموقوف ما بيطلع» يلي مطبّقة عالشركات.
+  // بيرجع تلقائياً أول ما ينسند عليه كرت.
+  const filterPeople = useMemo(() => {
+    const holdsWork = new Set(tasks.map((t) => t.assigneeId).filter(Boolean) as string[]);
+    return employees.filter((e) => e.isScheduled || e.salary > 0 || holdsWork.has(e.id));
+  }, [employees, tasks]);
+
   const photographer = employees.find((e) => e.isPhotographer);
   const empName = (id: string | null) =>
     employees.find((e) => e.id === id)?.name ?? "—";
@@ -413,7 +422,7 @@ export default function TasksClient({
             onChange={(e) => setPerson(e.target.value)}
           >
             <option value="all">كل الأشخاص</option>
-            {employees.map((e) => (
+            {filterPeople.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name}
               </option>

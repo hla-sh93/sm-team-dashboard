@@ -216,6 +216,33 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
 }
 
 /**
+ * «13/7 → 12/8» — the cycle a bucket actually covers, for any badge that used to
+ * print a bare month name.
+ *
+ * The lead's rule (2/8/2026): «في خطط بتبلش بنص الشهر، فلازم تكون دورة 15 تموز –
+ * 15 آب. ما بيكفي بس اسم الشهر.» «دورة تموز» is wrong for وصل (13/7 → 12/8) and
+ * برو (18/7 → 17/8) — it names a calendar month nobody's contract follows.
+ * Companies with no contract date genuinely run the calendar month, so they keep
+ * the plain name.
+ */
+export function cycleSpanLabel(
+  co: ContractCompany & { contractStartDate?: Date | string | null },
+  year: number,
+  month: number,
+  _monthNames?: readonly string[],
+): string {
+  const d = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
+  // Always a span, never a bare month name — even for a company that genuinely
+  // runs the calendar month. «دورة تموز» reads the same whether it means 1→31 or
+  // 13→12, and that ambiguity is the whole complaint.
+  const cycle = cycleForBucket(co, year, month) ?? {
+    start: new Date(year, month, 1),
+    end: new Date(year, month + 1, 1),
+  };
+  return `${d(cycle.start)} → ${d(new Date(cycle.end.getTime() - 86_400_000))}`;
+}
+
+/**
  * Which month bucket holds the cards of the cycle running today — the inverse
  * of `cycleForBucket`, because a cycle lives in the bucket of its START month.
  *

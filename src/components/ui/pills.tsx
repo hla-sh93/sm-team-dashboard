@@ -39,17 +39,17 @@ export function PriorityPill({ priority }: { priority: string }) {
  *  - `late` — genuinely OVERDUE carryover → amber «متبقّي من دورة …».
  *  - on schedule — the planned TAIL of a prior-anchor contract cycle (e.g.
  *    برو's 7→6 cycle publishing on Jul 5) → neutral «دورة …», no delay implied. */
-export function CyclePill({ monthLabel, late = false }: { monthLabel: string; late?: boolean }) {
+export function CyclePill({ cycleLabel, late = false }: { cycleLabel: string; late?: boolean }) {
   if (late) {
     return (
       <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-warning/10 text-warning font-semibold whitespace-nowrap">
-        متبقّي من دورة {monthLabel}
+        متبقّي من دورة {cycleLabel}
       </span>
     );
   }
   return (
     <span className="text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-info/10 text-info font-medium whitespace-nowrap">
-      دورة {monthLabel}
+      دورة {cycleLabel}
     </span>
   );
 }
