@@ -803,6 +803,32 @@ async function main() {
       ev(unlinked.map((c) => c.title ?? c.id), 5),
     );
 
+    // الفحص فوق بيثق بعلَم `isTeam`. لو توبيك زبون انتعلّم غلط، تسليماته بتنبلع
+    // بصمت **والفحص بيتخطّاه**. هالفحص مبني على النشاط: أي توبيك وصلو ملف
+    // وما إلو شركة هو مشكلة، مهما كان علَمو.
+    const filesByChat = new Map<string, number>();
+    for (const m of tgMessages) {
+      if (m.kind === "TEXT") continue;
+      filesByChat.set(m.chatId, (filesByChat.get(m.chatId) ?? 0) + 1);
+    }
+    const activeUnlinked = tgChats.filter(
+      (c) => c.threadId != null && !c.companyId && (filesByChat.get(c.id) ?? 0) > 0,
+    );
+    ok(
+      "ولا توبيك وصلو ملفات وهو بلا شركة",
+      activeUnlinked.length === 0,
+      ev(activeUnlinked.map((c) => `${c.title} (${filesByChat.get(c.id)} ملف)`), 4),
+    );
+
+    // وكل شركة لازم يكون إلها توبيك، وتوبيك واحد بس.
+    const chatByCo = new Map<string, number>();
+    for (const c of tgChats) if (c.companyId) chatByCo.set(c.companyId, (chatByCo.get(c.companyId) ?? 0) + 1);
+    const noTopic = companies.filter((c) => c.status === "active" && !chatByCo.has(c.id));
+    ok("كل شركة نشطة إلها توبيك", noTopic.length === 0, ev(noTopic.map((c) => c.name), 4));
+    const twoTopics = [...chatByCo.entries()].filter(([, n]) => n > 1);
+    ok("ولا شركة مربوطة بتوبيكين", twoTopics.length === 0,
+      ev(twoTopics.map(([id, n]) => `${coById.get(id)?.name}×${n}`)));
+
     // نسبة المطابقة للملفات (النصوص محادثة، ما بتسكّر شي — وهاد صح).
     const files = tgMessages.filter((m) => m.kind !== "TEXT");
     const matchedFiles = files.filter((m) => m.taskId);
