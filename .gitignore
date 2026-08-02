@@ -36,3 +36,6 @@ tmp/
 backups/dev.db.*
 backups/local-db-snapshot.*.json
 backups/baseline-task-counts.json
+
+# سكربتات استعلام مؤقتة أثناء الجلسة — مو جزء من المشروع
+scripts/_tmp-*.ts
