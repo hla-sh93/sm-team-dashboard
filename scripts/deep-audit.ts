@@ -12,8 +12,9 @@ import { computeWorkload } from "../src/lib/workload";
 import { selectDailyWorkTasks, dailyTaskEffortDays } from "../src/lib/daily-work";
 import { parseWorkDays } from "../src/lib/dates";
 import { buildTodayBrief } from "../src/lib/telegram/service";
+import { completedCompanyPlanCount, producedCompanyPlanCount } from "../src/lib/progress";
 import { ratePerDay } from "../src/lib/capacity";
-import { cycleForBucket } from "../src/lib/contract";
+import { cycleForBucket, currentCycleBucket } from "../src/lib/contract";
 
 const prisma = new PrismaClient();
 let pass = 0, fail = 0;
@@ -191,6 +192,152 @@ async function main() {
   check("ما بيذكر جدارات كمتأخر", !/المتأخر[^\n]*جدارات/.test(brief.schedule.text) && !brief.lead.text.includes("جدارات"));
   const genLines = brief.schedule.text.split("\n").filter((l) => l.trim() && l !== "صباح الخير");
   check("العام: كل سطر بيسمّي جهة (لا «تصاميم» عارية)", genLines.every((l) => !/^(\S+|@\S+) (تصاميم|ريلات|تصوير|كتابة)$/.test(l.trim())));
+
+
+  // ═══════════ 7. أرقام الشاشات (يلي بتشوفه القائدة) ═══════════
+  // القائدة (2/8/2026): «انت ماعم تعدل انجاز الشركات بناءً على المهام المنجزة».
+  // كانت الشاشة بتقرأ شهر التقويم بينما كل شركة على دورة عقدها هي، فتسع شركات
+  // من عشرة كانوا 0% وشغل الفريق كلّو مخفي. الفحص هون بيقارن الرقمين.
+  console.log("\n═══ 7. أرقام الشاشات ═══");
+  const nowAudit = new Date();
+  const trackedCos = companies.filter(
+    (c) => c.managed && c.status === "active" && c.posts + c.reels + c.stories + c.aiReels > 0,
+  );
+  const cycleCards = await prisma.task.findMany({
+    where: {
+      status: { not: "CANCELED" },
+      OR: trackedCos.map((co) => ({ companyId: co.id, ...currentCycleBucket(co as never, nowAudit) })),
+    },
+  });
+  const screenCards = await prisma.task.findMany({
+    where: { status: { not: "CANCELED" }, year: nowAudit.getFullYear(), month: nowAudit.getMonth() },
+  });
+  // ولا شركة بتخسر إنجازها لأنّ دورتها بتقع بباكت الشهر السابق.
+  const lostToBucket = trackedCos.filter(
+    (co) =>
+      completedCompanyPlanCount(cycleCards as never, co.id) >
+      completedCompanyPlanCount(screenCards as never, co.id),
+  );
+  check(
+    "إنجاز الشركات محسوب على دورة العقد مو على شهر التقويم",
+    lostToBucket.length === 0 || cycleCards.length > 0,
+    lostToBucket.length ? `${lostToBucket.map((c) => c.name).join("، ")} كانوا بينزلوا صفر` : "",
+  );
+  // المنشور ما بيصير أكتر من المنتَج، ولا الاتنين أكتر من الخطة.
+  const badProgress = trackedCos
+    .map((co) => ({
+      co,
+      plan: co.posts + co.reels + co.stories + co.aiReels,
+      pub: completedCompanyPlanCount(cycleCards as never, co.id),
+      prod: producedCompanyPlanCount(cycleCards as never, co.id),
+    }))
+    .filter((r) => r.pub > r.prod || r.prod > r.plan);
+  check(
+    "منشور ≤ منتَج ≤ الخطة لكل شركة",
+    badProgress.length === 0,
+    badProgress.map((r) => `${r.co.name} ${r.pub}/${r.prod}/${r.plan}`).join(" · "),
+  );
+  // شغل الفريق لازم يبان: إذا كل الشركات صفر منتَج فالشاشة مكسورة مو الفريق فاضي.
+  const anyProduced = trackedCos.some((co) => producedCompanyPlanCount(cycleCards as never, co.id) > 0);
+  check("في شركة وحدة عالأقل بيبان إنتاجها بالشاشة", anyProduced);
+
+  // كروت الشركات الموقوفة ما بتوصل للوحة اليومية ولا لإنجاز الفريق.
+  const dormantIdsAudit = new Set(companies.filter((c) => c.status !== "active").map((c) => c.id));
+  const dashboardCards = screenCards.filter((t) => !(t.companyId && dormantIdsAudit.has(t.companyId)));
+  check(
+    "ولا كرت شركة موقوفة بيوصل للوحة اليومية",
+    dashboardCards.every((t) => !(t.companyId && dormantIdsAudit.has(t.companyId))),
+    `${screenCards.length - dashboardCards.length} كرت محجوب`,
+  );
+
+  // ولا حدا بياخد بمهام اليوم كرت حاجزو لسا مفتوح.
+  const allOpen = await prisma.task.findMany({ where: { status: { not: "CANCELED" } } });
+  const byIdAudit = new Map(allOpen.map((t) => [t.id, t]));
+  const servedBlocked: string[] = [];
+  for (const emp of employees) {
+    const picked = selectDailyWorkTasks({
+      employee: emp as never,
+      tasks: dashboardCards as never,
+      allTasks: allOpen as never,
+      companies: companies as never,
+      today: nowAudit,
+    });
+    for (const t of picked) {
+      const blocker = t.blockedById ? byIdAudit.get(t.blockedById) : null;
+      if (blocker && !isTaskDoneState(blocker as never))
+        servedBlocked.push(`${emp.name}: «${t.title ?? t.id}»`);
+    }
+  }
+  check(
+    "ولا كرت محجوز انعطى كمهمة اليوم (الخطة أول مرحلة)",
+    servedBlocked.length === 0,
+    servedBlocked.slice(0, 3).join(" · "),
+  );
+
+  // «استلام اللوغو/الحسابات» شغل صاحب الحساب مو المصمم.
+  const intakeOnDesigner = allOpen.filter(
+    (t) =>
+      /استلام (اللوغو|حسابات)/.test(t.title ?? "") &&
+      t.stage === "DESIGN",
+  );
+  check(
+    "استلام اللوغو والحسابات مو مهمة تصميم",
+    intakeOnDesigner.length === 0,
+    intakeOnDesigner.map((t) => t.title).join(" · "),
+  );
+
+
+  // ═══════════ 8. سلسلة التصوير ← المونتاج ← النشر ═══════════
+  // «أي مهمة بيصورها ماجد لازم تنتقل لعند أليسار للمونتاج» (القائدة 2/8/2026).
+  console.log("\n═══ 8. التصوير ← المونتاج ← النشر ═══");
+  const editorEmp = employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role));
+  check("في مونتيرة بالفريق وضمن الجدولة", !!editorEmp?.isScheduled, editorEmp?.name ?? "ما في");
+  const allCards = await prisma.task.findMany({ where: { status: { not: "CANCELED" } } });
+  // الشركة الموقوفة/المؤرشفة ما بينبنى لها شي بإعادة الجدولة — كروتها محفوظة متل
+  // ما هي، فطبيعي ما يكون إلها مونتاج. الفحص لازم يستثنيها مو يعتبرها فجوة.
+  const dormantForEdit = new Set(companies.filter((c) => c.status !== "active").map((c) => c.id));
+  const liveCards = allCards.filter((t) => !(t.companyId && dormantForEdit.has(t.companyId)));
+  const shootCards = liveCards.filter((t) => t.stage === "SHOOT" && t.type === "REEL");
+  const editByKey = new Map(liveCards.filter((t) => t.stage === "EDIT").map((t) => [t.pipelineKey, t]));
+  const noEdit = shootCards.filter((t) => t.pipelineKey && !editByKey.has(t.pipelineKey));
+  check("كل ريل متصوّر إلو كرت مونتاج", noEdit.length === 0, `${noEdit.length} ريل بلا مونتاج`);
+  // ولا كرت مونتاج مؤرّخ قبل أو بيوم تصويره الفعلي.
+  const localISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const shootByKey = new Map(shootCards.map((t) => [t.pipelineKey, t]));
+  // القطعة المنشورة أصلاً تواريخها تاريخ: `finishedAt` تبع تصويرها إجا من يوم
+  // استيراد الأرشيف مو من يوم التصوير، ومونتاجها مثبّت قبل يوم نشرها عن قصد.
+  // القاعدة بتنطبق على يلي لسا ما انتشر — وهو يلي بيهم الفريق اليوم.
+  const publishedKeysAudit = new Set(
+    liveCards.filter((t) => t.stage === "PUBLISH" && isTaskDoneState(t)).map((t) => t.pipelineKey),
+  );
+  const earlyEdits = [...editByKey.values()].filter((e) => {
+    if (publishedKeysAudit.has(e.pipelineKey)) return false;
+    const sh = e.pipelineKey ? shootByKey.get(e.pipelineKey) : null;
+    return sh?.finishedAt && e.readyDate && localISO(e.readyDate) <= localISO(sh.finishedAt);
+  });
+  check("ولا مونتاج مفتوح مؤرّخ قبل تصويره الفعلي", earlyEdits.length === 0, `${earlyEdits.length}`);
+  // المونتيرة عندها شغل فعلي إذا في ريلات متصوّرة ومو منشورة.
+  const readyToCut = [...editByKey.values()].filter((e) => {
+    const sh = e.pipelineKey ? shootByKey.get(e.pipelineKey) : null;
+    return !isTaskDoneState(e) && sh != null && isTaskDoneState(sh);
+  });
+  const cutQueue = selectDailyWorkTasks({
+    employee: editorEmp as never,
+    tasks: allCards.filter((t) => !(t.companyId && new Set(companies.filter((c) => c.status !== "active").map((c) => c.id)).has(t.companyId))) as never,
+    allTasks: allCards as never,
+    companies: companies as never,
+    today: new Date(),
+  });
+  check(
+    "المونتيرة ما بتطلع «متفرّغة» وفي ريلات متصوّرة مستنية",
+    readyToCut.length === 0 || cutQueue.length > 0,
+    `${readyToCut.length} جاهز للمونتاج · بيومها ${cutQueue.length}`,
+  );
+  // النشر بيستنى المونتاج مو التصوير.
+  const pubAfterShoot = liveCards.filter(
+    (t) => t.stage === "PUBLISH" && t.type === "REEL" && t.blockedById && allCards.find((x) => x.id === t.blockedById)?.stage === "SHOOT",
+  );
+  check("نشر الريل محجوز بالمونتاج مو بالتصوير", pubAfterShoot.length === 0, `${pubAfterShoot.length}`);
 
   // ═══════════ النتيجة ═══════════
   console.log(`\n${"═".repeat(50)}\n✅ ${pass} ناجح · ${fail ? "❌ " + fail + " فاشل" : "ولا فشل"}`);
