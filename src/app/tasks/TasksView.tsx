@@ -34,6 +34,19 @@ export default async function TasksView({
   });
   const tasks = [...bucketTasks, ...extras];
 
+  // المراحل المنجزة للقطع المرحَّلة: الترحيل بيجيب المفتوح بس، فقطعة جاية من
+  // دورة سابقة كانت بتوصل بلا «✅ تصوير ماجد» وشريط المراحل بيطلع ناقص. هدول
+  // بينضافوا لـ`allTasks` (مرجع للبحث) مو لـ`tasks` (يلي بينعرض) — فالمنجز
+  // بيضل مخفي عن التقويم واللوحة متل ما هو، وبيبان بس كسياق داخل كرت القطعة.
+  const carriedKeys = [...new Set(extras.map((t) => t.pipelineKey).filter(Boolean))] as string[];
+  const stageContext = carriedKeys.length
+    ? (
+        await prisma.task.findMany({
+          where: { pipelineKey: { in: carriedKeys }, status: { not: "CANCELED" } },
+        })
+      ).filter((t) => !seen.has(t.id))
+    : [];
+
   return (
     <TasksClient
       year={year}
@@ -41,6 +54,7 @@ export default async function TasksView({
       employees={employees}
       companies={companies}
       tasks={tasks}
+      allTasks={[...tasks, ...stageContext]}
       sessions={sessions}
       initialPerson={searchParams.person ?? "all"}
       initialCompany={searchParams.company ?? "all"}

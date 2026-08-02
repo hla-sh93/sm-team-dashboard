@@ -19,9 +19,15 @@ import {
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
 import { cycleForBucket, cycleSpanLabel } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
-import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
+import {
+  buildReelNumbers,
+  cardLabelFor,
+  groupTasksIntoPieces,
+  type PieceCard,
+  type PieceStage,
+} from "@/lib/cards";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
-import { moveCard } from "@/server/actions/tasks";
+import { moveCard, setStageDone, setPieceReviewed } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company } from "@/types";
 import {
@@ -44,7 +50,8 @@ const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 
 type KCard = {
   key: string;
   ids: string[];
-  repr: Task; // representative task (carries dates, blockedBy, stage…)
+  repr: Task; // المرحلة النشطة — هي يلي بتحمل التواريخ والحجز والعمود
+  piece: PieceCard;
   board: Board;
   count: number;
   label: string;
@@ -138,7 +145,6 @@ export default function KanbanBoard({
   // Reel numbering + labels are shared with the rest of the app (lib/cards) so
   // every view shows identical labels.
   const reelNum = useMemo(() => buildReelNumbers(allTasks), [allTasks]);
-  const isGroupable = isGroupableCard;
   const cardLabel = (t: Task, count: number) => cardLabelFor(t, count, reelNum, coName);
   const durationLabel = (t: Task, quantity = t.quantity ?? 1) => {
     const days = cardDurationDays(emp(t.assigneeId), { ...t, quantity });
@@ -149,61 +155,53 @@ export default function KanbanBoard({
     return daysLabel(days);
   };
 
-  // Build cards: batch posts/stories, keep reels/others individual.
+  /**
+   * كرت واحد لكل **قطعة**، ومراحلها جوّاته.
+   *
+   * القائدة (2/8/2026): «نفس المحتوى بس مرة كتابة مرة تصميم أو تصوير ومرة نشر».
+   * القياس وقتها: 386 قطعة على 886 كرت. الصفوف صحيحة (94٪ منها بمسؤول مختلف لكل
+   * مرحلة) — العرض هو يلي كان بيعاملها كتلات كروت غرباء.
+   *
+   * عمود الكرت = عمود **المرحلة النشطة**، لأنها هي الشغل الفعلي هلق.
+   */
   const cards = useMemo<KCard[]>(() => {
-    const groups = new Map<string, Task[]>();
-    const singles: Task[] = [];
-    for (const t of tasks) {
-      if (isGroupable(t)) {
-        const k = `${t.assigneeId}|${t.companyId}|${t.type}|${t.stage}`;
-        const arr = groups.get(k) ?? [];
-        arr.push(t);
-        groups.set(k, arr);
-      } else {
-        singles.push(t);
-      }
-    }
-    const out: KCard[] = [];
-    const blockedLabel = (repr: Task): string | null => {
-      if (!repr.blockedById) return null;
-      const pre = byId.get(repr.blockedById);
-      return pre && pre.board !== "DONE" ? cardLabel(pre, 1) : null;
-    };
-    for (const [key, arr] of groups) {
-      const repr = arr[0];
-      const count = arr.reduce((a, t) => a + (t.quantity ?? 1), 0);
-      const board = arr
-        .map((t) => (t.board as Board) ?? "TODO")
-        .reduce((min, b) => (BOARD_RANK[b] < BOARD_RANK[min] ? b : min), "DONE" as Board);
-      out.push({
-        key,
-        ids: arr.map((t) => t.id),
+    const isDone = (t: Task) => t.board === "DONE";
+    // شريط المراحل لازم يعرض **كل** مراحل القطعة — بما فيها المنجزة — وإلا
+    // «✅ تصوير ماجد» ما بيبان أبداً والكرت بيقول «مونتاج» بلا سياق. البورد
+    // بيستلم المفتوح بس، فمنكمّل مراحل القطعة من المجموعة الكاملة، ومنعرض
+    // القطع يلي إلها شغل ظاهر بهالعمود فقط.
+    const visible = new Set(tasks.map((t) => t.pipelineKey ?? `solo:${t.id}`));
+    const full = allTasks.filter((t) => visible.has(t.pipelineKey ?? `solo:${t.id}`));
+    return groupTasksIntoPieces(full, isDone, allTasks).map((piece) => {
+      const repr = piece.repr;
+      const active = piece.active;
+      const blockedByLabel = (() => {
+        const src = active?.task ?? repr;
+        if (!src.blockedById) return null;
+        const pre = byId.get(src.blockedById);
+        // الحاجز جوّا نفس القطعة صار ظاهر بشريط المراحل — ما في داعي نكرره.
+        if (pre && piece.ids.includes(pre.id)) return null;
+        return pre && pre.board !== "DONE" ? cardLabel(pre, 1) : null;
+      })();
+      return {
+        key: piece.key,
+        ids: piece.ids,
         repr,
-        board,
-        count,
-        label: cardLabel(repr, count),
-        blockedByLabel: blockedLabel(repr),
+        piece,
+        board: (piece.done
+          ? "DONE"
+          : ((BOARDS as readonly string[]).includes(repr.board) ? repr.board : "TODO")) as Board,
+        count: piece.count,
+        label: cardLabel(repr, piece.count),
+        blockedByLabel,
         durLabel:
-          repr.stage === "PUBLISH"
-            ? ""
-            : durationLabel(repr, count),
-      });
-    }
-    for (const t of singles) {
-      out.push({
-        key: t.id,
-        ids: [t.id],
-        repr: t,
-        board: ((BOARDS as readonly string[]).includes(t.board) ? t.board : "TODO") as Board,
-        count: t.quantity ?? 1,
-        label: cardLabel(t, t.quantity ?? 1),
-        blockedByLabel: blockedLabel(t),
-        durLabel: t.stage === "PUBLISH" ? "" : durationLabel(t),
-      });
-    }
-    return out;
+          active && active.task.stage !== "PUBLISH"
+            ? durationLabel(active.task, active.task.quantity ?? 1)
+            : "",
+      };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, byId, reelNum]);
+  }, [tasks, allTasks, byId, reelNum]);
 
   const columns = useMemo(() => {
     const m: Record<Board, KCard[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
@@ -306,6 +304,24 @@ export default function KanbanBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, groupBy, coById, empOrder, year, month]);
 
+  const onStageToggle = (id: string, done: boolean) =>
+    start(async () => {
+      const res = await setStageDone(id, done);
+      if (res.ok) {
+        toast(done ? "تم إنجاز المرحلة" : "رجعت المرحلة قيد العمل");
+        router.refresh();
+      } else toast(res.error, "error");
+    });
+
+  const onReviewToggle = (id: string, reviewed: boolean) =>
+    start(async () => {
+      const res = await setPieceReviewed(id, reviewed);
+      if (res.ok) {
+        toast(reviewed ? "تمت المراجعة" : "أُلغيت المراجعة");
+        router.refresh();
+      } else toast(res.error, "error");
+    });
+
   const onMove = (ids: string[], board: string) =>
     start(async () => {
       const res = await Promise.all(ids.map((id) => moveCard(id, board)));
@@ -372,6 +388,49 @@ export default function KanbanBoard({
         {c.blockedByLabel && (
           <div className="flex items-center gap-1 text-[10px] text-warning">
             <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
+          </div>
+        )}
+
+        {/* شريط المراحل — كل مرحلة بصاحبها وتاريخها وزرّ «تم» تبعها. القائدة:
+            «بيبقى الأشخاص المسؤولين عنها هنن يلي يعملو done لكل مرحلة». */}
+        {c.piece.stages.length > 1 && (
+          <div className="flex flex-col gap-0.5 border-t border-border-soft pt-1.5">
+            {c.piece.production.map((st) => (
+              <StageRow
+                key={st.task.id}
+                st={st}
+                who={empName(st.task.assigneeId)}
+                color={empColor(st.task.assigneeId)}
+                active={c.piece.active?.task.id === st.task.id}
+                onToggle={() => onStageToggle(st.task.id, !st.done)}
+              />
+            ))}
+            {/* نقطتا تفتيش: مراجعة القائدة (مو حاجزة) والنشر بموعده. */}
+            <div className="flex items-center gap-2 text-[10px] pt-0.5">
+              <button
+                type="button"
+                onClick={() => onReviewToggle(c.repr.id, !c.piece.reviewed)}
+                className={
+                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition " +
+                  (c.piece.reviewed
+                    ? "bg-success/10 text-success"
+                    : "bg-bg-elev2 text-fg-muted hover:text-accent")
+                }
+                title="مراجعة قائدة الفريق — مو شرط للنشر"
+              >
+                {c.piece.reviewed ? "✅" : "⚪"} مراجعة
+              </button>
+              {c.piece.publish && (
+                <StageRow
+                  st={c.piece.publish}
+                  who={empName(c.piece.publish.task.assigneeId)}
+                  color={empColor(c.piece.publish.task.assigneeId)}
+                  active={c.piece.active?.task.id === c.piece.publish.task.id}
+                  onToggle={() => onStageToggle(c.piece.publish!.task.id, !c.piece.publish!.done)}
+                  compact
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -498,5 +557,51 @@ export default function KanbanBoard({
         ))}
       </div>
     </div>
+  );
+}
+
+/** سطر مرحلة على كرت القطعة: الحالة · الاسم · التاريخ · زرّ «تم». */
+function StageRow({
+  st,
+  who,
+  color,
+  active,
+  onToggle,
+  compact = false,
+}: {
+  st: PieceStage;
+  who: string;
+  color?: string;
+  active: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+}) {
+  const t = st.task;
+  const label = STAGE_LABELS[t.stage as Stage] ?? "مهمة";
+  const date = t.stage === "PUBLISH" ? t.publishDate : t.readyDate;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={st.blocked && !st.done}
+      title={st.blocked && !st.done ? "محجوز بمرحلة قبله" : st.done ? "رجّعه قيد العمل" : "علّمه منجز"}
+      className={
+        "flex items-center gap-1.5 text-[10px] rounded px-1.5 py-0.5 text-right transition " +
+        (compact ? "" : "w-full ") +
+        (st.done
+          ? "text-success hover:bg-success/10"
+          : st.blocked
+            ? "text-fg-muted cursor-not-allowed"
+            : active
+              ? "bg-accent/10 text-accent font-semibold hover:bg-accent/20"
+              : "text-fg-dim hover:bg-bg-elev2")
+      }
+    >
+      <span>{st.done ? "✅" : st.blocked ? "🔒" : active ? "🔵" : "⚪"}</span>
+      <span className="shrink-0">{label}</span>
+      {!compact && <Avatar name={who} color={color} size={12} />}
+      <span className="truncate flex-1">{who}</span>
+      {date && <span className="tabular-nums shrink-0">{formatDateShort(new Date(date))}</span>}
+    </button>
   );
 }
