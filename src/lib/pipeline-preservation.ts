@@ -51,8 +51,10 @@ function piecePlanKey(companyId: string | null, type: string | null): string | n
   return companyId && type ? `${companyId}|${type}` : null;
 }
 
+// المونتاج مرحلة قطعة متل غيرها — لازم حالتها وبريفها يصمدوا عبر إعادة الجدولة
+// متل التصوير والنشر، وإلا كل ريجن بيمسح شغل أليسار.
 function isPieceStage(stage: string | null): boolean {
-  return stage === "DESIGN" || stage === "SHOOT" || stage === "PUBLISH";
+  return stage === "DESIGN" || stage === "SHOOT" || stage === "EDIT" || stage === "PUBLISH";
 }
 
 function isPieceTask(task: Pick<PipelineTask, "pipelineKey" | "companyId" | "type" | "stage">) {

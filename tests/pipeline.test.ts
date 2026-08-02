@@ -259,3 +259,67 @@ describe("pipeline expansion", () => {
     expect(publishCards.filter((task) => task.status !== "CANCELED")).toHaveLength(1);
   });
 });
+
+/**
+ * «أي مهمة بيصورها ماجد لازم تنتقل لعند أليسار للمونتاج» (القائدة 2/8/2026).
+ * قبل هالمرحلة كان الريل يمشي تصوير ← نشر، فالمونتيرة ما إلها ولا كرت بالنظام
+ * وبتطلع «متفرّغة» وعندها ريلات متصوّرة ومستنية.
+ */
+describe("مرحلة المونتاج بين التصوير والنشر", () => {
+  const editorOpts = { ...opts, editorId: "editor", editorWorkDays: [6, 0, 1, 2, 3] };
+  const reel = { ...baseItem, type: "REEL" as const, assigneeId: "photographer" };
+
+  it("بيولّد كرت مونتاج للمونتيرة بعد كل تصوير", () => {
+    const out = expandPipeline([reel], editorOpts);
+    const edit = out.find((t) => t.stage === "EDIT");
+    expect(edit).toBeDefined();
+    expect(edit!.assigneeId).toBe("editor");
+    expect(edit!.type).toBe("REEL");
+  });
+
+  it("المونتاج محجوز بالتصوير، والنشر محجوز بالمونتاج", () => {
+    const out = expandPipeline([reel], editorOpts);
+    const shoot = out.find((t) => t.stage === "SHOOT")!;
+    const edit = out.find((t) => t.stage === "EDIT")!;
+    const publish = out.find((t) => t.stage === "PUBLISH")!;
+    expect(edit.blockedById).toBe(shoot.id);
+    expect(publish.blockedById).toBe(edit.id);
+  });
+
+  it("المونتاج بيبلّش بعد التصوير مو قبله", () => {
+    const out = expandPipeline([reel], editorOpts);
+    const shoot = out.find((t) => t.stage === "SHOOT")!;
+    const edit = out.find((t) => t.stage === "EDIT")!;
+    expect(edit.readyDate! > shoot.readyDate!).toBe(true);
+  });
+
+  it("البوست والستوري والريل AI ما إلهن مونتاج", () => {
+    for (const type of ["POST", "STORY", "AI_REEL"] as const) {
+      const out = expandPipeline([{ ...baseItem, type }], editorOpts);
+      expect(out.find((t) => t.stage === "EDIT")).toBeUndefined();
+      // والنشر بيضل محجوز بالتصميم متل ما كان
+      const design = out.find((t) => t.stage === "DESIGN")!;
+      expect(out.find((t) => t.stage === "PUBLISH")!.blockedById).toBe(design.id);
+    }
+  });
+
+  it("بلا مونتيرة بالفريق بيرجع للسلوك القديم بلا ما ينكسر", () => {
+    const out = expandPipeline([reel], opts);
+    expect(out.find((t) => t.stage === "EDIT")).toBeUndefined();
+    const shoot = out.find((t) => t.stage === "SHOOT")!;
+    expect(out.find((t) => t.stage === "PUBLISH")!.blockedById).toBe(shoot.id);
+  });
+
+  it("المونتاج ما بيتخطّى يوم النشر لما التصوير يتأخر", () => {
+    const late = { ...reel, readyDate: "2026-07-07", workDate: "2026-07-07", publishDate: "2026-07-07" };
+    const out = expandPipeline([late], editorOpts);
+    const edit = out.find((t) => t.stage === "EDIT")!;
+    expect(edit.readyDate! <= "2026-07-07").toBe(true);
+  });
+
+  it("المونتاج بياخد رقم القطعة نفسه", () => {
+    const out = expandPipeline([reel], editorOpts);
+    const nums = new Set(out.filter((t) => t.stage !== "WRITE").map((t) => t.pieceNo));
+    expect(nums.size).toBe(1);
+  });
+});

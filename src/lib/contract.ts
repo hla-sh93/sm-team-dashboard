@@ -216,6 +216,27 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
 }
 
 /**
+ * Which month bucket holds the cards of the cycle running today — the inverse
+ * of `cycleForBucket`, because a cycle lives in the bucket of its START month.
+ *
+ * This is the difference between «إنجاز الشركات» being right and being zero:
+ * on 2/8 the screen's bucket is آب, but وصل's running cycle is 13/7 → 12/8 and
+ * every card it published sits in the تموز bucket. Reading the screen's bucket
+ * showed 0 published for nine companies out of ten.
+ *
+ * A company with no contract date has no cycles at all — it falls back to the
+ * plain calendar month, which is exactly what `cycleForBucket` does for it.
+ */
+export function currentCycleBucket(
+  co: ContractCompany,
+  today: Date = new Date(),
+): { year: number; month: number } {
+  const cycle = currentCycle(co, today);
+  const d = cycle ? cycle.start : midnight(today);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+/**
  * What the admin UI should say about this contract: is it running, about to
  * need a renewal decision, already waiting on one, or over?
  */

@@ -284,12 +284,19 @@ export function taskColor(kind: string, type?: string | null): string {
 // ============================================
 // PIPELINE / KANBAN (agile workflow)
 // ============================================
-export const STAGES = ["WRITE", "DESIGN", "SHOOT", "PUBLISH"] as const;
+/**
+ * المونتاج مرحلة قائمة بذاتها بين التصوير والنشر (قاعدة القائدة 2/8/2026):
+ * «أي مهمة بيصورها ماجد لازم تنتقل لعند أليسار للمونتاج». قبلها كان الريل بيمشي
+ * تصوير ← نشر مباشرة، فأليسار طلعت «متفرّغة» وهي عندها ريلات البلسم لإعادة
+ * المونتاج و3 ريلات وصل متصوّرة يوم الخميس.
+ */
+export const STAGES = ["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"] as const;
 export type Stage = (typeof STAGES)[number];
 export const STAGE_LABELS: Record<Stage, string> = {
   WRITE: "كتابة",
   DESIGN: "تصميم",
   SHOOT: "تصوير",
+  EDIT: "مونتاج",
   PUBLISH: "نشر",
 };
 

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { loadLiveTasks } from "@/lib/live-tasks";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
-import { sendMessage, isTelegramConfigured } from "./client";
+import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
 
@@ -60,10 +60,17 @@ export async function buildTodayBrief(today = new Date()): Promise<DailyBrief> {
 }
 
 export type SendBriefResult =
-  | { ok: true; sent: number }
+  | { ok: true; sent: number; failed?: string[] }
   | { ok: false; error: string };
 
-/** Send one wave of the brief to the lead's private chat. */
+/**
+ * Send one wave of the brief to the lead's private chat.
+ *
+ * Two rules learned from the first real run: a message longer than Telegram's
+ * limit gets SPLIT rather than refused, and one refusal never aborts the wave —
+ * ماجد's and سارة's sheets were queued behind عمر's oversized one and were
+ * simply never sent.
+ */
 export async function sendDailyBrief(
   today = new Date(),
   wave: BriefWave = "all",
@@ -75,10 +82,14 @@ export async function sendDailyBrief(
 
   const brief = await buildTodayBrief(today);
   let sent = 0;
+  const failures: string[] = [];
   for (const m of briefMessagesFor(brief, wave)) {
-    const res = await sendMessage(chatId, m.text);
-    if (!res.ok) return sent ? { ok: true, sent } : { ok: false, error: res.error };
-    sent++;
+    for (const part of splitForTelegram(m.text, TG_CHUNK)) {
+      const res = await sendMessage(chatId, part);
+      if (res.ok) sent++;
+      else failures.push(`${m.title}: ${res.error}`);
+    }
   }
-  return { ok: true, sent };
+  if (!sent) return { ok: false, error: failures[0] ?? "ما انبعتت ولا رسالة" };
+  return { ok: true, sent, ...(failures.length ? { failed: failures } : {}) };
 }

@@ -42,6 +42,9 @@ export function derivePublishingSchedule(
   const out = new Map<string, CompanyPublishSchedule>();
   for (const t of tasks) {
     if (t.status === "CANCELED") continue;
+    // كرت المونتاج `kind: CONTENT` كمان، فبلا هالسطر كان كل ريل بينعدّ مرتين
+    // بجدول النشر (تصوير + مونتاج) و`detKey` تبعه فاضي فبتطيح الفرز.
+    if ((t as { stage?: string | null }).stage === "EDIT") continue;
     if (t.kind !== "CONTENT" || !t.type || !t.publishDate || !t.companyId) continue;
     let entry = out.get(t.companyId);
     if (!entry) {
@@ -73,7 +76,7 @@ export function derivePublishingSchedule(
       (a, b) =>
         a.publishDate.getTime() - b.publishDate.getTime() ||
         a.type.localeCompare(b.type) ||
-        a.detKey.localeCompare(b.detKey),
+        (a.detKey ?? "").localeCompare(b.detKey ?? ""),
     );
   }
   return out;

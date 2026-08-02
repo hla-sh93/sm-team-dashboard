@@ -200,6 +200,12 @@ export async function generateSchedule(year: number, month: number) {
     const publisherWorkDays = parseWorkDays(
       state.employees.find((e) => e.id === publisherId)?.workDays as string | number[]
     );
+    // المونتيرة — كل ريل بينتصوّر بيمرق عليها قبل النشر (قاعدة القائدة 2/8/2026).
+    const editorId =
+      state.employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role))?.id ?? null;
+    const editorWorkDays = parseWorkDays(
+      state.employees.find((e) => e.id === editorId)?.workDays as string | number[]
+    );
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
     const trainerSuppliedContent = (id: string) =>
       isTrainerSuppliedContentCompany(state.companies.find((c) => c.id === id));
@@ -246,6 +252,8 @@ export async function generateSchedule(year: number, month: number) {
     const pipe = expandPipeline(items, {
       writerId,
       publisherId,
+      editorId,
+      editorWorkDays,
       year,
       month,
       companyName: coName,
@@ -292,6 +300,11 @@ export async function generateSchedule(year: number, month: number) {
       },
     });
     applyPipelinePreservation(pipe, existing);
+    // المونتاج بيتبع **التصوير الفعلي** مو المخطط: ريل مجدول تصويره 1/6 وانتصوّر
+    // 5/7 كان كرت مونتاجه بيطلع مستحق 2/6 — متأخر شهر قبل ما تنوجد المادة أصلاً.
+    // بعد ما رجّعت خطوة الحفظ `finishedAt` على كرت التصوير، منعيد تأريخ المونتاج
+    // لليوم التالي للتصوير الحقيقي.
+    retimeEditsAfterActualShoot(pipe, editorWorkDays);
     snapPipelineWorkDatesToAssigneeWorkDays(pipe, state.employees);
 
     // Photo-session statuses (تم التصوير/المونتاج/التسليم) must survive the
@@ -425,6 +438,60 @@ export async function generateSchedule(year: number, month: number) {
     console.error(e);
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };
+  }
+}
+
+/**
+ * Re-date every مونتاج card to the working day after its shoot ACTUALLY
+ * finished, once preservation has restored `finishedAt` onto the shoot card.
+ *
+ * `expandPipeline` can only use planned dates, so a reel planned for 1/6 and
+ * shot on 5/7 produced a montage card due 2/6 — a month "late" before the
+ * footage existed. Cards whose shoot has not happened yet keep their planned
+ * date; they are blocked anyway.
+ */
+function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays: number[]) {
+  // A reel that is already PUBLISHED was obviously cut — its montage card is a
+  // new stage on an old piece, and must not resurface as open work on أليسار.
+  const publishedKeys = new Set(
+    pipe
+      .filter((t) => t.stage === "PUBLISH" && (t.board === "DONE" || t.status === "PUBLISHED"))
+      .map((t) => t.pipelineKey),
+  );
+  for (const t of pipe) {
+    if (t.stage !== "EDIT" || !publishedKeys.has(t.pipelineKey)) continue;
+    t.board = "DONE";
+    t.status = "READY";
+  }
+
+  const shotAt = new Map<string, Date>();
+  for (const t of pipe) {
+    if (t.stage !== "SHOOT" || !t.pipelineKey || !t.finishedAt) continue;
+    shotAt.set(t.pipelineKey, t.finishedAt);
+  }
+  // The publish-date clamp below is ONLY legitimate for a piece that already
+  // went out: it must have been cut beforehand. For a piece still unpublished
+  // whose shoot landed late, clamping would date the montage BEFORE the footage
+  // exists — the honest reading is that the montage is simply late too.
+  for (const t of pipe) {
+    if (t.stage !== "EDIT" || !t.pipelineKey) continue;
+    const done = shotAt.get(t.pipelineKey);
+    if (!done) continue;
+    const d = new Date(done);
+    let guard = 0;
+    do {
+      d.setDate(d.getDate() + 1);
+      guard++;
+    } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}`;
+    // …لكن أبداً بعد يوم النشر **لقطعة انتشرت فعلاً**: كروت حزيران المنشورة
+    // إجاها `finishedAt` من يوم استيراد الأرشيف (5/7) مو من يوم التصوير، فطلع
+    // مونتاج برو مؤرّخ 5/7 لريل انتشر 12/6.
+    const isPublished = publishedKeys.has(t.pipelineKey);
+    t.workDate = isPublished && t.publishDate && iso > t.publishDate ? t.publishDate : iso;
+    t.readyDate = t.workDate;
   }
 }
 

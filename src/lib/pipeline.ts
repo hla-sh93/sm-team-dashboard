@@ -38,7 +38,7 @@ export type PipelineContentItem = {
 export type PipelineTask = {
   id: string;
   kind: string; // CONTENT_WRITING | CONTENT | PUBLISH
-  stage: "WRITE" | "DESIGN" | "SHOOT" | "PUBLISH";
+  stage: "WRITE" | "DESIGN" | "SHOOT" | "EDIT" | "PUBLISH";
   board: Board;
   type: string | null;
   title: string | null;
@@ -89,6 +89,22 @@ function backWorkdays(iso: string, n: number, workDays: number[]): string {
   ).padStart(2, "0")}`;
 }
 
+/** Add `n` working days to a YYYY-MM-DD string. */
+function fwdWorkdays(iso: string, n: number, workDays: number[]): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  let left = n;
+  let guard = 0;
+  while (left > 0 && guard < 60) {
+    dt.setDate(dt.getDate() + 1);
+    guard++;
+    if (workDays.includes(dt.getDay())) left--;
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
+    dt.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 /** Move a YYYY-MM-DD backward, inclusive, to a working day. */
 function snapBackWorkday(iso: string, workDays: number[]): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -108,6 +124,13 @@ export function expandPipeline(
   opts: {
     writerId: string | null;
     publisherId: string | null;
+    /**
+     * المونتيرة. كل شي بينتصوّر بيمرق عليها قبل النشر — «أي مهمة بيصورها ماجد
+     * لازم تنتقل لعند أليسار للمونتاج». null → ما في مرحلة مونتاج (توافق
+     * رجعي مع السكربتات القديمة).
+     */
+    editorId?: string | null;
+    editorWorkDays?: number[];
     year: number;
     month: number; // 0-based
     companyName: (id: string) => string;
@@ -134,6 +157,7 @@ export function expandPipeline(
   const { writerId, publisherId, year, month, companyName } = opts;
   const writeBoard = opts.writeBoard ?? "TODO";
   const publisherWorkDays = opts.publisherWorkDays ?? [6, 0, 1, 2, 3];
+  const editorWorkDays = opts.editorWorkDays ?? publisherWorkDays;
   const pfx = opts.idPrefix ?? "";
 
   // 1) WRITE cards — 2 per company that has any items, by scope. Each writing
@@ -229,6 +253,42 @@ export function expandPipeline(
       year,
     });
 
+    // 2b) EDIT — كل ريل بينتصوّر بيروح للمونتيرة قبل النشر. المونتاج بيبلّش
+    // **اليوم التالي للتصوير** (قاعدة القائدة، ونفس الافتراض المستعمل بالبريف).
+    // بلا هالكرت كانت أليسار بتطلع «متفرّغة» وعندها ريلات متصوّرة ومستنية.
+    const editId = `${pfx}e_${it.companyId}_${it.type}_${seq}`;
+    const wantsEdit = scope === "SHOOT" && !!opts.editorId;
+    if (wantsEdit) {
+      const shotOn = it.readyDate ?? it.workDate ?? it.publishDate;
+      const editDay = shotOn ? fwdWorkdays(shotOn, 1, editorWorkDays) : null;
+      // ما بيصير المونتاج يتخطّى يوم النشر — إذا التصوير تأخّر، بينحطّ على يوم
+      // عمل النشر نفسه بدل ما يطلع كرت مستحق بعد ما القطعة نزلت.
+      const publishWork = it.publishDate ? snapBackWorkday(it.publishDate, editorWorkDays) : null;
+      const day = editDay && publishWork && editDay > publishWork ? publishWork : editDay;
+      out.push({
+        id: editId,
+        kind: "CONTENT",
+        stage: "EDIT",
+        // المونتاج بيتبع التصوير: تصوير خالص ونشر ما صار = مونتاج مستحق.
+        board: publishBoard === "DONE" ? "DONE" : "TODO",
+        type: it.type,
+        title: null,
+        companyId: it.companyId,
+        assigneeId: opts.editorId ?? null,
+        publishDate: it.publishDate,
+        readyDate: day,
+        workDate: day,
+        week: it.week,
+        blockedById: designId,
+        pipelineKey: pk,
+        quantity: productionQuantity,
+        priority: "NORMAL",
+        status: publishBoard === "DONE" ? "READY" : "NOT_STARTED",
+        month,
+        year,
+      });
+    }
+
     out.push({
       id: publishId,
       kind: "PUBLISH",
@@ -242,7 +302,8 @@ export function expandPipeline(
       readyDate: it.publishDate,
       workDate: it.publishDate ? snapBackWorkday(it.publishDate, publisherWorkDays) : null,
       week: it.week,
-      blockedById: designId,
+      // النشر بيستنى المونتاج مو التصوير، لما في مونتاج.
+      blockedById: wantsEdit ? editId : designId,
       pipelineKey: pk,
       quantity: publishQuantity,
       priority: "NORMAL",

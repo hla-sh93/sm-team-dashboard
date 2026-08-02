@@ -21,8 +21,8 @@ import {
   taskColor,
 } from "@/lib/constants";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards, type GroupedCard } from "@/lib/cards";
-import { completedCompanyPlanCount } from "@/lib/progress";
-import { dailyTaskEffortDays, selectDailyWorkTasks } from "@/lib/daily-work";
+import type { CompanyProgress } from "@/lib/progress";
+import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
 import { personDayState } from "@/lib/person-day-state";
 import {
   toISODate,
@@ -56,12 +56,14 @@ export default function OverviewClient({
   employees,
   companies,
   tasks,
+  companyProgress,
 }: {
   year: number;
   month: number;
   employees: Employee[];
   companies: Company[];
   tasks: Task[];
+  companyProgress: CompanyProgress[];
 }) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [, startDayEdit] = useTransition();
@@ -90,24 +92,54 @@ export default function OverviewClient({
   // ---- إنجاز الفريق: per-person task completion (counts ALL assigned tasks, so
   // the publisher عمر — whose work is the PUBLISH cards — shows up too). منجز =
   // a task whose own stage is done; متبقّي = the rest.
+  //
+  // حلا نصّ يومها إدارة ثابتة (قاعدتها 2/8/2026: «إنجاز حلا ع طول 50% — هي
+  // ممتلئة بمهام الإدارة، والباقي للمهام الإضافية»)، فنصف الدونات عندها محجوز
+  // ومعدود دايماً، والنصف التاني بيتحرّك مع مهامها الإضافية. كانت بتطلع 0%
+  // لأنّ إدارة الفريق ما إلها كروت تنعدّ.
+  const isLead = (e: Employee) => /تيم ليدر|team ?lead/i.test(e.role);
+  const LEAD_ADMIN_SHARE = 0.5;
   const achievement = employees
     .map((e) => {
       const mine = tasks.filter((t) => t.assigneeId === e.id);
       const total = mine.reduce((a, t) => a + qty(t), 0);
       const done = mine.filter(isDone).reduce((a, t) => a + qty(t), 0);
-      return { emp: e, total, done, remaining: Math.max(0, total - done) };
+      if (!isLead(e)) return { emp: e, total, done, remaining: Math.max(0, total - done), admin: 0 };
+      // نُعبّر عن النصف الإداري بوحدات من نفس مقياس مهامها حتى الدونات تضل صادقة:
+      // إدارة = نصف، والمهام الإضافية = النصف التاني.
+      const admin = Math.max(1, total);
+      return {
+        emp: e,
+        total: total + admin,
+        done: done + admin,
+        remaining: Math.max(0, total - done),
+        admin,
+      };
     })
     .filter((x) => x.total > 0);
 
-  // ---- إنجاز الشركات: company progress is publish progress. Once the PUBLISH
-  // card is done, the item counts for the company even if an upstream production
-  // card was not manually closed.
+  // ---- إنجاز الشركات: computed on the server over each company's OWN contract
+  // cycle (see OverviewView) — never from `tasks`, which is this calendar
+  // month's live board with done work archived out.
+  const progressById = new Map(companyProgress.map((p) => [p.companyId, p]));
   const companyDone = managed
     .map((co) => {
-      const plan = co.posts + co.reels + co.stories + co.aiReels;
-      const done = completedCompanyPlanCount(tasks, co.id);
+      const p = progressById.get(co.id);
+      const plan = p?.plan ?? co.posts + co.reels + co.stories + co.aiReels;
+      const done = p?.published ?? 0;
+      const produced = p?.produced ?? 0;
       const pct = plan > 0 ? Math.round(Math.min(100, (done / plan) * 100)) : 0;
-      return { co, plan, done, remaining: Math.max(0, plan - done), pct };
+      const producedPct = plan > 0 ? Math.round(Math.min(100, (produced / plan) * 100)) : 0;
+      return {
+        co,
+        plan,
+        done,
+        produced,
+        remaining: Math.max(0, plan - done),
+        pct,
+        producedPct,
+        cycleLabel: p?.cycleLabel ?? null,
+      };
     })
     .filter((x) => x.plan > 0)
     .sort((a, b) => a.co.priority - b.co.priority || b.pct - a.pct);
@@ -215,8 +247,12 @@ export default function OverviewClient({
   // working days. Deadline = readyDate (design/adhoc) else publishDate.
   const soonISO = toISODate(addWorkdaysFor(new Date(), 2, [6, 0, 1, 2, 3]));
   const taskById = new Map(tasks.map((t) => [t.id, t]));
+  // A card whose blocker is still open is not on fire — whoever holds the
+  // blocker is. أليسار's montage cards were showing as her overdue work for
+  // reels ماجد has not shot yet.
+  const isBlockedCard = makeBlockedPredicate(tasks);
   const criticalSource = tasks.filter((t) => {
-    if (isDone(t)) return false;
+    if (isDone(t) || isBlockedCard(t)) return false;
     const dl = deadlineOf(t);
     if (!dl) return false;
     return toISODate(dl) <= soonISO;
@@ -400,7 +436,7 @@ export default function OverviewClient({
         <Card>
           <h2 className="display-font text-lg mb-4">إنجاز الفريق</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {achievement.map(({ emp, total, done, remaining }) => (
+            {achievement.map(({ emp, total, done, remaining, admin }) => (
               <div
                 key={emp.id}
                 className="flex flex-col items-center text-center gap-1.5 border border-border-soft rounded-lg p-3"
@@ -411,9 +447,10 @@ export default function OverviewClient({
                   {ROLE_LABELS[emp.role] ?? emp.role}
                 </span>
                 <div className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums">
-                  <span className="text-success">منجز {done}</span>
+                  {admin > 0 && <span className="text-accent">إدارة ٥٠٪</span>}
+                  <span className="text-success">منجز {done - admin}</span>
                   <span className="text-fg-dim">متبقّي {remaining}</span>
-                  <span className="text-fg-muted">الكل {total}</span>
+                  <span className="text-fg-muted">الكل {total - admin}</span>
                 </div>
               </div>
             ))}
@@ -558,38 +595,56 @@ export default function OverviewClient({
           <h2 className="display-font text-lg">إنجاز الشركات</h2>
         </div>
         <p className="text-xs text-fg-dim mb-4">
-          نسبة النشر الفعلي من الخطة خلال دورة العقد — المهمة لا تُحتسب للشركة إلا بعد نشرها.
+          كل شركة على <strong>دورة عقدها هي</strong>، مو على شهر التقويم. الشريط الغامق =
+          المنشور فعلاً (وهو المقياس التعاقدي)، والفاتح = يلي خلص إنتاجه وواقف على النشر.
         </p>
         <div className="grid md:grid-cols-2 gap-3">
-          {companyDone.map(({ co, plan, done, remaining, pct }) => (
+          {companyDone.map(({ co, plan, done, produced, remaining, pct, producedPct, cycleLabel }) => (
             <div key={co.id} className="border border-border-soft rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span
-                    className="w-3 h-3 rounded-full"
+                    className="w-3 h-3 rounded-full shrink-0"
                     style={{ background: co.color ?? "#C8A84E" }}
                   />
-                  <span className="font-semibold">{co.name}</span>
+                  <span className="font-semibold truncate">{co.name}</span>
+                  {cycleLabel && (
+                    <span className="text-[10px] text-fg-muted tabular-nums shrink-0">
+                      {cycleLabel}
+                    </span>
+                  )}
                 </div>
                 <span
                   className={
-                    "text-sm display-font " +
+                    "text-sm display-font shrink-0 " +
                     (pct >= 100 ? "text-success" : pct >= 50 ? "text-warning" : "text-danger")
                   }
                 >
                   {pct}%
                 </span>
               </div>
-              <div className="h-2 rounded-full bg-bg-elev2 overflow-hidden mb-1.5">
+              {/* Two bars in one track: production behind, publishing in front —
+                  so a company whose work is finished but unpublished reads as
+                  «الفريق خلّص، النشر واقف» instead of a flat zero. */}
+              <div className="relative h-2 rounded-full bg-bg-elev2 overflow-hidden mb-1.5">
                 <div
-                  className={"h-full " + (pct >= 100 ? "bg-success" : "bg-accent")}
+                  className="absolute inset-y-0 right-0 bg-accent/30"
+                  style={{ width: `${Math.min(100, producedPct)}%` }}
+                />
+                <div
+                  className={"absolute inset-y-0 right-0 " + (pct >= 100 ? "bg-success" : "bg-accent")}
                   style={{ width: `${Math.min(100, pct)}%` }}
                 />
               </div>
               <div className="text-[11px] text-fg-dim tabular-nums">
-                <span className="text-success">منجز {done}</span>
+                <span className="text-success">منشور {done}</span>
                 <span className="text-fg-muted"> / {plan}</span>
-                {remaining > 0 && <span className="text-warning"> · باقي {remaining}</span>}
+                {produced > done && (
+                  <span className="text-accent"> · جاهز للنشر {produced - done}</span>
+                )}
+                {remaining > produced - done && (
+                  <span className="text-warning"> · باقي {remaining - (produced - done)}</span>
+                )}
               </div>
             </div>
           ))}

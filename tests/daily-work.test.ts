@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dailyTaskEffortDays, selectDailyWorkTasks } from "@/lib/daily-work";
+import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
 
 const employee = (overrides: Record<string, unknown> = {}) =>
   ({
@@ -358,5 +358,97 @@ describe("daily work queue", () => {
     });
 
     expect(selected[0].id).toBe("earlier");
+  });
+});
+
+/**
+ * «الخطة أول مرحلة — قبل الخطة ولا مصمم ولا مصور بيشتغل» (القائدة 1/8/2026).
+ * `blockedById` was written by the pipeline and shown on the board, but the day
+ * queue never read it, so أيمن was handed «تجهيز التيمبليت — مانغو» while نوال's
+ * plan card was still NOT_STARTED.
+ */
+describe("a card whose blocker is still open is not today's work", () => {
+  const today = new Date(2026, 7, 2);
+  const co = company({ id: "company" });
+
+  it("holds the blocked card back while the blocker is open", () => {
+    const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer", hours: 8 });
+    const template = task({ id: "template", blockedById: "plan", hours: 6 });
+    const selected = selectDailyWorkTasks({
+      employee: employee(),
+      tasks: [template],
+      allTasks: [plan, template],
+      companies: [co],
+      today,
+    });
+    expect(selected).toEqual([]);
+  });
+
+  it("releases it the moment the blocker is done", () => {
+    const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer", status: "DONE", board: "DONE" });
+    const template = task({ id: "template", blockedById: "plan", hours: 6 });
+    const selected = selectDailyWorkTasks({
+      employee: employee(),
+      tasks: [template],
+      allTasks: [plan, template],
+      companies: [co],
+      today,
+    });
+    expect(selected.map((t) => t.id)).toEqual(["template"]);
+  });
+
+  it("follows the chain: blocked by a card that is itself blocked", () => {
+    const brand = task({ id: "brand", stage: "PUBLISH", assigneeId: "owner" });
+    const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer", blockedById: "brand", status: "DONE", board: "DONE" });
+    const template = task({ id: "template", blockedById: "plan", hours: 6 });
+    const selected = selectDailyWorkTasks({
+      employee: employee(),
+      tasks: [template],
+      allTasks: [brand, plan, template],
+      companies: [co],
+      today,
+    });
+    expect(selected).toEqual([]);
+  });
+
+  it("ignores a blocker that no longer exists rather than freezing the card", () => {
+    const template = task({ id: "template", blockedById: "deleted", hours: 6 });
+    const selected = selectDailyWorkTasks({
+      employee: employee(),
+      tasks: [template],
+      allTasks: [template],
+      companies: [co],
+      today,
+    });
+    expect(selected.map((t) => t.id)).toEqual(["template"]);
+  });
+
+  it("does not hang on a dependency cycle in the data", () => {
+    const a = task({ id: "a", blockedById: "b" });
+    const b = task({ id: "b", blockedById: "a" });
+    expect(() =>
+      selectDailyWorkTasks({ employee: employee(), tasks: [a, b], allTasks: [a, b], companies: [co], today }),
+    ).not.toThrow();
+  });
+});
+
+// كرت محجوز ما بينحسب متأخر — المتأخر هو حاجزه. أليسار كانت تطلع «Makhbar 7-4
+// متأخر 15 يوم» لريل ماجد لسا ما صوّرو.
+describe("makeBlockedPredicate", () => {
+  it("بيعتبر الكرت محجوز طالما حاجزه مفتوح", () => {
+    const shoot = task({ id: "shoot", stage: "SHOOT", assigneeId: "photographer" });
+    const edit = task({ id: "edit", stage: "EDIT", blockedById: "shoot", assigneeId: "editor" });
+    expect(makeBlockedPredicate([shoot, edit])(edit)).toBe(true);
+  });
+
+  it("بيفكّ الحجز لما التصوير يخلص", () => {
+    const shoot = task({ id: "shoot", stage: "SHOOT", status: "DONE", board: "DONE" });
+    const edit = task({ id: "edit", stage: "EDIT", blockedById: "shoot" });
+    expect(makeBlockedPredicate([shoot, edit])(edit)).toBe(false);
+  });
+
+  it("الكرت بلا حاجز مو محجوز", () => {
+    const t = task({ id: "solo" });
+    expect(makeBlockedPredicate([t])(t)).toBe(false);
   });
 });

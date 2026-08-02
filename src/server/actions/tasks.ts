@@ -46,7 +46,7 @@ async function completeProductionForPublishedTask(task: {
   const links = [
     ...(task.blockedById ? [{ id: task.blockedById }] : []),
     ...(task.pipelineKey
-      ? [{ pipelineKey: task.pipelineKey, stage: { in: ["DESIGN", "SHOOT"] } }]
+      ? [{ pipelineKey: task.pipelineKey, stage: { in: ["DESIGN", "SHOOT", "EDIT"] } }]
       : []),
   ];
   if (links.length === 0) return;
@@ -269,7 +269,7 @@ export async function deleteTasks(ids: string[]) {
     const pieceKeysByMonth = new Map<string, { year: number; month: number; keys: Set<string> }>();
     for (const task of tasks) {
       if (!task.isAuto || !task.pipelineKey) continue;
-      if (!(task.stage === "DESIGN" || task.stage === "SHOOT" || task.stage === "PUBLISH")) continue;
+      if (!(task.stage === "DESIGN" || task.stage === "SHOOT" || task.stage === "EDIT" || task.stage === "PUBLISH")) continue;
       const key = `${task.year}|${task.month}`;
       const group = pieceKeysByMonth.get(key) ?? {
         year: task.year,
@@ -287,7 +287,7 @@ export async function deleteTasks(ids: string[]) {
           year: group.year,
           month: group.month,
           pipelineKey: { in: [...group.keys] },
-          stage: { in: ["DESIGN", "SHOOT", "PUBLISH"] },
+          stage: { in: ["DESIGN", "SHOOT", "EDIT", "PUBLISH"] },
         },
         select: { id: true },
       });

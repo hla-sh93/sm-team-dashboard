@@ -30,7 +30,7 @@ import {
 import { ARABIC_DAYS, parseWorkDays, toISODate } from "@/lib/dates";
 import { assetNameForTask } from "@/lib/asset-name";
 import { buildContentNumbers } from "@/lib/cards";
-import { selectDailyWorkTasks } from "@/lib/daily-work";
+import { makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
 
 export type BriefMessage = {
   /** Stable key — "schedule" / "detail" / companyId / "lead". */
@@ -74,13 +74,8 @@ export function briefMessagesFor(brief: DailyBrief, wave: BriefWave): BriefMessa
 const AT_RISK_DAYS = 2;
 /** How much of a piece's content brief to inline in a personal message. */
 const BRIEF_LINES = 6;
-/**
- * Editing starts the DAY AFTER the shoot, and the editor gets through this many
- * reels a day — the lead's rule, and the only way ماجد's shooting turns into a
- * concrete list of what أليسار opens each morning.
- */
-const EDIT_STARTS_AFTER_DAYS = 1;
-const EDITS_PER_DAY = 3;
+/** Worst-N overdue rows any single sheet is allowed to print. */
+const LATE_IN_SHEET = 8;
 
 const dISO = (d: Date | string | null | undefined): string | null =>
   d == null ? null : toISODate(d instanceof Date ? d : new Date(d));
@@ -89,7 +84,11 @@ function dayLabel(d: Date): string {
   return `${ARABIC_DAYS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
 }
 
-/** "اليوم" / "بكرا" / "الأحد 3/8" — how a deadline reads in a message. */
+/**
+ * "اليوم" / "بكرا" / "الأحد 3/8" — how a deadline reads in a message.
+ * A date that already passed must never read like a plan: «التسليم الأحد 28/6»
+ * on the 2nd of August is a lie about when the piece is due.
+ */
 function relativeDayLabel(target: Date, today: Date): string {
   const t = dISO(target)!;
   const t0 = dISO(today)!;
@@ -98,6 +97,16 @@ function relativeDayLabel(target: Date, today: Date): string {
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (t === dISO(tomorrow)) return "بكرا";
   return dayLabel(target);
+}
+
+/** «— التسليم بكرا» / «— كان لازم يتسلّم الأحد 28/6» — never a past "due". */
+function dueSuffix(t: Task, today: Date): string {
+  const due = deadlineOf(t);
+  if (!due) return "";
+  const overdue = (dISO(due) ?? "") < (dISO(today) ?? "");
+  return overdue
+    ? ` — كان لازم يتسلّم ${dayLabel(due)}`
+    : ` — التسليم ${relativeDayLabel(due, today)}`;
 }
 
 const typeLabel = (t: Task): string =>
@@ -165,37 +174,18 @@ export function buildDailyBrief({
   const lateExempt = new Set(
     companies.filter((c) => c.lateExemptReason?.trim()).map((c) => c.id),
   );
+  // كرت محجوز ما بينحسب متأخر: أليسار كانت تطلع «Makhbar 7-4 متأخر 15 يوم»
+  // لريل ماجد لسا ما صوّرو. المتأخر هو التصوير، والمونتاج ما فيه يبلّش أصلاً.
+  const isBlocked = makeBlockedPredicate(tasks);
   const late = open.filter(
-    (t) => isTaskLateState(t, today) && !(t.companyId && lateExempt.has(t.companyId)),
+    (t) =>
+      isTaskLateState(t, today) &&
+      !isBlocked(t) &&
+      !(t.companyId && lateExempt.has(t.companyId)),
   );
   const publishingToday = open.filter(
     (t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO,
   );
-
-  /**
-   * What the editor opens today: reels shot at least a day ago whose edit is
-   * still outstanding, oldest shoot first, capped at a day's throughput.
-   */
-  const editQueue = (() => {
-    const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() - EDIT_STARTS_AFTER_DAYS);
-    const shot = tasks
-      .filter(
-        (t) =>
-          (t.type === "REEL" || t.type === "AI_REEL") &&
-          t.stage !== "PUBLISH" &&
-          isTaskDoneState(t) &&
-          t.finishedAt != null &&
-          new Date(t.finishedAt) <= cutoff,
-      )
-      .filter((t) => {
-        // Not yet published → the cut still has to go out.
-        const pub = tasks.find((p) => p.pipelineKey === t.pipelineKey && p.stage === "PUBLISH");
-        return pub != null && !isTaskDoneState(pub);
-      })
-      .sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
-    return shot.slice(0, EDITS_PER_DAY);
-  })();
 
   // ------------------------------------------------- 1. العام (07:45) — «صباح الخير»
   // Written the way the lead writes it by hand: a greeting, then one bare line
@@ -222,23 +212,39 @@ export function buildDailyBrief({
       if (!label || label === "—") continue; // unnameable → better silent than bare
       const entry = named.get(label) ?? { kinds: new Set<string>(), n: 0 };
       entry.n++;
-      // Only a company entry takes a kind word in front of it.
-      if (co)
-        entry.kinds.add(
-          t.stage === "SHOOT"
-            ? "تصوير"
-            : t.type === "REEL" || t.type === "AI_REEL"
-              ? "ريلات"
-              : t.stage === "WRITE"
-                ? "كتابة"
-                : "تصاميم",
-        );
+      // A kind word only when the card actually says what the work IS — the
+      // stage does (تصوير/كتابة), and so does a CONTENT card's type. An ad-hoc
+      // card with neither is not production: «استلام حسابات التواصل» on سارة
+      // (the account owner) came out as «سارة تصاميم مانغو» — telling a
+      // salesperson to design. Bare «سارة مانغو» is true and it is her own style.
+      const kindWord =
+        t.stage === "SHOOT"
+          ? "تصوير"
+          : t.stage === "EDIT"
+            ? "مونتاج"
+            : t.stage === "WRITE"
+              ? "كتابة"
+              : t.kind !== "CONTENT"
+                ? null
+                : t.type === "REEL" || t.type === "AI_REEL"
+                  ? "ريلات"
+                  : "تصاميم";
+      if (co && kindWord) entry.kinds.add(kindWord);
       named.set(label, entry);
     }
     const ordered = [...named.entries()].sort((a, b) => b[1].n - a[1].n);
-    const shown = ordered
-      .slice(0, max)
-      .map(([label, { kinds }]) => [[...kinds].join(" و"), label].filter(Boolean).join(" "));
+    const top = ordered.slice(0, max);
+    const kindOf = ([, { kinds }]: (typeof top)[number]) => [...kinds].join(" و");
+    // «تصاميم برو · تصاميم أغاليا» repeats the word she never repeats. When the
+    // work is the same kind across companies, say it once: «تصاميم برو وأغاليا».
+    const sameKind = top.length > 1 && top.every((e) => kindOf(e) === kindOf(top[0]));
+    if (sameKind && kindOf(top[0])) {
+      const names = top.map(([label]) => label).join(" و");
+      return `${kindOf(top[0])} ${names}${ordered.length > max ? " وغيرها" : ""}`;
+    }
+    const shown = top.map(([label, { kinds }]) =>
+      [[...kinds].join(" و"), label].filter(Boolean).join(" "),
+    );
     if (ordered.length > max) shown.push("وغيرها");
     return shown.join(" · ");
   };
@@ -279,10 +285,6 @@ export function buildDailyBrief({
       // his "late" list is the standing publish backlog, not a daily chase.
       headline = "متابعة الصفحات والنشر";
       chase = "";
-    } else if (isEditor(emp)) {
-      headline = editQueue.length
-        ? `مونتاج ريلات ${[...new Set(editQueue.map(coName))].join(" و")}`
-        : "";
     } else {
       headline = groupByCompany(todays);
     }
@@ -308,10 +310,7 @@ export function buildDailyBrief({
       .filter((t) => t.assigneeId === emp.id && !todays.some((x) => x.id === t.id))
       .sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
     const out: string[] = [];
-    for (const t of todays) {
-      const due = deadlineOf(t);
-      out.push(`   • ${pieceLabel(t)} · ${coName(t)}${due ? ` — التسليم ${relativeDayLabel(due, today)}` : ""}`);
-    }
+    for (const t of todays) out.push(`   • ${pieceLabel(t)} · ${coName(t)}${dueSuffix(t, today)}`);
     for (const t of mineLate.slice(0, 6))
       out.push(`   • ${pieceLabel(t)} · ${coName(t)} — متأخر ${daysLateOfState(t, today)} يوم`);
     if (mineLate.length > 6) out.push(`   … و${mineLate.length - 6} متأخرات غيرها على اللوحة`);
@@ -350,7 +349,7 @@ export function buildDailyBrief({
   const shooters = employees.filter((e) => isPhotographer(e) && e.isScheduled);
   const shootBlocks = shooters.map((e) => ({ e, items: personItems(e) })).filter((b) => b.items.length);
   const editors = employees.filter((e) => isEditor(e));
-  if (shootBlocks.length || editQueue.length) {
+  if (shootBlocks.length || editors.length) {
     detailLines.push("", "🎬 التصوير والمونتاج:");
     let n = 0;
     for (const b of shootBlocks) {
@@ -358,10 +357,9 @@ export function buildDailyBrief({
       detailLines.push(...b.items);
     }
     for (const ed of editors) {
+      const items = personItems(ed);
       detailLines.push(`${++n}- مونتاج (${ed.name}):`);
-      if (editQueue.length)
-        for (const t of editQueue)
-          detailLines.push(`   • ${pieceLabel(t)} · ${coName(t)} (تصوير ${dayLabel(new Date(t.finishedAt!))})`);
+      if (items.length) detailLines.push(...items);
       else detailLines.push("   ما في ريلات جاهزة للمونتاج.");
     }
   }
@@ -371,7 +369,11 @@ export function buildDailyBrief({
   const publisher = employees.find((e) => isPublisher(e));
   // شركة معفاة (جدارات) ما بتدخل قسم النشر إطلاقاً: العميل لسا ما بلّش ينشر،
   // فما في شي «لازم ينتشر» عندها لحد ما توصل الإشارة.
-  const publishable = (t: Task) => !(t.companyId && lateExempt.has(t.companyId));
+  // وكمان: الكروت اليدوية (نشر إعلان دورة، تثبيت موعد) بتنعرض بالقائمة تحت
+  // بالاسم، فلو انعدّت هون كمان بتنحسب مرتين بنفس الرسالة — «التدريب: متراكم 2
+  // مهمة» وتحتها نفس البندين بالاسم.
+  const publishable = (t: Task) =>
+    t.kind === "CONTENT" && !(t.companyId && lateExempt.has(t.companyId));
   const latePublish = late.filter((t) => t.stage === "PUBLISH" && publishable(t));
   if (publisher) {
     detailLines.push("", `🚀 النشر (${publisher.name}):`);
@@ -398,10 +400,15 @@ export function buildDailyBrief({
     }
     // «وشو لازم يتابع مع العملاء» — مهامه اليدوية (تثبيت مواعيد، استلام مواد،
     // متابعة موافقات) بتنعرض لحالها؛ كانت مندمجة بسطر «متابعة» بلا تفاصيل.
-    const followUps = selectDailyWorkTasks({ employee: publisher, tasks: open, allTasks: tasks, companies, today })
-      .filter((t) => t.kind === "ADHOC");
+    const followUps = [
+      ...selectDailyWorkTasks({ employee: publisher, tasks: open, allTasks: tasks, companies, today })
+        .filter((t) => t.kind === "ADHOC"),
+      // …وأي كرت يدوي متأخر عليه ما دخل اختيار اليوم: بعد ما طلعت الكروت اليدوية
+      // من العدّاد فوق، هالسطر هو مكانها الوحيد — ما بيصح تختفي.
+      ...late.filter((t) => t.kind === "ADHOC" && t.assigneeId === publisher.id),
+    ].filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i);
     if (followUps.length) {
-      detailLines.push("   متابعة مع العملاء:");
+      detailLines.push("   متابعة وبنود يدوية:");
       for (const t of followUps)
         detailLines.push(`     – ${t.title ?? "—"}${t.companyId ? ` (${coName(t)})` : ""}`);
     }
@@ -413,7 +420,11 @@ export function buildDailyBrief({
     if (!co.managed || co.status !== "active") continue;
     const mine = open.filter((t) => t.companyId === co.id);
 
-    const publishing = mine.filter((t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO);
+    // شركة معفاة (جدارات) ما بيصير يطلع لها «🚀 ينزل اليوم»: هي معفاة أصلاً لأنو
+    // العميل لسا ما بلّش ينشر. الورقة كانت بتقول السببين مع بعض بنفس الرسالة.
+    const publishing = lateExempt.has(co.id)
+      ? []
+      : mine.filter((t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO);
     const delivering = mine.filter((t) => t.stage !== "PUBLISH" && dISO(deadlineOf(t)) === todayISO);
     const overdue = lateExempt.has(co.id)
       ? []
@@ -438,9 +449,14 @@ export function buildDailyBrief({
       // rows is exactly the noise the lead told us to stop sending. The full
       // list lives on the board; the sheet's job is «شو أهم شي وقف».
       lines.push("", `⏰ متأخر (${overdue.length}):`);
-      for (const t of overdue.slice(0, 8))
-        lines.push(`• ${pieceLabel(t)} — متأخر ${daysLateOfState(t, today)} يوم · ${who(t)}`);
-      if (overdue.length > 8) lines.push(`… و${overdue.length - 8} غيرها على اللوحة`);
+      // القطعة الواحدة إلها كرت إنتاج وكرت نشر، فبلا ذكر المرحلة «Bru 7-1 · ستوري»
+      // بتطلع مرتين بورقة وحدة وكأنها غلط بالداتا.
+      for (const t of overdue.slice(0, LATE_IN_SHEET))
+        lines.push(
+          `• ${pieceLabel(t)}${t.stage === "PUBLISH" ? " (نشر)" : ""} — متأخر ${daysLateOfState(t, today)} يوم · ${who(t)}`,
+        );
+      if (overdue.length > LATE_IN_SHEET)
+        lines.push(`… و${overdue.length - LATE_IN_SHEET} غيرها على اللوحة`);
     }
     companyMessages.push({ key: co.id, title: co.name, text: lines.join("\n") });
   }
@@ -458,11 +474,12 @@ export function buildDailyBrief({
     if (todays.length) {
       lines.push("", "مهامك اليوم:");
       todays.forEach((t, i) => {
-        const due = deadlineOf(t);
-        const when = due ? ` — التسليم ${relativeDayLabel(due, today)}` : "";
-        lines.push(`${i + 1}. ${pieceLabel(t)} · ${coName(t)}${when}`);
-        // The plan's own words, so nobody has to open a Word file to start.
-        if (t.brief) {
+        lines.push(`${i + 1}. ${pieceLabel(t)} · ${coName(t)}${dueSuffix(t, today)}`);
+        // The plan's own words, so nobody has to open a Word file to start —
+        // for whoever PRODUCES the piece. The publisher already has the design
+        // in hand; pasting the script under all 35 of his cards is what blew
+        // his sheet past Telegram's limit on the first real run.
+        if (t.brief && t.stage !== "PUBLISH") {
           const trimmed = t.brief.trim().split("\n").slice(0, BRIEF_LINES).join("\n   ");
           lines.push(`   ${trimmed}`);
         }
@@ -471,9 +488,13 @@ export function buildDailyBrief({
       lines.push("", "ما في مهام مجدولة اليوم.");
     }
     if (mineLate.length) {
-      lines.push("", "⏰ متأخر عليك:");
-      for (const t of mineLate)
+      // Same cap as the company sheets: a personal message is a to-do list, not
+      // an inventory. The full backlog is on the board.
+      lines.push("", `⏰ متأخر عليك (${mineLate.length}):`);
+      for (const t of mineLate.slice(0, LATE_IN_SHEET))
         lines.push(`• ${pieceLabel(t)} · ${coName(t)} — متأخر ${daysLateOfState(t, today)} يوم`);
+      if (mineLate.length > LATE_IN_SHEET)
+        lines.push(`… و${mineLate.length - LATE_IN_SHEET} غيرها على اللوحة`);
     }
     employeeMessages.push({ key: emp.id, title: emp.name, text: lines.join("\n") });
   }

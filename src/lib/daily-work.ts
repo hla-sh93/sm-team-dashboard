@@ -16,7 +16,8 @@ const STAGE_RANK: Record<string, number> = {
   WRITE: 0,
   DESIGN: 1,
   SHOOT: 1,
-  PUBLISH: 2,
+  EDIT: 2,
+  PUBLISH: 3,
 };
 
 function dateISO(value: Date | string | null | undefined): string | null {
@@ -69,12 +70,22 @@ function isExclusiveDayTask(_task: Pick<Task, "type">, effortDays: number): bool
   return effortDays >= 1 - EPS;
 }
 
+/**
+ * كم كرت كتابة عند هالشخص لهالشركة **بنفس الدورة**.
+ *
+ * خطة الشهر بتنكتب مرة وبتنقسم على كرتين (نطاق التصميم ونطاق التصوير)، فكل كرت
+ * نصّ الخطة. المقسوم عليه لازم يكون عدد كروت **الدورة** — وكان محسوب على كل
+ * الكروت بكل الشهور، فنوال يلي عندها 23 كرت كتابة تاريخي للتوظيف صار كرتها
+ * 0.09 يوم بدل يوم، وصار ينزل عندها 3 خطط بيوم واحد وكأنها فاضية.
+ * (`computeWorkload` كان أصلاً صح لأنو بياخد كروت الشهر بس — كانت الدالتين
+ * بتحسبا نفس الفكرة برقمين مختلفين.)
+ */
 function writeScopeCounts(tasks: Task[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const task of tasks) {
     if (!(task.stage === "WRITE" || task.kind === "CONTENT_WRITING")) continue;
     if (!task.assigneeId || !task.companyId) continue;
-    const key = `${task.assigneeId}|${task.companyId}`;
+    const key = `${task.assigneeId}|${task.companyId}|${task.year}-${task.month}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
@@ -89,7 +100,7 @@ export function dailyTaskEffortDays(
 
   let days = cardDurationDays(employee, task);
   if ((task.stage === "WRITE" || task.kind === "CONTENT_WRITING") && task.assigneeId && task.companyId) {
-    const scopes = scopeCounts.get(`${task.assigneeId}|${task.companyId}`) ?? 1;
+    const scopes = scopeCounts.get(`${task.assigneeId}|${task.companyId}|${task.year}-${task.month}`) ?? 1;
     days /= Math.max(1, scopes);
   }
 
@@ -152,6 +163,33 @@ export function compareDailyWorkTasks(
   return a.id.localeCompare(b.id);
 }
 
+/**
+ * «هالكرت لسا ما فيه حدا يبلّشه» — حاجزه لسا مفتوح.
+ *
+ * Two rules depend on it, and both used to be broken:
+ *  - «الخطة أول مرحلة»: the day queue handed أيمن «تجهيز التيمبليت — مانغو»
+ *    while نوال's plan card was still NOT_STARTED.
+ *  - a blocked card can never be LATE. أليسار was shown «Makhbar 7-4 متأخر 15
+ *    يوم» for a reel ماجد has not shot yet — the shoot is what is late, not the
+ *    montage. Lateness has to follow whoever actually holds the ball.
+ */
+export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean {
+  const byId = new Map(allTasks.map((t) => [t.id, t]));
+  return (task: Task): boolean => {
+    const seen = new Set<string>();
+    let cur: Task | undefined = task;
+    while (cur?.blockedById) {
+      if (seen.has(cur.id)) break; // a cycle in the data must not hang the caller
+      seen.add(cur.id);
+      const blocker: Task | undefined = byId.get(cur.blockedById);
+      if (!blocker) return false; // blocker archived/deleted → no longer a gate
+      if (!isTaskDoneState(blocker)) return true;
+      cur = blocker;
+    }
+    return false;
+  };
+}
+
 export function selectDailyWorkTasks({
   employee,
   tasks,
@@ -172,9 +210,11 @@ export function selectDailyWorkTasks({
 
   const companyPriority = new Map(companies.map((company) => [company.id, company.priority]));
   const scopeCounts = writeScopeCounts(allTasks);
+  const isBlocked = makeBlockedPredicate(allTasks);
   const open = tasks
     .filter((task) => {
       if (task.assigneeId !== employee.id || isTaskDoneState(task)) return false;
+      if (isBlocked(task)) return false;
       // A task the lead parked on a LATER day (via «بدّل») is held out of today's
       // queue until that day arrives. Its own day (== today) and any past day
       // stay eligible, so the override self-expires.

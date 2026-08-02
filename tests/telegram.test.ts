@@ -12,6 +12,7 @@ import {
 } from "@/lib/asset-name";
 import { matchDelivery, normalizeMessage, typeHintFrom, type Delivery } from "@/lib/telegram/match";
 import { buildDailyBrief, briefMessagesFor } from "@/lib/telegram/brief";
+import { splitForTelegram } from "@/lib/telegram/client";
 import type { Company, Employee, Task } from "@/types";
 
 const company = (over: Partial<Company> = {}): Company =>
@@ -575,5 +576,37 @@ describe("brief waves", () => {
     const keys = briefMessagesFor(brief, "all").map((m) => m.key);
     expect(keys).toEqual(["schedule", "lead", "detail", "co1", "e1"]);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+// On the first real run (2026-08-02) عمر's sheet was 22,769 characters. Telegram
+// caps sendMessage at 4096, so it was rejected — and the sender used to abort
+// the whole wave on the first failure, which cost ماجد and سارة their sheets.
+describe("no sheet may be lost to Telegram's 4096 limit", () => {
+  it("keeps a short message whole", () => {
+    expect(splitForTelegram("سطر واحد")).toEqual(["سطر واحد"]);
+  });
+
+  it("splits a long message on line boundaries, never mid-line", () => {
+    const line = "• Wasl 7-1 · ستوري · وصل للتداول — متأخر 17 يوم";
+    const parts = splitForTelegram(Array.from({ length: 400 }, () => line).join("\n"), 500);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts)
+      for (const l of p.split("\n"))
+        expect(l === "" || l === line || /^\(تتمة \d+\)$/.test(l)).toBe(true);
+  });
+
+  it("keeps every part under the limit and loses no line", () => {
+    const lines = Array.from({ length: 900 }, (_, i) => `بند رقم ${i}`);
+    const parts = splitForTelegram(lines.join("\n"), 300);
+    for (const p of parts) expect([...p].length).toBeLessThanOrEqual(300 + 12);
+    const back = parts.join("\n").replace(/\(تتمة \d+\)\n/g, "");
+    for (const l of lines) expect(back).toContain(l);
+  });
+
+  it("hard-cuts a single line that is itself longer than the limit", () => {
+    const parts = splitForTelegram("ا".repeat(1000), 300);
+    expect(parts.length).toBe(4);
+    for (const p of parts) expect([...p].length).toBeLessThanOrEqual(300 + 12);
   });
 });

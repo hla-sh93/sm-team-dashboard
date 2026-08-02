@@ -49,6 +49,39 @@ async function call<T>(method: string, body?: unknown): Promise<TgResult<T>> {
   }
 }
 
+/**
+ * Telegram rejects any sendMessage over 4096 characters. On the brief's first
+ * real run (2026-08-02) عمر's sheet came out at 22,769 and was refused, so the
+ * text must be cut into parts before it ever reaches the API.
+ */
+export const TG_TEXT_LIMIT = 4096;
+/** Leaves room for the «(تتمة N)» marker on every continuation part. */
+export const TG_CHUNK = 3900;
+
+export function splitForTelegram(text: string, limit = TG_CHUNK): string[] {
+  if ([...text].length <= limit) return [text];
+  const parts: string[] = [];
+  let buf = "";
+  const flush = () => {
+    if (buf.trim()) parts.push(buf.replace(/\n+$/, ""));
+    buf = "";
+  };
+  for (const line of text.split("\n")) {
+    // A single line longer than the limit is pathological (a pasted brief with
+    // no newlines at all) — hard-cut it rather than drop it.
+    if ([...line].length > limit) {
+      flush();
+      const chars = [...line];
+      for (let i = 0; i < chars.length; i += limit) parts.push(chars.slice(i, i + limit).join(""));
+      continue;
+    }
+    if ([...buf].length + [...line].length + 1 > limit) flush();
+    buf += line + "\n";
+  }
+  flush();
+  return parts.map((p, i) => (i === 0 ? p : `(تتمة ${i + 1})\n${p}`));
+}
+
 /** Escape text for parse_mode: "HTML" (the only three characters that matter). */
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

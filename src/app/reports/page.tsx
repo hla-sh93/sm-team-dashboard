@@ -18,6 +18,7 @@ import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount } from "@/lib/progress";
+import { currentCycleBucket } from "@/lib/contract";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
 import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
@@ -69,13 +70,29 @@ export default async function ReportsPage({
     { type: "AI_REEL", label: "ريل AI", key: "aiReels" },
     { type: "STORY", label: "ستوري", key: "stories" },
   ];
+  // «إنجاز خطة الشركات» يُقاس على **دورة العقد**، مو على شهر التقويم — نفس القاعدة
+  // اللي على النظرة العامة. وصل بتمشي 13/7 ← 12/8، فكروتها بباكت تموز؛ قراءة باكت
+  // آب كانت بتعطي «0/15 بوست» لشركة نصّ دورتها خالص.
+  const cycleTaskCache = new Map<string, typeof tasks>();
+  for (const co of companies) {
+    const b = currentCycleBucket(co, new Date());
+    cycleTaskCache.set(
+      co.id,
+      b.year === year && b.month === month
+        ? tasks.filter((t) => t.companyId === co.id)
+        : await prisma.task.findMany({
+            where: { companyId: co.id, year: b.year, month: b.month, status: { not: "CANCELED" } },
+          }),
+    );
+  }
   const companyPlan = companies
     .filter((c) => c.managed && c.status === "active")
     .sort((a, b) => a.priority - b.priority)
     .map((co) => {
+      const cycleTasks = cycleTaskCache.get(co.id) ?? [];
       const rows = PLAN_TYPES.map((pt) => {
         const plan = co[pt.key] ?? 0;
-        const d = completedCompanyPlanCount(tasks, co.id, pt.type);
+        const d = completedCompanyPlanCount(cycleTasks, co.id, pt.type);
         return { ...pt, plan, done: d, remaining: Math.max(0, plan - d) };
       }).filter((r) => r.plan > 0 || r.done > 0);
       const totalPlan = rows.reduce((a, r) => a + r.plan, 0);
@@ -132,7 +149,9 @@ export default async function ReportsPage({
     const s = stageLabelOf(t);
     lateByStage.set(s, (lateByStage.get(s) ?? 0) + 1);
   }
-  const STAGE_ORDER = ["كتابة", "تصميم", "تصوير", "نشر", "إضافية", "أخرى"];
+  // ترتيب خط الإنتاج — «مونتاج» انضافت كمرحلة، وبلاها كانت بتنفرز أول القائمة
+  // (indexOf = −1) وكأنها قبل الكتابة.
+  const STAGE_ORDER = ["كتابة", "تصميم", "تصوير", "مونتاج", "نشر", "إضافية", "أخرى"];
   const lateStages = [...lateByStage.entries()].sort(
     (a, b) => STAGE_ORDER.indexOf(a[0]) - STAGE_ORDER.indexOf(b[0]),
   );
@@ -246,7 +265,10 @@ export default async function ReportsPage({
       {/* المنجَز مقابل المتبقّي من خطة كل شركة */}
       {companyPlan.length > 0 && (
         <Card>
-          <h2 className="display-font text-lg mb-4">إنجاز خطة الشركات — {label}</h2>
+          <h2 className="display-font text-lg mb-1">إنجاز خطة الشركات</h2>
+          <p className="text-xs text-fg-dim mb-4">
+            كل شركة على دورة عقدها هي، مو على شهر التقويم.
+          </p>
           <div className="grid md:grid-cols-2 gap-4">
             {companyPlan.map(({ co, rows, pct }) => (
               <div key={co.id} className="border border-border-soft rounded-lg p-3">
