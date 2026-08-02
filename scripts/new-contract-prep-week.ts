@@ -19,6 +19,14 @@ import { isTaskDoneState } from "../src/lib/constants";
 const prisma = new PrismaClient();
 const argv = process.argv.slice(2);
 const APPLY = argv.includes("--apply");
+/**
+ * كل شركة عندها كروت تحضير — للاستعمال بالبناء حتى الإنتاج يلحق التصحيحات.
+ * كروت التحضير `isAuto: false`، يعني **إعادة الجدولة ما بتلمسها أبداً**، فبلا
+ * هالمسار بيضل «استلام اللوغو» على المصمم بالإنتاج للأبد.
+ */
+const ALL = argv.includes("--all");
+/** إصلاح الموجود بس: ولا كرت جديد، ولا تحريك لتواريخ النشر. آمن بالبناء. */
+const REPAIR_ONLY = argv.includes("--repair-only");
 const NAME = argv.find((a) => !a.startsWith("--"));
 const PREP_DAYS = 7;
 const DOW = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -57,11 +65,32 @@ const PREP: {
 ];
 
 async function main() {
-  if (!NAME) { console.error("الاستعمال: npx tsx scripts/new-contract-prep-week.ts <شركة> [--apply]"); process.exit(1); }
+  if (ALL) {
+    // كل شركة عندها كروت تحضير أصلاً. بيتنفّذ بالبناء فبيلحق الإنتاج التصحيحات
+    // بلا ما حدا يعدّل كرت بإيدو.
+    const withPrep = await prisma.task.findMany({
+      where: { id: { startsWith: "prep_" } },
+      select: { companyId: true },
+      distinct: ["companyId"],
+    });
+    const ids = withPrep.map((t) => t.companyId).filter((v): v is string => !!v);
+    const cos = await prisma.company.findMany({ where: { id: { in: ids } } });
+    for (const c of cos) await runFor(c);
+    console.log(`\n${APPLY ? "تم" : "تشغيل تجريبي — أضف --apply."} (${cos.length} شركة)`);
+    return;
+  }
+  if (!NAME) { console.error("الاستعمال: npx tsx scripts/new-contract-prep-week.ts <شركة|--all> [--repair-only] [--apply]"); process.exit(1); }
   const co = await prisma.company.findFirst({ where: { name: { contains: NAME } } });
   if (!co) { console.error(`ما لقيت «${NAME}»`); process.exit(1); }
   if (!co.contractStartDate) { console.error(`«${co.name}» بلا تاريخ عقد — ما فيني أحدد أسبوع التحضير`); process.exit(1); }
+  await runFor(co);
+  console.log(`\n${APPLY ? "تم" : "تشغيل تجريبي — أضف --apply."}`);
+}
 
+type Co = Awaited<ReturnType<typeof prisma.company.findFirst>> & object;
+
+async function runFor(co: Co) {
+  if (!co.contractStartDate) return;
   const employees = await prisma.employee.findMany();
   const pick = (role: "owner" | "publisher" | "designer" | "writer") => {
     // صاحب الحساب (السيلز) هو يلي بيستلم اللوغو والحسابات من الزبون. إذا الشركة
@@ -136,6 +165,7 @@ async function main() {
         });
       continue;
     }
+    if (REPAIR_ONLY) continue; // إصلاح الموجود بس — ولا كرت جديد
     console.log(`🔧 ${label(work)} — ${emp.name}: ${p.title}${p.after ? ` (بعد «${p.after}»)` : ""}`);
     created++;
     if (!APPLY) continue;
@@ -156,6 +186,9 @@ async function main() {
   }
 
   // ---- 2. ولا نشر خلال أسبوع التحضير ---------------------------------------
+  // ما بينشتغل بوضع الإصلاح: `publishDate < prepEnd` بتطابق كل نشر قديم لشركة
+  // عقدها من زمان، فتنزاح مئات الكروت — كارثة لو انشغّلت بالبناء.
+  if (REPAIR_ONLY) return;
   const early = (await prisma.task.findMany({
     where: { companyId: co.id, stage: "PUBLISH", status: { not: "CANCELED" }, publishDate: { lt: prepEnd } },
     orderBy: { publishDate: "asc" },
@@ -172,10 +205,9 @@ async function main() {
       await prisma.task.update({ where: { id: t.id }, data: { publishDate: d, workDate: d, isPinned: true } });
     cursor.setDate(cursor.getDate() + 1);
   }
-
-  console.log(`\n${APPLY ? "تم" : `رح يُنشأ ${created} كرت تحضير`}`);
-  if (!APPLY) console.log("تشغيل تجريبي — أضف --apply.");
-  await prisma.$disconnect();
+  if (!APPLY && created) console.log(`رح يُنشأ ${created} كرت تحضير`);
 }
 
-main().catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
+main()
+  .catch((e) => { console.error(e); process.exitCode = 1; })
+  .finally(() => prisma.$disconnect());
