@@ -22,6 +22,7 @@
 import { readFileSync } from "fs";
 import { basename } from "path";
 import { PrismaClient } from "@prisma/client";
+import { parseAssetName } from "../src/lib/asset-name";
 import {
   matchDelivery,
   parseOffPlanKeywords,
@@ -323,7 +324,17 @@ async function main() {
     const order: string[] = [];
     for (const p of list) {
       const name = p.delivery.fileName?.trim().toLowerCase();
-      const key = name ? `${p.co.id}|${name}` : `#${p.m.id}`;
+      // الشرائح بتحمل أسماء مختلفة («carousel 01», «carousel 02») بس بتسمّي
+      // **نفس القطعة** (`-8-2`). البثّ الحي بيجمّعها بـ`mediaGroupId`، والتصدير
+      // ما بيحمله — فالمفتاح هون هو اسم الأصل نفسه. بلا هيك، كاروسيل من 5
+      // شرائح بيسكّر 5 قطع: «ستوري 2» بالشريحة الأولى و«بوست 2» بالتانية…
+      const parsed = parseAssetName(p.delivery.fileName) ?? parseAssetName(p.delivery.caption);
+      const r = parsed?.readings?.[0];
+      const key = r
+        ? `${p.co.id}|${parsed!.slug.toLowerCase()}|${r.month0}-${r.pieceNo}`
+        : name
+          ? `${p.co.id}|${name}`
+          : `#${p.m.id}`;
       if (!groups.has(key)) {
         groups.set(key, []);
         order.push(key);
