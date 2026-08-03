@@ -10,6 +10,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { isTaskDoneState, isTaskLateState, daysLateOfState } from "../src/lib/constants";
+import { currentCycleBucket } from "../src/lib/contract";
 
 const prisma = new PrismaClient();
 const TODAY = new Date();
@@ -108,9 +109,15 @@ async function main() {
   if (contradictory.length) gaps.push(`${contradictory.length} قطعة نشرها مسجّل منجز بينما إنتاجها لسا مفتوح`);
 
   // (هـ) شركات نشطة بلا كروت بالدورة الحالية
+  //
+  // «الدورة الحالية» مو شهر التقويم: أغاليا بتمشي 13/7 ← 12/8 وبرو 18/7 ← 17/8،
+  // فكروتهن ببـاكت **تموز** وهنّ بنص دورتهن. القراءة بشهر اليوم كانت بتطلّع
+  // إنذار كاذب «ما إلها ولا كرت» لشركتين شغّالتين — إنذار كاذب بفحص ما قبل
+  // النشر أسوأ من لا فحص، لأنّه بيخلّي الحقيقي ينمرق بينهن.
   for (const c of companies) {
     if (c.status !== "active" || !c.managed) continue;
-    const cur = all.filter((t) => t.companyId === c.id && t.year === TODAY.getFullYear() && t.month === TODAY.getMonth());
+    const b = currentCycleBucket(c as never, TODAY);
+    const cur = all.filter((t) => t.companyId === c.id && t.year === b.year && t.month === b.month);
     if (!cur.length) gaps.push(`«${c.name}» ما إلها ولا كرت بالدورة الحالية`);
   }
 

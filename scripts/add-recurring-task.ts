@@ -24,7 +24,7 @@ const flag = (name: string) => {
   return i > -1 ? argv[i + 1] : null;
 };
 const flagIdxs = new Set(
-  ["--from", "--to", "--days", "--hours"].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0),
+  ["--from", "--to", "--days", "--hours", "--note"].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0),
 );
 const [companyArg, personArg, titleArg] = argv.filter(
   (a, i) => !a.startsWith("--") && !flagIdxs.has(i),
@@ -34,11 +34,15 @@ const TO = flag("--to");
 const DAYS = (flag("--days") ?? "1,2,3,4,5").split(",").map(Number);
 /** Effort per day, in hours — ad-hoc effort is stored as hours (§5). */
 const HOURS = Number(flag("--hours") ?? 2);
+/** ليش الكرت موجود — بينكتب على الملاحظات، ومنه بيعرف الفحص إنّ الإقفال مبرّر. */
+const NOTE = flag("--note") ?? "خارج الخطة — محتوى يومي يزوّدنا فيه الزبون";
+/** شغل خلص قبل ما ينكتب كرته (القائدة عملت الهايلايتس وبعتتها، وبعدين سجّلناها). */
+const DONE = argv.includes("--done");
 
 async function main() {
   if (!companyArg || !personArg || !titleArg || !FROM || !TO) {
     console.error(
-      'الاستعمال: npx tsx scripts/add-recurring-task.ts <شركة> <موظف> "العنوان" --from YYYY-MM-DD --to YYYY-MM-DD [--days 1,2,3,4,5] [--hours 2] [--apply]',
+      'الاستعمال: npx tsx scripts/add-recurring-task.ts <شركة> <موظف> "العنوان" --from YYYY-MM-DD --to YYYY-MM-DD [--days 1,2,3,4,5] [--hours 2] [--note "…"] [--done] [--apply]',
     );
     process.exit(1);
   }
@@ -53,6 +57,11 @@ async function main() {
   const [ty, tm, td] = TO.split("-").map(Number);
   const start = new Date(fy, fm - 1, fd);
   const end = new Date(ty, tm - 1, td);
+
+  // مفتاح قصير من العنوان — بيدخل بالمعرّف ليضل الإنشاء متكافئ التشغيل.
+  const titleKey = Math.abs(
+    [...titleArg].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7),
+  ).toString(36);
 
   const existing = await prisma.task.findMany({
     where: { companyId: company.id, assigneeId: person.id, title: titleArg },
@@ -71,18 +80,21 @@ async function main() {
     const day = new Date(d);
     await prisma.task.create({
       data: {
-        // Deterministic id so a re-run can never duplicate a day.
-        id: `adhoc_${company.slug ?? company.id}_${person.id}_${iso}`,
+        // Deterministic id so a re-run can never duplicate a day. العنوان جزء
+        // منه لأنّ الشخص ممكن يكون إلو مهمتين إضافيتين بنفس اليوم لنفس الشركة
+        // (نشرات الصرف صباحاً، وهايلايتس بعد الضهر).
+        id: `adhoc_${company.slug ?? company.id}_${person.id}_${iso}_${titleKey}`,
         kind: "ADHOC",
         title: titleArg,
         hours: HOURS,
         quantity: 1,
         priority: "NORMAL",
-        status: "NOT_STARTED",
-        board: "TODO",
+        status: DONE ? "READY" : "NOT_STARTED",
+        board: DONE ? "DONE" : "TODO",
         stage: "DESIGN",
         workDate: day,
         readyDate: day,
+        ...(DONE ? { startedAt: day, finishedAt: day, completedAt: day } : {}),
         month: day.getMonth(),
         year: day.getFullYear(),
         week: Math.ceil(day.getDate() / 7),
@@ -90,7 +102,7 @@ async function main() {
         isAuto: false,
         companyId: company.id,
         assigneeId: person.id,
-        notes: "خارج الخطة — محتوى يومي يزوّدنا فيه الزبون",
+        notes: NOTE,
       },
     });
   }

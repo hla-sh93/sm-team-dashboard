@@ -150,7 +150,10 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
   if (match) await recordCarouselSlides(match.taskId, delivery);
 
   const advanced = match
-    ? await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId)
+    ? await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId, {
+        by: match.by,
+        evidence: delivery.fileName ?? delivery.caption?.slice(0, 40) ?? "(صورة بلا اسم)",
+      })
     : false;
 
   return {
@@ -289,6 +292,8 @@ async function closeProductionCard(
   taskId: string,
   at: Date,
   senderId?: string | null,
+  /** الدليل يلي سكّر الكرت — بينكتب عليه متل ما بيعمل استيراد التصدير. */
+  proof?: { by: "NAME" | "BRIEF" | "TYPE"; evidence: string },
 ): Promise<boolean> {
   const t = await prisma.task.findUnique({ where: { id: taskId } });
   if (!t || isTaskDoneState(t)) return false;
@@ -296,6 +301,12 @@ async function closeProductionCard(
     ? await prisma.employee.findFirst({ where: { telegramUserId: senderId } })
     : null;
   const credited = doer && doer.id !== t.assigneeId ? doer.id : null;
+  // بلا هالسطر الكرت بينسكّر بلا سبب مكتوب عليه: الربط موجود بجدول الرسائل بس،
+  // فأي تقرير أو فحص بيقرا الكرت لحاله بيشوف «منجز» بلا ما يعرف مين ولا شو.
+  // الاستيراد اليدوي كان بيكتبها والبوت الحي — يلي هو المسار الأساسي — لأ.
+  const note = proof
+    ? `سُلّم على تلغرام (${proof.by === "NAME" ? "بالاسم" : proof.by === "BRIEF" ? "بالمحتوى" : "بالنوع"}): ${proof.evidence}`
+    : null;
   await prisma.task.update({
     where: { id: taskId },
     data: {
@@ -304,6 +315,7 @@ async function closeProductionCard(
       startedAt: t.startedAt ?? at,
       finishedAt: at,
       completedAt: t.completedAt ?? at,
+      ...(note ? { notes: [t.notes, note].filter(Boolean).join(" · ") } : {}),
       ...(credited ? { assigneeId: credited, isPinned: true } : {}),
     },
   });
