@@ -126,8 +126,6 @@ export type PieceCard = {
   publish: PieceStage | null;
   active: PieceStage | null;
   done: boolean;
-  /** راجعتها القائدة؟ محفوظة على صف النشر (أو الصف الوحيد) — مو حاجزة للنشر. */
-  reviewed: boolean;
   count: number;
 };
 
@@ -163,7 +161,6 @@ export function groupTasksIntoPieces(
       publish,
       active,
       done: stages.every((s) => s.done),
-      reviewed: sorted.some((t) => t.reviewedAt != null),
       count: sorted.reduce((a, t) => a + (t.quantity ?? 1), 0),
     });
   }

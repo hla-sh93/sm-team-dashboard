@@ -65,7 +65,6 @@ export default function TasksClient({
   employees,
   companies,
   tasks,
-  allTasks,
   sessions,
   initialPerson = "all",
   initialCompany = "all",
@@ -75,8 +74,6 @@ export default function TasksClient({
   employees: Employee[];
   companies: Company[];
   tasks: Task[];
-  /** المهام + المراحل المنجزة للقطع المرحَّلة — مرجع للبحث مو للعرض. */
-  allTasks: Task[];
   sessions: PhotoSession[];
   // Deep-linked initial filter from the server page's searchParams (e.g. the home
   // page's "عرض في البورد" → /tasks?person=<id>). Passed as props rather than read
@@ -453,7 +450,7 @@ export default function TasksClient({
               (person === "all" || t.assigneeId === person) &&
               (company === "all" || t.companyId === company),
           )}
-          allTasks={allTasks}
+          allTasks={tasks}
           employees={employees}
           companies={companies}
           year={year}
