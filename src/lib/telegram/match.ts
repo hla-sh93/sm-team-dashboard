@@ -318,7 +318,15 @@ export function matchDelivery(
     for (const r of parsed.readings) {
       if (!plausible(r.month0)) continue;
       const sameNo = pool.filter((t) => t.pieceNo === r.pieceNo);
-      if (sameNo.length === 1) return { taskId: sameNo[0].id, by: "NAME" };
+      if (!sameNo.length) continue;
+      // «قطعة وحدة بهالرقم» بتنقاس بالقطعة مو بالكرت: الريل إلو كرت تصوير وكرت
+      // مونتاج، والاتنين رقمهن ٤. اعتبارهن «لبس» كان بيوقف المطابقة تماماً —
+      // فالفريق يلي عم يسمّي بشهر **النشر** («Makhbar 8-4» ونحنا بدورة 15/7)
+      // ما كان يلاقي كرتو أبداً وبيضل الكرت متأخر رغم إنّ الشغل انبعت. لبس
+      // حقيقي = رقم نفسه بدورتين مفتوحتين؛ وقتها منوقف متل قبل.
+      if (new Set(sameNo.map((t) => t.month)).size > 1) continue;
+      // نفس القطعة بمراحل: الأبكر موعداً هي المرحلة الجارية (تصوير قبل مونتاج).
+      return { taskId: [...sameNo].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id, by: "NAME" };
     }
     // The name states which piece this is. If that piece is not in the open set
     // it is already closed — by an earlier carousel slide, or by a first send
