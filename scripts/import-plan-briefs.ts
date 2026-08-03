@@ -4,21 +4,35 @@
  * The plans arrive on Telegram as .docx tables — hook, script, caption,
  * hashtags per numbered piece. Until now the designer had to open the Word file
  * to know what «بوست-3» actually says. This lifts each row onto its piece's
- * card, so the brief travels with the work.
+ * card, so the brief travels with the work — and gives the delivery matcher the
+ * only evidence it has for a file nobody named by the convention.
  *
- *   npx tsx scripts/import-plan-briefs.ts "C:/…/Telegram Desktop"
+ *   npx tsx scripts/import-plan-briefs.ts "C:/…/ChatExport_2026-08-03"
  *   npx tsx scripts/import-plan-briefs.ts "C:/…" --apply
  *   npx tsx scripts/import-plan-briefs.ts "C:/…" --company أغاليا --month 7
+ *   npx tsx scripts/import-plan-briefs.ts "C:/…" --all      # حتى الشهور القديمة
+ *
+ * Point it at a Telegram Desktop export folder and it reads `result.json`: the
+ * TOPIC a plan was sent in names its company («خطة جوبس.docx» carries no hint)
+ * and the send date dates it. A plain folder of .docx files still works, with
+ * the company read from the file name.
  *
  * Dry run by default. Re-runnable: a card's brief is simply overwritten with
  * the current plan text, so fixing a plan and re-importing is safe.
  */
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { basename, dirname, join } from "path";
 import { inflateRawSync } from "zlib";
 import { PrismaClient } from "@prisma/client";
 import { CONTENT_TYPE_LABELS, type ContentType } from "../src/lib/constants";
-import { currentCycle } from "../src/lib/contract";
+import { cyclesOf } from "../src/lib/contract";
+import {
+  buildTopicIndex,
+  matchTopicCompany,
+  monthWordIn,
+  plainText,
+  type ExportMessage,
+} from "../src/lib/telegram/export";
 
 const prisma = new PrismaClient();
 const argv = process.argv.slice(2);
@@ -27,14 +41,26 @@ const arg = (flag: string) => {
   const i = argv.indexOf(flag);
   return i > -1 ? argv[i + 1] : null;
 };
+/** يعرض أول وصفين من كل خطة — للتأكد إنّ القراءة طلعت نص مفهوم مو حشو. */
+const SHOW = argv.includes("--show");
 const ONLY_COMPANY = arg("--company");
 const ONLY_MONTH = arg("--month") ? Number(arg("--month")) - 1 : null;
-const dir = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--company" && argv[i - 1] !== "--month");
+/** بلاه منستورد بس الشهر الحالي واللي قبله — التصدير فيه خطط من نيسان. */
+const ALL_MONTHS = argv.includes("--all") || ONLY_MONTH != null;
+const target = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--company" && argv[i - 1] !== "--month");
 
-if (!dir) {
-  console.error('الاستعمال: npx tsx scripts/import-plan-briefs.ts "مجلد الخطط" [--apply] [--company اسم] [--month 8]');
+if (!target) {
+  console.error('الاستعمال: npx tsx scripts/import-plan-briefs.ts "مجلد التصدير أو مجلد الخطط" [--apply] [--company اسم] [--month 8] [--all]');
   process.exit(1);
 }
+
+/** التصدير: مجلّد فيه `result.json`، أو الملف نفسه. */
+const exportJson = target.toLowerCase().endsWith(".json")
+  ? target
+  : existsSync(join(target, "result.json"))
+    ? join(target, "result.json")
+    : null;
+const dir = exportJson ? dirname(exportJson) : target;
 
 // ---------------------------------------------------------------- docx → text
 
@@ -143,11 +169,13 @@ function parsePlan(text: string): PlanItem[] {
 /** Plan file → company. Matched on the file name, so new plans just work. */
 const FILE_HINTS: Record<string, string> = {
   wasl: "وصل للتداول",
+  تداول: "وصل للتداول",
   agaly: "أغاليا",
   agali: "أغاليا",
   balsam: "مركز البلسم",
   jadarat: "جدارات",
   jobs: "التوظيف",
+  جوبس: "التوظيف",
   bw: "BW",
   bru: "برو",
   siizen: "Siizen",
@@ -155,39 +183,141 @@ const FILE_HINTS: Record<string, string> = {
   المخبر: "مخبر د.نور",
 };
 
-async function main() {
-  const companies = await prisma.company.findMany();
-  const files = readdirSync(dir!).filter((f) => f.toLowerCase().endsWith(".docx") && !f.startsWith("~$"));
+/** الشركة من اسم الملف — احتياط للخطط اللي انبعتت برّا أي توبيك. */
+function companyFromName(name: string, companies: Company[]): Company | null {
+  const lower = name.toLowerCase();
+  const hint = Object.entries(FILE_HINTS).find(([k]) => lower.includes(k) || name.includes(k));
+  return hint ? (companies.find((c) => c.name === hint[1]) ?? null) : null;
+}
 
-  let totalSet = 0;
-  for (const f of files) {
-    const lower = f.toLowerCase();
-    const hint = Object.entries(FILE_HINTS).find(([k]) => lower.includes(k) || f.includes(k));
-    const company = hint ? companies.find((c) => c.name === hint[1]) : null;
-    if (!company) {
-      console.log(`⏭️  ${f} — ما عرفت لأي شركة`);
+type Company = Awaited<ReturnType<PrismaClient["company"]["findMany"]>>[number];
+
+/** خطة وحدة جاهزة للاستيراد: ملفها، شركتها، شهرها، ووقت وصولها. */
+type PlanFile = {
+  path: string;
+  name: string;
+  company: Company;
+  month: number;
+  /** من وين إجا الشهر — بينطبع بالتقرير لأنّ غلطه بيكتب خطة نيسان على آب. */
+  monthFrom: string;
+  at: Date;
+};
+
+/**
+ * الشهر اللي بتخصّه الخطة.
+ *
+ * اسم الملف بيقولها بالعادة («Bw - Aug -»، «المخبر - July Plan-»). لما ما
+ * يقولها، بنمشي على **أقرب بداية دورة** لتاريخ الإرسال: الخطة بتوصل قبل دورتها
+ * بأيام أو بأولها، فـ«BalsamCenter_ContentPlan» يلي انبعت ٣٠/٧ هي خطة آب مو
+ * تموز. زيادة نصف دورة على تاريخ الإرسال بتعطي هالتقريب بالضبط.
+ *
+ * القديم كان بياخد دورة **اليوم** لأي ملف بلا شهر بالاسم — فخطة نيسان بتنكتب
+ * على كروت آب وبتمحي كل الأوصاف يلي المطابقة قايمة عليها.
+ */
+function monthOf(company: Company, name: string, caption: string | null, at: Date) {
+  if (ONLY_MONTH != null) return { month: ONLY_MONTH, monthFrom: "--month" };
+  const named = monthWordIn(`${name} ${caption ?? ""}`);
+  if (named != null) return { month: named, monthFrom: "الاسم" };
+  const mid = new Date(at);
+  mid.setDate(mid.getDate() + 15);
+  // الدورة اللي لسا ما خلصت وقتها — وإذا النشر لسا ما بلّش (جدارات وقّعت 4/7
+  // وبتنشر من 7/8) فخطة تموز هي خطة **أول دورة**، مو خطة شهر بلا كروت.
+  const cycle = company.contractStartDate
+    ? (cyclesOf(company as never).find((c) => c.end.getTime() > mid.getTime()) ?? null)
+    : null;
+  if (cycle) return { month: cycle.start.getMonth(), monthFrom: "أقرب دورة للإرسال" };
+  return { month: mid.getMonth(), monthFrom: "أقرب شهر للإرسال" };
+}
+
+/** الخطط جوّا تصدير تلغرام: التوبيك بيحدّد الشركة، والرسالة بتحدّد التاريخ. */
+function fromExport(companies: Company[], skipped: string[]): PlanFile[] {
+  const raw = JSON.parse(readFileSync(exportJson!, "utf8")) as { messages: ExportMessage[] };
+  const messages = raw.messages ?? [];
+  const { topicOf, titles } = buildTopicIndex(messages);
+  const out: PlanFile[] = [];
+
+  for (const m of messages) {
+    if (!m.file || !m.file_name?.toLowerCase().endsWith(".docx")) continue;
+    const path = join(dir, m.file);
+    if (!existsSync(path)) {
+      skipped.push(`${m.file_name} — الملف مو موجود بالتصدير`);
       continue;
     }
-    if (ONLY_COMPANY && !company.name.includes(ONLY_COMPANY)) continue;
+    const topic = topicOf(m);
+    const company =
+      (topic != null ? matchTopicCompany(titles.get(topic) ?? "", companies) : null) ??
+      companyFromName(m.file_name, companies);
+    if (!company) {
+      skipped.push(`${m.file_name} — توبيك «${(topic != null && titles.get(topic)) || "—"}» مو مربوط بشركة`);
+      continue;
+    }
+    const at = m.date_unixtime ? new Date(Number(m.date_unixtime) * 1000) : new Date(m.date);
+    out.push({
+      path,
+      name: m.file_name,
+      company,
+      ...monthOf(company, m.file_name, plainText(m.text), at),
+      at,
+    });
+  }
+  return out;
+}
 
-    const text = docxText(join(dir!, f));
+/** مجلّد ملفات عادي: الشركة بتنقرأ من اسم الملف. */
+function fromFolder(companies: Company[], skipped: string[]): PlanFile[] {
+  const out: PlanFile[] = [];
+  for (const f of readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".docx") && !f.startsWith("~$"))) {
+    const company = companyFromName(f, companies);
+    if (!company) {
+      skipped.push(`${f} — ما عرفت لأي شركة`);
+      continue;
+    }
+    const at = statSync(join(dir, f)).mtime;
+    out.push({ path: join(dir, f), name: f, company, ...monthOf(company, f, null, at), at });
+  }
+  return out;
+}
+
+async function main() {
+  const companies = await prisma.company.findMany();
+  const skipped: string[] = [];
+  const now = new Date();
+  /** شهر مسموح: الجاري، اللي قبله، واللي بعده (الخطة بتوصل قبل دورتها). */
+  const inRange = (month: number) => {
+    if (ALL_MONTHS) return true;
+    const d = Math.abs(month - now.getMonth());
+    return Math.min(d, 12 - d) <= 1;
+  };
+
+  const found = (exportJson ? fromExport(companies, skipped) : fromFolder(companies, skipped))
+    .filter((p) => !ONLY_COMPANY || p.company.name.includes(ONLY_COMPANY))
+    // الأقدم أولاً: خطتين لنفس الشهر بتتكاملوا، والأحدث هي اللي بتغلب.
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  // نفس الملف بينبعت مرتين (تذكير، أو نسخة «(1)») — آخر إرسال بيكفي.
+  const latest = new Map<string, PlanFile>();
+  for (const p of found) latest.set(`${p.company.id}|${p.month}|${p.name}`, p);
+  const plans = [...latest.values()].sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  let totalSet = 0;
+  for (const p of plans) {
+    const { company, month } = p;
+    const f = `${p.name}${p.name === basename(p.path) ? "" : ""}`;
+    if (!inRange(month)) {
+      skipped.push(`${f} — شهر ${month + 1} برّا المدى (${p.monthFrom})`);
+      continue;
+    }
+
+    const text = docxText(p.path);
     if (!text) {
       console.log(`⚠️  ${f} — ما قدرت أقرأ الملف`);
       continue;
     }
     const items = parsePlan(text);
     if (!items.length) {
-      console.log(`⚠️  ${f} — ما لقيت بنود مرقّمة`);
+      skipped.push(`${f} — ما لقيت بنود مرقّمة`);
       continue;
     }
-
-    // Which cycle does this plan belong to? The file name usually says
-    // (July / Aug / آب). Failing that, use the company's CURRENT cycle rather
-    // than the file's timestamp — a plan downloaded today can easily belong to
-    // a cycle that started weeks ago.
-    const monthFromName = /aug|آب/i.test(f) ? 7 : /jul|تموز/i.test(f) ? 6 : null;
-    const cycle = company.contractStartDate ? currentCycle(company as never, new Date()) : null;
-    const month = ONLY_MONTH ?? monthFromName ?? cycle?.start.getMonth() ?? statSync(join(dir!, f)).mtime.getMonth();
 
     const tasks = await prisma.task.findMany({
       where: { companyId: company.id, month, status: { not: "CANCELED" }, type: { not: null } },
@@ -228,11 +358,21 @@ async function main() {
     }
     totalSet += set;
     console.log(
-      `${set ? "✅" : "⚠️ "} ${company.name.padEnd(13)} ${f.padEnd(32)} شهر ${month + 1} → ${set} كرت` +
+      `${set ? "✅" : "⚠️ "} ${company.name.padEnd(13)} ${f.slice(0, 34).padEnd(34)} شهر ${month + 1}` +
+        ` (${p.monthFrom}) → ${set} كرت` +
         (missing.length ? `   (${missing.join(" · ")})` : ""),
     );
+    if (SHOW)
+      for (const it of items.slice(0, 2))
+        console.log(
+          `      ${CONTENT_TYPE_LABELS[it.type]} ${it.n}: ${it.brief.replace(/\n/g, " ¶ ").slice(0, 160)}`,
+        );
   }
 
+  if (skipped.length) {
+    console.log(`\n— متخطّى (${skipped.length}) —`);
+    for (const s of skipped) console.log(`  ⏭️  ${s}`);
+  }
   console.log(`\n${APPLY ? "انكتب" : "رح ينكتب"} نص المحتوى على ${totalSet} كرت.`);
   if (!APPLY) console.log("تشغيل تجريبي — أضف --apply.");
   await prisma.$disconnect();

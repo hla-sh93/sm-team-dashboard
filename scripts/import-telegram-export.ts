@@ -29,7 +29,13 @@ import {
   type Delivery,
   type MatchCandidate,
 } from "../src/lib/telegram/match";
-import { companySlug, slugMatches } from "../src/lib/asset-name";
+import { companySlug } from "../src/lib/asset-name";
+import {
+  buildTopicIndex,
+  matchTopicCompany,
+  plainText,
+  type ExportMessage,
+} from "../src/lib/telegram/export";
 import { CONTENT_TYPE_LABELS } from "../src/lib/constants";
 import { isTaskDoneState } from "../src/lib/constants";
 
@@ -79,63 +85,7 @@ const BUCKET_LEAD_DAYS = 10;
 /** …and how far after (late delivery of that cycle's piece). */
 const BUCKET_TAIL_DAYS = 25;
 
-/** Topic titles as they appear in the team's forum → company name in the DB. */
-const TOPIC_ALIASES: Record<string, string> = {
-  "وصل (التداول)": "وصل للتداول",
-  "وصل": "وصل للتداول",
-  "مركز أغاليا": "أغاليا",
-  "أغاليا": "أغاليا",
-  "مركز البلسم": "مركز البلسم",
-  "البلسم": "مركز البلسم",
-  "bru cafe": "برو",
-  "bru": "برو",
-  "المول الصيني": "المول الصيني",
-  "phoenitech designs": "Phoenitech",
-  "phoenitech training": "التدريب",
-  "التدريب": "التدريب",
-  "bw": "BW",
-  "jobs": "التوظيف",
-  "phoeni jobs": "التوظيف",
-  "jadarat": "جدارات",
-  "المخبر": "مخبر د.نور",
-  "siizen": "Siizen",
-  "capriani gelato": "كابرياني",
-  "capriani": "كابرياني",
-  "skm designs": "المدارس",
-  "skm": "المدارس",
-};
-
-type RawMessage = {
-  id: number;
-  type: string; // "message" | "service"
-  date: string;
-  date_unixtime?: string;
-  from?: string;
-  from_id?: string;
-  actor?: string;
-  action?: string;
-  title?: string;
-  reply_to_message_id?: number;
-  file?: string;
-  file_name?: string;
-  media_type?: string;
-  mime_type?: string;
-  photo?: string;
-  text?: unknown;
-};
-
-/** Telegram's `text` is a string, or an array of strings/entity objects. */
-function plainText(t: unknown): string | null {
-  if (typeof t === "string") return t || null;
-  if (Array.isArray(t))
-    return (
-      t
-        .map((p) => (typeof p === "string" ? p : ((p as { text?: string }).text ?? "")))
-        .join("")
-        .trim() || null
-    );
-  return null;
-}
+type RawMessage = ExportMessage;
 
 function kindOf(m: RawMessage): "PHOTO" | "VIDEO" | "DOCUMENT" | "AUDIO" | "TEXT" {
   if (m.photo) return "PHOTO";
@@ -178,49 +128,11 @@ async function main() {
   console.log(`المحادثة: ${raw.name ?? "—"}  (${chatId})  ·  ${messages.length} رسالة\n`);
 
   // ---- 1. topics ---------------------------------------------------------
-  const topicTitle = new Map<number, string>(); // root message id → title
-  for (const m of messages)
-    if (m.type === "service" && m.action === "topic_created" && m.title) topicTitle.set(m.id, m.title);
-
-  // Resolve every message to its topic by walking the reply chain.
-  const byId = new Map<number, RawMessage>(messages.map((m) => [m.id, m]));
-  const topicCache = new Map<number, number | null>();
-  const topicOf = (m: RawMessage): number | null => {
-    let cur: RawMessage | undefined = m;
-    const seen: number[] = [];
-    while (cur) {
-      if (topicTitle.has(cur.id)) break;
-      if (topicCache.has(cur.id)) {
-        const cached = topicCache.get(cur.id)!;
-        for (const id of seen) topicCache.set(id, cached);
-        return cached;
-      }
-      seen.push(cur.id);
-      const next: number | undefined = cur.reply_to_message_id;
-      if (next == null) {
-        for (const id of seen) topicCache.set(id, null);
-        return null;
-      }
-      cur = byId.get(next);
-    }
-    const root = cur ? cur.id : null;
-    for (const id of seen) topicCache.set(id, root);
-    return root;
-  };
+  const { titles: topicTitle, topicOf } = buildTopicIndex(messages);
 
   const companies = await prisma.company.findMany();
   const employees = await prisma.employee.findMany();
-  const matchCompany = (title: string) => {
-    const alias = TOPIC_ALIASES[title.trim()] ?? TOPIC_ALIASES[title.trim().toLowerCase()];
-    if (alias) return companies.find((c) => c.name === alias) ?? null;
-    const t = normalise(title);
-    return (
-      companies.find((c) => normalise(c.name) === t) ??
-      companies.find((c) => t.includes(normalise(c.name)) || normalise(c.name).includes(t)) ??
-      companies.find((c) => c.slug && slugMatches(c.slug, title.replace(/[^A-Za-z]/g, ""))) ??
-      null
-    );
-  };
+  const matchCompany = (title: string) => matchTopicCompany(title, companies);
 
   console.log("— المواضيع —");
   const topicCompany = new Map<number, string | null>();
