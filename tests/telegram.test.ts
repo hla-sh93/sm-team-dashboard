@@ -427,7 +427,26 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     const line = buildDailyBrief({ ...base, tasks: [design] }).schedule.text
       .split("\n")
       .find((l) => l.includes("أيمن"))!;
-    expect(line).toBe("أيمن تصاميم أغاليا");
+    // علامة RTL بأول السطر مقصودة: منشن لاتيني (Nawal، @Omar_ORR) كان بيقلب
+    // اتجاه السطر بعرض تلغرام فيطلع «خطة مانغو Nawal» والاسم بالآخر.
+    expect(line.startsWith("‏")).toBe(true);
+    expect(line.replace(/‏/g, "")).toBe("أيمن تصاميم أغاليا");
+  });
+
+  it("كل سطر بيبلّش بعلامة RTL حتى يضل الاسم أول شي", () => {
+    const design = task({
+      id: "d",
+      stage: "DESIGN",
+      type: "POST",
+      readyDate: workday,
+      workDate: workday,
+      assigneeId: "d1",
+    });
+    const lines = buildDailyBrief({ ...base, tasks: [design] })
+      .schedule.text.split("\n")
+      .filter((l: string) => l.trim() && l !== "صباح الخير");
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l.startsWith("‏")).toBe(true);
   });
 
   it("mentions the person by @handle when one is stored", () => {

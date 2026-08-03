@@ -305,13 +305,22 @@ export function buildDailyBrief({
       if (workingToday(emp) && emp.isScheduled) idleToday.push(emp.name);
       continue;
     }
-    scheduleLines.push(`${mention(emp)} ${headline}`);
+    // علامة RTL بأول السطر: منشن بحروف لاتينية (Nawal، @Omar_ORR) بيقلب اتجاه
+    // السطر بعرض تلغرام فيطلع «خطة مانغو Nawal» والاسم بالآخر. العلامة بتثبّت
+    // السياق عربي فيضل الاسم أول شي متل ما بتكتبها القائدة بإيدها.
+    scheduleLines.push(`‏${mention(emp)} ${headline}`);
   }
 
-  // -------------------------- 2. التقرير التفصيلي (٨:٠٠) — أقسام، بطلب القائدة
-  // «التصميم: أيمن، سابين · التصوير والمونتاج: ماجد (شو يصوّر)، أليسار (شو
-  // تسلّم) · النشر: عمر — شو ننشر لكل شركة». كل بند مع موعده.
+  // -------------------------- 2. التقرير التفصيلي (٨:٠٠)
+  // الهيكل حرفياً متل ما طلبته القائدة (2/8/2026):
+  //   للتصميم:  1- أيمن …  2- سابين …
+  //   للنشر:    3- عمر — شو لازم ينزل لكل شركة
+  //   للكتابة:  4- نوال …
+  //   فيديو:    5- ماجد (شو يصوّر)  6- أليسار (شو تمنتج)
+  // الترقيم **متسلسل عبر الأقسام كلها** مو بيرجع لـ1 بكل قسم — «هيك لازم يطلعو
+  // التقارير». والترتيب هو ترتيبها: تصميم ← نشر ← كتابة ← فيديو.
   const detailLines: string[] = [`📋 تفاصيل ${dateLabel}`];
+  let itemNo = 0;
 
   /** بنود شخص: مهام اليوم بموعدها، وبعدها المتأخر عليه (بحد أقصى 6 + عدّاد). */
   const personItems = (emp: Employee): string[] => {
@@ -331,62 +340,35 @@ export function buildDailyBrief({
     /designer|مصمم/i.test(e.role) && !isPublisher(e) && !isPhotographer(e) && !isEditor(e);
   const isWriter = (e: Employee) => /كات|writer/i.test(e.role);
 
-  // — التصميم —
-  const designers = employees.filter((e) => isDesigner(e) && workingToday(e));
-  const designBlocks = designers
+  /** «1- أيمن:» وتحته بنوده. بيرجع false إذا ما في شي يتقال عنه. */
+  const pushPerson = (name: string, items: string[], emptyLine?: string): boolean => {
+    if (!items.length && !emptyLine) return false;
+    detailLines.push(`${++itemNo}- ${name}:`);
+    detailLines.push(...(items.length ? items : [`   ${emptyLine}`]));
+    return true;
+  };
+
+  // ── للتصميم ──
+  const designBlocks = employees
+    .filter((e) => isDesigner(e) && workingToday(e))
     .map((e) => ({ e, items: personItems(e) }))
     .filter((b) => b.items.length);
   if (designBlocks.length) {
-    detailLines.push("", "🎨 التصميم:");
-    designBlocks.forEach((b, i) => {
-      detailLines.push(`${i + 1}- ${b.e.name}:`);
-      detailLines.push(...b.items);
-    });
+    detailLines.push("", "🎨 للتصميم:");
+    for (const b of designBlocks) pushPerson(b.e.name, b.items);
   }
 
-  // — الكتابة — (مو بهيكل القائدة الحرفي، بس نوال لازم مكان لما يكون عندها شغل)
-  const writers = employees.filter((e) => isWriter(e) && workingToday(e));
-  const writeBlocks = writers.map((e) => ({ e, items: personItems(e) })).filter((b) => b.items.length);
-  if (writeBlocks.length) {
-    detailLines.push("", "✍️ الكتابة:");
-    for (const b of writeBlocks) {
-      detailLines.push(`${b.e.name}:`);
-      detailLines.push(...b.items);
-    }
-  }
-
-  // — التصوير والمونتاج —
-  const shooters = employees.filter((e) => isPhotographer(e) && e.isScheduled);
-  const shootBlocks = shooters.map((e) => ({ e, items: personItems(e) })).filter((b) => b.items.length);
-  const editors = employees.filter((e) => isEditor(e));
-  if (shootBlocks.length || editors.length) {
-    detailLines.push("", "🎬 التصوير والمونتاج:");
-    let n = 0;
-    for (const b of shootBlocks) {
-      detailLines.push(`${++n}- تصوير (${b.e.name}):`);
-      detailLines.push(...b.items);
-    }
-    for (const ed of editors) {
-      const items = personItems(ed);
-      detailLines.push(`${++n}- مونتاج (${ed.name}):`);
-      if (items.length) detailLines.push(...items);
-      else detailLines.push("   ما في ريلات جاهزة للمونتاج.");
-    }
-  }
-
-  // — النشر — «شو لازم ننشر لكل شركة»: قطع اليوم بالتفصيل، والمتراكم عدّاد لكل
-  // شركة (تعدادو قطعة قطعة هو جدار الـ٩٣ سطر يلي منعنا عنه).
+  // ── للنشر ── «شو لازم ينزل لكل شركة»: عدد بالنوع، مو أسماء القطع وحدة وحدة.
   const publisher = employees.find((e) => isPublisher(e));
-  // شركة معفاة (جدارات) ما بتدخل قسم النشر إطلاقاً: العميل لسا ما بلّش ينشر،
-  // فما في شي «لازم ينتشر» عندها لحد ما توصل الإشارة.
-  // وكمان: الكروت اليدوية (نشر إعلان دورة، تثبيت موعد) بتنعرض بالقائمة تحت
-  // بالاسم، فلو انعدّت هون كمان بتنحسب مرتين بنفس الرسالة — «التدريب: متراكم 2
-  // مهمة» وتحتها نفس البندين بالاسم.
+  // شركة معفاة (جدارات) ما بتدخل قسم النشر إطلاقاً — العميل لسا ما بلّش ينشر.
+  // والكروت اليدوية بتنعرض بالاسم تحت، فلو انعدّت هون بتنحسب مرتين.
+  // كرت النشر `kind: "PUBLISH"` مو `"CONTENT"` — الشرط القديم كان بيستبعد الـ363
+  // كرت نشر كلهن فيطلع قسم عمر فاضي. المقصود استبعاد **اليدوية** بس، لأنها
+  // بتنعرض بالاسم تحت وبتنعدّ مرتين لو دخلت العدّاد.
   const publishable = (t: Task) =>
-    t.kind === "CONTENT" && !(t.companyId && lateExempt.has(t.companyId));
+    t.kind !== "ADHOC" && !(t.companyId && lateExempt.has(t.companyId));
   const latePublish = late.filter((t) => t.stage === "PUBLISH" && publishable(t));
   if (publisher) {
-    detailLines.push("", `🚀 النشر (${publisher.name}):`);
     const byCo = new Map<string, { today: Task[]; late: Task[]; lateN: number }>();
     const bucket = (t: Task) => {
       const g = byCo.get(coName(t)) ?? { today: [], late: [], lateN: 0 };
@@ -395,33 +377,54 @@ export function buildDailyBrief({
     };
     for (const t of publishingToday.filter(publishable)) bucket(t).today.push(t);
     for (const t of latePublish) { const g = bucket(t); g.late.push(t); g.lateN++; }
-    if (!byCo.size) detailLines.push("   ما في شي مجدول للنشر اليوم.");
-    for (const [co, g] of [...byCo.entries()].sort((a, b) => b[1].today.length - a[1].today.length || b[1].lateN - a[1].lateN)) {
-      // «شو لازم ينشر بوستات وريلات وستوريز لكل شركة» — العدد بالنوع، مو أسماء
-      // القطع وحدة وحدة. متراكم 24 قطعة بيصير «متراكم: 9 بوست · 13 ستوري · 2 ريل».
-      const byType = (list: Task[]) => {
-        const m = new Map<string, number>();
-        for (const t of list) m.set(typeLabel(t), (m.get(typeLabel(t)) ?? 0) + 1);
-        return [...m.entries()].map(([k, n]) => `${n} ${k}`).join(" · ");
-      };
+    const byType = (list: Task[]) => {
+      const m = new Map<string, number>();
+      for (const t of list) m.set(typeLabel(t), (m.get(typeLabel(t)) ?? 0) + 1);
+      return [...m.entries()].map(([k, n]) => `${n} ${k}`).join(" · ");
+    };
+    const rows: string[] = [];
+    for (const [co, g] of [...byCo.entries()].sort(
+      (a, b) => b[1].today.length - a[1].today.length || b[1].lateN - a[1].lateN,
+    )) {
       const todayPart = g.today.length ? byType(g.today) : "—";
       const latePart = g.lateN ? ` · متراكم: ${byType(g.late)}` : "";
-      detailLines.push(`   • ${co}: ${todayPart}${latePart}`);
+      rows.push(`   • ${co}: ${todayPart}${latePart}`);
     }
-    // «وشو لازم يتابع مع العملاء» — مهامه اليدوية (تثبيت مواعيد، استلام مواد،
-    // متابعة موافقات) بتنعرض لحالها؛ كانت مندمجة بسطر «متابعة» بلا تفاصيل.
+    // بنوده اليدوية (تثبيت مواعيد، استلام مواد) بالاسم — مكانها الوحيد.
     const followUps = [
       ...selectDailyWorkTasks({ employee: publisher, tasks: open, allTasks: tasks, companies, today })
         .filter((t) => t.kind === "ADHOC"),
-      // …وأي كرت يدوي متأخر عليه ما دخل اختيار اليوم: بعد ما طلعت الكروت اليدوية
-      // من العدّاد فوق، هالسطر هو مكانها الوحيد — ما بيصح تختفي.
       ...late.filter((t) => t.kind === "ADHOC" && t.assigneeId === publisher.id),
     ].filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i);
     if (followUps.length) {
-      detailLines.push("   متابعة وبنود يدوية:");
+      rows.push("   متابعة وبنود يدوية:");
       for (const t of followUps)
-        detailLines.push(`     – ${t.title ?? "—"}${t.companyId ? ` (${coName(t)})` : ""}`);
+        rows.push(`     – ${t.title ?? "—"}${t.companyId ? ` (${coName(t)})` : ""}`);
     }
+    detailLines.push("", "🚀 للنشر:");
+    pushPerson(publisher.name, rows, "ما في شي مجدول للنشر اليوم.");
+  }
+
+  // ── للكتابة ──
+  const writeBlocks = employees
+    .filter((e) => isWriter(e) && workingToday(e))
+    .map((e) => ({ e, items: personItems(e) }))
+    .filter((b) => b.items.length);
+  if (writeBlocks.length) {
+    detailLines.push("", "✍️ للكتابة:");
+    for (const b of writeBlocks) pushPerson(b.e.name, b.items);
+  }
+
+  // ── فيديو ── تصوير ثم مونتاج، بنفس العدّاد المتسلسل.
+  const shootBlocks = employees
+    .filter((e) => isPhotographer(e) && e.isScheduled)
+    .map((e) => ({ e, items: personItems(e) }));
+  const editors = employees.filter((e) => isEditor(e)).map((e) => ({ e, items: personItems(e) }));
+  if (shootBlocks.some((b) => b.items.length) || editors.length) {
+    detailLines.push("", "🎬 فيديو:");
+    for (const b of shootBlocks) pushPerson(`${b.e.name} (تصوير)`, b.items);
+    for (const b of editors)
+      pushPerson(`${b.e.name} (مونتاج)`, b.items, "ما في ريلات جاهزة للمونتاج.");
   }
 
   // ---------------------------------------------------------------- companies
