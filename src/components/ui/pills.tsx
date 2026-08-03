@@ -39,16 +39,27 @@ export function PriorityPill({ priority }: { priority: string }) {
  *  - `late` — genuinely OVERDUE carryover → amber «متبقّي من دورة …».
  *  - on schedule — the planned TAIL of a prior-anchor contract cycle (e.g.
  *    برو's 7→6 cycle publishing on Jul 5) → neutral «دورة …», no delay implied. */
-export function CyclePill({ cycleLabel, late = false }: { cycleLabel: string; late?: boolean }) {
+export function CyclePill({
+  cycleLabel,
+  late = false,
+  carryover = true,
+}: {
+  cycleLabel: string;
+  late?: boolean;
+  /** متبقّي من دورة **سابقة** فعلاً. غلطه بيخلي شغل الدورة الحالية يقرأ كمتراكم
+   *  قديم — برو (18/7 → 17/8) كانت تطلع «متبقّي» وهي دورتها الجارية. */
+  carryover?: boolean;
+}) {
   // «دورة 21/7 → 20/8» صح، بس «دورة لسا ما بلّش النشر» مو جملة. الشارة بتسبق
   // بـ«دورة» بس لما يكون النص مدى تواريخ؛ غير هيك بتعرضه متل ما هو.
   const isSpan = /^\d/.test(cycleLabel);
-  const text = isSpan ? `${late ? "متبقّي من دورة " : "دورة "}${cycleLabel}` : cycleLabel;
+  const leftover = late && carryover;
+  const text = isSpan ? `${leftover ? "متبقّي من دورة " : "دورة "}${cycleLabel}` : cycleLabel;
   return (
     <span
       className={
         "text-[10px] inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 whitespace-nowrap " +
-        (late
+        (leftover
           ? "bg-warning/10 text-warning font-semibold"
           : "bg-info/10 text-info font-medium")
       }

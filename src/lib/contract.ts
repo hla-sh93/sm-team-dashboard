@@ -267,6 +267,24 @@ export function cycleSpanLabel(
  * A company with no contract date has no cycles at all — it falls back to the
  * plain calendar month, which is exactly what `cycleForBucket` does for it.
  */
+/**
+ * هل هالكرت **متبقّي من دورة سابقة** فعلاً؟
+ *
+ * الشاشة بتقارن باكت الكرت بشهر التقويم المعروض، فبرو (18/7 → 17/8) كانت
+ * بتطلع «متبقّي من دورة 18/7» وهي **الدورة الحالية** — القائدة: «مو دورة
+ * سابقة!». المقارنة الصح مع باكت دورة **الشركة** الجارية، مو مع شهر الشاشة.
+ */
+export function isCarryoverFromPastCycle(
+  co: ContractCompany | null | undefined,
+  year: number,
+  month: number,
+  today: Date = new Date(),
+): boolean {
+  if (!co) return false;
+  const cur = currentCycleBucket(co, today);
+  return year * 12 + month < cur.year * 12 + cur.month;
+}
+
 export function currentCycleBucket(
   co: ContractCompany,
   today: Date = new Date(),

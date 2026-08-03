@@ -1,6 +1,6 @@
 "use client";
 
-import { cycleSpanLabel } from "@/lib/contract";
+import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -408,6 +408,13 @@ export default function OverviewClient({
                         </span>
                         {(card.repr.year !== year || card.repr.month !== month) && (
                           <CyclePill
+                            carryover={isCarryoverFromPastCycle(
+                              card.repr.companyId
+                                ? companies.find((c) => c.id === card.repr.companyId)
+                                : null,
+                              card.repr.year,
+                              card.repr.month,
+                            )}
                             cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
                             late={overdue}
                           />

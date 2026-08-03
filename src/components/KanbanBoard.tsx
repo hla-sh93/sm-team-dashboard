@@ -17,7 +17,7 @@ import {
   type Stage,
 } from "@/lib/constants";
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
-import { cycleForBucket, cycleSpanLabel } from "@/lib/contract";
+import { cycleForBucket, cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import {
   buildReelNumbers,
@@ -445,6 +445,11 @@ export default function KanbanBoard({
         <div className="flex items-center gap-1 flex-wrap">
           {year != null && month != null && (t.year !== year || t.month !== month) && (
             <CyclePill
+              carryover={isCarryoverFromPastCycle(
+                t.companyId ? companies.find((c) => c.id === t.companyId) : null,
+                t.year,
+                t.month,
+              )}
               cycleLabel={cycleLabelFor(t.companyId, t.year, t.month)}
               late={isLate(t)}
             />
