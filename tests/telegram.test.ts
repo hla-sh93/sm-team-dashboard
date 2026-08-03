@@ -651,3 +651,49 @@ describe("مراحل الإنتاج بالبوت مربوطة بخط الأنا�
     expect(inBot).not.toContain("PUBLISH");
   });
 });
+
+/**
+ * دورة العقد بتقع على شهرين: وصل 21/7 → 20/8، فالاسم القياسي «Wasl 7-2» بينما
+ * الريل بينشر بآب. أليسار سمّت ريلاتها «Wasl 8-2» — والمطابقة كانت بتشترط تطابق
+ * الشهر ثم **توقف**، فالملف بينخزّن وما بيسكّر ولا كرت.
+ */
+describe("اسم القطعة عبر حدود الشهر", () => {
+  const co = "Wasl";
+  const reel = (pieceNo: number, month: number) =>
+    ({
+      id: `r${pieceNo}-${month}`,
+      type: "REEL",
+      stage: "SHOOT",
+      month,
+      pieceNo,
+      publishDate: new Date(2026, 7, pieceNo + 1),
+      readyDate: new Date(2026, 6, 25),
+      brief: null,
+      quantity: 1,
+    }) as never;
+
+  const deliver = (fileName: string) =>
+    ({ kind: "VIDEO", fileName, caption: null, chatId: "c", messageId: 1 }) as never;
+
+  it("«Wasl 7-2» بتطابق قطعة تموز متل قبل", () => {
+    const hit = matchDelivery(deliver("Wasl 7-2.mp4"), co, [reel(2, 6)], []);
+    expect(hit?.taskId).toBe("r2-6");
+  });
+
+  it("«Wasl 8-2» بتطابق نفس القطعة لما تكون وحدة بلا لبس", () => {
+    const hit = matchDelivery(deliver("Wasl 8-2.mp4"), co, [reel(2, 6)], []);
+    expect(hit?.taskId).toBe("r2-6");
+    expect(hit?.by).toBe("NAME");
+  });
+
+  it("بس ما بتخمّن لما يكون في قطعتين بنفس الرقم وولا وحدة بشهر الاسم", () => {
+    // دورتان قديمتان (حزيران وتموز) وكلتاهما فيها «قطعة 2»، والاسم بيقول آب —
+    // ما في مرجّح، فالمطابقة بتوقف بدل ما تخمّن.
+    const hit = matchDelivery(deliver("Wasl 8-2.mp4"), co, [reel(2, 5), reel(2, 6)], []);
+    expect(hit).toBeNull();
+  });
+
+  it("رقم مو موجود بيضل ما بيطابق شي", () => {
+    expect(matchDelivery(deliver("Wasl 8-9.mp4"), co, [reel(2, 6)], [])).toBeNull();
+  });
+});

@@ -276,6 +276,18 @@ export function matchDelivery(
         .sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
       if (hit) return { taskId: hit.id, by: "NAME" };
     }
+    // …وإذا الشهر ما طابق، جرّب **رقم القطعة لحاله**.
+    //
+    // دورة العقد بتقع على شهرين: وصل بتمشي 21/7 → 20/8، فالاسم القياسي «Wasl 7-2»
+    // (شهر بداية الدورة) بينما الريل فعلياً بينشر بآب — وأليسار سمّته «Wasl 8-2»
+    // لأنّ هيك بيقرأ صح من ناحيتها. القديم كان بيشترط تطابق الشهر ثم **بيوقف**،
+    // فالملف بينخزّن وما بيسكّر ولا كرت. رقم القطعة + الشركة + النوع بيحدّدوا
+    // القطعة لحالهن؛ الشهر مجرّد راحة بشرية. منقبله بس لما يكون **بلا لبس**:
+    // قطعة مفتوحة وحدة بهالرقم — وإلا منوقف متل قبل.
+    for (const r of parsed.readings) {
+      const sameNo = pool.filter((t) => t.pieceNo === r.pieceNo);
+      if (sameNo.length === 1) return { taskId: sameNo[0].id, by: "NAME" };
+    }
     // The name states which piece this is. If that piece is not in the open set
     // it is already closed — by an earlier carousel slide, or by a first send
     // being revised — so STOP. Falling through would hand slide 2 of a carousel
