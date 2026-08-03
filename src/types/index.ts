@@ -41,6 +41,8 @@ export type Company = {
   aiReels: number;
   contractValue: number;
   contractStartDate: Date | null;
+  /** بدء النشر — مرساة الدورة. null مع عقد موقّع = النشر ما بلّش عند الزبون. */
+  publishStartDate: Date | null;
   /** JSON array of ISO cycle starts after the first — see lib/contract.ts. */
   renewals: string | null;
   /** "Not renewed" decision — no cycle may begin on/after this date. */

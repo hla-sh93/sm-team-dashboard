@@ -131,6 +131,15 @@ const companyInput = (over: Record<string, any> = {}) => ({
   defaultOwnerId: null,
   photographerId: null,
   ...over,
+  // النموذج الجديد: مرساة الدورة هي **بدء النشر**. الاختبارات بتمرّر
+  // `contractStartDate` وهي تقصد «من إيمتى تمشي الدورة»، فمنعكسها هون بدل ما
+  // ياخد الافتراضي (توقيع + أسبوع) ويزيح كل التواريخ المتوقّعة.
+  publishStartDate:
+    over.publishStartDate !== undefined
+      ? over.publishStartDate
+      : "contractStartDate" in over
+        ? over.contractStartDate
+        : "2026-07-01",
 });
 
 /** Create a company owned by a real designer so the engine can schedule it. */

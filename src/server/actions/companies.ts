@@ -19,6 +19,32 @@ function parseContractDate(v: string | null | undefined): Date | null {
   return new Date(y, m - 1, d);
 }
 
+/** أسبوع التحضير بين التوقيع وبدء النشر. */
+const PREP_DAYS = 7;
+
+/**
+ * بدء النشر — وهو مرساة الدورة.
+ *
+ * إذا انحطّ صراحةً منستعمله. إذا ما انحطّ وفي تاريخ توقيع، منفترض **أسبوع بعده**
+ * («معظمنا منبدأ نشر بعد التوقيع بأسبوع» — القائدة 3/8/2026)، وإلا شركة جديدة
+ * بتنعمل بتاريخ عقد وما بينولّد لها ولا كرت وحدا بيفهم ليش. يلي بدها تعليم
+ * «النشر ما بلّش» (جدارات، Siizen) بتنفرّغ من الشاشة صراحةً.
+ */
+function resolvePublishStart(
+  publishStartDate: string | null | undefined,
+  contractStartDate: string | null | undefined,
+  explicit: boolean,
+): Date | null {
+  const p = parseContractDate(publishStartDate);
+  if (p) return p;
+  if (explicit) return null; // الشاشة بعتت الحقل فاضي عن قصد
+  const c = parseContractDate(contractStartDate);
+  if (!c) return null;
+  const d = new Date(c);
+  d.setDate(d.getDate() + PREP_DAYS);
+  return d;
+}
+
 export async function createCompany(input: CompanyInput) {
   try {
     await assertAdmin();
@@ -41,6 +67,11 @@ export async function createCompany(input: CompanyInput) {
         stories: d.stories,
         contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
+        publishStartDate: resolvePublishStart(
+          d.publishStartDate,
+          d.contractStartDate,
+          "publishStartDate" in (input as object),
+        ),
         // Only written when explicitly supplied — the company form does not send
         // these, and a plain edit must never wipe the contract's cycle history.
         ...(d.renewals !== undefined ? { renewals: d.renewals } : {}),
@@ -89,6 +120,11 @@ export async function updateCompany(id: string, input: CompanyInput) {
         stories: d.stories,
         contractValue: d.contractValue ?? 0,
         contractStartDate: parseContractDate(d.contractStartDate),
+        publishStartDate: resolvePublishStart(
+          d.publishStartDate,
+          d.contractStartDate,
+          "publishStartDate" in (input as object),
+        ),
         // Only written when explicitly supplied — the company form does not send
         // these, and a plain edit must never wipe the contract's cycle history.
         ...(d.renewals !== undefined ? { renewals: d.renewals } : {}),

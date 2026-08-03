@@ -69,13 +69,14 @@ describe("company plan progress", () => {
  */
 describe("company progress is read over the company's own cycle", () => {
   it("puts a mid-month cycle in the bucket of its START month, not today's month", () => {
-    const wasl = { contractStartDate: new Date(2026, 6, 13), renewals: null, contractEndedAt: null };
+    const wasl = { contractStartDate: new Date(2026, 6, 6), publishStartDate: new Date(2026, 6, 13), renewals: null, contractEndedAt: null };
     expect(currentCycleBucket(wasl, new Date(2026, 7, 2))).toEqual({ year: 2026, month: 6 });
   });
 
   it("moves to the next bucket only once the new cycle actually starts", () => {
     const wasl = {
-      contractStartDate: new Date(2026, 6, 13),
+      contractStartDate: new Date(2026, 6, 6),
+      publishStartDate: new Date(2026, 6, 13),
       renewals: JSON.stringify(["2026-08-13"]),
       contractEndedAt: null,
     };
@@ -84,7 +85,7 @@ describe("company progress is read over the company's own cycle", () => {
   });
 
   it("falls back to the calendar month for a company with no contract date", () => {
-    const bw = { contractStartDate: null, renewals: null, contractEndedAt: null };
+    const bw = { contractStartDate: null, publishStartDate: null, renewals: null, contractEndedAt: null };
     expect(currentCycleBucket(bw, new Date(2026, 7, 2))).toEqual({ year: 2026, month: 7 });
   });
 

@@ -19,7 +19,13 @@ import {
   CONTENT_TYPE_LABELS,
 } from "../src/lib/constants";
 import { toISODate, fromISODate, parseWorkDays, addWorkingDays } from "../src/lib/dates";
-import { cyclesOf, cycleForBucket, currentCycle, currentCycleBucket } from "../src/lib/contract";
+import {
+  cyclesOf,
+  cycleForBucket,
+  currentCycle,
+  currentCycleBucket,
+  hasStartedPublishing,
+} from "../src/lib/contract";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "../src/lib/progress";
 import {
   selectDailyWorkTasks,
@@ -349,7 +355,14 @@ async function main() {
 
     // كل كرت لشركة نشطة واقع ضمن دورة معرّفة
     const outsideCycle: string[] = [];
-    for (const co of companies.filter((c) => c.managed && c.status === "active" && c.contractStartDate)) {
+    for (const co of companies.filter(
+      (c) =>
+        c.managed &&
+        c.status === "active" &&
+        c.contractStartDate &&
+        // النشر ما بلّش → ما إلها دورة عن قصد، وكروتها تاريخ مجمّد.
+        hasStartedPublishing(c as never),
+    )) {
       const cards = live.filter((t) => t.companyId === co.id && t.kind === "CONTENT");
       for (const c of cards) {
         if (!cycleForBucket(co as never, c.year, c.month)) outsideCycle.push(`${co.name} ${c.year}-${c.month + 1}`);

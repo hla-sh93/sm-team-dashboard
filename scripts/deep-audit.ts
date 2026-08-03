@@ -14,7 +14,7 @@ import { parseWorkDays } from "../src/lib/dates";
 import { buildTodayBrief } from "../src/lib/telegram/service";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "../src/lib/progress";
 import { ratePerDay } from "../src/lib/capacity";
-import { cycleForBucket, currentCycleBucket } from "../src/lib/contract";
+import { cycleForBucket, currentCycleBucket, hasStartedPublishing } from "../src/lib/contract";
 
 const prisma = new PrismaClient();
 let pass = 0, fail = 0;
@@ -101,8 +101,11 @@ async function main() {
   for (const c of active.filter((x) => x.managed)) {
     const cyc = cycleForBucket(c as never, 2026, 7) ?? cycleForBucket(c as never, 2026, 6);
     const cards = tasks.filter((t) => t.companyId === c.id && t.kind === "CONTENT");
+    // شركة عقدها موقّع والنشر ما بلّش (جدارات) ما إلها دورة **عن قصد** — كروتها
+    // الموجودة تاريخ مجمّد لحد ما يبلّش الزبون ينشر.
     check(`«${c.name}» عندها دورة معرّفة وكروت (${cards.length})`,
-      (cyc != null || c.contractStartDate == null) && (cards.length > 0 || c.name === "مانغو" || !c.posts));
+      (cyc != null || c.contractStartDate == null || !hasStartedPublishing(c as never)) &&
+        (cards.length > 0 || c.name === "مانغو" || !c.posts));
   }
   const noSlug = active.filter((c) => c.managed && !companySlug(c as never));
   check("كل شركة مُدارة إلها slug للتسمية القياسية", noSlug.length === 0, noSlug.map((c) => c.name).join("،"));

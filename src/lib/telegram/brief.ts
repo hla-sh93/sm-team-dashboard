@@ -29,6 +29,7 @@ import {
 } from "@/lib/constants";
 import { ARABIC_DAYS, parseWorkDays, toISODate } from "@/lib/dates";
 import { assetNameForTask } from "@/lib/asset-name";
+import { hasStartedPublishing } from "@/lib/contract";
 import { buildContentNumbers } from "@/lib/cards";
 import { makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
 
@@ -182,7 +183,9 @@ export function buildDailyBrief({
   // is exempt everywhere lateness is reported, «معرّض للتأخير» included. The
   // deadlines underneath are untouched; clearing the reason restores them.
   const lateExempt = new Set(
-    companies.filter((c) => c.lateExemptReason?.trim()).map((c) => c.id),
+    companies
+      .filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim())
+      .map((c) => c.id),
   );
   // كرت محجوز ما بينحسب متأخر: أليسار كانت تطلع «Makhbar 7-4 متأخر 15 يوم»
   // لريل ماجد لسا ما صوّرو. المتأخر هو التصوير، والمونتاج ما فيه يبلّش أصلاً.
@@ -448,7 +451,10 @@ export function buildDailyBrief({
 
     const lines: string[] = [`📅 ${co.name} — ${dateLabel}`];
     // Say WHY nothing is late here, or the sheet looks like an oversight.
-    if (lateExempt.has(co.id)) lines.push(`(${co.lateExemptReason} — التأخير مو محسوب)`);
+    if (lateExempt.has(co.id))
+      lines.push(
+        `(${co.lateExemptReason?.trim() || "النشر لسا ما بلّش عند الزبون"} — التأخير مو محسوب)`,
+      );
     if (publishing.length) {
       lines.push("", "🚀 ينزل اليوم:");
       for (const t of publishing) lines.push(`• ${pieceLabel(t)} — ${who(t)}`);

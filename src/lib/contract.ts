@@ -31,7 +31,14 @@ export const RENEWAL_NOTICE_DAYS = 3;
 
 /** Structural shape — satisfied by both Prisma `Company` and `CompanyInput`. */
 export type ContractCompany = {
+  /** توقيع العقد — بيحدّد أسبوع التحضير، **مو** مرساة الدورة. */
   contractStartDate?: Date | string | null;
+  /**
+   * بدء النشر — **مرساة الدورة**. القائدة (3/8/2026): «الخطة شهر من تاريخ بدء
+   * النشر وليس توقيع العقد». null = النشر ما بلّش (جدارات، Siizen: العقد موقّع
+   * والتأخير من الزبون) → ولا دورة، ولا شغل مجدول، ولا تأخير علينا.
+   */
+  publishStartDate?: Date | string | null;
   /** JSON array of ISO dates (cycle starts AFTER the first), or already parsed. */
   renewals?: string | string[] | null;
   contractEndedAt?: Date | string | null;
@@ -59,6 +66,39 @@ export type ContractState =
   | { state: "due_soon"; cycle: Cycle; endsAt: Date; daysLeft: number }
   | { state: "awaiting_renewal"; cycle: Cycle; endedAt: Date }
   | { state: "ended"; cycle: Cycle | null; endedAt: Date };
+
+/**
+ * حالة العقد — **ثلاث** حالات مو اتنين، وهي جوهر فصل التوقيع عن النشر.
+ *
+ *   publishing            → في تاريخ بدء نشر: الدورات بتتبني منه.
+ *   signed_not_publishing → العقد موقّع والنشر ما بلّش (جدارات، Siizen).
+ *                           ولا دورة، ولا شغل مجدول، **ولا تأخير علينا** —
+ *                           التأخير من الزبون. هي «التأخيرات الوهمية».
+ *   no_contract           → ما في مفهوم عقد أصلاً (المدارس، كابرياني، فونيتيك):
+ *                           بتمشي على الشهر التقويمي متل قبل، والتأخير بينحسب
+ *                           عادي لأنّ إلها مواعيد تسليم حقيقية.
+ */
+export type ContractMode = "publishing" | "signed_not_publishing" | "no_contract";
+
+export function contractModeOf(co: ContractCompany | null | undefined): ContractMode {
+  if (!co) return "no_contract";
+  if (co.publishStartDate) return "publishing";
+  if (co.contractStartDate) return "signed_not_publishing";
+  return "no_contract";
+}
+
+/** مرساة الدورات — تاريخ بدء النشر، ولا شي غيره. */
+export function cycleAnchorOf(co: ContractCompany): Date | string | null | undefined {
+  return co.publishStartDate ?? null;
+}
+
+/**
+ * هل بلّش النشر عند هالشركة؟ الشركة يلي عقدها موقّع والنشر ما بلّش هي الوحيدة
+ * يلي بتنعفى من حساب التأخير — بديل بنيوي لـ`lateExemptReason` النصّي.
+ */
+export function hasStartedPublishing(co: ContractCompany | null | undefined): boolean {
+  return contractModeOf(co) !== "signed_not_publishing";
+}
 
 /** Local midnight for a Date | ISO string. */
 function midnight(v: Date | string): Date {
@@ -111,7 +151,9 @@ export function serializeRenewals(dates: Date[]): string {
  * dropped — a "not renewed" decision is a hard stop.
  */
 export function cycleStarts(co: ContractCompany): Date[] {
-  const first = toDateOrNull(co.contractStartDate);
+  // المرساة هي **بدء النشر**. لو ما انحطّ بعد، منرجع لتاريخ التوقيع حتى الشركات
+  // القديمة يلي لسا ما اتهجّرت تضل تشتغل متل قبل — الترحيل بيملا الحقل.
+  const first = toDateOrNull(cycleAnchorOf(co));
   if (!first) return [];
   const endedAt = toDateOrNull(co.contractEndedAt);
   const seen = new Set<string>();
@@ -197,7 +239,11 @@ export function cycleForBucket(
   year: number,
   month: number,
 ): Cycle | null {
-  if (!co.contractStartDate) return calendarCycle(year, month);
+  const mode = contractModeOf(co);
+  // موقّع والنشر ما بلّش → المحرك ما بيولّد شي. بلا هالسطر بيرجع للشهر التقويمي
+  // وبيولّد شغل لشركة لسا ما بلّشت — وهي بالضبط التأخيرات الوهمية.
+  if (mode === "signed_not_publishing") return null;
+  if (mode === "no_contract") return calendarCycle(year, month);
   const inBucket = cyclesOf(co).filter(
     (c) => c.start.getFullYear() === year && c.start.getMonth() === month,
   );
@@ -228,22 +274,15 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
 export function cycleSpanLabel(
   co: ContractCompany & {
     contractStartDate?: Date | string | null;
-    lateExemptReason?: string | null;
   },
   year: number,
   month: number,
   _monthNames?: readonly string[],
 ): string {
-  // شركة لسا ما بلّش النشر عندها (جدارات) ما إلها دورة شغّالة تنعرض. تاريخ البدء
-  // مسجّل لأنّ الإنتاج صار فعلاً، بس «دورة 4/7 → 3/8» بتوحي إنّ عدّاد العقد ماشي
-  // وهو ما بلّش. القائدة: «جدارات لسا ما بلشنا نشر» — والدورات الجاية بتتحسب من
-  // تاريخ بدء النشر لما توصل الإشارة.
-  //
-  // ⚠️ الشرط مربوط بـ`lateExemptReason` لأنّو ما في حقل مخصّص لـ«النشر ما بلّش».
-  // اليوم جدارات هي الوحيدة الحاملة له وبنفس السبب بالضبط. لو انحطّ إعفاء لسبب
-  // تاني (العميل ما بعت المواد مثلاً) رح تطلع هالعبارة غلط — لهيك في فحص
-  // بـ`full-system-audit` بينبّه أول ما يصير في أكتر من شركة معفاة.
-  if (co.lateExemptReason?.trim()) return "لسا ما بلّش النشر";
+  // العقد موقّع والنشر ما بلّش → ما في دورة تنعرض. صار الشرط بنيوي (`publishStartDate`)
+  // بدل ما يقرأ نصّ `lateExemptReason` الحر — يلي كان بينكسر أول ما ينحطّ إعفاء
+  // لسبب تاني.
+  if (contractModeOf(co) === "signed_not_publishing") return "لسا ما بلّش النشر";
   const d = (x: Date) => `${x.getDate()}/${x.getMonth() + 1}`;
   // Always a span, never a bare month name — even for a company that genuinely
   // runs the calendar month. «دورة تموز» reads the same whether it means 1→31 or
@@ -302,7 +341,7 @@ export function contractStateOf(
   co: ContractCompany,
   today: Date = new Date(),
 ): ContractState {
-  if (!co.contractStartDate) return { state: "none", cycle: null };
+  if (contractModeOf(co) !== "publishing") return { state: "none", cycle: null };
   const t = midnight(today);
   const endedAt = toDateOrNull(co.contractEndedAt);
   const all = cyclesOf(co);

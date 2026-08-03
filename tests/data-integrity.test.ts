@@ -27,7 +27,12 @@ import {
   TASK_KINDS,
   isTaskDoneState,
 } from "../src/lib/constants";
-import { cyclesOf, cycleForBucket, parseRenewals } from "../src/lib/contract";
+import {
+  cyclesOf,
+  cycleForBucket,
+  hasStartedPublishing,
+  parseRenewals,
+} from "../src/lib/contract";
 import { toISODate, parseWorkDays } from "../src/lib/dates";
 
 /**
@@ -320,6 +325,9 @@ describe("scheduling rules hold on the stored data", () => {
     for (const t of autoContent()) {
       const co = byId.get(t.companyId!);
       if (!co?.contractStartDate || !t.publishDate) continue;
+      // شركة عقدها موقّع والنشر ما بلّش (جدارات، Siizen): ما إلها دورة شغّالة
+      // بقرار القائدة، وكروتها الموجودة تاريخ مجمّد — مو شغل مولّد لدورة.
+      if (!hasStartedPublishing(co as never)) continue;
       // Pinned rows are manual authority and are deliberately never clamped.
       if (t.isPinned) continue;
       const cyc = cycleForBucket(co as any, t.year, t.month);

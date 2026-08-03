@@ -65,6 +65,8 @@ export type CompanyInput = {
   /** Contract start date — when set, the plan distributes over the company's
    *  30-day contract cycle (day→day next month) instead of the calendar month. */
   contractStartDate?: Date | string | null;
+  /** بدء النشر — مرساة الدورة (قرار القائدة 3/8/2026). */
+  publishStartDate?: Date | string | null;
   /** Cycle starts after the first, as a JSON array of ISO dates. A cycle does
    *  NOT continue automatically — see lib/contract.ts. */
   renewals?: string | string[] | null;
@@ -251,7 +253,13 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     // invented for a cycle nobody has agreed to.
     const cyc = cycleForBucket(co, year, month);
     if (!cyc) continue;
-    const cs = co.contractStartDate ? new Date(co.contractStartDate) : null;
+    // الأرضية الزمنية = بدء **النشر**، لأنّ الدورة والخطة بتنبنيا منه. التوقيع
+    // بيخصّ أسبوع التحضير بس.
+    const cs = co.publishStartDate
+      ? new Date(co.publishStartDate)
+      : co.contractStartDate
+        ? new Date(co.contractStartDate)
+        : null;
     const csMidnight = cs
       ? new Date(cs.getFullYear(), cs.getMonth(), cs.getDate())
       : null;

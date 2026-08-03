@@ -67,6 +67,14 @@ export const companySchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
+  // بدء النشر (YYYY-MM-DD) — **مرساة الدورة**. فاضي مع عقد موقّع = النشر لسا ما
+  // بلّش عند الزبون: ولا دورة ولا تأخير علينا.
+  publishStartDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null)),
   // Cycle starts AFTER the first, as a JSON array of ISO dates. Owned by the
   // renew/end actions, NOT by this form. Left `undefined` when absent (never
   // coerced to null) so that saving the company form cannot wipe the contract's

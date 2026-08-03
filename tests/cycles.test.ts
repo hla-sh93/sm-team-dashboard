@@ -29,6 +29,15 @@ const co = (over: Partial<CompanyInput> = {}): CompanyInput => ({
   aiReelOwnerId: null,
   defaultOwnerId: "e1",
   ...over,
+  // النموذج الجديد: مرساة الدورة هي **بدء النشر**. الاختبارات القديمة بتمرّر
+  // `contractStartDate` وهي تقصد «من إيمتى بتمشي الدورة» — فمنعكسها هون، إلا لما
+  // يحدّد الاختبار `publishStartDate` صراحةً (اختبارات الحالات الثلاث).
+  publishStartDate:
+    over.publishStartDate !== undefined
+      ? over.publishStartDate
+      : "contractStartDate" in over
+        ? ((over.contractStartDate as Date | null | undefined) ?? null)
+        : null,
 });
 
 describe("contract cycle helpers", () => {

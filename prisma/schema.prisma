@@ -85,6 +85,17 @@ model Company {
   // (default / back-compatible behaviour).
   contractStartDate DateTime?
 
+  // تاريخ **بدء النشر** — وهو مرساة الدورة، مو تاريخ توقيع العقد.
+  // قرار القائدة (3/8/2026): «خلي تاريخ توقيع العقد شي وتاريخ النشر شي تاني…
+  // والخطة شهر من تاريخ بدء النشر وليس توقيع العقد».
+  // معظم الشركات بتبلّش النشر بعد التوقيع بأسبوع (أسبوع التحضير: الحسابات
+  // واللوغو والخطة والتيمبليت). جدارات وSiizen العقد موقّع والنشر متأخر **من
+  // الزبون** — فبيضل null، وبلاه:
+  //   • ما في دورة شغّالة ولا شغل مجدول
+  //   • ولا تأخير بينحسب علينا (هي «التأخيرات الوهمية» يلي وقعنا فيها)
+  // أول ما يبلّش الزبون ينشر، بينحطّ التاريخ وبتمشي الدورات منه.
+  publishStartDate DateTime?
+
   // Contract RENEWAL history. A cycle no longer continues automatically: after
   // one ends, the next starts ONLY when a renewal is recorded, from the renewal
   // date (so a client renewed late leaves a real gap with no generated work).

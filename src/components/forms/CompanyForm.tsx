@@ -45,6 +45,9 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         aiReels: company.aiReels,
         stories: company.stories,
         contractValue: company.contractValue || undefined,
+        publishStartDate: company.publishStartDate
+          ? toISODate(new Date(company.publishStartDate))
+          : "",
         contractStartDate: company.contractStartDate
           ? toISODate(new Date(company.contractStartDate))
           : "",
@@ -66,6 +69,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         aiReels: 0,
         stories: 0,
         contractStartDate: "",
+        publishStartDate: "",
         contentSupplied: false,
         color: "#C8A84E",
         priority: 99,
@@ -167,8 +171,19 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
           {managed && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>تاريخ بداية العقد</Label>
+                <Label>تاريخ توقيع العقد</Label>
                 <Input type="date" {...register("contractStartDate")} />
+                <p className="text-[11px] text-fg-dim">أسبوع التحضير بيمشي منه</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>تاريخ بدء النشر</Label>
+                <Input type="date" {...register("publishStartDate")} />
+                {/* الحقل يلي بيمنع «التأخيرات الوهمية»: الدورة والخطة بتنبنيا منه،
+                    وفراغه مع عقد موقّع بيعني إنّ الزبون لسا ما بلّش — فما بينحسب
+                    علينا تأخير ولا بينولّد شغل. */}
+                <p className="text-[11px] text-fg-dim">
+                  الخطة شهر من هالتاريخ. فاضي = الزبون لسا ما بلّش → ولا تأخير علينا
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>قيمة العقد الشهرية ($)</Label>
