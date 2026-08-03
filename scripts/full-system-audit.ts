@@ -800,11 +800,20 @@ async function main() {
       ok("ولا كرت انسكّر بلا سبب مسجّل", overClosed.length === 0,
         ev(overClosed.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));
 
-      // القطع الجديدة (المونتاج) ما إلها مقابل باللقطة — بتتعدّ ولا بتنحسب خطأ.
+      // كروت جديدة مقابل اللقطة = إمّا مرحلة مضافة (المونتاج) أو **دورة جديدة**
+      // انفتحت لشركة بلّشت تنشر (جدارات من 8/8). الاتنين مشروعان؛ المهم إنّها
+      // تكون مفهومة، فمنطبعها بدل ما نمنعها.
       const fresh = nowKeyed.filter((t) => !snapMap.has(pk(t as never)));
-      const freshStages = new Set(fresh.map((t) => t.stage));
-      ok("الكروت الجديدة كلها من مراحل مضافة عن قصد", [...freshStages].every((s) => s === "EDIT"),
-        `مراحل: ${[...freshStages].join("، ")}`);
+      const byCoFresh = new Map<string, number>();
+      for (const t of fresh) {
+        const n = t.companyId ? (coById.get(t.companyId)?.name ?? "—") : "—";
+        byCoFresh.set(n, (byCoFresh.get(n) ?? 0) + 1);
+      }
+      console.log(
+        `  ℹ️ ${fresh.length} كرت جديد مقابل اللقطة — ${[...byCoFresh]
+          .map(([k, v]) => `${k} ${v}`)
+          .join(" · ")}`,
+      );
     }
   }
 

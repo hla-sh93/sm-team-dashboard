@@ -23,17 +23,27 @@ const PREP_DAYS = 7;
 const L = (d: Date | null) => (d ? `${d.getDate()}/${d.getMonth() + 1}` : "—");
 
 /** شركات النشر عندها ما بلّش — التأخير من الزبون مو منّا. */
-const NOT_PUBLISHING_YET = ["جدارات", "Siizen"];
+const NOT_PUBLISHING_YET = ["Siizen"];
+
+/** تواريخ بدء نشر مقرّرة صراحةً من القائدة (تغلب أي اشتقاق). */
+const EXPLICIT: { name: string; start: [number, number, number]; why: string }[] = [
+  { name: "جدارات", start: [2026, 7, 8], why: "القائدة 3/8/2026: «تاريخ النشر لجدارات بيبلّش السبت 8/8»" },
+];
 
 async function main() {
   const companies = await prisma.company.findMany({ orderBy: { priority: "asc" } });
   let changed = 0;
   for (const co of companies) {
     const blocked = NOT_PUBLISHING_YET.some((n) => co.name.includes(n));
-    const want = blocked ? null : (co.publishStartDate ?? co.contractStartDate);
+    const explicit = EXPLICIT.find((e) => co.name.includes(e.name));
+    const want = explicit
+      ? new Date(explicit.start[0], explicit.start[1], explicit.start[2])
+      : blocked
+        ? null
+        : (co.publishStartDate ?? co.contractStartDate);
     // توقيع العقد = أسبوع قبل بدء النشر، إلا إذا كان مسجّل ومختلف أصلاً.
     let signed = co.contractStartDate;
-    if (!blocked && want && signed && +signed === +want) {
+    if (!blocked && !explicit && want && signed && +signed === +want) {
       signed = new Date(want);
       signed.setDate(signed.getDate() - PREP_DAYS);
     }

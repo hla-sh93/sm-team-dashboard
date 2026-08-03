@@ -482,6 +482,36 @@ function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays: numbe
     t.completedAt = null;
   }
 
+  // كرت النشر «جهوزيته» هي يوم نشره — ما إلها معنى تاني. تثبيت قديم كان بيجمّد
+  // `readyDate` على تاريخ منقرض فيطلع «نشر 10/8 وجهوزيته 19/8».
+  for (const t of pipe) {
+    if (t.stage === "PUBLISH" && t.publishDate) t.readyDate = t.publishDate;
+  }
+
+  // ومونتاج مؤرّخ **قبل** تصويره المخطّط حالة مستحيلة كمان — بيصير لما تثبيت
+  // قديم يضل معلّق بعد ما ينزاح موعد التصوير. منعيد تأريخه لليوم التالي للتصوير.
+  const shootPlan = new Map<string, string>();
+  for (const t of pipe) {
+    if (t.stage !== "SHOOT" || !t.pipelineKey) continue;
+    const d = t.readyDate ?? t.workDate;
+    if (d) shootPlan.set(t.pipelineKey, d);
+  }
+  for (const t of pipe) {
+    if (t.stage !== "EDIT" || !t.pipelineKey) continue;
+    const shoot = shootPlan.get(t.pipelineKey);
+    const own = t.readyDate ?? t.workDate;
+    if (!shoot || !own || own > shoot) continue;
+    const d = new Date(`${shoot}T00:00:00`);
+    let guard = 0;
+    do {
+      d.setDate(d.getDate() + 1);
+      guard++;
+    } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    t.workDate = iso;
+    t.readyDate = iso;
+  }
+
   const shotAt = new Map<string, Date>();
   for (const t of pipe) {
     if (t.stage !== "SHOOT" || !t.pipelineKey || !t.finishedAt) continue;

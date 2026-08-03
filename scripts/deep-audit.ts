@@ -119,7 +119,10 @@ async function main() {
   console.log("\n═══ 4. الفريق والأحمال والإنتاجية ═══");
   const majed = employees.find((e) => e.name === "ماجد")!;
   const elissar = employees.find((e) => e.name === "أليسار")!;
-  check("ماجد 3 ريلات/يوم", ratePerDay(majed as never, "REEL") === 3);
+  // «3» هي **أقل عدد ريلات بالزيارة الوحدة** حتى يطلع شي للمونتاج — مو سقف اليوم.
+  // القائدة (3/8/2026): «هو ممكن يصور أكتر من زبون بنفس اليوم»، والواقع بيأكد
+  // (31/7: 7 ريلات لـ3 زباين). فالمعدّل اليومي = زيارتان × 3.
+  check("ماجد 6 ريلات/يوم (زيارتان × 3)", ratePerDay(majed as never, "REEL") === 6);
   check("أليسار 3 ريلات مونتاج/يوم", ratePerDay(elissar as never, "REEL") === 3);
   const freelancers = employees.filter((e) => e.isPhotographer && !e.isScheduled);
   const strayShoots = tasks.filter((t) => !isTaskDoneState(t) && t.stage === "SHOOT" && freelancers.some((f) => f.id === t.assigneeId));
