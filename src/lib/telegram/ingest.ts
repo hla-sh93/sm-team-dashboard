@@ -230,23 +230,28 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) return null;
 
-  const open = await prisma.task.findMany({
+  // المسكّرة بتلزم المطابقة متل المفتوحة: اسم بيسمّي قطعة مسلّمة معناه إعادة
+  // إرسال، فما بيصحّ يمرق على قطعة تانية بنفس الرقم.
+  const all = await prisma.task.findMany({
     where: {
       companyId,
       kind: "CONTENT",
       stage: { in: PRODUCTION_STAGES },
-      status: { notIn: ["CANCELED", "READY", "PUBLISHED"] },
-      board: { not: "DONE" },
+      status: { not: "CANCELED" },
     },
   });
-  const candidates = open.filter((t) => !isTaskDoneState(t));
+  const candidates = all.filter(
+    (t) => t.board !== "DONE" && !isTaskDoneState(t) && t.status !== "READY" && t.status !== "PUBLISHED",
+  );
   if (!candidates.length) return null;
+  const closed = all.filter((t) => !candidates.includes(t));
 
   return matchDelivery(
     delivery,
     companySlug(company),
     candidates,
     parseOffPlanKeywords(company.offPlanKeywords),
+    closed,
   );
 }
 

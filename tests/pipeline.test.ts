@@ -117,6 +117,23 @@ describe("pipeline expansion", () => {
   });
 
   /**
+   * دليل الإقفال متل نصّ الخطة: ما بينستنتج بالتوليد. استيراد التسليمات بيكتب
+   * «سُلّم على تلغرام (بالاسم): al balsam-post -8-3.jpg» على الكرت، وأول إعادة
+   * جدولة كانت بتمحيه — فبيضل الكرت مسكّر بلا ما حدا يعرف ليش.
+   */
+  it("keeps the closing evidence (notes) across regeneration", () => {
+    const pipe = expandPipeline([{ ...baseItem, id: "c|POST|2026-07-07|1" }], opts);
+
+    applyPipelinePreservation(pipe, [
+      saved({ isPinned: false, notes: "سُلّم على تلغرام (بالاسم): al balsam-post -8-3.jpg" }),
+    ]);
+
+    expect(pipe.find((task) => task.stage === "DESIGN")?.notes).toBe(
+      "سُلّم على تلغرام (بالاسم): al balsam-post -8-3.jpg",
+    );
+  });
+
+  /**
    * Changing a company's designer re-times every card, so both schedule-based
    * keys (pipelineKey, which embeds the publish date, and the plan-date key)
    * miss — and the brief was thrown away with them. مخبر lost all 12 rows that

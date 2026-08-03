@@ -68,6 +68,8 @@ export type PipelineTask = {
   completedAt?: Date | null;
   /** The month plan's own words, carried over by the preservation step (§14). */
   brief?: string | null;
+  /** ليش الكرت بهالحالة (دليل التسليم مثلاً) — بينحفظ متل البريف. */
+  notes?: string | null;
   month: number; // 0-based
   year: number;
 };

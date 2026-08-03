@@ -721,6 +721,18 @@ describe("اسم القطعة عبر حدود الشهر", () => {
   it("…وبتقبل القراءة لما يكون شهرها جنب تاريخ الإرسال", () => {
     expect(matchDelivery(sentInAugust("Wasl 8-2.mp4"), co, [reel(2, 6)], [])?.taskId).toBe("r2-6");
   });
+
+  /**
+   * «BW reel 2 July.mp4» انبعت ٢٢/٧ وريل تموز ٢ مسلّم من زمان — فرقم القطعة كان
+   * بيمرق ويسكّر **ريل آب ٢**، تسليم ما صار. إعادة إرسال شغل مسلّم نسخة تانية
+   * منه، مو قطعة جديدة.
+   */
+  it("ما بتسكّر قطعة تانية لما تكون قطعة الاسم مسلّمة أصلاً", () => {
+    const delivered = reel(2, 6); // ريل تموز ٢ — مسكّر
+    const august = { ...(reel(2, 7) as object), id: "r2-7" } as never;
+    const file = { ...(sentInAugust("BW reel 2 July.mp4") as object), sentAt: new Date(2026, 6, 22) } as never;
+    expect(matchDelivery(file, "BW", [august], [], [delivered])).toBeNull();
+  });
 });
 
 /**

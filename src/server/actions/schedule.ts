@@ -295,6 +295,8 @@ export async function generateSchedule(year: number, month: number) {
         // Imported once a month from the client's plan and not re-derivable —
         // dropping it here is what turned honest matching back into guessing.
         brief: true,
+        // ودليل الإقفال معه — «سُلّم على تلغرام: …» ما بينستنتج بالتوليد.
+        notes: true,
         // Piece identity — survives a re-timing that moves every date.
         pieceNo: true,
       },
@@ -376,6 +378,7 @@ export async function generateSchedule(year: number, month: number) {
             isAuto: true,
             isPinned: t.isPinned ?? false,
             brief: t.brief ?? null,
+            notes: t.notes ?? null,
             startedAt,
             finishedAt,
             completedAt: done ? (t.completedAt ?? finishedAt) : null,

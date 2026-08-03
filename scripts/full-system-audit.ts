@@ -124,10 +124,14 @@ async function main() {
 
     // ولا كرت منجز وحاجزه لسا مفتوح — «مونتاج خالص وتصويره ما صار» حالة
     // مستحيلة، وصارت فعلاً لما إغلاق قديم ثبّتته خطوة الحفظ.
+    // كرت الكتابة استثناء: هو كرت **دورة** واحد بيحجز كل قطعها، وقطعة وحدة ممكن
+    // توصل قبل ما تخلص كتابة الدورة كلها — ماجد سلّم «Jadarat 1-7.mp4» بـ٢٩/٧
+    // وكتابة دورة ٨/٨ لسا ما بلّشت. يلي مستحيل هو ترتيب الإنتاج نفسه (مونتاج
+    // خالص وتصويره ما صار)، وهاد لساتو ممسوك.
     const doneWhileBlocked = live.filter((t) => {
       if (!isTaskDoneState(t) || !t.blockedById) return false;
       const b = taskById.get(t.blockedById);
-      return !!b && !isTaskDoneState(b);
+      return !!b && b.stage !== "WRITE" && !isTaskDoneState(b);
     });
     ok(
       "ولا كرت منجز وحاجزه مفتوح",
@@ -793,9 +797,11 @@ async function main() {
       ok("ولا إنجاز مسجّل رجع مفتوح", lost.length === 0,
         ev(lost.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));
 
+      // «بلا سبب مسجّل» حرفياً: كرت انسكّر بعد اللقطة ومكتوب عليه ليش (تسليم على
+      // تلغرام، إقفال يدوي مبرّر…) هو إنجاز موثّق، مو انحراف. الفاضي هو المشكلة.
       const overClosed = nowKeyed.filter((t) => {
         const o = snapMap.get(pk(t as never));
-        return o && !wasDone(o) && isTaskDoneState(t);
+        return o && !wasDone(o) && isTaskDoneState(t) && !String(t.notes ?? "").trim();
       });
       ok("ولا كرت انسكّر بلا سبب مسجّل", overClosed.length === 0,
         ev(overClosed.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));

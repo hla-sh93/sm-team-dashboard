@@ -29,6 +29,10 @@ export type ExistingPipelineTaskState = {
   // matcher falls back to blind type-matching and inflates every figure. This
   // silently wiped 29 rows of مركز البلسم and all of التوظيف before it was found.
   brief?: string | null;
+  // ليش الكرت بهالحالة: «سُلّم على تلغرام (بالاسم): al balsam-post -8-3.jpg»،
+  // «أُعيد فتحه بعد فحص المحتوى…». التوليد ما بيقدر يستنتجها، وبلاها الكرت
+  // بيصير مسكّر بلا دليل — وهاد بالضبط اللي بيخلّي التقارير تخمين.
+  notes?: string | null;
   // Stable piece identity — see PIECE-KEY note in applyPipelinePreservation.
   pieceNo?: number | null;
 };
@@ -218,6 +222,7 @@ export function applyPipelinePreservation(
     // Always kept, pinned or not — the plan text belongs to the piece, not to a
     // manual edit, and re-importing the .docx every month is not a real option.
     if (saved.brief != null) task.brief = saved.brief;
+    if (saved.notes != null) task.notes = saved.notes;
     if (saved.isPinned) {
       task.isPinned = true;
       if (saved.title != null) task.title = saved.title;

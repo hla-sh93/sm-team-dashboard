@@ -25,14 +25,26 @@ const APPLY = process.argv.includes("--apply");
 const REOPEN: [string, number, number, string, number, string][] = [
   ["BW", 2026, 7, "POST", 1, "ما في تصميم عن الدفع الإلكتروني بدفعة 20/7"],
   ["مخبر", 2026, 6, "POST", 6, "5 تصاميم على الخطة مقابل 6 صفوف مسكّرة"],
+  // «BW reel 2 July.mp4» انبعت ٢٢/٧ وريل **تموز** ٢ مسلّم من قبلها؛ استيراد
+  // التصدير مرّق رقم القطعة على ريل آب ٢. المطابقة صارت توقف عند هالحالة.
+  ["BW", 2026, 7, "REEL", 2, "«BW reel 2 July» هي ريل تموز ٢ المسلّم، مو تسليم لآب"],
 ];
 
 async function main() {
   for (const [name, year, month, type, pieceNo, why] of REOPEN) {
     const co = await prisma.company.findFirst({ where: { name: { contains: name } } });
     if (!co) { console.log(`⚠️ ما لقيت ${name}`); continue; }
+    // الريل بيتسكّر على كرت التصوير، والبوست على التصميم — فمنقبل الاتنين.
     const card = await prisma.task.findFirst({
-      where: { companyId: co.id, type, stage: "DESIGN", pieceNo, year, month, status: { not: "CANCELED" } },
+      where: {
+        companyId: co.id,
+        type,
+        stage: { in: ["DESIGN", "SHOOT"] },
+        pieceNo,
+        year,
+        month,
+        status: { not: "CANCELED" },
+      },
     });
     if (!card) { console.log(`⚠️ ما لقيت ${co.name} ${type} ${pieceNo}`); continue; }
     if (!isTaskDoneState(card)) { console.log(`= ${co.name} ${type} ${pieceNo} مفتوح أصلاً`); continue; }

@@ -244,6 +244,8 @@ export function matchDelivery(
   candidates: MatchCandidate[],
   /** Keywords marking content published OUTSIDE the paid plan (§14). */
   offPlanKeywords: string[] = [],
+  /** The company's pieces that are ALREADY delivered — see the name branch. */
+  closed: MatchCandidate[] = [],
 ): MatchResult {
   if (delivery.kind === "TEXT") return null;
   // Off-plan work (وصل's exchange-rate bulletins, client-supplied analysis) is
@@ -293,6 +295,15 @@ export function matchDelivery(
     // فالملف بينخزّن وما بيسكّر ولا كرت. رقم القطعة + الشركة + النوع بيحدّدوا
     // القطعة لحالهن؛ الشهر مجرّد راحة بشرية. منقبله بس لما يكون **بلا لبس**:
     // قطعة مفتوحة وحدة بهالرقم — وإلا منوقف متل قبل.
+    //
+    // …ولا مرة لقطعة الاسم **مسكّرة**. «BW reel 2 July.mp4» بينبعت بـ٢٢/٧ وريل
+    // تموز ٢ مسلّم من زمان، فرقم القطعة كان بيمرّق ويسكّر **ريل آب ٢** — تسليم
+    // ما صار. إعادة إرسال شغل مسلّم هي نسخة تانية منه، مو قطعة جديدة.
+    const closedTyped = wanted.length
+      ? closed.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
+      : closed;
+    for (const r of parsed.readings)
+      if (closedTyped.some((t) => t.month === r.month0 && t.pieceNo === r.pieceNo)) return null;
     //
     // بس القراءة لازم يكون شهرها **معقول** بالنسبة لتاريخ الإرسال. «1-8» بتنقرأ
     // «شهر ٨ قطعة ١» و«شهر ١ قطعة ٨»؛ الأولى مسكّرة، فالتانية كانت بتمرّر رقم

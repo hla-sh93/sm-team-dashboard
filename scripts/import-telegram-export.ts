@@ -125,7 +125,15 @@ async function main() {
   const messages = raw.messages ?? [];
   // Export ids are the "internal" id; the Bot API form is -100<id>.
   const chatId = raw.id != null ? (String(raw.id).startsWith("-") ? String(raw.id) : `-100${raw.id}`) : "export";
+  /**
+   * التصدير أحياناً بلا `id` للمحادثة (تحويل الـHTML مثلاً)، ووقتها المفتاح
+   * بيطلع «export#<توبيك>» — مفتاح ما بيوصلو ولا رسالة من البوت الحي. ربط
+   * الشركات عليه بيقطع الالتقاط أول بأول، فما منربط إلا بمعرّف حقيقي.
+   */
+  const canLink = raw.id != null;
   console.log(`المحادثة: ${raw.name ?? "—"}  (${chatId})  ·  ${messages.length} رسالة\n`);
+  if (APPLY && !canLink)
+    console.log("⚠️  التصدير بلا معرّف محادثة — ما رح تنربط التوبيكات بالشركات (التسليمات بتنطبّق عادي).\n");
 
   // ---- 1. topics ---------------------------------------------------------
   const { titles: topicTitle, topicOf } = buildTopicIndex(messages);
@@ -140,7 +148,7 @@ async function main() {
     const co = matchCompany(title);
     topicCompany.set(id, co?.id ?? null);
     console.log(`  #${String(id).padEnd(7)} ${title.padEnd(24)} → ${co?.name ?? "❓ غير مربوط"}`);
-    if (!APPLY) continue;
+    if (!APPLY || !canLink) continue;
     const key = `${chatId}#${id}`;
     await prisma.telegramChat.upsert({
       where: { id: key },
@@ -151,20 +159,24 @@ async function main() {
   }
 
   // ---- 2. deliveries -----------------------------------------------------
+  // المسلَّم بيلزم متل المفتوح: اسم بيسمّي قطعة مسكّرة معناه إعادة إرسال، فما
+  // بيصحّ رقمها يمرق على قطعة تانية (شوف `matchDelivery`).
   const openByCompany = new Map<string, MatchCandidate[]>();
-  for (const co of companies)
-    openByCompany.set(
-      co.id,
-      (await prisma.task.findMany({
-        where: {
-          companyId: co.id,
-          kind: "CONTENT",
-          stage: { in: ["DESIGN", "SHOOT"] },
-          status: { notIn: ["CANCELED", "READY", "PUBLISHED"] },
-          board: { not: "DONE" },
-        },
-      })) as unknown as MatchCandidate[],
-    );
+  const doneByCompany = new Map<string, MatchCandidate[]>();
+  for (const co of companies) {
+    const all = (await prisma.task.findMany({
+      where: {
+        companyId: co.id,
+        kind: "CONTENT",
+        stage: { in: ["DESIGN", "SHOOT"] },
+        status: { not: "CANCELED" },
+      },
+    })) as unknown as (MatchCandidate & { status: string; board: string })[];
+    const isDone = (t: (typeof all)[number]) =>
+      t.board === "DONE" || t.status === "READY" || t.status === "PUBLISHED";
+    openByCompany.set(co.id, all.filter((t) => !isDone(t)));
+    doneByCompany.set(co.id, all.filter(isDone));
+  }
 
   const closures = new Map<
     string,
@@ -322,6 +334,7 @@ async function main() {
       companySlug(p.co),
       candidates,
       parseOffPlanKeywords(p.co.offPlanKeywords),
+      doneByCompany.get(p.co.id) ?? [],
     );
     if (hit?.by === "NAME") record(p, candidates.find((c) => c.id === hit.taskId)!, "NAME");
   }
@@ -360,11 +373,12 @@ async function main() {
       );
       if (!candidates.length) continue;
       const hit = matchDelivery(
-      p.delivery,
-      companySlug(p.co),
-      candidates,
-      parseOffPlanKeywords(p.co.offPlanKeywords),
-    );
+        p.delivery,
+        companySlug(p.co),
+        candidates,
+        parseOffPlanKeywords(p.co.offPlanKeywords),
+        doneByCompany.get(p.co.id) ?? [],
+      );
       if (hit) record(p, candidates.find((c) => c.id === hit.taskId)!, hit.by);
     }
   }
