@@ -266,10 +266,19 @@ export function matchDelivery(
     // the media's usual types at all — never a second chance when the right
     // piece merely happens to be closed already. Without that distinction
     // «Bru1-7.mp4» closes ستوري-1 once ريل-1 is done.
-    const typed = types.length
-      ? candidates.filter((t) => t.type != null && types.includes(t.type as ContentType))
+    //
+    // The name usually states the TYPE as well («al balsam-post -8-3»), and
+    // piece numbers restart per type: month 8 has BOTH «ستوري 3» و«بوست 3».
+    // Ignoring that word leaves both in the pool and the earlier deadline wins,
+    // so a post closes the story card and the post card stays open. A hint that
+    // contradicts the media kind («…post…» on an .mp4) is dropped — the file
+    // itself is the stronger fact.
+    const nameHint = typeHintFrom(delivery.fileName, delivery.caption);
+    const wanted = nameHint && types.includes(nameHint) ? [nameHint] : types;
+    const typed = wanted.length
+      ? candidates.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : [];
-    const pool = typed.length ? typed : types.length ? [] : candidates;
+    const pool = typed.length ? typed : wanted.length ? [] : candidates;
     for (const r of parsed.readings) {
       const hit = pool
         .filter((t) => t.month === r.month0 && t.pieceNo === r.pieceNo)
@@ -284,7 +293,19 @@ export function matchDelivery(
     // فالملف بينخزّن وما بيسكّر ولا كرت. رقم القطعة + الشركة + النوع بيحدّدوا
     // القطعة لحالهن؛ الشهر مجرّد راحة بشرية. منقبله بس لما يكون **بلا لبس**:
     // قطعة مفتوحة وحدة بهالرقم — وإلا منوقف متل قبل.
+    //
+    // بس القراءة لازم يكون شهرها **معقول** بالنسبة لتاريخ الإرسال. «1-8» بتنقرأ
+    // «شهر ٨ قطعة ١» و«شهر ١ قطعة ٨»؛ الأولى مسكّرة، فالتانية كانت بتمرّر رقم
+    // القطعة ٨ وتسكّر ريل ٨ — بملف اسمه ريل ١. شهر كانون بملف انبعت بآب مو
+    // قراءة، غلط قراءة. شهر الدورة بيبعد شهر واحد بالكتير عن تاريخ التسليم.
+    const sentMonth = delivery.sentAt ? new Date(delivery.sentAt).getMonth() : NaN;
+    const plausible = (month0: number) => {
+      if (Number.isNaN(sentMonth)) return true; // بلا تاريخ ما في معلومة نحكم فيها
+      const d = Math.abs(month0 - sentMonth);
+      return Math.min(d, 12 - d) <= 1;
+    };
     for (const r of parsed.readings) {
+      if (!plausible(r.month0)) continue;
       const sameNo = pool.filter((t) => t.pieceNo === r.pieceNo);
       if (sameNo.length === 1) return { taskId: sameNo[0].id, by: "NAME" };
     }

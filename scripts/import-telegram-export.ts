@@ -362,8 +362,19 @@ async function main() {
     return out.sort((a, b) => a.at.getTime() - b.at.getTime());
   };
 
+  /**
+   * ملف واحد = قطعة واحدة.
+   *
+   * الجولة الأولى بتاخد الأدلّة بالاسم، والتانية بتعيد المرور على **كل**
+   * التسليمات — بما فيها يلي سكّرت قطعة بالجولة الأولى. فالملف نفسه بيسكّر
+   * قطعة تانية بالنوع: «al balsam-post -8-3.jpg» بيسكّر «بوست 3» بالجولة
+   * الأولى و«ستوري 3» بالتانية. أربع ملفات للبلسم كانت بتعطي ٨ قطع مسلّمة.
+   */
+  const usedDeliveries = new Set<string>();
+
   const record = (p: Prepared, t: MatchCandidate, by: "NAME" | "BRIEF" | "TYPE") => {
     claimed.add(t.id);
+    usedDeliveries.add(p.delivery.id);
     const evidence = p.delivery.fileName ?? p.delivery.caption?.slice(0, 30) ?? "(صورة بلا اسم)";
     const prev = closures.get(t.id);
     if (prev) {
@@ -386,8 +397,13 @@ async function main() {
   // ---- pass 1: NAME evidence -------------------------------------------
   // Runs over EVERYTHING first so a correctly-named file always wins its piece,
   // instead of losing it to an older unnamed photo that merely arrived earlier.
+  // الشباك بينطبق هون كمان: «8-9» بتنقرأ شهر-أول (آب ٩) وقطعة-أول (أيلول ٨).
+  // لما تكون قطعة آب مسكّرة، القراءة التانية بتربح — فملف انبعت ١/٨ بيسكّر قطعة
+  // **أيلول**. القراءة يلي بتقع برّا دورة تاريخ الإرسال مو قراءة، غلط.
   for (const p of deliveries) {
-    const candidates = (openByCompany.get(p.co.id) ?? []).filter((t) => !claimed.has(t.id));
+    const candidates = (openByCompany.get(p.co.id) ?? []).filter(
+      (t) => !claimed.has(t.id) && inBucketWindow(t, p.at),
+    );
     if (!candidates.length) continue;
     const hit = matchDelivery(
       p.delivery,
@@ -418,6 +434,7 @@ async function main() {
   let skippedFile = 0;
   if (!STRICT) {
     for (const p of deliveries) {
+      if (usedDeliveries.has(p.delivery.id)) continue; // سكّر قطعته بالجولة الأولى
       if (!looksLikeDeliverable(p.delivery)) {
         skippedFile++;
         continue;

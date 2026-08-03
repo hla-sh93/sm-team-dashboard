@@ -696,4 +696,88 @@ describe("اسم القطعة عبر حدود الشهر", () => {
   it("رقم مو موجود بيضل ما بيطابق شي", () => {
     expect(matchDelivery(deliver("Wasl 8-9.mp4"), co, [reel(2, 6)], [])).toBeNull();
   });
+
+  const sentInAugust = (fileName: string) =>
+    ({
+      kind: "VIDEO",
+      fileName,
+      caption: null,
+      chatId: "c",
+      messageId: 1,
+      sentAt: new Date(2026, 7, 1),
+    }) as never;
+
+  /**
+   * «1-8» بتنقرأ «شهر ٨ قطعة ١» و«شهر ١ قطعة ٨». لما تكون قطعة آب الأولى
+   * مسكّرة، القراءة التانية كانت بتمرّر رقم القطعة ٨ فتسكّر ريل ٨ بملف اسمه
+   * ريل ١. شهر كانون بملف انبعت بآب مو قراءة تانية، غلط قراءة.
+   */
+  it("ما بتمرّر رقم قطعة من قراءة شهرها بعيد عن تاريخ الإرسال", () => {
+    expect(
+      matchDelivery(sentInAugust("phoenijobs 1-8 edited.mp4"), "PhoeniJobs", [reel(8, 7)], []),
+    ).toBeNull();
+  });
+
+  it("…وبتقبل القراءة لما يكون شهرها جنب تاريخ الإرسال", () => {
+    expect(matchDelivery(sentInAugust("Wasl 8-2.mp4"), co, [reel(2, 6)], [])?.taskId).toBe("r2-6");
+  });
+});
+
+/**
+ * أرقام القطع بتبلّش من جديد مع كل نوع: بشهر ٨ في «ستوري ٣» و«بوست ٣». الاسم
+ * بيحمل النوع («al balsam-post -8-3») فلازم يرجّح — وإلا الاتنين بالسلّة
+ * والأقرب موعداً بيربح، فالبوست بيسكّر كرت الستوري.
+ */
+describe("النوع المكتوب بالاسم بيرجّح بين قطعتين بنفس الرقم", () => {
+  const piece = (id: string, type: string, pieceNo: number, readyDay: number) =>
+    ({
+      id,
+      type,
+      stage: "DESIGN",
+      month: 7,
+      year: 2026,
+      pieceNo,
+      readyDate: new Date(2026, 7, readyDay),
+      publishDate: new Date(2026, 7, readyDay + 1),
+      brief: null,
+      quantity: 1,
+    }) as never;
+
+  const sent = (kind: string, fileName: string) =>
+    ({
+      kind,
+      fileName,
+      caption: null,
+      chatId: "c",
+      messageId: 1,
+      sentAt: new Date(2026, 7, 1),
+    }) as never;
+  const photo = (fileName: string) => sent("PHOTO", fileName);
+
+  // الستوري موعدها أبكر، فبلا ترجيح النوع هي يلي بتربح.
+  const cards = [piece("story3", "STORY", 3, 2), piece("post3", "POST", 3, 9)];
+
+  it("«al balsam-post -8-3.jpg» بتسكّر البوست مو الستوري", () => {
+    const hit = matchDelivery(photo("al balsam-post -8-3.jpg"), "Balsam", cards, []);
+    expect(hit?.taskId).toBe("post3");
+    expect(hit?.by).toBe("NAME");
+  });
+
+  it("«balsam-story-8-3.jpg» بتسكّر الستوري", () => {
+    expect(matchDelivery(photo("balsam-story-8-3.jpg"), "Balsam", cards, [])?.taskId).toBe("story3");
+  });
+
+  it("بلا كلمة نوع بالاسم بيضل الترجيح بالموعد", () => {
+    expect(matchDelivery(photo("balsam 8-3.jpg"), "Balsam", cards, [])?.taskId).toBe("story3");
+  });
+
+  /**
+   * الكلمة بترجّح جوّا حدود نوع الملف بس: «post» على ملف mp4 مو دليل — الملف
+   * نفسه بيقول إنّه ريل.
+   */
+  it("كلمة بتناقض نوع الملف بتنتجاهل", () => {
+    const reelCard = piece("reel3", "REEL", 3, 5);
+    const video = sent("VIDEO", "bru-post-8-3.mp4");
+    expect(matchDelivery(video, "Bru", [...cards, reelCard], [])?.taskId).toBe("reel3");
+  });
 });
