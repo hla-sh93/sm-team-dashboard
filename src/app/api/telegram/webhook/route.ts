@@ -42,3 +42,64 @@ export async function POST(req: Request) {
   }
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * تشخيص الالتقاط — «شو لقط البوت اليوم؟» بأرقام من قاعدة الإنتاج نفسها.
+ *
+ * القائدة بتسأل هالسؤال يومياً، وصفحة /today بتنبعت متدفّقة فقياسها بالسحب
+ * غير موثوق، وقاعدة الإنتاج ما بتنوصل من برّا. نفس السر يلي بيصادق تلغرام
+ * (`x-telegram-bot-api-secret-token`) بيصادق القراءة هون — نفس مستوى الثقة،
+ * وبلاه 401 بلا أي تسريب لوجود النقطة.
+ *
+ *   curl -H "x-telegram-bot-api-secret-token: $SECRET" \
+ *        "https://…/api/telegram/webhook?hours=24"
+ */
+export async function GET(req: Request) {
+  const secret = webhookSecret();
+  if (!secret || req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+    return NextResponse.json({ ok: false }, { status: 401 });
+  }
+  const { prisma } = await import("@/lib/db");
+  const hours = Math.min(168, Number(new URL(req.url).searchParams.get("hours")) || 24);
+  const since = new Date(Date.now() - hours * 3600_000);
+
+  const [messages, chats, companies] = await Promise.all([
+    prisma.telegramMessage.findMany({
+      where: { sentAt: { gte: since } },
+      orderBy: { sentAt: "desc" },
+      take: 500,
+    }),
+    prisma.telegramChat.findMany(),
+    prisma.company.findMany({ select: { id: true, name: true } }),
+  ]);
+  const coName = new Map(companies.map((c) => [c.id, c.name]));
+  const chatById = new Map(chats.map((c) => [c.id, c]));
+
+  const byChat = new Map<string, typeof messages>();
+  for (const m of messages) {
+    const arr = byChat.get(m.chatId) ?? [];
+    arr.push(m);
+    byChat.set(m.chatId, arr);
+  }
+  const groups = [...byChat.entries()].map(([chatId, msgs]) => {
+    const chat = chatById.get(chatId);
+    const files = msgs.filter((m) => m.kind !== "TEXT");
+    return {
+      chat: chat?.title ?? chatId,
+      company: chat?.companyId ? (coName.get(chat.companyId) ?? chat.companyId) : null,
+      isTeam: chat?.isTeam ?? false,
+      total: msgs.length,
+      files: files.length,
+      matched: files.filter((m) => m.taskId).length,
+      latest: msgs.slice(0, 6).map((m) => ({
+        at: m.sentAt.toISOString().slice(5, 16),
+        from: m.senderName,
+        what: m.fileName ?? m.kind,
+        task: m.taskId,
+        by: m.matchedBy,
+      })),
+    };
+  });
+  groups.sort((a, b) => b.files - a.files || b.total - a.total);
+  return NextResponse.json({ ok: true, sinceHours: hours, messages: messages.length, groups });
+}
