@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
 import { companySlug, parseAssetName } from "@/lib/asset-name";
+import { currentCycleBucket } from "@/lib/contract";
 import type { TelegramUpdate } from "./client";
 import { matchDelivery, normalizeMessage, parseOffPlanKeywords, type Delivery } from "./match";
 
@@ -255,6 +256,9 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
     candidates,
     parseOffPlanKeywords(company.offPlanKeywords),
     closed,
+    // الدورة الشغّالة **وقت الإرسال** مو وقت القراءة: ملف انبعت آخر الدورة
+    // وانقرا بعد ما بلّشت الجديدة لازم يضل تبع دورتو.
+    currentCycleBucket(company, delivery.sentAt),
   );
 }
 

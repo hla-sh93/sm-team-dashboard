@@ -546,6 +546,32 @@ linked to a company from `/admin/telegram`. Matching runs in three tiers:
    never story 4) and tolerant of one typo in the slug (`Agalya`≈`Agalia`).
    `N-N` is ambiguous while the team migrates from piece-first to month-first, so
    BOTH readings are tried and the one naming a real open piece wins.
+
+   **قاعدة الدورة (2026-08-03, the lead's rule — READ THIS BEFORE TOUCHING
+   `matchDelivery`):** a piece's identity is *company + type + pieceNo + the
+   contract cycle active when the file was SENT* (`currentCycleBucket(co,
+   sentAt)` — sent-time, never read-time). The month written in the file name is
+   a human label, NOT identity. It is accepted when it can be *explained* as
+   either the cycle-start month (`Makhbar 7-4` for the 15/7→14/8 cycle) or the
+   piece's actual publish month (`Makhbar 8-4`, because it publishes in August —
+   what the team actually types once the calendar flips). Any other month is a
+   naming MISTAKE and must not match. Consequences, each learned from a real
+   incident:
+   - A reel has TWO production cards (SHOOT then EDIT) with the same pieceNo —
+     that is one piece in stages, not ambiguity. Match the earliest-deadline
+     open stage. (Before: `Makhbar 8-4.mp4` matched nothing and the card sat
+     "متأخر" while the work was in the group.)
+   - Same number open in two cycles → the cycle active at send time wins; an
+     explicit old-cycle name (`Makhbar 6-4`) still reaches the old piece.
+   - A name that resolves to an already-DELIVERED piece is a re-send/revision —
+     it must NOT fall through to close some other open piece. But check this
+     AFTER stage matching, per piece not per card: a closed SHOOT with an open
+     EDIT is a piece still in production, and its montage must land. (Both
+     directions went wrong once: `BW reel 2 July` closed August's reel; then the
+     over-eager fix made 8 open pieces unmatchable.)
+   - `full-system-audit` §12 generates BOTH names for every open piece and runs
+     them through the real matcher — if a rename breaks either naming, the audit
+     fails before the team ever hits it.
 2. **BRIEF** — the plan's own words (`Task.brief`) matched against the file
    name/caption, Arabic-normalised and rarity-weighted. This is what makes the
    accounting honest: four «خبر عاجل» plan rows absorb four files and no more.

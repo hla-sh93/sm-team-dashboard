@@ -736,6 +736,90 @@ describe("اسم القطعة عبر حدود الشهر", () => {
 });
 
 /**
+ * قاعدة الدورة (القائدة 3/8): «بتكتب ريل 7-2 وبتكون بخطة بين 15/7 و15/8، وبيجو
+ * التيم بيسلموها باسم 8-2… لازم نراعي تاريخ الدورة وايمت عم ينرسل الملف».
+ *
+ * الهوية = الشركة + النوع + رقم القطعة + الدورة الشغّالة وقت الإرسال. رقم
+ * الشهر بالاسم تسمية بشرية: مقبول إذا كان شهر بداية الدورة أو شهر النشر.
+ */
+describe("قاعدة الدورة — التسمية بشهر النشر بتلاقي كرتها", () => {
+  // دورة المخبر 15/7 ← 14/8، فكروتها بباكت تموز (month = 6) وبتنشر بآب.
+  const JULY_BUCKET = { year: 2026, month: 6 };
+  const piece = (id: string, stage: string, pieceNo: number, publishDay: number, month = 6) =>
+    ({
+      id,
+      type: "REEL",
+      stage,
+      month,
+      year: 2026,
+      pieceNo,
+      readyDate: new Date(2026, month, 20),
+      publishDate: new Date(2026, 7, publishDay), // بتنشر بآب
+      brief: null,
+      quantity: 1,
+    }) as never;
+
+  const sent = (fileName: string, day: number) =>
+    ({
+      kind: "VIDEO",
+      fileName,
+      caption: null,
+      chatId: "c",
+      messageId: 1,
+      sentAt: new Date(2026, 7, day),
+    }) as never;
+
+  // الريل إلو كرتين بنفس الرقم: تصوير ثم مونتاج.
+  const cards = [piece("shoot4", "SHOOT", 4, 6), piece("edit4", "EDIT", 4, 6)];
+
+  it("«Makhbar 8-4» بشهر النشر بتسكّر كرت تصوير القطعة ٤", () => {
+    const hit = matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", cards, [], [], JULY_BUCKET);
+    expect(hit?.taskId).toBe("shoot4");
+    expect(hit?.by).toBe("NAME");
+  });
+
+  it("«Makhbar 7-4» بشهر الدورة بتسكّر نفس القطعة", () => {
+    expect(
+      matchDelivery(sent("Makhbar 7-4.mp4", 3), "Makhbar", cards, [], [], JULY_BUCKET)?.taskId,
+    ).toBe("shoot4");
+  });
+
+  it("بعد ما يخلص التصوير، نفس الاسم بيسكّر المونتاج", () => {
+    const hit = matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", [cards[1]], [], [], JULY_BUCKET);
+    expect(hit?.taskId).toBe("edit4");
+  });
+
+  /** شهر لا هو شهر الدورة ولا شهر النشر = غلطة تسمية، مو تسمية تانية. */
+  it("شهر ما بينفسّر لا بالدورة ولا بالنشر ما بيطابق", () => {
+    expect(matchDelivery(sent("Makhbar 3-4.mp4", 3), "Makhbar", cards, [], [], JULY_BUCKET)).toBeNull();
+  });
+
+  /** إعادة إرسال قطعة مسلّمة ما بتسكّر غيرها — ولا حتى عبر قاعدة الدورة. */
+  it("قطعة الدورة المسكّرة ما بتخلّي الملف يمرق على قطعة تانية", () => {
+    const delivered = piece("shoot4done", "SHOOT", 4, 6);
+    const other = piece("shoot5", "SHOOT", 5, 10);
+    expect(
+      matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", [other], [], [delivered], JULY_BUCKET),
+    ).toBeNull();
+  });
+
+  /**
+   * اللبس القديم: نفس الرقم مفتوح بدورتين. الدورة الشغّالة وقت الإرسال بتحسم،
+   * والقطعة المسمّاة صراحةً بشهر الدورة القديمة بتنمسك قبلها بالمطابقة المباشرة.
+   */
+  it("رقم مفتوح بدورتين: الدورة الشغّالة بتربح، والتسمية الصريحة بتضل تلاقي القديمة", () => {
+    const june = piece("shoot4-june", "SHOOT", 4, 1, 5); // دورة حزيران، بتنشر 1/8
+    const july = piece("shoot4-july", "SHOOT", 4, 6, 6);
+    expect(
+      matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", [june, july], [], [], JULY_BUCKET)?.taskId,
+    ).toBe("shoot4-july");
+    expect(
+      matchDelivery(sent("Makhbar 6-4.mp4", 3), "Makhbar", [june, july], [], [], JULY_BUCKET)?.taskId,
+    ).toBe("shoot4-june");
+  });
+});
+
+/**
  * أرقام القطع بتبلّش من جديد مع كل نوع: بشهر ٨ في «ستوري ٣» و«بوست ٣». الاسم
  * بيحمل النوع («al balsam-post -8-3») فلازم يرجّح — وإلا الاتنين بالسلّة
  * والأقرب موعداً بيربح، فالبوست بيسكّر كرت الستوري.

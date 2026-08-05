@@ -41,6 +41,7 @@ import { derivePublishingSchedule } from "../src/lib/publishing";
 import { buildTodayBrief } from "../src/lib/telegram/service";
 import { briefMessagesFor } from "../src/lib/telegram/brief";
 import { splitForTelegram, TG_TEXT_LIMIT } from "../src/lib/telegram/client";
+import { matchDelivery } from "../src/lib/telegram/match";
 import { taskOccursOnISODate, filterTasksForDay } from "../src/lib/task-filters";
 import { personDayState } from "../src/lib/person-day-state";
 import { employeeSchema, companySchema, taskSchema } from "../src/lib/schemas";
@@ -894,6 +895,60 @@ async function main() {
     const missed = files.filter((m) => linkedIds.has(m.chatId) && !m.taskId);
     ok("ولا ملف وصل لتوبيك مربوط وضل بلا كرت", missed.length === 0,
       ev(missed.map((m) => `${m.fileName ?? m.kind}`), 4));
+
+    // ── قاعدة التسمية: كل قطعة مفتوحة لازم تنمسك بالتسميتين ──
+    //
+    // القائدة (3/8): «بتكتب ريل 7-2 وبتكون بخطة بين 15/7 و15/8، وبيجو التيم
+    // بيسلموها باسم 8-2». التسميتان مشروعتان — شهر بداية الدورة وشهر النشر —
+    // ولازم الاتنتان يلاقوا نفس الكرت. الفحص بيولّد الاسمين لكل قطعة مفتوحة
+    // وبيمرّرهن على المطابق الحقيقي؛ أي قطعة ما بتنمسك بإحداهما = ملف رح يوصل
+    // ويضل كرتو متأخر، وهاد بالضبط اللي كان صاير قبل 3/8.
+    const nameMisses: string[] = [];
+    let nameHits = 0;
+    for (const co of companies.filter((c) => c.managed && c.status === "active")) {
+      const cards = live.filter(
+        (t) =>
+          t.companyId === co.id &&
+          t.kind === "CONTENT" &&
+          ["DESIGN", "SHOOT", "EDIT"].includes(t.stage ?? "") &&
+          t.type &&
+          t.pieceNo != null,
+      );
+      const open = cards.filter((t) => !isTaskDoneState(t));
+      const closedCards = cards.filter((t) => isTaskDoneState(t));
+      const bucket = currentCycleBucket(co as never, NOW);
+      const slug = companySlug(co as never);
+      const seenPiece = new Set<string>();
+      for (const t of open) {
+        const key = `${t.type}|${t.pieceNo}|${t.year}-${t.month}`;
+        if (seenPiece.has(key)) continue;
+        seenPiece.add(key);
+        const video = t.type === "REEL" || t.type === "AI_REEL";
+        const months = new Set([t.month, new Date(t.publishDate ?? new Date()).getMonth()]);
+        for (const m of months) {
+          const fileName = `${assetName(slug, m, t.pieceNo!)}.${video ? "mp4" : "jpg"}`;
+          const hit = matchDelivery(
+            {
+              id: "audit", chatId: "audit", messageId: 0, sentAt: NOW, senderId: null,
+              senderName: null, kind: video ? "VIDEO" : "PHOTO", fileName,
+              caption: null, fileId: null, mediaGroupId: null,
+            },
+            slug,
+            open as never,
+            [],
+            closedCards as never,
+            bucket,
+          );
+          if (hit) nameHits++;
+          else nameMisses.push(`${co.name} ${t.type}#${t.pieceNo} ← «${fileName}»`);
+        }
+      }
+    }
+    ok(
+      `كل قطعة مفتوحة بتنمسك بتسميتيها — شهر الدورة وشهر النشر (${nameHits}/${nameHits + nameMisses.length})`,
+      nameMisses.length === 0,
+      ev(nameMisses, 5),
+    );
 
     // ---- الاتصال الحي بتلغرام (بيحتاج التوكن؛ بينتخطّى بلاه بدل ما يفشل) ----
     const token = process.env.TELEGRAM_BOT_TOKEN?.trim();

@@ -36,6 +36,7 @@ import {
   plainText,
   type ExportMessage,
 } from "../src/lib/telegram/export";
+import { currentCycleBucket } from "../src/lib/contract";
 import { CONTENT_TYPE_LABELS } from "../src/lib/constants";
 import { isTaskDoneState } from "../src/lib/constants";
 
@@ -335,6 +336,7 @@ async function main() {
       candidates,
       parseOffPlanKeywords(p.co.offPlanKeywords),
       doneByCompany.get(p.co.id) ?? [],
+      currentCycleBucket(p.co as never, p.at),
     );
     if (hit?.by === "NAME") record(p, candidates.find((c) => c.id === hit.taskId)!, "NAME");
   }

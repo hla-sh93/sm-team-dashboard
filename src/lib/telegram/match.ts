@@ -246,6 +246,11 @@ export function matchDelivery(
   offPlanKeywords: string[] = [],
   /** The company's pieces that are ALREADY delivered — see the name branch. */
   closed: MatchCandidate[] = [],
+  /**
+   * الدورة الشغّالة **وقت إرسال الملف** (`currentCycleBucket(company, sentAt)`).
+   * هي القاعدة الأساسية للتسمية — شوف «قاعدة الدورة» جوّا.
+   */
+  activeBucket: { year: number; month: number } | null = null,
 ): MatchResult {
   if (delivery.kind === "TEXT") return null;
   // Off-plan work (وصل's exchange-rate bulletins, client-supplied analysis) is
@@ -302,8 +307,61 @@ export function matchDelivery(
     const closedTyped = wanted.length
       ? closed.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : closed;
-    for (const r of parsed.readings)
+
+    // ═══════ قاعدة الدورة — الهوية هي الدورة، والشهر بالاسم تسمية بشرية ═══════
+    //
+    // القائدة (3/8): «بتكتب ريل 7-2 وبتكون بخطة بين 15/7 و15/8، وبيجو التيم
+    // بيسلموها باسم 8-2… لازم نراعي تاريخ الدورة وايمت عم ينرسل الملف».
+    //
+    // فالقطعة = الشركة + النوع + رقمها + **الدورة الشغّالة وقت الإرسال**. رقم
+    // الشهر بالاسم ما بيحدّد شي لحالو، بس بيصير دليل مقبول لما يكون مفسَّر:
+    // إمّا شهر بداية الدورة («7-2» لدورة 15/7) أو شهر النشر الفعلي للقطعة
+    // («8-2» لأنّها بتنشر بآب). أي شهر تاني (كانون لملف انبعت بآب) مرفوض —
+    // مو تسمية، غلطة.
+    //
+    // وبتحلّ اللبس كمان: نفس الرقم مفتوح بدورتين؟ الدورة الشغّالة وقت الإرسال
+    // بتربح. والقطعة المسمّاة صراحةً بشهر الدورة القديمة بتنمسك قبلها بالمرحلة
+    // الأولى فوق، فالمتأخرات ما بتضيع.
+    if (activeBucket) {
+      const inCycle = pool.filter(
+        (t) => t.year === activeBucket.year && t.month === activeBucket.month,
+      );
+      const explains = (m0: number, t: MatchCandidate) =>
+        m0 === activeBucket.month ||
+        (t.publishDate != null && new Date(t.publishDate).getMonth() === m0);
+      for (const r of parsed.readings) {
+        const sameNo = inCycle.filter((t) => t.pieceNo === r.pieceNo && explains(r.month0, t));
+        if (!sameNo.length) continue;
+        // نفس القطعة بمراحل (تصوير/مونتاج): الأبكر موعداً هي المرحلة الجارية.
+        return { taskId: [...sameNo].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id, by: "NAME" };
+      }
+    }
+
+    // ═══════ المسلَّم ما بينسلّم مرتين ═══════
+    //
+    // «BW reel 2 July.mp4» بينبعت بـ٢٢/٧ وريل تموز ٢ مسلّم من زمان، فرقم القطعة
+    // كان بيمرّق ويسكّر **ريل آب ٢** — تسليم ما صار. إعادة إرسال شغل مسلّم هي
+    // نسخة تانية منه، مو قطعة جديدة.
+    //
+    // ⚠️ الفحص هون **بعد** المطابقة، مو قبلها: القطعة إلها كذا مرحلة، وتصوير
+    // مسكّر ما بيعني إنّ القطعة خلصت. لما كان الفحص فوق، مونتاج «Wasl 8-5» كان
+    // بينرفض لأنّ تصويرها مسكّر — ٨ قطع مفتوحة ما كانت تنمسك بأسمائها.
+    // وصولنا لهون معناه إنّه ما ضل ولا كرت مفتوح لهالقطعة.
+    for (const r of parsed.readings) {
       if (closedTyped.some((t) => t.month === r.month0 && t.pieceNo === r.pieceNo)) return null;
+      if (
+        activeBucket &&
+        closedTyped.some(
+          (t) =>
+            t.year === activeBucket.year &&
+            t.month === activeBucket.month &&
+            t.pieceNo === r.pieceNo &&
+            (r.month0 === activeBucket.month ||
+              (t.publishDate != null && new Date(t.publishDate).getMonth() === r.month0)),
+        )
+      )
+        return null;
+    }
     //
     // بس القراءة لازم يكون شهرها **معقول** بالنسبة لتاريخ الإرسال. «1-8» بتنقرأ
     // «شهر ٨ قطعة ١» و«شهر ١ قطعة ٨»؛ الأولى مسكّرة، فالتانية كانت بتمرّر رقم

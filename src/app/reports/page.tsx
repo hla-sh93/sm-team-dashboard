@@ -17,7 +17,7 @@ import { formatDateShort, toISODate } from "@/lib/dates";
 import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
-import { completedCompanyPlanCount } from "@/lib/progress";
+import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import { currentCycleBucket } from "@/lib/contract";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
@@ -93,7 +93,10 @@ export default async function ReportsPage({
       const rows = PLAN_TYPES.map((pt) => {
         const plan = co[pt.key] ?? 0;
         const d = completedCompanyPlanCount(cycleTasks, co.id, pt.type);
-        return { ...pt, plan, done: d, remaining: Math.max(0, plan - d) };
+        // «منتَج» = الإنتاج خالص (تصميم/تصوير/مونتاج) حتى لو النشر لسا — شغل
+        // موجود فعلاً وما لازم يقرأ كأنّه ما انعمل.
+        const produced = producedCompanyPlanCount(cycleTasks, co.id, pt.type);
+        return { ...pt, plan, done: d, produced, remaining: Math.max(0, plan - d) };
       }).filter((r) => r.plan > 0 || r.done > 0);
       const totalPlan = rows.reduce((a, r) => a + r.plan, 0);
       const totalDone = rows.reduce((a, r) => a + Math.min(r.done, r.plan), 0);
@@ -265,9 +268,13 @@ export default async function ReportsPage({
       {/* المنجَز مقابل المتبقّي من خطة كل شركة */}
       {companyPlan.length > 0 && (
         <Card>
-          <h2 className="display-font text-lg mb-1">إنجاز خطة الشركات</h2>
+          <h2 className="display-font text-lg mb-1">إنجاز خطة الشركات — المنشور</h2>
+          {/* «إنجاز» كلمة وحدة بمعنيين، وهاد سبب لبس حقيقي: البلسم كانت بتطلع
+              هون ٠٪ وبنفس الوقت ٢٨٪ بجرد الدورات. النسبة هون = **المنشور** لأنّه
+              هو خط النهاية عند الزبون؛ و«منتَج» جنبها = خالص بس لسا ما اننشر. */}
           <p className="text-xs text-fg-dim mb-4">
-            كل شركة على دورة عقدها هي، مو على شهر التقويم.
+            كل شركة على دورة عقدها هي، مو على شهر التقويم. النسبة = المنشور فعلاً؛
+            و«منتَج» = خالص عنا وواقف على النشر.
           </p>
           <div className="grid md:grid-cols-2 gap-4">
             {companyPlan.map(({ co, rows, pct }) => (
@@ -302,6 +309,11 @@ export default async function ReportsPage({
                       <span className="tabular-nums">
                         <span className={r.done >= r.plan ? "text-success" : ""}>{r.done}</span>
                         <span className="text-fg-muted">/{r.plan}</span>
+                        {/* منتَج بس مو منشور = شغل خالص محبوس عالنشر — يستاهل
+                            يبيّن، لأنّ «باقي ١٠» لحالها بتقرأ كأنّ ما انعمل شي */}
+                        {r.produced > r.done && (
+                          <span className="text-info"> · منتَج {r.produced}</span>
+                        )}
                         {r.remaining > 0 && (
                           <span className="text-warning"> · باقي {r.remaining}</span>
                         )}
