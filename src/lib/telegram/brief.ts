@@ -200,7 +200,9 @@ export function buildDailyBrief({
     (t) =>
       isTaskLateState(t, today) &&
       !isBlocked(t) &&
-      !(t.companyId && lateExempt.has(t.companyId)),
+      !(t.companyId && lateExempt.has(t.companyId)) &&
+      // الموقوفة مركونة بانتظار الزبون — ما بتطلع «متأخر» بولا تقرير (5/8).
+      !(t.companyId && dormant.has(t.companyId)),
   );
   const publishingToday = open.filter(
     (t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO,

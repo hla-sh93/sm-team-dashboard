@@ -128,21 +128,45 @@ const sectionOf = (l: string): ContentType | null =>
   /خطة الريلز|الريلات|أولاً.*ريل/.test(l) ? "REEL"
   : /خطة البوستات|ثانياً.*بوست/.test(l) ? "POST"
   : /الستوريز|الستوريات|خطة الستوري/.test(l) ? "STORY" : null;
-const NOISE = /^(#|رقم|النوع|نوع|الكابشن|الهاشتاغات|السكريبت|ملاحظة|تفاصيل|نص المحتوى|الهوك)/;
+const NOISE = /^(#|رقم|النوع|نوع|الكابشن|الهاشتاغات|السكريبت|ملاحظة|تفاصيل|نص المحتوى|محتوى التصميم|الهوك)/;
 
 type PlanItem = { n: number; type: ContentType; brief: string };
 
 /** Pull the numbered rows out of a plan, each with its whole cell block. */
 function parsePlan(text: string): PlanItem[] {
   const lines = text.split(/\r?\n/).map((l) => l.replace(/\uFEFF/g, "").trim());
+
+  /**
+   * \u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u062C\u062F\u0648\u0644 \u0645\u0648 \u0645\u0648\u062D\u0651\u062F \u0628\u064A\u0646 \u0627\u0644\u0634\u0631\u0643\u0627\u062A: \u0627\u0644\u0628\u0644\u0633\u0645 \u0628\u062A\u0643\u062A\u0628 [\u0627\u0644\u0631\u0642\u0645][\u0627\u0644\u0646\u0648\u0639][\u0627\u0644\u0645\u062D\u062A\u0648\u0649]\u060C
+   * \u0648BW \u0628\u062A\u0643\u062A\u0628 [\u0627\u0644\u0645\u062D\u062A\u0648\u0649][\u0627\u0644\u0631\u0642\u0645][\u0627\u0644\u0646\u0648\u0639] (\u0639\u0645\u0648\u062F # \u0622\u062E\u0631 \u0634\u064A). \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0628\u0627\u0644\u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u063A\u0644\u0637
+   * \u0645\u0627 \u0628\u062A\u0641\u0634\u0644 \u2014 \u0628\u062A\u0639\u0637\u064A \u0643\u0644 \u0635\u0641 **\u0646\u0635\u0651 \u062C\u0627\u0631\u0647** \u0648\u0628\u062A\u062A\u0631\u0643 \u0627\u0644\u0623\u062E\u064A\u0631 \u0641\u0627\u0636\u064A\u0627\u064B: \u0647\u064A\u0643 \u0628\u0648\u0633\u062A BW-4
+   * \u0637\u0644\u0639 \u00AB\u0628\u0644\u0627 \u0648\u0635\u0641\u00BB \u0648\u0627\u0644\u0633\u0628\u0639\u0629 \u0627\u0644\u0628\u0627\u0642\u064A\u064A\u0646 \u0648\u0627\u0635\u0641\u064A\u0646 \u0648\u0635\u0641 \u0645\u0632\u0627\u062D. \u0641\u0645\u0646\u0642\u0631\u0623 \u0628\u0627\u0644\u0627\u062A\u062C\u0627\u0647\u064A\u0646 \u0648\u0645\u0646\u0627\u062E\u062F
+   * \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0644\u064A \u0628\u062A\u0639\u0628\u0651\u064A \u0643\u0644 \u0627\u0644\u0635\u0641\u0648\u0641 \u2014 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0635\u062D\u064A\u062D \u0645\u0627 \u0628\u064A\u062A\u0631\u0643 \u0635\u0641\u0627\u064B \u0641\u0627\u0636\u064A\u0627\u064B.
+   */
+  const forward = parseDirection(lines, "after");
+  const backward = parseDirection(lines, "before");
+  // عدد الصفوف المرقّمة الفعلي بالملف — القراءة الصح هي يلي بتغطيهن كلهن.
+  // (الصف الفاضي ما بيدخل بالنتيجة أصلاً، فمقارنة «كل الموجود واصف» بلا معنى.)
+  let expected = 0;
+  for (let i = 0; i < lines.length; i++)
+    if (/^\d{1,2}$/.test(lines[i] ?? "")) expected++;
+  if (forward.length >= expected) return forward;
+  if (backward.length >= expected) return backward;
+  return forward.length >= backward.length ? forward : backward;
+}
+
+function parseDirection(lines: string[], bodySide: "after" | "before"): PlanItem[] {
   const items: PlanItem[] = [];
   let section: ContentType | null = null;
+  /** \u0628\u062F\u0627\u064A\u0629 \u0643\u062A\u0644\u0629 \u0627\u0644\u0645\u062D\u062A\u0648\u0649 \u0627\u0644\u0633\u0627\u0628\u0642\u0629 \u2014 \u0644\u0648\u0636\u0639 \u00AB\u0627\u0644\u0645\u062D\u062A\u0648\u0649 \u0642\u0628\u0644 \u0627\u0644\u0631\u0642\u0645\u00BB. */
+  let prevBlockStart = 0;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     if (!l) continue;
     const s = sectionOf(l);
     if (s) {
       section = s;
+      prevBlockStart = i + 1;
       continue;
     }
     if (!/^\d{1,2}$/.test(l)) continue;
@@ -151,14 +175,20 @@ function parsePlan(text: string): PlanItem[] {
     const explicit = j < lines.length ? typeOf(lines[j]) : null;
     const type = explicit ?? section;
     if (!type) continue;
-    // The brief is everything up to the next numbered row.
+
     const body: string[] = [];
-    for (let k = explicit ? j + 1 : j; k < lines.length; k++) {
-      if (/^\d{1,2}$/.test(lines[k])) break;
-      if (lines[k] && !NOISE.test(lines[k])) body.push(lines[k]);
+    if (bodySide === "after") {
+      for (let k = explicit ? j + 1 : j; k < lines.length; k++) {
+        if (/^\d{1,2}$/.test(lines[k])) break;
+        if (lines[k] && !NOISE.test(lines[k])) body.push(lines[k]);
+      }
+    } else {
+      for (let k = prevBlockStart; k < i; k++)
+        if (lines[k] && !NOISE.test(lines[k]) && !typeOf(lines[k])) body.push(lines[k]);
     }
     const brief = body.join("\n").trim();
     if (brief) items.push({ n: Number(l), type, brief });
+    prevBlockStart = explicit ? j + 1 : j;
     i = j;
   }
   return items;

@@ -228,6 +228,11 @@ export default function KanbanBoard({
   };
   const isLate = (t: Task) => {
     if (!isTaskLateState(t)) return false;
+    // شركة موقوفة = شغل مركون بانتظار الزبون، مو شغل متأخر علينا. Siizen خطتها
+    // جاهزة والزبون لسا ما بلّش — القائدة (5/8): «مشان ما تحسبها تأخير، بس يبدأ
+    // النشر بيبدأ عداد المهام». التأخير بيبلّش مع تفعيل الشركة وتاريخ نشرها.
+    const co = t.companyId ? coById.get(t.companyId) : null;
+    if (co && co.status !== "active") return false;
     // A still-open contract cycle (e.g. المول 20/6 → 20/7) is not stale
     // carry-over just because the bucket is حزيران. Plain waiting work stays
     // queued; in-progress work past delivery still shows as late.

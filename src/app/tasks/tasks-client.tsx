@@ -220,6 +220,9 @@ export default function TasksClient({
   // A task is late if it finished after its deadline, or it's past the deadline
   // and still not done.
   const isLate = (t: Task) => {
+    // شركة موقوفة = شغل مركون بانتظار الزبون — ما بيتأخر (قرار القائدة 5/8).
+    const co = t.companyId ? companies.find((c) => c.id === t.companyId) : null;
+    if (co && co.status !== "active") return false;
     if (!t.readyDate) return false;
     const due = new Date(t.readyDate).getTime();
     if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;

@@ -153,6 +153,94 @@ async function main() {
     if (!plan) console.log("  ⚠️ ما في كرت كتابة خطة لعبادة بعد — بينوجد بإعادة الجدولة وبيلحقه البناء الجاي");
   }
 
+  // ── فونيتيك: بوستات آب الأربعة شغل حلا (انبعتوا 29/7) + خامس فوق الخطة ──
+  // القائدة (5/8): «حلا بعتت 5 بوستات لفونيتيك بتاريخ 29/7 يعني لخطة شهر آب».
+  // الكروت كانت منسوبة لأيمن بتاريخ 1/8 — القاعدة: الكريدت لمين عمل الشغل.
+  console.log("\n═══ فونيتيك — بوستات آب لحلا ═══");
+  const phx = await prisma.company.findFirst({ where: { name: "Phoenitech" } });
+  if (phx) {
+    const sent = new Date(2026, 6, 29);
+    const posts = await prisma.task.findMany({
+      where: { companyId: phx.id, type: "POST", stage: "DESIGN", year: 2026, month: 7, status: { not: "CANCELED" } },
+    });
+    for (const t of posts) {
+      if (t.assigneeId === "e_hla" && t.isPinned) continue;
+      console.log(`  👤 بوست ${t.pieceNo} → حلا · أُنجز 29/7`);
+      changes++;
+      if (APPLY)
+        await prisma.task.update({
+          where: { id: t.id },
+          data: {
+            assigneeId: "e_hla",
+            isPinned: true,
+            startedAt: sent,
+            finishedAt: sent,
+            completedAt: sent,
+            notes: [t.notes, "إفادة القائدة 5/8: حلا بعتت 5 بوستات بـ29/7 لخطة آب"].filter(Boolean).join(" · "),
+          },
+        });
+    }
+    // الخامس فوق خطة الأربعة — كرت إضافي منجز حتى ما يضيع من إنجازها.
+    const extraId = "adhoc_phx_e_hla_2026-07-29_post5";
+    if (!(await prisma.task.findUnique({ where: { id: extraId } }))) {
+      console.log("  ➕ البوست الخامس (فوق خطة آب) — كرت منجز لحلا");
+      changes++;
+      if (APPLY)
+        await prisma.task.create({
+          data: {
+            id: extraId, kind: "ADHOC", title: "بوست خامس فوق خطة آب — فونيتيك",
+            hours: 2, quantity: 1, priority: "NORMAL", status: "READY", board: "DONE",
+            stage: "DESIGN", workDate: sent, readyDate: sent,
+            startedAt: sent, finishedAt: sent, completedAt: sent,
+            month: 6, year: 2026, week: Math.ceil(29 / 7), isPinned: true, isAuto: false,
+            companyId: phx.id, assigneeId: "e_hla",
+            notes: "إفادة القائدة 5/8: 5 بوستات من حلا 29/7 والخطة 4 — الخامس خارج الخطة",
+          },
+        });
+    }
+  }
+
+  // ── تقرير أداء الشهر: لكل شركة، ما في تقرير بلا شركة ──
+  // القائدة (5/8): «تقرير الأداء بنهاية كل شهر بيتم لكل شركة — ما بصير يكون
+  // في تقرير أداء بلا شركة». الكرت اليتيم (x_001) بينلغى، وبينعمل تقرير تموز
+  // لكل شركة كانت ناشرة فيه — عند عمر، مستحق آخر الشهر.
+  console.log("\n═══ تقارير أداء تموز — شركة شركة ═══");
+  {
+    const orphan = await prisma.task.findFirst({
+      where: { title: "تقرير أداء الشهر", companyId: null, status: { not: "CANCELED" } },
+    });
+    if (orphan) {
+      console.log("  🗑 الكرت اليتيم «تقرير أداء الشهر» (بلا شركة) → ملغى");
+      changes++;
+      if (APPLY)
+        await prisma.task.update({
+          where: { id: orphan.id },
+          data: { status: "CANCELED", notes: [orphan.notes, "إفادة القائدة 5/8: التقرير لكل شركة — استُبدل بكروت شركة-شركة"].filter(Boolean).join(" · ") },
+        });
+    }
+    const JULY_PUBLISHERS = ["وصل للتداول", "أغاليا", "مخبر د.نور", "برو", "BW", "Phoenitech", "المول الصيني", "التدريب"];
+    const endJuly = new Date(2026, 6, 31);
+    for (const name of JULY_PUBLISHERS) {
+      const c = await prisma.company.findFirst({ where: { name } });
+      if (!c) continue;
+      const id = `report_2026-07_${c.id}`;
+      if (await prisma.task.findUnique({ where: { id } })) continue;
+      console.log(`  ➕ تقرير أداء تموز — ${c.name}`);
+      changes++;
+      if (APPLY)
+        await prisma.task.create({
+          data: {
+            id, kind: "ADHOC", title: `تقرير أداء الشهر — ${c.name} (تموز)`,
+            hours: 1, quantity: 1, priority: "NORMAL", status: "NOT_STARTED", board: "TODO",
+            stage: "PUBLISH", workDate: endJuly, readyDate: endJuly,
+            month: 6, year: 2026, week: 5, isPinned: true, isAuto: false,
+            companyId: c.id, assigneeId: "e_omar",
+            notes: "تقرير الأداء الشهري لكل شركة بنهاية شهرها (قاعدة 5/8)",
+          },
+        });
+    }
+  }
+
   console.log(`\n${APPLY ? "انطبّق" : "رح ينطبّق"} ${changes} تغيير.`);
   if (!APPLY) console.log("تشغيل تجريبي — أضف --apply.");
   await prisma.$disconnect();
