@@ -808,6 +808,35 @@ describe("قاعدة الدورة — التسمية بشهر النشر بتل�
   });
 
   /**
+   * «PHOENIJOBS 2.mp4» — رقم مجرّد بلا شهر، تسمية المصور الفعلية. بتنحصر
+   * بالدورة الشغّالة وقت الإرسال: جوّاها بتسكّر قطعتها، برّاها ما بتسكّر شي.
+   */
+  it("رقم مجرّد بلا شهر بيسكّر قطعته بالدورة الشغّالة", () => {
+    const hit = matchDelivery(sent("PHOENIJOBS 2.mp4", 3), "PhoeniJobs", [piece("shoot2", "SHOOT", 2, 10)], [], [], JULY_BUCKET);
+    expect(hit?.taskId).toBe("shoot2");
+    expect(hit?.by).toBe("NAME");
+  });
+
+  it("الرقم المجرّد بلا دورة معروفة ما بيخمّن", () => {
+    expect(
+      matchDelivery(sent("PHOENIJOBS 2.mp4", 3), "PhoeniJobs", [piece("shoot2", "SHOOT", 2, 10)], [], [], null),
+    ).toBeNull();
+  });
+
+  it("الرقم المجرّد لقطعة مسلّمة بالدورة = إعادة إرسال، ما بيسكّر غيرها", () => {
+    expect(
+      matchDelivery(
+        sent("PHOENIJOBS 2.mp4", 3),
+        "PhoeniJobs",
+        [piece("shoot3", "SHOOT", 3, 14)],
+        [],
+        [piece("done2", "SHOOT", 2, 10)],
+        JULY_BUCKET,
+      ),
+    ).toBeNull();
+  });
+
+  /**
    * اللبس القديم: نفس الرقم مفتوح بدورتين. الدورة الشغّالة وقت الإرسال بتحسم،
    * والقطعة المسمّاة صراحةً بشهر الدورة القديمة بتنمسك قبلها بالمطابقة المباشرة.
    */

@@ -326,7 +326,10 @@ export function matchDelivery(
       const inCycle = pool.filter(
         (t) => t.year === activeBucket.year && t.month === activeBucket.month,
       );
+      // m0 === -1 = اسم برقم مجرّد («PHOENIJOBS 2.mp4») — ما بيدّعي شهراً،
+      // فبينحصر بالدورة الشغّالة نفسها وبس: أقوى قيد موجود أصلاً.
       const explains = (m0: number, t: MatchCandidate) =>
+        m0 === -1 ||
         m0 === activeBucket.month ||
         (t.publishDate != null && new Date(t.publishDate).getMonth() === m0);
       for (const r of parsed.readings) {
@@ -356,7 +359,8 @@ export function matchDelivery(
             t.year === activeBucket.year &&
             t.month === activeBucket.month &&
             t.pieceNo === r.pieceNo &&
-            (r.month0 === activeBucket.month ||
+            (r.month0 === -1 ||
+              r.month0 === activeBucket.month ||
               (t.publishDate != null && new Date(t.publishDate).getMonth() === r.month0)),
         )
       )
@@ -369,6 +373,9 @@ export function matchDelivery(
     // قراءة، غلط قراءة. شهر الدورة بيبعد شهر واحد بالكتير عن تاريخ التسليم.
     const sentMonth = delivery.sentAt ? new Date(delivery.sentAt).getMonth() : NaN;
     const plausible = (month0: number) => {
+      // الرقم المجرّد بلا ادعاء شهر: مقبول جوّا قاعدة الدورة بس (انفحص فوق).
+      // وصلنا لهون بلا دورة معروفة → ما منبني عليه.
+      if (month0 === -1) return false;
       if (Number.isNaN(sentMonth)) return true; // بلا تاريخ ما في معلومة نحكم فيها
       const d = Math.abs(month0 - sentMonth);
       return Math.min(d, 12 - d) <= 1;

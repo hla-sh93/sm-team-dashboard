@@ -164,6 +164,18 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
     if (rn) push(word + 1, Number(rn[1]));
   }
 
+  // «PHOENIJOBS 2.mp4» — رقم قطعة مجرّد بلا شهر أصلاً. تسمية حقيقية بيستعملها
+  // المصور، ورفضها بيترك الكرت متأخراً والشغل واصل. بتنقرأ «قطعة N بلا ادعاء
+  // شهر» (month0 = -1)، والمطابق بيحصرها بدورة الشركة الشغّالة وقت الإرسال —
+  // فما بتقدر تسكّر قطعة من دورة تانية.
+  if (!readings.length) {
+    const bare = withoutSlide.match(/(?:^|[\s_-])(\d{1,3})\s*$/);
+    if (bare) {
+      const n = Number(bare[1]);
+      if (n >= 1 && n <= 200) readings.push({ month0: -1, pieceNo: n });
+    }
+  }
+
   return readings.length ? { slug, readings, ...(slideNo ? { slideNo } : {}) } : null;
 }
 

@@ -97,6 +97,9 @@ export async function GET(req: Request) {
         what: m.fileName ?? m.kind,
         task: m.taskId,
         by: m.matchedBy,
+        // بيسمح بسحب الملف نفسه عبر getFile — الخطط اللي بتوصل المجموعة
+        // منقدر نستوردها بلا ما نطلب الملف من حدا.
+        fileId: m.fileId,
       })),
     };
   });
