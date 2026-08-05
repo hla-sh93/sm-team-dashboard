@@ -41,3 +41,4 @@ backups/baseline-task-counts.json
 scripts/_tmp-*.ts
 backups/pre-*.json
 backups/dev-*.db
+.tmp/
