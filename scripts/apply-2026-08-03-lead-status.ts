@@ -140,6 +140,10 @@ async function main() {
   // الدقيق: الدورات اللي خلصت — دورة تموز الجارية لوصل والمخبر مو «سابقة».
   say("\n═══ ٠. الدورات المنتهية — كلها منجزة ═══");
   for (const c of companies) {
+    // الموقوفة مستثناة: Siizen خطتها جاهزة والزبون مو جاهز — شغلها **ما انعمل**،
+    // هو مركون. «موقوفة» أصلاً بتعفيها من التأخير واللوحة اليومية، وبس يبدأ
+    // النشر بيبدأ عداد المهام (القائدة 3/8). تسكيرها بيكذب على تقرير الإنجاز.
+    if (c.status !== "active") continue;
     const b = bucketOf(c.id);
     const old = await prisma.task.findMany({
       where: {
@@ -342,6 +346,65 @@ async function main() {
           where: { id: obada.id },
           data: { postOwnerId: obada.postOwnerId ?? "e_sabin", storyOwnerId: obada.storyOwnerId ?? "e_sabin" },
         });
+    }
+  }
+
+  // ═══ ١٠-ب. تصحيح Siizen — البلانكت الأول سكّرها غلط ═══
+  // «هي قلتلك ناطرين الزبون، خطتها جاهزة بس لسا ما بلشنا تصميم وتصوير» —
+  // التشغيلة الأولى (قبل استثناء الموقوفة) علّمت 26 كرت «منجز» وهنّ مركونين.
+  // منرجّعهن مفتوحين — بس يلي علامتنا عليهن، فما منمسّ أي إقفال حقيقي.
+  say("\n═══ ١٠-ب. Siizen — الشغل مركون مو منجز ═══");
+  {
+    const c = co("Siizen");
+    const wronglyClosed = await prisma.task.findMany({
+      where: { companyId: c.id, notes: { contains: `${SRC}: دورة منتهية` } },
+    });
+    for (const t of wronglyClosed) {
+      say(`  ↩️ ${t.type ?? t.kind}#${t.pieceNo ?? ""} ${t.stage} → مفتوح (ناطرين الزبون)`);
+      changes++;
+      if (APPLY)
+        await prisma.task.update({
+          where: { id: t.id },
+          data: {
+            status: "NOT_STARTED",
+            board: "TODO",
+            startedAt: null,
+            finishedAt: null,
+            completedAt: null,
+            notes:
+              (t.notes ?? "")
+                .split(" · ")
+                .filter((n) => !n.includes("دورة منتهية"))
+                .join(" · ") || null,
+          },
+        });
+    }
+  }
+
+  // ═══ ١٠-ج. توبيك عبادة ═══
+  // القائدة بعثت الرابط: t.me/c/3563508968/4524 → التوبيك 4524 بمجموعة الفريق.
+  say("\n═══ ١٠-ج. توبيك عبادة ═══");
+  {
+    const obada = await prisma.company.findFirst({ where: { name: { contains: "عبادة" } } });
+    const key = "-1003563508968#4524";
+    if (obada && obada.telegramChatId !== key) {
+      say(`  🔗 عبادة ← ${key}`);
+      changes++;
+      if (APPLY) {
+        await prisma.telegramChat.upsert({
+          where: { id: key },
+          create: {
+            id: key,
+            chatId: "-1003563508968",
+            threadId: 4524,
+            title: "عبادة لتجهيزات الأسنان",
+            type: "supergroup",
+            companyId: obada.id,
+          },
+          update: { companyId: obada.id },
+        });
+        await prisma.company.update({ where: { id: obada.id }, data: { telegramChatId: key } });
+      }
     }
   }
 

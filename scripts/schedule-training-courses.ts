@@ -14,6 +14,11 @@
  *
  *   npx tsx scripts/schedule-training-courses.ts --apply
  *   npx tsx scripts/schedule-training-courses.ts --reset   # يحذف يلي ما انبلش
+ *
+ * (3/8) صار بخطوة البناء وبيعيد التوقيت: الكرت **المفتوح** يلي تاريخه انحرف عن
+ * الحساب بينسحب لمكانه الصح — مواعيد الدورات بتتغيّر، والقاعدة أهم من التاريخ
+ * المخزّن. المنجز ما بينلمس، فالتشغيل متكافئ. لما يوصل جدول شهر جديد: أضف
+ * صفوفه بـ`COURSES` وخلص — البناء الجاي بيوصّله للإنتاج.
  */
 import { PrismaClient } from "@prisma/client";
 
@@ -62,9 +67,11 @@ const backToWorkday = (d: Date, workDays: number[]) => {
 async function main() {
   const co = await prisma.company.findFirst({ where: { name: "التدريب" } });
   if (!co) throw new Error("ما لقيت التدريب");
-  const designer = await prisma.employee.findFirst({ where: { name: "حلا" } });
+  // سابين هي يلي عم تصمم إعلانات الدورات فعلاً (إفادة القائدة 3/8) — كان
+  // الافتراضي حلا والكروت الحقيقية كلها بإيد سابين.
+  const designer = await prisma.employee.findFirst({ where: { name: "سابين" } });
   const publisher = await prisma.employee.findFirst({ where: { name: "عمر" } });
-  if (!designer || !publisher) throw new Error("ما لقيت حلا أو عمر");
+  if (!designer || !publisher) throw new Error("ما لقيت سابين أو عمر");
 
   if (RESET) {
     const del = await prisma.task.deleteMany({
@@ -99,7 +106,29 @@ async function main() {
 
     for (const r of rows) {
       const exists = await prisma.task.findUnique({ where: { id: r.id } });
-      if (exists) { skipped++; continue; }
+      if (exists) {
+        // إعادة توقيت: موعد الدورة بيتغيّر، والكرت المفتوح لازم يلحق الحساب.
+        // المنجز تاريخه صار تاريخاً — ما منعيد كتابة الماضي.
+        const doneish = exists.board === "DONE" || ["READY", "PUBLISHED"].includes(exists.status) || exists.finishedAt != null;
+        const current = r.stage === "PUBLISH" ? exists.publishDate : exists.readyDate;
+        if (doneish || (current && iso(current) === iso(r.due))) { skipped++; continue; }
+        console.log(`⏱ ${r.title}: ${current ? iso(current) : "—"} → ${iso(r.due)}`);
+        created++;
+        if (!APPLY) continue;
+        await prisma.task.update({
+          where: { id: r.id },
+          data: {
+            workDate: r.work,
+            readyDate: r.due,
+            publishDate: r.stage === "PUBLISH" ? r.due : null,
+            month: r.due.getMonth(),
+            year: r.due.getFullYear(),
+            week: Math.ceil(r.due.getDate() / 7),
+            isPinned: true,
+          },
+        });
+        continue;
+      }
       created++;
       console.log(
         `${r.stage === "DESIGN" ? "🎨" : "🚀"} ${iso(r.due)} — ${r.title}` +
