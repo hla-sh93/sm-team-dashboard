@@ -589,13 +589,17 @@ describe("brief waves", () => {
     expect(briefMessagesFor(brief, "general").map((m) => m.key)).toEqual(["schedule", "lead"]);
   });
 
-  it("sends the detail and the per-person sheets at 08:00", () => {
-    expect(briefMessagesFor(brief, "detail").map((m) => m.key)).toEqual(["detail", "co1", "e1"]);
+  // موجة ٨:٠٠ كانت تبعت أوراق الشركات والأشخاص كمان — ١٩ رسالة كل صباح. حكم
+  // القائدة (3/8): «كل يوم عم يوصلني كتييير مسجات باسلوب عشوائي ما عم استفيد
+  // منه». الأوراق بقيت على DailyBrief للمعاينة والإرسال عند الطلب من
+  // /admin/telegram، بس ما بتنبعت آلياً أبداً.
+  it("sends ONLY the sectioned detail sheet at 08:00 — per-company/person sheets are on-demand", () => {
+    expect(briefMessagesFor(brief, "detail").map((m) => m.key)).toEqual(["detail"]);
   });
 
-  it("«ابعتيلي البريف هلق» sends everything, each message exactly once", () => {
+  it("«ابعتيلي البريف هلق» sends both waves, each message exactly once", () => {
     const keys = briefMessagesFor(brief, "all").map((m) => m.key);
-    expect(keys).toEqual(["schedule", "lead", "detail", "co1", "e1"]);
+    expect(keys).toEqual(["schedule", "lead", "detail"]);
     expect(new Set(keys).size).toBe(keys.length);
   });
 });

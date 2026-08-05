@@ -59,16 +59,22 @@ export type DeliveryStats = { matched: number; unmatched: number };
  * different times, so the bot hands her two different batches:
  *   "general" (07:45) — the one-line-per-person message she forwards to the team
  *                       group as-is, plus her own private risk report.
- *   "detail"  (08:00) — the per-person and per-company sheets, with the piece
- *                       names, the plan's words and what is late on whom.
+ *   "detail"  (08:00) — ONE sectioned sheet (تصميم / تصوير ومونتاج / نشر) with
+ *                       the piece names and the plan's words.
  *   "all"             — both, for the «ابعتيلي البريف هلق» button.
+ *
+ * The per-company and per-person sheets are NOT part of any wave. They used to
+ * be — wave 2 was 19 Telegram messages every morning — and the lead's verdict
+ * (3/8) was «كل يوم عم يوصلني كتييير مسجات باسلوب عشوائي ما عم استفيد منه».
+ * They still exist on `DailyBrief` because /admin/telegram previews them and she
+ * forwards a single company's sheet on demand; they just never auto-send.
  */
 export type BriefWave = "general" | "detail" | "all";
 
 export function briefMessagesFor(brief: DailyBrief, wave: BriefWave): BriefMessage[] {
   if (wave === "general") return [brief.schedule, brief.lead];
-  if (wave === "detail") return [brief.detail, ...brief.companies, ...brief.employees];
-  return [brief.schedule, brief.lead, brief.detail, ...brief.companies, ...brief.employees];
+  if (wave === "detail") return [brief.detail];
+  return [brief.schedule, brief.lead, brief.detail];
 }
 
 /** Publish dates within this many days count as "about to slip". */
