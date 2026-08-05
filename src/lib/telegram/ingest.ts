@@ -366,3 +366,47 @@ export async function unmatchMessage(messageId: string): Promise<void> {
     data: { status: "IN_PROGRESS", board: "DOING", finishedAt: null, completedAt: null },
   });
 }
+
+/**
+ * إعادة مطابقة رسالة مخزّنة — للرسائل اللي وصلت **قبل** ما ينربط توبيكها.
+ *
+ * تشخيص 5/8 كشف توبيكات الإنتاج مفكوكة الربط: البوت خزّن مئات الرسائل بلا
+ * `companyId` فولا ملف طابق. بعد الربط (`link-telegram-topics`)، هاد بيعيد
+ * تمرير المخزّن على نفس مسار المطابقة الحي بالضبط — نفس القواعد، نفس الدليل
+ * على الكرت، ونفس نسب الكريدت للمرسل. متكافئ: الرسالة المطابقة بتنتخطى.
+ */
+export async function rematchStoredMessage(messageId: string): Promise<IngestOutcome["matchedBy"]> {
+  const m = await prisma.telegramMessage.findUnique({ where: { id: messageId } });
+  if (!m || m.taskId || m.kind === "TEXT") return null;
+  const chat = await prisma.telegramChat.findUnique({ where: { id: m.chatId } });
+  if (!chat?.companyId) return null;
+
+  const delivery: Delivery = {
+    id: m.id,
+    chatId: m.chatId,
+    messageId: m.messageId,
+    sentAt: m.sentAt,
+    senderId: m.senderId,
+    senderName: m.senderName,
+    kind: m.kind as Delivery["kind"],
+    fileName: m.fileName,
+    caption: m.caption,
+    fileId: m.fileId,
+    mediaGroupId: m.mediaGroupId,
+  };
+  const match = await matchAgainstCompany(delivery, chat.companyId);
+  await prisma.telegramMessage.update({
+    where: { id: m.id },
+    data: {
+      companyId: chat.companyId,
+      ...(match ? { taskId: match.taskId, matchedBy: match.by, confirmed: true } : {}),
+    },
+  });
+  if (!match) return null;
+  await recordCarouselSlides(match.taskId, delivery);
+  await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId, {
+    by: match.by,
+    evidence: delivery.fileName ?? delivery.caption?.slice(0, 40) ?? "(صورة بلا اسم)",
+  });
+  return match.by;
+}
