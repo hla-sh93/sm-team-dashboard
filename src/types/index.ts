@@ -66,6 +66,8 @@ export type Company = {
   aiReelOwnerId: string | null;
   defaultOwnerId: string | null;
   photographerId: string | null;
+  /** مسؤول العقد (سيلز) — بيتابع الزبون والتجديد ومواعيد التصوير؛ ما بياخد كروت. */
+  accountOwnerId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

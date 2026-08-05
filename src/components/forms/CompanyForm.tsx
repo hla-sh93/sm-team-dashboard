@@ -60,6 +60,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         aiReelOwnerId: company.aiReelOwnerId ?? "",
         defaultOwnerId: company.defaultOwnerId ?? "",
         photographerId: company.photographerId ?? "",
+        accountOwnerId: company.accountOwnerId ?? "",
       }
     : {
         name: "",
@@ -79,6 +80,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         aiReelOwnerId: "",
         defaultOwnerId: "",
         photographerId: "",
+        accountOwnerId: "",
       };
 
   const {
@@ -274,6 +276,19 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
                   </Select>
                 </div>
               )}
+              {/* السيلز بيتابع العقد والزبون ومواعيد التصوير — معلومة، مو إسناد
+                  شغل: ما بينجدول وما بياخد كروت (قرار القائدة 3/8). */}
+              <div className="space-y-1.5">
+                <Label>مسؤول العقد (سيلز)</Label>
+                <Select {...register("accountOwnerId")}>
+                  <option value="">— بلا —</option>
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label>يوم التصوير المفضّل (اختياري)</Label>
                 <Select value={shootDay} onChange={(e) => setShootDay(e.target.value)}>

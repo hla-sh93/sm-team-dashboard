@@ -105,6 +105,8 @@ export const companySchema = z.object({
   aiReelOwnerId: optId,
   defaultOwnerId: optId,
   photographerId: optId,
+  // مسؤول العقد (سيلز) — معلومة متابعة، ما بيدخل بالجدولة ولا بياخد كروت.
+  accountOwnerId: optId,
 });
 export type CompanyInput = z.infer<typeof companySchema>;
 

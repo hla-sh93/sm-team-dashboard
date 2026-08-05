@@ -245,6 +245,10 @@ export default function CompaniesClient({
                 <span>بوست → {empName(c.postOwnerId)}</span>
                 <span>· ستوري → {empName(c.storyOwnerId)}</span>
                 {c.aiReels > 0 && <span>· ريل AI → {empName(c.aiReelOwnerId)}</span>}
+                {/* السيلز مو منتِج — بيتابع العقد والزبون ومواعيد التصوير بس */}
+                {c.accountOwnerId && (
+                  <span className="text-info">· 🤝 مسؤول العقد: {empName(c.accountOwnerId)}</span>
+                )}
               </div>
             )}
             {chip && (

@@ -88,6 +88,7 @@ export async function createCompany(input: CompanyInput) {
         aiReelOwnerId: d.aiReelOwnerId,
         defaultOwnerId: d.defaultOwnerId,
         photographerId: d.photographerId,
+        accountOwnerId: d.accountOwnerId,
       },
     });
     revalidateAll();
@@ -141,6 +142,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
         aiReelOwnerId: d.aiReelOwnerId,
         defaultOwnerId: d.defaultOwnerId,
         photographerId: d.photographerId,
+        accountOwnerId: d.accountOwnerId,
       },
     });
     revalidateAll();
