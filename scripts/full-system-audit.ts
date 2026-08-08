@@ -192,7 +192,23 @@ async function main() {
       if (!t.pipelineKey || !t.brief?.trim() || briefOfPiece.has(t.pipelineKey)) continue;
       briefOfPiece.set(t.pipelineKey, t.brief);
     }
-    const openWork = live.filter((t) => !isTaskDoneState(t) && t.kind !== "CONTENT_WRITING");
+    // …بس بحدود **الدورات اللي إجا دور خططها**. القائدة (8/8): «ليش بدك خطط
+    // أيلول من هلق؟ الخطط بتصير بآخر 10 أيام من الشهر السابق». فكرت أيلول بلا
+    // وصف بأول آب مو نقص — هو شغل ما حان وقته، وعدّه بيغرق الفحص بضجيج
+    // بيخفّي النقص الحقيقي (دورة شغّالة بلا خطة).
+    const PLAN_LEAD_DAYS = 10;
+    const planDue = (t: { year: number; month: number }) => {
+      const cycleStart = new Date(t.year, t.month, 1);
+      cycleStart.setDate(cycleStart.getDate() - PLAN_LEAD_DAYS);
+      return NOW >= cycleStart;
+    };
+    // والشغل الإضافي (ADHOC) برّا القياس: عنوانه هو وصفه — «نشرات الصرف
+    // والمفكرة الاقتصادية» ما إلها نصّ خطة ولا لازمها، وعدّها كنقص بيخلّي
+    // وصل تطلع 21 ناقصة وهي مضبوطة.
+    const openWork = live.filter(
+      (t) =>
+        !isTaskDoneState(t) && t.kind !== "CONTENT_WRITING" && t.kind !== "ADHOC" && planDue(t),
+    );
     const noBrief = openWork.filter(
       (t) => !t.brief?.trim() && !(t.pipelineKey && briefOfPiece.has(t.pipelineKey)),
     );
