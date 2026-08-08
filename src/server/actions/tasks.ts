@@ -578,3 +578,48 @@ export async function updatePhotoSessionStatus(id: string, status: string) {
     return { ok: false as const, error: "فشل تحديث الحالة" };
   }
 }
+
+/**
+ * تسجيل نشر مجموعة قطع دفعة وحدة — «مطابقة النشر» (قرار القائدة 8/8).
+ *
+ * ما في قراءة من انستغرام: القائدة شريكة إدارة مو مالكة، وأي وصول آلي
+ * لصفحات الزبائن بيعرّضهن للحظر. البديل المتّفق عليه: هي بتسكرول الصفحة
+ * بموبايلها (طبيعي تماماً) وبتأشّر اللي منشور — والنظام بيسجّل.
+ *
+ * `date` تاريخ النشر الفعلي (بتقدر تكون قديمة — القطعة انّنشرت من أسبوع
+ * وما انسجّلت). بلاها منستعمل موعد النشر المخطّط، لأنّه أقرب للحقيقة من
+ * «اليوم» بقطعة موعدها فات.
+ */
+export async function markPiecesPublished(ids: string[], date?: string) {
+  if (!ids.length) return { ok: false as const, error: "ما في قطع محدّدة" };
+  try {
+    const cards = await prisma.task.findMany({
+      where: { id: { in: ids }, stage: "PUBLISH", status: { not: "CANCELED" } },
+    });
+    if (!cards.length) return { ok: false as const, error: "ما في كروت نشر مطابقة" };
+    const at = date ? fromISODate(date) : null;
+    for (const t of cards) {
+      if (isDone(t.status)) continue;
+      const when = at ?? t.publishDate ?? t.readyDate ?? new Date();
+      await prisma.task.update({
+        where: { id: t.id },
+        data: {
+          status: "PUBLISHED",
+          board: "DONE",
+          startedAt: t.startedAt ?? when,
+          finishedAt: when,
+          completedAt: when,
+          isPinned: true,
+          notes: [t.notes, `تأكيد نشر يدوي من القائدة (${when.toLocaleDateString("en-CA")})`]
+            .filter(Boolean)
+            .join(" · "),
+        },
+      });
+      await completeProductionForPublishedTask(t);
+    }
+    revalidateAll();
+    return { ok: true as const, count: cards.length };
+  } catch {
+    return { ok: false as const, error: "فشل تسجيل النشر" };
+  }
+}
