@@ -41,6 +41,12 @@ model Employee {
   // actually sent the file, matched through this. Without it the plan's owner
   // silently gets the credit: سابين's Jobs posts were booked to حلا.
   telegramUserId String?
+
+  // أسماء العرض على تلغرام، مفصولة بفاصلة.
+  // التصدير بيحمل الاسم الظاهر بس — بلا معرّف رقمي — والاسم الظاهر لاتيني عند
+  // نص الفريق («Majed Abdullah» · «Elissar» · «Nawal St»)، فمطابقته بالعربي
+  // بتفشل صامتة: ١٤٥ ملف لماجد و٢٥ لأليسار انرفضوا كـ«من غير المنتِجين».
+  telegramAliases String?
   // Finance: monthly salary/cost (fixed). costPerReel = per-reel variable cost
   // for freelance photographers paid by the job (null = paid by salary).
   salary         Float    @default(0)

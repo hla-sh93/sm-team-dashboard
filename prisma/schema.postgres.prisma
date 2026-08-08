@@ -22,6 +22,12 @@ model Employee {
   isPhotographer Boolean  @default(false)
   telegramUsername String?
   telegramUserId String?
+
+  // أسماء العرض على تلغرام، مفصولة بفاصلة.
+  // التصدير بيحمل الاسم الظاهر بس — بلا معرّف رقمي — والاسم الظاهر لاتيني عند
+  // نص الفريق («Majed Abdullah» · «Elissar» · «Nawal St»)، فمطابقته بالعربي
+  // بتفشل صامتة: ١٤٥ ملف لماجد و٢٥ لأليسار انرفضوا كـ«من غير المنتِجين».
+  telegramAliases String?
   salary         Float    @default(0)
   costPerReel    Float?
   color          String?

@@ -398,11 +398,26 @@ async function main() {
   // must belong to the delivery's own cycle, the file must look like finished
   // work, and it must come from someone who actually produces content.
   const producers = employees.filter((e) => e.isScheduled || e.isPhotographer);
+  /**
+   * ⚠️ المطابقة بالاسم لازم تمرق على **الأسماء البديلة** كمان.
+   *
+   * تصدير تلغرام بيحمل الاسم الظاهر بلا معرّف رقمي، ونص الفريق اسمه الظاهر
+   * لاتيني: «Majed Abdullah» ما بتحتوي «ماجد» و«Elissar» ما بتحتوي «أليسار».
+   * فالفلتر كان يرفضهن كأنهن مو منتِجين — بصمت، بلا ولا سطر تحذير. ١٤٥ ملف
+   * لماجد و٢٥ لأليسار راحوا هيك، وأغاليا طلعت «صفر تسليم» وهي مسلّمة ٨ ريلات.
+   * الأسماء محفوظة بالقاعدة (`apply-2026-08-08-telegram-aliases`) حتى تكفي
+   * إضافة سطر لأي شخص جديد.
+   */
+  const namesOf = (e: (typeof employees)[number]) => [
+    e.name,
+    ...(e.telegramAliases ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  ];
   const isProducer = (sender: string | null) => {
     if (!sender) return false;
     const s = normalise(sender);
-    return producers.some((e) => s.includes(normalise(e.name)));
+    return producers.some((e) => namesOf(e).some((n) => s.includes(normalise(n))));
   };
+  const unknownSenders = new Set<string>();
   const looksLikeDeliverable = (d: Delivery) => {
     // A caption alone is a conversation, not a delivery.
     if (!d.fileName) return false;
@@ -420,6 +435,7 @@ async function main() {
       }
       if (!isProducer(p.delivery.senderName)) {
         skippedSender++;
+        if (p.delivery.senderName) unknownSenders.add(p.delivery.senderName);
         continue;
       }
       const candidates = (openByCompany.get(p.co.id) ?? []).filter(
@@ -445,7 +461,12 @@ async function main() {
     `ملفات مفحوصة: ${seen} · مطابقة: ${closures.size}` +
       ` (${byName} بالاسم · ${byBrief} بالمحتوى · ${closures.size - byName - byBrief} بالنوع) · بلا مطابقة: ${unmatched}`,
   );
-  console.log(`مستبعَد: ${skippedFile} مو ملف تسليم · ${skippedSender} من غير المنتِجين\n`);
+  console.log(`مستبعَد: ${skippedFile} مو ملف تسليم · ${skippedSender} من غير المنتِجين`);
+  // الاستبعاد الصامت هو يلي خبّى ١٧٠ ملف: لازم تبيّن أسماؤهم حتى تنكشف
+  // الأسماء الناقصة من `telegramAliases` بدل ما تضيع التسليمات بلا أثر.
+  if (unknownSenders.size)
+    console.log(`   الأسماء غير المعروفة: ${[...unknownSenders].join(" · ")}`);
+  console.log("");
 
   // Per-company summary first — 130 lines of detail is not reviewable.
   const perCompany = new Map<string, { name: number; brief: number; type: number }>();
