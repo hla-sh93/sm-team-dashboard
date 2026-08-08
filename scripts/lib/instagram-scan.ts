@@ -73,6 +73,97 @@ export const INSTAGRAM_SCAN_SCRIPT = `(() => {
   });
 })()`;
 
+/**
+ * **الجامع المستمر** — بيضلّ شغّال والقائدة بتسكرول، وبيراكم يلي مرق.
+ *
+ * ليش منحتاجه غير `INSTAGRAM_SCAN_SCRIPT`؟ لأن انستغرام بيفضّي المنشورات
+ * البعيدة عن الشاشة من الـDOM (تدوير افتراضي). فقراءة وحدة بآخر السكرول
+ * بترجّع آخر شاشة وبس؛ لازم نلقط أول بأول.
+ *
+ * والقائدة سألت سؤالاً محقّاً: «كيف بعرف إنك عم تقرا؟» — فالجامع بيعرض
+ * **شارة على الصفحة** فيها العدّاد والمدى التاريخي، بتتحدّث قدامها. بلا هالشارة
+ * السكرول عمل على أعمى: مرّة راحت تعبها كلها لأن الصفحة انعمل لها تحديث
+ * وأنا ما كنت لاقط ولا منشور، وما حدا انتبه.
+ *
+ * ⚠️ **القراءة بالتوقيت لا بالمراقبة.** أول نسخة استعملت `MutationObserver`
+ * على `document.body` بـ`subtree:true`؛ وشبكة انستغرام بتتغيّر آلاف المرات
+ * بالثانية وقت السكرول، فكل تغيير كان بيشغّل مسحاً كاملاً — وتجمّد المتصفح
+ * فعلياً وضاعت الجلسة. الفحص كل ثانية ونصّ بيلقط نفس الشي (السكرول أبطأ من
+ * هيك بكتير) وبيترك الصفحة سليمة. لا ترجع للمراقبة.
+ */
+export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
+  const AB = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const toDate = (sc) => {
+    let id = 0n;
+    for (const ch of sc.slice(0, 11)) {
+      const i = AB.indexOf(ch);
+      if (i < 0) return null;
+      id = id * 64n + BigInt(i);
+    }
+    const d = new Date(Number(id >> 23n) + 1314220021721);
+    return d.getFullYear() > 2010 && d.getFullYear() < 2100 ? d.toISOString().slice(0, 10) : null;
+  };
+  if (window.__igStop) window.__igStop();
+  const store = (window.__igStore = window.__igStore || new Map());
+
+  const box = document.createElement("div");
+  box.id = "__igBadge";
+  box.style.cssText =
+    "position:fixed;bottom:16px;left:16px;z-index:2147483647;background:#0a8fa3;color:#fff;" +
+    "font:600 13px/1.7 system-ui,sans-serif;padding:10px 14px;border-radius:10px;direction:rtl;" +
+    "box-shadow:0 4px 16px rgba(0,0,0,.35);pointer-events:none;min-width:200px";
+  document.body.appendChild(box);
+
+  let last = -1;
+  const tick = () => {
+    for (const a of document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')) {
+      const m = (a.getAttribute("href") || "").match(/\\/(p|reel)\\/([^/?]+)/);
+      if (!m) continue;
+      const img = a.querySelector("img[alt]");
+      const alt = img ? (img.getAttribute("alt") || "").trim().slice(0, 200) : "";
+      const prev = store.get(m[2]);
+      // النص البديل بيوصل متأخّر أحياناً (الصورة لسا ما حمّلت) — فمنكمّل الناقص
+      // على مرّات لاحقة بدل ما نتجاهل المنشور أو نكرّره.
+      if (prev) {
+        if (!prev.alt && alt) prev.alt = alt;
+        continue;
+      }
+      store.set(m[2], {
+        shortcode: m[2],
+        date: toDate(m[2]),
+        kind: m[1] === "reel" ? "REEL" : "POST",
+        alt: alt || null,
+      });
+    }
+    if (store.size === last) return;
+    last = store.size;
+    const all = [...store.values()];
+    const dated = all.filter((p) => p.date).sort((a, b) => a.date.localeCompare(b.date));
+    box.innerHTML =
+      "📖 عم أقرا صفحة " + (location.pathname.split("/")[1] || "") + "<br>" +
+      "محفوظ: <b>" + all.length + "</b> · بالنص: <b>" + all.filter((p) => p.alt).length + "</b><br>" +
+      "من <b>" + (dated[0] ? dated[0].date : "—") + "</b> لـ <b>" +
+      (dated.length ? dated[dated.length - 1].date : "—") + "</b>";
+  };
+  tick();
+  const id = setInterval(tick, 1500);
+  window.__igStop = () => { clearInterval(id); box.remove(); delete window.__igStop; };
+  return JSON.stringify({ armed: true, collected: store.size });
+})()`;
+
+/** قراءة يلي انجمع — بترجّع نفس شكل `ScanResult`. */
+export const INSTAGRAM_COLLECTOR_READ = `(() => {
+  const store = window.__igStore;
+  if (!store) return JSON.stringify({ error: "المجمّع مو مسلّح" });
+  const posts = [...store.values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  return JSON.stringify({
+    handle: (location.pathname.split("/")[1] || "").replace(/[^\\w.]/g, ""),
+    count: posts.length,
+    withDate: posts.filter((p) => p.date).length,
+    posts,
+  });
+})()`;
+
 export type ScanResult = {
   handle: string;
   count: number;
