@@ -68,12 +68,18 @@ const dayDiff = (a: string, b: string) =>
  *   • **درجة مطلقة** — مجموع نُدرة الكلمات المشتركة، مو مجرّد عددها؛
  *   • **هيمنة** — الأول لازم يكون ضعف التاني على الأقل، وإلا فالمنشور ملتبس
  *     بين قطعتين والصح إننا ما نخمّن؛
- *   • **عمق** — أربع كلمات مشتركة، حتى ما تكفي جملة مجاملة مشتركة.
+ *   • **عمق** — تلات كلمات مشتركة، حتى ما تكفي جملة مجاملة مشتركة؛
+ *   • **حصرية** — كلمتين منهن على الأقل ما بيطلعوا بولا بريف تاني. وهاد يلي
+ *     بيفرّق الدلالة عن الحشو: توقيع أغاليا («اللاذقية_شارع الاميركان_قبل
+ *     مشفى السيدة») بتلث بريفاتها، فما بيوصل لعتبة «الشيوع» بس بيجمع أربع
+ *     كلمات مشتركة لحاله — ومنشور «Coming Soon» طابق فيه قطعة فيلر موعدها
+ *     بعد أسبوعين. الكلمة الحصرية ما بتنقال إلا بقطعة وحدة، فما بتنخدع.
  * القيم انضبطت على وقائع وصل المؤكّدة: ريل «المعلومة قبل الخبر» وريل «شو عم
  * يصير للدولار» لازم يمرقوا، والتحاليل الصباحية لازم تنرفض كلها.
  */
 const MIN_SCORE = 1.4;
-const MIN_SHARED = 4;
+const MIN_SHARED = 3;
+const MIN_UNIQUE = 2;
 const DOMINANCE = 2;
 
 function matchCaption(
@@ -82,7 +88,7 @@ function matchCaption(
 ): { taskId: string; score: number } | null {
   const ranked = rankByContent({ fileName: null, caption }, candidates as never, true);
   const [top, second] = ranked;
-  if (!top || top.score < MIN_SCORE || top.shared < MIN_SHARED) return null;
+  if (!top || top.score < MIN_SCORE || top.shared < MIN_SHARED || top.unique < MIN_UNIQUE) return null;
   if (second && top.score < second.score * DOMINANCE) return null;
   return top;
 }

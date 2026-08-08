@@ -35,10 +35,26 @@ describe("المطابقة بالمحتوى — الترتيب والهيمنة"
     const common = [card("a", "السوق الذهب"), card("b", "السوق العملات"), card("c", "السوق التداول")];
     const ranked = rankByContent({ fileName: null, caption: "السوق الذهب" }, common);
     const top = ranked[0];
-    // «السوق» بالتلاتة فقيمتها ١/٣، و«الذهب» بوحدة فقيمتها ١ — فالمجموع لازم
-    // يعكس الفرق، لا يعدّ الكلمتين سوا.
+    // «السوق» بالتلاتة فبتنشال كلياً، و«الذهب» بوحدة فهي يلي بتحدّد.
     expect(top.taskId).toBe("a");
-    expect(top.score).toBeCloseTo(1 + 1 / 3, 2);
+    expect(top.score).toBeCloseTo(1, 2);
+    expect(top.shared).toBe(1);
+  });
+
+  it("توقيع الشركة المتكرّر ما بيصنع مطابقة", () => {
+    // بريفات أغاليا كلها بتنتهي بنفس العنوان والرقم. بلا هالقاعدة، منشور
+    // «Coming Soon» طابق قطعة فيلر موعدها بعد أسبوعين — بأربع كلمات عنوان.
+    const sig = "أغاليا خطوة بخطوة معك اللاذقية شارع الاميركان مشفى السيدة";
+    const cards = [
+      card("a", `حالة فيلر قبل وبعد ${sig}`),
+      card("b", `حالة بوتوكس قبل وبعد ${sig}`),
+      card("c", `حالة اسنان قبل وبعد ${sig}`),
+    ];
+    const onlySig = rankByContent({ fileName: null, caption: sig }, cards, true);
+    expect(onlySig.every((r) => r.shared === 0)).toBe(true);
+    // وبنفس الوقت الكلمة الدالّة لازم تضلّ تشتغل.
+    const real = rankByContent({ fileName: null, caption: `بوتوكس ${sig}` }, cards, true);
+    expect(real[0].taskId).toBe("b");
   });
 
   it("بتقرا كل البريف لما ينطلب — لأن كابشن انستغرام منقول عن سطر النداء بآخره", () => {

@@ -130,7 +130,7 @@ export function rankByContent(
    * فالمطابقة بتنرفض رغم إنها حرفية.
    */
   fullBrief = false,
-): { taskId: string; score: number; shared: number }[] {
+): { taskId: string; score: number; shared: number; unique: number }[] {
   const withBrief = candidates.filter((c) => c.brief && c.brief.trim());
   if (!withBrief.length) return [];
   const want = new Set(tokens(`${delivery.fileName ?? ""} ${delivery.caption ?? ""}`));
@@ -145,19 +145,32 @@ export function rankByContent(
     return { c, t };
   });
 
-  const ranked: { taskId: string; score: number; shared: number }[] = [];
+  /**
+   * كلمات التوقيع المتكرّر ما بتدلّ على ولا قطعة.
+   *
+   * كل بريفات أغاليا بتنتهي بنفس البلوك: «أغاليا خطوة بخطوة معك لأحلى نسخة
+   * منك 📍اللاذقية_شارع الاميركان_قبل مشفى السيدة 0998722722». وزن النُدرة
+   * لحالو بيخفّف قيمتها بس ما بيلغيها، فأربع كلمات عنوان بتكفي تعدّي شرط
+   * «العمق» — وهيك منشور «Coming Soon» طابق قطعة فيلر موعدها بعد أسبوعين.
+   * الكلمة يلي بنص البريفات أو أكتر بتنشال من الحساب كلّه: لا درجة ولا عدّ.
+   */
+  const ubiquitous = (w: string) => (df.get(w) ?? 0) >= Math.max(2, withBrief.length * 0.5);
+
+  const ranked: { taskId: string; score: number; shared: number; unique: number }[] = [];
   for (const { c, t } of perCandidate) {
     let score = 0;
     let shared = 0;
+    let unique = 0;
     for (const w of want) {
-      if (!t.has(w)) continue;
+      if (!t.has(w) || ubiquitous(w)) continue;
       shared++;
       // Rarity weighting: a word in one brief identifies it; a word in all of
       // them identifies nothing.
+      if ((df.get(w) ?? 1) === 1) unique++;
       score += 1 / (df.get(w) ?? 1);
     }
     if (shared < 2 && score < 0.9) continue; // need real overlap, not one stray word
-    ranked.push({ taskId: c.id, score, shared });
+    ranked.push({ taskId: c.id, score, shared, unique });
   }
   return ranked.sort((a, b) => b.score - a.score);
 }
