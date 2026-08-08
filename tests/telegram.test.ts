@@ -654,12 +654,15 @@ describe("مراحل الإنتاج بالبوت مربوطة بخط الأنا�
   const inBot = [...declared.matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]);
 
   it("بتشمل كل مرحلة إنتاج بخط الأنابيب", () => {
-    const production = STAGES.filter((s) => s !== "WRITE" && s !== "PUBLISH");
+    const production = STAGES.filter((s) => s !== "PUBLISH");
     expect([...production].sort()).toEqual([...inBot].sort());
   });
 
-  it("ما بتشمل الكتابة ولا النشر", () => {
-    expect(inBot).not.toContain("WRITE");
+  // الكتابة انضافت 5/8: تسليمها ملف خطة، وكانت مستثناة فكرت «كتابة بوستات
+  // وستوريز — مانغو» بيضل متأخراً بينما الخطة واصلة. النشر بيضل برّا — بينسكّر
+  // برد «نشر» على الملف، مو بوصول ملف.
+  it("بتشمل الكتابة وما بتشمل النشر", () => {
+    expect(inBot).toContain("WRITE");
     expect(inBot).not.toContain("PUBLISH");
   });
 });
@@ -916,5 +919,57 @@ describe("النوع المكتوب بالاسم بيرجّح بين قطعتي�
     const reelCard = piece("reel3", "REEL", 3, 5);
     const video = sent("VIDEO", "bru-post-8-3.mp4");
     expect(matchDelivery(video, "Bru", [...cards, reelCard], [])?.taskId).toBe("reel3");
+  });
+});
+
+/**
+ * ملف الخطة بيسكّر كرت الكتابة (القائدة 5/8: «نوال بعتت خطة مانغو — ليش ما
+ * مسكتها وحسبتها تأخير؟»). المطابقة كانت بتعرف صورة=بوست/ستوري وفيديو=ريل وبس،
+ * فأي مستند ما بيلاقي شي وكرت الكتابة بيضل متأخر والخطة واصلة.
+ */
+describe("ملف الخطة ← كرت الكتابة", () => {
+  const writeCard = (id: string, title: string, day: number) =>
+    ({
+      id,
+      type: null,
+      stage: "WRITE",
+      month: 7,
+      year: 2026,
+      pieceNo: null,
+      readyDate: new Date(2026, 7, day),
+      publishDate: null,
+      brief: null,
+      title,
+    }) as never;
+
+  const doc = (fileName: string) =>
+    ({
+      kind: "DOCUMENT",
+      fileName,
+      caption: null,
+      chatId: "c",
+      messageId: 1,
+      sentAt: new Date(2026, 7, 5),
+    }) as never;
+
+  const posts = writeCard("w_posts", "كتابة بوستات وستوريز — مانغو · دورة 1 آب", 5);
+  const shoot = writeCard("w_shoot", "سيناريو تصوير — مانغو · دورة 1 آب", 8);
+
+  it("«3 Scripts For Shooting- Mango.docx» بتسكّر كرت سيناريو التصوير", () => {
+    const hit = matchDelivery(doc("3 Scripts For Shooting- Mango.docx"), "Mango", [posts, shoot], []);
+    expect(hit?.taskId).toBe("w_shoot");
+  });
+
+  it("خطة محتوى عامة بتسكّر كرت البوستات والستوريز", () => {
+    const hit = matchDelivery(doc("Mango Content Plan.docx"), "Mango", [posts, shoot], []);
+    expect(hit?.taskId).toBe("w_posts");
+  });
+
+  it("بلا كرت كتابة مفتوح، المستند ما بيسكّر ولا قطعة إنتاج", () => {
+    const design = {
+      id: "d1", type: "POST", stage: "DESIGN", month: 7, year: 2026, pieceNo: 1,
+      readyDate: new Date(2026, 7, 6), publishDate: new Date(2026, 7, 7), brief: null,
+    } as never;
+    expect(matchDelivery(doc("Mango Content Plan.docx"), "Mango", [design], [])).toBeNull();
   });
 });

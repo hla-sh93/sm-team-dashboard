@@ -48,6 +48,8 @@ export type MatchCandidate = {
   publishDate: Date | null;
   /** The plan's own words for this piece — the strongest signal after a name. */
   brief?: string | null;
+  /** عنوان الكرت — بيميّز كرت «سيناريو تصوير» عن «كتابة بوستات وستوريز». */
+  title?: string | null;
 };
 
 export type MatchResult = { taskId: string; by: "NAME" | "BRIEF" | "TYPE" } | null;
@@ -258,6 +260,31 @@ export function matchDelivery(
   // part of what the contract counts — crediting it to a plan piece would
   // report work as done that nobody has produced yet.
   if (isOffPlan(delivery, offPlanKeywords)) return null;
+
+  // ---- 0. ملف الخطة بيسكّر كرت الكتابة ---------------------------------
+  //
+  // القائدة (5/8): «نوال بعتت خطة مانغو — ليش ما مسكتها وحسبتها تأخير؟»
+  // الجواب كان بنيوياً: المطابقة بتعرف الصور (بوست/ستوري) والفيديو (ريل) وبس،
+  // فأي DOCUMENT بترجع `types = []` وما بتلاقي شي — وكرت «كتابة بوستات
+  // وستوريز» بيضل مفتوح ومتأخر رغم إنّ الخطة واصلة على التوبيك.
+  //
+  // الكتابة تسليمها ملف، مو صورة. فملف (docx/pdf) بينبعت على توبيك شركة إلها
+  // كرت كتابة مفتوح = تسليم الخطة. وأي كرت كتابة مفتوح بيتحدّد بالنطاق:
+  // «Scripts For Shooting» / «سيناريو تصوير» بيسكّر كرت التصوير، وغيره بيسكّر
+  // كرت البوستات والستوريز — وإلا الأبكر موعداً.
+  if (delivery.kind === "DOCUMENT") {
+    const writing = candidates.filter((t) => t.stage === "WRITE");
+    if (!writing.length) return null;
+    const text = `${delivery.fileName ?? ""} ${delivery.caption ?? ""}`;
+    const wantsShoot = /shoot|سيناريو|تصوير/i.test(text);
+    const isShootCard = (t: MatchCandidate) => /سيناريو|تصوير|shoot/i.test(t.title ?? "");
+    const scoped = writing.filter((t) => isShootCard(t) === wantsShoot);
+    const pool2 = scoped.length ? scoped : writing;
+    return {
+      taskId: [...pool2].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id,
+      by: "NAME",
+    };
+  }
 
   // ---- 1. by canonical name «Agalia 7-1» -------------------------------
   // `N-N` is ambiguous while the team migrates from piece-first to month-first,

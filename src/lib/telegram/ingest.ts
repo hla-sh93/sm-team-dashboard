@@ -37,8 +37,12 @@ export type IngestOutcome = {
  * montage delivery unmatchable — the bot would store the file and close nothing.
  * `full-system-audit` now pins this list to the pipeline's own stages so the two
  * cannot drift again.
+ *
+ * WRITE كمان (5/8): تسليم الكاتبة ملف خطة، وكان مستثنى فكرت «كتابة بوستات
+ * وستوريز — مانغو» بيضل متأخراً بينما الخطة واصلة على التوبيك. شوف مسار
+ * DOCUMENT بـ`matchDelivery`.
  */
-const PRODUCTION_STAGES = ["DESIGN", "SHOOT", "EDIT"];
+const PRODUCTION_STAGES = ["DESIGN", "SHOOT", "EDIT", "WRITE"];
 
 /** One id for both shapes: a plain chat, or a topic inside a forum supergroup. */
 export function conversationKey(chatId: string, threadId: number | null | undefined): string {
@@ -239,7 +243,9 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
   const all = await prisma.task.findMany({
     where: {
       companyId,
-      kind: "CONTENT",
+      // كروت الكتابة نوعها CONTENT_WRITING (وخطة العقد الجديد ADHOC)، فحصر
+      // النوع بـCONTENT كان بيخفيها حتى بعد ما انضافت WRITE للمراحل.
+      kind: { in: ["CONTENT", "CONTENT_WRITING", "ADHOC"] },
       stage: { in: PRODUCTION_STAGES },
       status: { not: "CANCELED" },
     },
