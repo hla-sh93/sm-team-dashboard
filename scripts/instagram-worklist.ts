@@ -15,10 +15,12 @@ const prisma = new PrismaClient();
 const argv = process.argv.slice(2);
 
 async function setHandles() {
+  // بنقسم عند **أول** `=` وبس: رابط انستغرام يلي بتنسخه القائدة بيجي بذيل
+  // `?igsh=...` وأحياناً بينتهي بـ`==`، فالتقسيم الكامل بيفتّته وبيسقط السطر
+  // بصمت. صار الاسم قبل أول علامة والباقي كلّه رابط.
   const pairs = argv
-    .filter((a) => !a.startsWith("--"))
-    .map((a) => a.split("="))
-    .filter((p) => p.length === 2);
+    .filter((a) => !a.startsWith("--") && a.includes("="))
+    .map((a) => [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] as const);
   for (const [name, handle] of pairs) {
     const co = await prisma.company.findFirst({ where: { name: { contains: name.trim() } } });
     if (!co) {
