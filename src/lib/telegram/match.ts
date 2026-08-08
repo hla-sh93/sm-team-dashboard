@@ -253,6 +253,15 @@ export function matchDelivery(
    * هي القاعدة الأساسية للتسمية — شوف «قاعدة الدورة» جوّا.
    */
   activeBucket: { year: number; month: number } | null = null,
+  /**
+   * عرف الشركة بالترقيم لما «A-B» بتنقرا بالاتجاهين وكلاهما منطقي.
+   *
+   * وصل بتسمّي قطعة-أول: 4-8 · 5-8 · 6-8 · 7-8 · 8-8 (الرقم التاني ثابت = الشهر).
+   * فـ«wasl 7-8» هي القطعة ٧ بشهر ٨ — بس قراءة شهر-أول بتعطي «تموز قطعة ٨»،
+   * وتموز هو باكت وصل فعلاً، فالقراءتان «تنفسّران» والأولى بتربح بالغلط:
+   * مونتاج ريل ٧ انحسب لريل ٨. الاستدعاء بيمرّر العرف المستنتج من الدفعة.
+   */
+  preferPieceFirst = false,
 ): MatchResult {
   if (delivery.kind === "TEXT") return null;
   // Off-plan work (وصل's exchange-rate bulletins, client-supplied analysis) is
@@ -291,7 +300,13 @@ export function matchDelivery(
   // so try every reading in order and take the first that names a REAL open
   // piece — an existing piece is far stronger evidence than either convention.
   const types = candidateTypesFor(delivery.kind);
-  const parsed = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  const parsedRaw = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  // `parseAssetName` بترتّب شهر-أول ثم قطعة-أول. لما يكون عرف الشركة معروفاً
+  // منقلب الترتيب — القراءة الصح بتنجرّب أولاً بدل ما تخسر بالصدفة.
+  const parsed =
+    parsedRaw && preferPieceFirst && parsedRaw.readings.length > 1
+      ? { ...parsedRaw, readings: [...parsedRaw.readings].reverse() }
+      : parsedRaw;
   if (parsed && slugMatches(parsed.slug, companySlug)) {
     // The number alone is not enough: «wasl 4-7.mp4» is a VIDEO, so piece 4
     // means reel 4, not story 4.
@@ -313,11 +328,31 @@ export function matchDelivery(
       ? candidates.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : [];
     const pool = typed.length ? typed : wanted.length ? [] : candidates;
+    // ترتيب القراءات = ترتيب الأفضلية، فلازم **تنستنفد كل الطرق للقراءة
+    // الأولى** قبل الانتقال للتانية. كانت الحلقة بتجرّب «تطابق مباشر» لكل
+    // القراءات ثم قاعدة الدورة لكلهن — فـ«wasl 7-8» (قطعة ٧ شهر ٨ بعرف
+    // أليسار) بتخسر: القراءة المفضّلة ما إلها تطابق مباشر، فالقراءة التانية
+    // «تموز قطعة ٨» بتلقط تطابقاً مباشراً وبتسكّر ريل ٨ محل ريل ٧.
+    const inCycle = activeBucket
+      ? pool.filter((t) => t.year === activeBucket.year && t.month === activeBucket.month)
+      : [];
+    const explains = (m0: number, t: MatchCandidate) =>
+      !!activeBucket &&
+      (m0 === -1 ||
+        m0 === activeBucket.month ||
+        (t.publishDate != null && new Date(t.publishDate).getMonth() === m0));
+    const earliest = (list: MatchCandidate[]) =>
+      [...list].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
+
     for (const r of parsed.readings) {
-      const hit = pool
-        .filter((t) => t.month === r.month0 && t.pieceNo === r.pieceNo)
-        .sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
-      if (hit) return { taskId: hit.id, by: "NAME" };
+      // (أ) تطابق مباشر: نفس الشهر ونفس الرقم.
+      const exact = earliest(pool.filter((t) => t.month === r.month0 && t.pieceNo === r.pieceNo));
+      if (exact) return { taskId: exact.id, by: "NAME" };
+      // (ب) قاعدة الدورة: الرقم داخل الدورة الشغّالة، والشهر مفسَّر.
+      const byCycle = earliest(
+        inCycle.filter((t) => t.pieceNo === r.pieceNo && explains(r.month0, t)),
+      );
+      if (byCycle) return { taskId: byCycle.id, by: "NAME" };
     }
     // …وإذا الشهر ما طابق، جرّب **رقم القطعة لحاله**.
     //
@@ -334,38 +369,6 @@ export function matchDelivery(
     const closedTyped = wanted.length
       ? closed.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : closed;
-
-    // ═══════ قاعدة الدورة — الهوية هي الدورة، والشهر بالاسم تسمية بشرية ═══════
-    //
-    // القائدة (3/8): «بتكتب ريل 7-2 وبتكون بخطة بين 15/7 و15/8، وبيجو التيم
-    // بيسلموها باسم 8-2… لازم نراعي تاريخ الدورة وايمت عم ينرسل الملف».
-    //
-    // فالقطعة = الشركة + النوع + رقمها + **الدورة الشغّالة وقت الإرسال**. رقم
-    // الشهر بالاسم ما بيحدّد شي لحالو، بس بيصير دليل مقبول لما يكون مفسَّر:
-    // إمّا شهر بداية الدورة («7-2» لدورة 15/7) أو شهر النشر الفعلي للقطعة
-    // («8-2» لأنّها بتنشر بآب). أي شهر تاني (كانون لملف انبعت بآب) مرفوض —
-    // مو تسمية، غلطة.
-    //
-    // وبتحلّ اللبس كمان: نفس الرقم مفتوح بدورتين؟ الدورة الشغّالة وقت الإرسال
-    // بتربح. والقطعة المسمّاة صراحةً بشهر الدورة القديمة بتنمسك قبلها بالمرحلة
-    // الأولى فوق، فالمتأخرات ما بتضيع.
-    if (activeBucket) {
-      const inCycle = pool.filter(
-        (t) => t.year === activeBucket.year && t.month === activeBucket.month,
-      );
-      // m0 === -1 = اسم برقم مجرّد («PHOENIJOBS 2.mp4») — ما بيدّعي شهراً،
-      // فبينحصر بالدورة الشغّالة نفسها وبس: أقوى قيد موجود أصلاً.
-      const explains = (m0: number, t: MatchCandidate) =>
-        m0 === -1 ||
-        m0 === activeBucket.month ||
-        (t.publishDate != null && new Date(t.publishDate).getMonth() === m0);
-      for (const r of parsed.readings) {
-        const sameNo = inCycle.filter((t) => t.pieceNo === r.pieceNo && explains(r.month0, t));
-        if (!sameNo.length) continue;
-        // نفس القطعة بمراحل (تصوير/مونتاج): الأبكر موعداً هي المرحلة الجارية.
-        return { taskId: [...sameNo].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id, by: "NAME" };
-      }
-    }
 
     // ═══════ المسلَّم ما بينسلّم مرتين ═══════
     //

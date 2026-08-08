@@ -168,8 +168,12 @@ async function main() {
     const all = (await prisma.task.findMany({
       where: {
         companyId: co.id,
-        kind: "CONTENT",
-        stage: { in: ["DESIGN", "SHOOT"] },
+        // المونتاج والكتابة كمان: المستورد كان بيدوّر بالتصميم والتصوير وبس،
+        // فكل ريل بتبعتو أليسار بالتصدير كان بينخزّن وما بيسكّر كرت مونتاجه —
+        // مونتاج ريلات وصل 6 و7 و8 انسلّم 4/8 و7/8 وضل مسجّل «ما بلّش».
+        // نفس لائحة البوت الحي (`PRODUCTION_STAGES`) — لازم يبقوا متطابقين.
+        kind: { in: ["CONTENT", "CONTENT_WRITING", "ADHOC"] },
+        stage: { in: ["DESIGN", "SHOOT", "EDIT", "WRITE"] },
         status: { not: "CANCELED" },
       },
     })) as unknown as (MatchCandidate & { status: string; board: string })[];
@@ -317,7 +321,54 @@ async function main() {
   };
 
   const deliveries = collapseRevisions(prepared);
-  const revisions = prepared.length - deliveries.length;
+
+  /**
+   * عرف الترقيم لكل شركة، مستنتَج من دفعتها نفسها.
+   *
+   * «A-B» بتنقرا بالاتجاهين، وأحياناً الاتنان منطقيان. الحكم من الدفعة: الرقم
+   * يلي **بيتكرّر ثابتاً** عبر ملفات الشركة هو الشهر، والمتغيّر هو رقم القطعة.
+   *   وصل:  4-8 · 5-8 · 6-8 · 7-8 · 8-8  → التاني ثابت ⇒ قطعة-أول
+   *   مخبر: 7-4 · 8-5 · 8-6              → الأول ثابت ⇒ شهر-أول
+   * بلا هالاستنتاج، «wasl 7-8» بتنقرا «تموز قطعة ٨» (وتموز باكت وصل فعلاً)
+   * فمونتاج ريل ٧ بينحسب لريل ٨.
+   */
+  const pieceFirstBy = new Map<string, boolean>();
+  {
+    // الاستنتاج **لكل مرسِل داخل الشركة** — مو للشركة كلها. وصل عندها عرفان
+    // بنفس الوقت: أليسار بتسمّي الريلات قطعة-أول (4-8 · 6-8 · 7-8 · 8-8)
+    // وأيمن بيسمّي الستوريات شهر-أول (story-8-7 · 8-16). خلطهن ببعض بيلغي
+    // الغلبة فما بينستنتج شي، وكل واحد لحالو واضح تماماً.
+    const pairsBy = new Map<string, [number, number][]>();
+    for (const p of deliveries) {
+      const m = (p.delivery.fileName ?? "").match(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/);
+      if (!m) continue;
+      const key = `${p.co.id}|${p.delivery.senderName ?? "—"}`;
+      const arr = pairsBy.get(key) ?? [];
+      arr.push([Number(m[1]), Number(m[2])]);
+      pairsBy.set(key, arr);
+    }
+    const share = (xs: number[]) => {
+      const c = new Map<number, number>();
+      for (const x of xs) c.set(x, (c.get(x) ?? 0) + 1);
+      return Math.max(...c.values()) / xs.length;
+    };
+    const DOMINANT = 0.6;
+    for (const [key, pairs] of pairsBy) {
+      if (pairs.length < 3) continue;
+      const f = share(pairs.map((x) => x[0]));
+      const sc = share(pairs.map((x) => x[1]));
+      if (sc >= DOMINANT && sc > f) pieceFirstBy.set(key, true);
+      else if (f >= DOMINANT && f > sc) pieceFirstBy.set(key, false);
+    }
+    for (const [key, pf] of pieceFirstBy) {
+      const [coId, sender] = key.split("|");
+      const n = companies.find((c) => c.id === coId)?.name;
+      console.log(`  🔤 ${n} · ${sender}: ${pf ? "قطعة-أول" : "شهر-أول"}`);
+    }
+  }
+  /** عرف الترقيم لهالمرسِل بهالشركة (افتراضي: شهر-أول متل القاعدة العامة). */
+  const conventionOf = (p: Prepared) =>
+    pieceFirstBy.get(`${p.co.id}|${p.delivery.senderName ?? "—"}`) ?? false;
 
   // ---- pass 1: NAME evidence -------------------------------------------
   // Runs over EVERYTHING first so a correctly-named file always wins its piece,
@@ -337,6 +388,7 @@ async function main() {
       parseOffPlanKeywords(p.co.offPlanKeywords),
       doneByCompany.get(p.co.id) ?? [],
       currentCycleBucket(p.co as never, p.at),
+      conventionOf(p),
     );
     if (hit?.by === "NAME") record(p, candidates.find((c) => c.id === hit.taskId)!, "NAME");
   }
