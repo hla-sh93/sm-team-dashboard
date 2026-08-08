@@ -417,7 +417,16 @@ async function main() {
     const s = normalise(sender);
     return producers.some((e) => namesOf(e).some((n) => s.includes(normalise(n))));
   };
+  /**
+   * ناس بالمجموعة مو من الفريق — رفض ملفاتهم **مقصود**، فما بيلزم تحذير.
+   *
+   * القائدة (8/8) عن «Rand St»: «ليست من الفريق وملفاتها لاداعي لفحصها».
+   * وبلا هالقائمة بتضلّ تطلع بتحذير «الأسماء غير المعروفة» كل تشغيل، فالتحذير
+   * بيفقد معناه — ويوم يوصل منتِج جديد بينضاف لضجيج معروف بدل ما ينكشف.
+   */
+  const NOT_TEAM = [/rand/i];
   const unknownSenders = new Set<string>();
+  const knownNonProducers = new Set<string>();
   const looksLikeDeliverable = (d: Delivery) => {
     // A caption alone is a conversation, not a delivery.
     if (!d.fileName) return false;
@@ -435,7 +444,15 @@ async function main() {
       }
       if (!isProducer(p.delivery.senderName)) {
         skippedSender++;
-        if (p.delivery.senderName) unknownSenders.add(p.delivery.senderName);
+        // ثلاث حالات، وخلطهن بيلغي فائدة التحذير: مو من الفريق (مقصود، صامت)
+        // · من الفريق بس مو منتِج كنوال وعمر (مقصود كمان، بس منسمّيه) · ولا
+        // واحد منهن ⇒ **اسم ناقص من `telegramAliases`** وتسليماته عم تضيع.
+        const s = p.delivery.senderName;
+        if (s && !NOT_TEAM.some((re) => re.test(s)))
+          (employees.some((e) => namesOf(e).some((n) => normalise(s).includes(normalise(n))))
+            ? knownNonProducers
+            : unknownSenders
+          ).add(s);
         continue;
       }
       const candidates = (openByCompany.get(p.co.id) ?? []).filter(
@@ -464,8 +481,10 @@ async function main() {
   console.log(`مستبعَد: ${skippedFile} مو ملف تسليم · ${skippedSender} من غير المنتِجين`);
   // الاستبعاد الصامت هو يلي خبّى ١٧٠ ملف: لازم تبيّن أسماؤهم حتى تنكشف
   // الأسماء الناقصة من `telegramAliases` بدل ما تضيع التسليمات بلا أثر.
+  if (knownNonProducers.size)
+    console.log(`   من الفريق بس مو منتِجين (مقصود): ${[...knownNonProducers].join(" · ")}`);
   if (unknownSenders.size)
-    console.log(`   الأسماء غير المعروفة: ${[...unknownSenders].join(" · ")}`);
+    console.log(`   ⚠️ أسماء ما بنعرفها — تسليماتهن عم تضيع: ${[...unknownSenders].join(" · ")}`);
   console.log("");
 
   // Per-company summary first — 130 lines of detail is not reviewable.
