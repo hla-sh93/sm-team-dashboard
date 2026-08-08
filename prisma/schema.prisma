@@ -96,6 +96,11 @@ model Company {
   // أول ما يبلّش الزبون ينشر، بينحطّ التاريخ وبتمشي الدورات منه.
   publishStartDate DateTime?
 
+  // حساب انستغرام (بلا @) — مرجع مطابقة النشر بالمحتوى.
+  // القائدة سُئلت عن الحسابات مرتين لأنها ما كانت محفوظة بمكان؛ صارت تنحفظ
+  // مرة وحدة وتنقرا من هون كل دورة جرد.
+  instagramHandle String?
+
   // Contract RENEWAL history. A cycle no longer continues automatically: after
   // one ends, the next starts ONLY when a renewal is recorded, from the renewal
   // date (so a client renewed late leaves a real gap with no generated work).

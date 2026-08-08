@@ -65,6 +65,11 @@ model Company {
   //   • ولا تأخير بينحسب علينا (هي «التأخيرات الوهمية» يلي وقعنا فيها)
   // أول ما يبلّش الزبون ينشر، بينحطّ التاريخ وبتمشي الدورات منه.
   publishStartDate DateTime?
+
+  // حساب انستغرام (بلا @) — مرجع مطابقة النشر بالمحتوى.
+  // القائدة سُئلت عن الحسابات مرتين لأنها ما كانت محفوظة بمكان؛ صارت تنحفظ
+  // مرة وحدة وتنقرا من هون كل دورة جرد.
+  instagramHandle String?
   // Contract RENEWAL history — cycles do NOT continue automatically. JSON array
   // of ISO dates for every cycle start AFTER the first, e.g. "[\"2026-07-19\"]".
   // Kept as a JSON string (not String[]) to mirror the SQLite schema exactly.
