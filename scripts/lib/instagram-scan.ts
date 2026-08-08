@@ -34,39 +34,42 @@ export type ScannedPost = {
  * سكرول، ولا `fetch`.
  */
 export const INSTAGRAM_SCAN_SCRIPT = `(() => {
-  const MONTHS = {january:0,february:1,march:2,april:3,may:4,june:5,july:6,
-                  august:7,september:8,october:9,november:10,december:11};
-  const out = [];
-  const seen = new Set();
-  for (const a of document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')) {
-    const href = a.getAttribute('href') || '';
-    const m = href.match(/\\/(p|reel)\\/([^/?]+)/);
-    if (!m) continue;
-    const shortcode = m[2];
-    if (seen.has(shortcode)) continue;
-    seen.add(shortcode);
-    const img = a.querySelector('img[alt]');
-    const alt = img ? img.getAttribute('alt') : null;
-    let date = null;
-    if (alt) {
-      const d = alt.match(/on\\s+([A-Za-z]+)\\s+(\\d{1,2}),\\s*(\\d{4})/);
-      if (d && MONTHS[d[1].toLowerCase()] !== undefined) {
-        const dt = new Date(Date.UTC(+d[3], MONTHS[d[1].toLowerCase()], +d[2]));
-        date = dt.toISOString().slice(0, 10);
-      }
+  // رمز المنشور نفسه بيحمل وقت نشره: base64 مخصّص → معرّف الوسائط، وأعلى
+  // بتاته طابع زمني. هالطريقة أوثق من النص البديل — الأخير بيتغيّر شكله
+  // (أحياناً «on August 05, 2026» وأحياناً «in اللاذقية» بلا تاريخ أصلاً)،
+  // والرمز ثابت. انتحقّق منه على حساب المخبر: Da7h_w7t-oo → 2026-07-18،
+  // وهو نفس التاريخ المكتوب تحت المنشور.
+  const AB = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const toDate = (sc) => {
+    let id = 0n;
+    for (const ch of sc.slice(0, 11)) {
+      const i = AB.indexOf(ch);
+      if (i < 0) return null;
+      id = id * 64n + BigInt(i);
     }
-    out.push({
-      shortcode,
-      date,
+    const d = new Date(Number(id >> 23n) + 1314220021721);
+    return d.getFullYear() > 2010 && d.getFullYear() < 2100 ? d.toISOString().slice(0, 10) : null;
+  };
+  const seen = new Set();
+  const posts = [];
+  for (const a of document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')) {
+    const m = (a.getAttribute('href') || '').match(/\/(p|reel)\/([^/?]+)/);
+    if (!m || seen.has(m[2])) continue;
+    seen.add(m[2]);
+    const img = a.querySelector('img[alt]');
+    posts.push({
+      shortcode: m[2],
+      date: toDate(m[2]),
       kind: m[1] === 'reel' ? 'REEL' : 'POST',
-      alt: alt ? alt.slice(0, 120) : null,
+      alt: img ? (img.getAttribute('alt') || '').slice(0, 120) : null,
     });
   }
+  posts.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   return JSON.stringify({
-    handle: (location.pathname.split('/')[1] || '').replace(/[^\\w.]/g, ''),
-    count: out.length,
-    withDate: out.filter((p) => p.date).length,
-    posts: out,
+    handle: (location.pathname.split('/')[1] || '').replace(/[^\w.]/g, ''),
+    count: posts.length,
+    withDate: posts.filter((p) => p.date).length,
+    posts,
   });
 })()`;
 
