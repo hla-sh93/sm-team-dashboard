@@ -975,25 +975,45 @@ describe("ملف الخطة ← كرت الكتابة", () => {
 });
 
 /**
- * تأكيد النشر من المجموعة (القائدة 8/8: «ما بدي أربط صفحات الشركات… ممكن
- * يسبّبلن حظر»). ما في قراءة من المنصّات — الناشر هو المصدر، والشرط إنّه ما
- * ينضاف عليه ولا خطوة: منفهم الكلام يلي بيكتبو أصلاً.
+ * تأكيد النشر مشروط بالمرسل (القائدة 8/8): «"نشرت" ممكن تكون سؤال إذا ما كان
+ * عمر باعتها… وأحياناً حلا بتقول تم النشر». فالصيغة الملتبسة بتلزمها صلاحية،
+ * والصريحة لأ — وعلامة الاستفهام بتلغي التأكيد مهما كان المرسل.
  */
-describe("كلمات تأكيد النشر", () => {
-  // الجذر لحاله كان الشرط، فـ«نشرت» ما بتطابق — والناشر بيكتب بالتصريف دايماً.
+describe("صلاحية تأكيد النشر", () => {
   const src = readFileSync("src/lib/telegram/ingest.ts", "utf8");
-  const re = new RegExp(
-    src.match(/const PUBLISHED_WORDS =\s*\n?\s*\/(.+)\/i;/)![1],
-    "i",
-  );
+  /**
+   * الاختبار بيقرأ التعبير من الكود مباشرةً — لأنّ نسخة عنه بالاختبار بتفترق
+   * بصمت أول ما يتعدّل الأصل، والحارس بيصير كذبة.
+   */
+  const rx = (name: string) => {
+    const at = src.indexOf(`const ${name} =`);
+    const body = src.slice(at).match(/\/(.+)\/i;/)![1];
+    return new RegExp(body, "i");
+  };
+  const explicit = rx("PUBLISHED_EXPLICIT");
+  const loose = rx("PUBLISHED_LOOSE");
 
-  it("بتمسك التصريفات يلي بيكتبها الناشر", () => {
-    for (const t of ["تم النشر", "نشرت ستوري 16", "نشرنا البوست", "نزلت", "نزل الريل", "published", "✅"])
-      expect(re.test(t), t).toBe(true);
+  it("«تم النشر» و«اننشر» و✅ صريحة — مقبولة من أي حدا", () => {
+    for (const t of ["تم النشر", "اننشر", "✅"]) expect(explicit.test(t), t).toBe(true);
   });
 
-  it("ما بتمسك الوصف — «منشور» و«ناشر» مو تأكيد", () => {
-    for (const t of ["المنشور حلو", "ناشر الصفحة", "شو رأيك بالتصميم"])
-      expect(re.test(t), t).toBe(false);
+  it("«نشرت» و«نزل» ملتبسة — بتلزمها صلاحية", () => {
+    for (const t of ["نشرت ستوري 16", "نزل الريل"]) {
+      expect(explicit.test(t), `${t} صريحة؟`).toBe(false);
+      expect(loose.test(t), `${t} ملتبسة؟`).toBe(true);
+    }
+  });
+
+  it("ولا وحدة بتمسك الوصف: «منشور» و«ناشر»", () => {
+    for (const t of ["المنشور حلو", "ناشر الصفحة"]) {
+      expect(explicit.test(t), t).toBe(false);
+      expect(loose.test(t), t).toBe(false);
+    }
+  });
+
+  it("المخوّلون: الناشر والقائدة فقط", () => {
+    const fn = src.match(/function mayConfirmPublish[\s\S]*?\n}/)![0];
+    expect(fn).toMatch(/ناشر|publish/);
+    expect(fn).toMatch(/ليدر|lead|قائد/);
   });
 });

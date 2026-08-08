@@ -174,14 +174,28 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
 }
 
 /**
- * كلمات تأكيد النشر — بتصريفاتها الفعلية.
+ * كلمات تأكيد النشر — على مستويين، لأنّ نفس الكلمة بتكون سؤالاً أو خبراً.
  *
- * كان الشرط «نشر» كلمة مستقلة، فـ«نشرت ستوري 16» ما بتطابق (بعدها «ت» مو
- * مسافة) — والناشر بيكتب بالتصريف دايماً. الجذور مسموح بعدها لواحق عربية
- * قصيرة، و«منشور»/«ناشر» مستثنيان لأنّهن وصف مو تأكيد.
+ * القائدة (8/8): «"نشرت" ممكن تكون سؤال إذا ما كان عمر باعتها». فـ«نشرت
+ * الستوري؟» من المصمّمة سؤال، ومن الناشر خبر. القاعدة:
+ *   - `PUBLISHED_EXPLICIT`: صيغة ما بتنقال إلا كخبر («تم النشر»، «اننشر»،
+ *     ✅) — مقبولة من أي حدا بالفريق.
+ *   - `PUBLISHED_LOOSE`: تصريف ممكن يكون سؤالاً («نشرت»، «نزل») — مقبولة
+ *     **بس** من المخوّلين بالنشر (الناشر والقائدة).
+ * وبأي حال: علامة استفهام بالرسالة بتلغي التأكيد — السؤال مو إنجاز.
+ *
+ * «منشور» و«ناشر» مستثنيان بالتصميم: وصف مو تأكيد.
  */
-const PUBLISHED_WORDS =
-  /(^|\s)(?:تم\s+النشر|نشر(?:ت|نا|و|وا)?|ان+نشر(?:ت)?|نزل(?:ت|نا|و|وا)?|نزّل(?:ت|نا)?|published?)(?=\s|$|[.،!])|✅|☑️|✔️/i;
+const PUBLISHED_EXPLICIT =
+  /(^|\s)(?:تم\s+النشر|ان+نشر(?:ت)?|published)(?=\s|$|[.،!])|✅|☑️|✔️/i;
+const PUBLISHED_LOOSE =
+  /(^|\s)(?:نشر(?:ت|نا|و|وا)?|نزل(?:ت|نا|و|وا)?|نزّل(?:ت|نا)?|publish(?:ed)?)(?=\s|$|[.،!])/i;
+
+/** مين مخوّل يأكّد النشر: الناشر والقائدة (القائدة 8/8: «أحياناً حلا بتقول»). */
+function mayConfirmPublish(emp: { role: string } | null): boolean {
+  if (!emp) return false;
+  return /ناشر|publish/i.test(emp.role) || /ليدر|lead|قائد/i.test(emp.role);
+}
 
 /** إقفال كرت نشر واحد بوقت النشر الحقيقي + دليله. */
 async function markPublished(publishCard: { id: string; startedAt: Date | null; notes: string | null }, at: Date, why: string) {
@@ -218,12 +232,27 @@ async function markPublished(publishCard: { id: string; startedAt: Date | null; 
  * بترجّع معرّفات الكروت يلي انسكّرت.
  */
 async function handlePublishConfirmation(
-  msg: { reply_to_message?: { message_id?: number }; text?: string; caption?: string },
+  msg: {
+    reply_to_message?: { message_id?: number };
+    text?: string;
+    caption?: string;
+    from?: { id?: number };
+  },
   chatId: string,
   at: Date,
 ): Promise<string[]> {
   const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
-  if (!text || !PUBLISHED_WORDS.test(text)) return [];
+  if (!text) return [];
+  // سؤال مو خبر: «نشرت الستوري؟» ما بتسكّر شي مهما كان المرسل.
+  if (/[?؟]/.test(text)) return [];
+
+  const sender = msg.from?.id
+    ? await prisma.employee.findFirst({ where: { telegramUserId: String(msg.from.id) } })
+    : null;
+  const confirmed = PUBLISHED_EXPLICIT.test(text)
+    ? true
+    : PUBLISHED_LOOSE.test(text) && mayConfirmPublish(sender);
+  if (!confirmed) return [];
 
   // ١) رد على ملف مطابَق — أقوى دليل.
   const replyTo = msg.reply_to_message?.message_id;
@@ -238,7 +267,7 @@ async function handlePublishConfirmation(
           where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
         });
         if (card && !isTaskDoneState(card)) {
-          await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${target.fileName ?? "الملف"}`);
+          await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${target.fileName ?? "الملف"}${sender ? ` · ${sender.name}` : ""}`);
           return [card.id];
         }
       }
@@ -293,7 +322,7 @@ async function handlePublishConfirmation(
   if (named.length) {
     for (const id of named) {
       const card = open.find((t) => t.id === id)!;
-      await markPublished(card, at, `«${text.slice(0, 40)}»`);
+      await markPublished(card, at, `«${text.slice(0, 40)}»${sender ? ` · ${sender.name}` : ""}`);
     }
     return named;
   }
@@ -309,7 +338,7 @@ async function handlePublishConfirmation(
   const content = due.filter((t) => t.type != null);
   const pick = (content.length ? content : due)[0];
   if (!pick) return [];
-  await markPublished(pick, at, `«${text.slice(0, 40)}» — أقدم قطعة مستحقّة`);
+  await markPublished(pick, at, `«${text.slice(0, 40)}»${sender ? ` · ${sender.name}` : ""} — أقدم قطعة مستحقّة`);
   return [pick.id];
 }
 
