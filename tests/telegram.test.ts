@@ -415,7 +415,9 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     expect(brief.schedule.text).not.toContain("11/7");
   });
 
-  it("writes «<اسم> <شغل> <شركة>» with no bullet and no colon", () => {
+  // القائدة (5/8): «ما فيك تقول سابين لازم تصمم البلسم وبرو وأغاليا — المهمة
+  // لازم تكون حسب المطلوب». السطر بيسمّي القطع المطلوبة مجمّعة تحت شركتها.
+  it("يكتب «<اسم> <شركة>: <القطع المطلوبة>» بلا نقطة ولا رمز", () => {
     const design = task({
       id: "d",
       stage: "DESIGN",
@@ -430,7 +432,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     // علامة RTL بأول السطر مقصودة: منشن لاتيني (Nawal، @Omar_ORR) كان بيقلب
     // اتجاه السطر بعرض تلغرام فيطلع «خطة مانغو Nawal» والاسم بالآخر.
     expect(line.startsWith("‏")).toBe(true);
-    expect(line.replace(/‏/g, "")).toBe("أيمن تصاميم أغاليا");
+    expect(line.replace(/‏/g, "")).toBe("أيمن أغاليا: بوست-1");
   });
 
   it("كل سطر بيبلّش بعلامة RTL حتى يضل الاسم أول شي", () => {
@@ -453,7 +455,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     const withHandle = employee({ ...designer, telegramUsername: "Ayman_D" } as Partial<Employee>);
     const design = task({ id: "d", stage: "DESIGN", type: "POST", readyDate: workday, assigneeId: "d1" });
     const brief = buildDailyBrief({ ...base, employees: [withHandle], tasks: [design] });
-    expect(brief.schedule.text).toContain("@Ayman_D تصاميم أغاليا");
+    expect(brief.schedule.text).toContain("@Ayman_D أغاليا: بوست-1");
   });
 
   // ماجد shoots THREE reels a day, so with more overdue reels than that, the
@@ -492,18 +494,23 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
       employees: [photographer],
       tasks: overloadedDay(),
     });
-    expect(brief.schedule.text).toContain("ماجد تصوير وصل، والمتأخر برو");
+    // اليوم قطع وصل الثلاثة، والمتأخر قطعة برو — كلها بالاسم لا بأسماء شركات فقط.
+    const line = brief.schedule.text.split(String.fromCharCode(10)).find((l) => l.includes("ماجد"))!;
+    expect(line).toContain("وصل: ريل-1");
+    expect(line).toContain("ومتأخر — برو: ريل-1");
   });
 
-  it("never puts piece names or day-counts in the general message", () => {
+  // تغيّرت القاعدة (5/8): أسماء القطع مطلوبة بالموجة الأولى — الممنوع هو
+  // التواريخ وعدد أيام التأخير، فهي شغل تقرير الثمانية.
+  it("no dates or day-counts in the general message", () => {
     const brief = buildDailyBrief({
       today: workday,
       companies: [company(), wasl, bru],
       employees: [photographer],
       tasks: overloadedDay(),
     });
-    expect(brief.schedule.text).not.toMatch(/\d+-\d+/);
     expect(brief.schedule.text).not.toMatch(/\d+ يوم/);
+    expect(brief.schedule.text).not.toMatch(/\d+\/\d+/);
     // …while the detailed wave still carries exactly that.
     expect(brief.employees[0].text).toMatch(/Bru 7-\d/);
     expect(brief.employees[0].text).toMatch(/متأخر \d+ يوم/);
@@ -524,8 +531,9 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
       tasks,
     });
     const line = brief.schedule.text.split("\n").find((l) => l.includes("ماجد"))!;
-    expect(line).toContain("وغيرها");
-    expect(line.length).toBeLessThan(60);
+    // ٣ شركات متأخرة بقطعة لكل وحدة: كلها بتنعرض (السقف ٣)، والسطر بيضل مقروء.
+    expect(line).toContain("ومتأخر —");
+    expect(line.length).toBeLessThan(150);
   });
 
   it("drops a company whose delay is the client's fault, not ours", () => {
@@ -549,7 +557,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     });
     // Still real work that still has to be shot — it just never counts as late,
     // so it stays out of the chase clause and out of her overdue list.
-    expect(brief.schedule.text).toContain("تصوير جدارات");
+    expect(brief.schedule.text).toContain("جدارات: ريل-1");
     expect(brief.schedule.text).not.toMatch(/المتأخر[^\n]*جدارات/);
     // Both reels are past due, but only وصل's is counted — جدارات's is the
     // client's hold-up, so it is absent from her overdue list entirely.

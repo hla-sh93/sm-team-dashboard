@@ -270,6 +270,48 @@ export function buildDailyBrief({
     return shown.join(" · ");
   };
 
+  /**
+   * قطع اليوم كما تُطلب: «بوست-3 · برو، ستوري-4 · أغاليا». اسم القطعة أولاً
+   * لأنّه المطلوب، والشركة بعده لأنها الوجهة. القائمة بتنقص لأربعة وبينضاف
+   * «و…غيرها» — السطر بيتقرا بلمحة، والباقي بتقرير الثمانية.
+   */
+  const todayPieces = (list: Task[], max = 4): string => {
+    if (!list.length) return "";
+    // مجمّعة بالشركة: «برو: ستوري-1 وستوري-2 · أغاليا: ستوري-9». تكرار اسم
+    // الشركة مع كل قطعة بيطوّل السطر بلا فايدة، والتجميع بيخلّيه ينقرا بلمحة.
+    const byCo = new Map<string, Task[]>();
+    for (const t of list) {
+      const name = coName(t);
+      const arr = byCo.get(name) ?? [];
+      arr.push(t);
+      byCo.set(name, arr);
+    }
+    let left = max;
+    const parts: string[] = [];
+    for (const [name, rows] of byCo) {
+      if (left <= 0) break;
+      const take = rows.slice(0, left);
+      left -= take.length;
+      // «Bru 7-1 · ستوري» جوّا مجموعة برو بيصير «ستوري-1» — الشركة فوقه أصلاً.
+      // والكرت اليدوي عنوانه بيتقصّ من اسم الشركة وشرطة الدورة: «كتابة بوستات
+      // وستوريز — مانغو · دورة 1 آب» بتصير «كتابة بوستات وستوريز».
+      const labels = take.map((t) => {
+        const n = t.pieceNo ?? numbers.get(t.id);
+        if (n && t.type) return `${typeLabel(t)}-${n}`;
+        const title = (t.title?.trim() || typeLabel(t)).split(" · ")[0].split(" — ")[0].trim();
+        return title;
+      });
+      // نفس العنوان بيتكرر (نشرات الصرف اليومية ٣ مرات) — مرة وعدد.
+      const counts = new Map<string, number>();
+      for (const l of labels) counts.set(l, (counts.get(l) ?? 0) + 1);
+      const uniq = [...counts.entries()].map(([l, n]) => (n > 1 ? `${l} (${n})` : l));
+      parts.push(name === "—" ? uniq.join(" و") : `${name}: ${uniq.join(" و")}`);
+    }
+    const rest = list.length - (max - Math.max(0, left));
+    if (rest > 0) parts.push(`و${rest} غيرها`);
+    return parts.join(" · ");
+  };
+
   const scheduleLines: string[] = ["صباح الخير", ""];
   const idleToday: string[] = [];
   for (const emp of employees) {
@@ -298,18 +340,22 @@ export function buildDailyBrief({
       ...new Set(owed.map((t) => (t.companyId ? coName(t) : (t.title?.trim() || "—")))),
     ].filter((c) => c && c !== "—" && !todayCompanies.has(c));
     let headline: string;
-    let chase = owedCompanies.length
-      ? `المتأخر ${owedCompanies.slice(0, 2).join(" و")}${owedCompanies.length > 2 ? " وغيرها" : ""}`
-      : "";
+    // المتأخر كمان بالقطعة: «ومتأخر: مخبر: ريل-5». نفس القاعدة — الشخص لازم
+    // يعرف شو يعمل، مو أي زبون منزعج.
+    let chase = owed.length ? `ومتأخر — ${todayPieces(owed, 3)}` : "";
     if (isPublisher(emp)) {
       // The publisher's day is always the same shape — the count is noise, and
       // his "late" list is the standing publish backlog, not a daily chase.
       headline = "متابعة الصفحات والنشر";
       chase = "";
     } else {
-      headline = groupByCompany(todays);
+      // المطلوب منه اليوم = القطع نفسها، مو أسماء الشركات. القائدة (5/8):
+      // «ما فيك تقول سابين لازم تصمم البلسم وبرو وأغاليا — المهمة لازم تكون
+      // حسب المطلوب». «تصاميم برو وأغاليا» ما بتقول شو ينعمل؛ «بوست-3 برو ·
+      // ستوري-4 أغاليا» بتقول. الشركة بتضل ملتصقة بالقطعة فما بتضيع الوجهة.
+      headline = todayPieces(todays);
     }
-    if (chase) headline = headline ? `${headline}، و${chase}` : chase;
+    if (chase) headline = headline ? `${headline}، ${chase}` : chase.replace(/^و/, "");
     // Nothing today and nothing owed → not worth a line. Idle capacity is real
     // information though, so it goes to her private report instead.
     if (!headline) {
@@ -582,10 +628,27 @@ export function buildDailyBrief({
     leadLines.push("", "✅ ما في قطعة معرّضة للتأخير خلال يومين.");
   }
   if (late.length) {
-    leadLines.push("", `⏰ متأخرات (${late.length}):`);
-    for (const t of late.slice(0, 10))
-      leadLines.push(`• ${pieceLabel(t)} · ${coName(t)} — ${daysLateOfState(t, today)} يوم · ${who(t)}`);
-    if (late.length > 10) leadLines.push(`… و${late.length - 10} غيرها على لوحة المهام`);
+    // مرتّبة **شركة شركة** (القائدة 5/8): «متأخر بشركة كذا: القائمة، بعدين
+    // المتأخر بشركة كذا». قائمة مسطّحة من ٤٠ سطر ما بتنقرا ولا بتنعمل فيها شي؛
+    // مجمّعة بتصير مكالمة واحدة لكل زبون. الشركات بالأكثر تأخيراً أولاً، وجوّا
+    // الشركة الأقدم أولاً — وسقف لكل شركة حتى وحدة ما تبلع الرسالة.
+    const byCompany = new Map<string, Task[]>();
+    for (const t of late) {
+      const name = coName(t);
+      const arr = byCompany.get(name) ?? [];
+      arr.push(t);
+      byCompany.set(name, arr);
+    }
+    leadLines.push("", `⏰ متأخرات (${late.length}) — حسب الشركة:`);
+    const ordered = [...byCompany.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [name, rows] of ordered) {
+      rows.sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
+      leadLines.push("", `▪️ ${name} (${rows.length}):`);
+      for (const t of rows.slice(0, LATE_IN_SHEET))
+        leadLines.push(`   • ${pieceLabel(t)} — ${daysLateOfState(t, today)} يوم · ${who(t)}`);
+      if (rows.length > LATE_IN_SHEET)
+        leadLines.push(`   … و${rows.length - LATE_IN_SHEET} غيرها على اللوحة`);
+    }
   }
   if (deliveries) {
     leadLines.push(
