@@ -52,14 +52,26 @@ const COUNT_EXEMPT = [/وصل/];
 
 type Kind = "POST" | "REEL" | "STORY";
 
-/** نوع القطعة من اسم الملف أو امتداده. */
+/**
+ * نوع القطعة — من كلمة صريحة بالاسم، لا من الامتداد.
+ *
+ * ⚠️ **الامتداد ما بيحدّد النوع.** أول نسخة اعتبرت كل `.jpg` بوستاً، فراحت
+ * ستوريات سابين لأغاليا («عروض» · «العملة القديمة» · «عرض الاسنان») لخانة
+ * البوستات — فطلع المرسَل ٢١ بوستاً و٣ ستوريات، واستنتجنا غلطاً إنّ ١٢ ستوري
+ * ما انعملت. القائدة صحّحتنا: «مستحيل، في قياس ستوري عروض وعملة قديمة وغيرا
+ * باعتتهن سابين».
+ *
+ * والستوري ما إلها إشارة موجبة أصلاً: بريفاتها فاضية بالخطة (الملف فيه نصّ
+ * البوستات وبس)، والمصمّم ما بيكتب «story» باسمها. فمنعرّفها **بالباقي**:
+ * كل تصميم وصل من منتِج وما انعرف إنّو بوست أو ريل، هو ستوري.
+ */
 function typeOfFile(name: string): Kind | null {
   const n = normalise(name);
   if (/\bstory\b|ستوري/.test(n)) return "STORY";
   if (/\breels?\b|ريل/.test(n)) return "REEL";
   if (/\bposts?\b|بوست/.test(n)) return "POST";
+  // الفيديو ريل بأمان — الستوري المصوّرة بتحمل كلمة «story» عادةً (ماجد بيلتزم).
   if (/\.(mp4|mov|avi)$/i.test(name)) return "REEL";
-  if (/\.(jpe?g|png|webp)$/i.test(name)) return "POST";
   return null;
 }
 
@@ -116,15 +128,26 @@ async function main() {
     ["REEL", new Set()],
     ["STORY", new Set()],
   ]);
+  let unnamedDesigns = 0;
   for (const m of messages) {
     const t = topicOf(m as never);
     if (t == null || !mine.has(t)) continue;
+    if (!isProducer((m as { from?: string }).from)) continue;
     const name = (m as { file_name?: string }).file_name;
-    if (!name || !isProducer((m as { from?: string }).from)) continue;
+    if (!name) {
+      // تلغرام بيشيل اسم أي ملف بينبعت **كصورة** — بيصير `photos/photo_12@…`.
+      // فالتصميم يلي انبعت صورة بيوصل بلا اسم إطلاقاً، وتجاهله بيخسّرنا شغلاً
+      // حقيقياً: سابين لحالها بعتت ٩ صور بلا اسم لأغاليا. وبما إنّ التصميم بلا
+      // اسم ما بيقدر يثبت إنّو بوست، بينحسب بالباقي (ستوري).
+      if ((m as { photo?: string }).photo) unnamedDesigns++;
+      continue;
+    }
     const kind = typeOfFile(name);
-    if (!kind) continue;
-    sentIds.get(kind)!.add(deliveryIdentity(name));
+    if (kind) sentIds.get(kind)!.add(deliveryIdentity(name));
+    else unnamedDesigns++;
   }
+  /** الباقي = ستوري: تصميم من منتِج ما أثبت إنّو بوست أو ريل. */
+  const storyLeftover = unnamedDesigns;
 
   // ---- ٢. المنشور على الصفحة ------------------------------------------
   const scan = scanPath ? (JSON.parse(readFileSync(scanPath, "utf8")) as ScanResult) : null;
@@ -149,7 +172,7 @@ async function main() {
     if (!all.length) continue;
     const done = all.filter(isTaskDoneState);
     const open = all.filter((c) => !isTaskDoneState(c));
-    const sent = sentIds.get(kind)!.size;
+    const sent = sentIds.get(kind)!.size + (kind === "STORY" ? storyLeftover : 0);
     const page = onPage[kind];
     // أصغر القيود — والصفحة بتنحسب بس لما يكون في جرد.
     const cap = Math.min(sent, page ?? Number.POSITIVE_INFINITY, all.length);
