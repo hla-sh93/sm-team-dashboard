@@ -1,5 +1,5 @@
 {
- "exportedAt": "2026-08-05T13:01:50.103Z",
+ "exportedAt": "2026-08-08T05:57:14.413Z",
  "note": "وقائع الداتا المحلية — بتنطبّق بالإنتاج بسياسة تقدّم-فقط (apply-data-corrections.ts)",
  "pieces": [
   {
@@ -15076,6 +15076,63 @@
    "notes": "تقرير الأداء الشهري لكل شركة بنهاية شهرها (قاعدة 5/8)",
    "brief": null,
    "month": 6,
+   "year": 2026
+  },
+  {
+   "id": "extra_dr-nour-reel-cover-7-10-jpg",
+   "company": "مخبر د.نور",
+   "title": "غلاف ريل — مخبر د.نور (10)",
+   "stage": "DESIGN",
+   "hours": 1,
+   "assigneeId": "e_sabin",
+   "status": "READY",
+   "board": "DONE",
+   "workDate": "2026-08-08T05:56:57.223Z",
+   "readyDate": "2026-08-08T05:56:57.223Z",
+   "publishDate": null,
+   "startedAt": "2026-08-08T05:56:57.223Z",
+   "finishedAt": "2026-08-08T05:56:57.223Z",
+   "notes": "شغل خارج الخطة (قرار القائدة 8/8) — وصل على تلغرام: dr nour -reel cover-7-10.jpg",
+   "brief": null,
+   "month": 7,
+   "year": 2026
+  },
+  {
+   "id": "extra_dr-nour-reel-cover-7-11-jpg",
+   "company": "مخبر د.نور",
+   "title": "غلاف ريل — مخبر د.نور (11)",
+   "stage": "DESIGN",
+   "hours": 1,
+   "assigneeId": "e_sabin",
+   "status": "READY",
+   "board": "DONE",
+   "workDate": "2026-08-08T05:56:57.267Z",
+   "readyDate": "2026-08-08T05:56:57.267Z",
+   "publishDate": null,
+   "startedAt": "2026-08-08T05:56:57.267Z",
+   "finishedAt": "2026-08-08T05:56:57.267Z",
+   "notes": "شغل خارج الخطة (قرار القائدة 8/8) — وصل على تلغرام: dr nour -reel cover-7-11.jpg",
+   "brief": null,
+   "month": 7,
+   "year": 2026
+  },
+  {
+   "id": "extra_phoenitech-story-5-8-jpg",
+   "company": "Phoenitech",
+   "title": "ستوري حسب الحاجة — Phoenitech (5)",
+   "stage": "DESIGN",
+   "hours": 1,
+   "assigneeId": "e_sabin",
+   "status": "READY",
+   "board": "DONE",
+   "workDate": "2026-08-08T05:56:57.290Z",
+   "readyDate": "2026-08-08T05:56:57.290Z",
+   "publishDate": null,
+   "startedAt": "2026-08-08T05:56:57.290Z",
+   "finishedAt": "2026-08-08T05:56:57.290Z",
+   "notes": "شغل خارج الخطة (قرار القائدة 8/8) — وصل على تلغرام: phoenitech story 5-8.JPG",
+   "brief": null,
+   "month": 7,
    "year": 2026
   }
  ]
