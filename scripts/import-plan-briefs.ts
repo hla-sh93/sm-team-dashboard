@@ -354,7 +354,17 @@ async function main() {
       orderBy: [{ pieceNo: "asc" }],
     });
     const byType = new Map<string, typeof tasks>();
+    // ⚠️ **قطعة وحدة = مدخل واحد بالسلة.** الريل إلو مرحلتَي إنتاج (تصوير
+    // ومونتاج)، فلو حطّينا الاتنين بتاكل القطعة بندين من الخطة وكل يلي بعدها
+    // بينزاح بند. هيك صار فعلاً: ريل وصل ١ أخد «التموضع كمرجع اقتصادي» على
+    // كرت التصوير و«هوك جدلي عن الذهب» على المونتاج والنشر — مراحل القطعة
+    // الوحدة بتتناقض بشو هي القطعة. ١٢ قطعة بأربع شركات انصابت، وكلها ريلات
+    // (البوست إلو مرحلة تصميم وحدة فما بان فيه).
+    const seenPiece = new Set<string>();
     for (const t of tasks.filter((t) => t.stage !== "PUBLISH")) {
+      const key = t.pipelineKey ?? `${t.type}|${t.pieceNo}|${t.month}|${t.year}`;
+      if (seenPiece.has(key)) continue;
+      seenPiece.add(key);
       const arr = byType.get(t.type!) ?? [];
       arr.push(t);
       byType.set(t.type!, arr);
@@ -373,13 +383,12 @@ async function main() {
         const t = pool[i];
         const brief = planned[i].brief.slice(0, 4000);
         if (APPLY) {
-          await prisma.task.update({ where: { id: t.id }, data: { brief } });
-          // The publish card shows the same brief — the publisher needs the caption.
+          // البريف بينكتب على **كل مراحل القطعة** دفعة وحدة — مو على كرت
+          // وكرت النشر وبس. المصوّر والمونتير والناشر لازم يقروا نفس النصّ،
+          // وأي مرحلة بتحمل نصّاً تاني بتكذّب أخواتها وبتكسر المطابقة.
           if (t.pipelineKey)
-            await prisma.task.updateMany({
-              where: { pipelineKey: t.pipelineKey, stage: "PUBLISH" },
-              data: { brief },
-            });
+            await prisma.task.updateMany({ where: { pipelineKey: t.pipelineKey }, data: { brief } });
+          else await prisma.task.update({ where: { id: t.id }, data: { brief } });
         }
         set++;
       }

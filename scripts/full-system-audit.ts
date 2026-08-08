@@ -223,6 +223,24 @@ async function main() {
       [...byCoNoBrief].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${v}`).join(" · "),
     );
 
+    // مراحل القطعة الوحدة لازم تتفق على شو هي القطعة. مستورد الخطط كان يحط
+    // كل مراحل الإنتاج بسلة وحدة، فالريل (تصوير + مونتاج) بياكل بندين وكل يلي
+    // بعده بينزاح — فيطلع كرت التصوير بيحكي عن موضوع وكرت النشر عن غيره،
+    // والمطابقة بتفشل لأنها بتقرا نصّ القطعة الغلط.
+    const briefByPipe = new Map<string, Set<string>>();
+    for (const t of live) {
+      if (!t.pipelineKey || !t.brief?.trim()) continue;
+      const head = t.brief.split("\n").slice(0, 2).join(" ").trim();
+      if (!briefByPipe.has(t.pipelineKey)) briefByPipe.set(t.pipelineKey, new Set());
+      briefByPipe.get(t.pipelineKey)!.add(head);
+    }
+    const splitBrief = [...briefByPipe].filter(([, s]) => s.size > 1);
+    ok(
+      `مراحل القطعة الوحدة بتحمل نفس الوصف (${briefByPipe.size - splitBrief.length}/${briefByPipe.size})`,
+      splitBrief.length === 0,
+      ev(splitBrief.map(([k]) => k)),
+    );
+
     const adhocNoTitle = live.filter((t) => t.kind === "ADHOC" && !t.title?.trim());
     ok("كل كرت إضافي إلو عنوان", adhocNoTitle.length === 0, ev(adhocNoTitle.map((t) => t.id)));
 

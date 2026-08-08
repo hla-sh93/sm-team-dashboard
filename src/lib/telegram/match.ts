@@ -105,21 +105,47 @@ export function matchByContent(
   delivery: Pick<Delivery, "fileName" | "caption">,
   candidates: MatchCandidate[],
 ): { taskId: string; score: number } | null {
+  return rankByContent(delivery, candidates)[0] ?? null;
+}
+
+/**
+ * كل المرشّحين مرتّبين بالدرجة — مو الفائز وحده.
+ *
+ * ليش منحتاج الترتيب؟ لأن «الأفضل» مو دايماً «الصحيح». اسم ملف تلغرام تلات
+ * كلمات كلها دالّة، فالفائز فيه يقين. أما كابشن انستغرام فـ٢٥ كلمة أغلبها
+ * مفردات مالية عامة (السوق، الذهب، التداول) بتتشارك مع كل بريفات الشركة —
+ * فالفائز ممكن يفوز بالضجيج لا بالدلالة. اللي بيفرّق هو **الهيمنة**: قدّيش
+ * الأول متقدّم على التاني. بلا هالرقم، جرّبنا فطلع ٢١ إقفالاً أغلبها غلط:
+ * ريل تحليل صباحي راح لكرت بوست موعده بعد ٢٨ يوم.
+ */
+export function rankByContent(
+  delivery: Pick<Delivery, "fileName" | "caption">,
+  candidates: MatchCandidate[],
+  /**
+   * يقارن **كل** نصّ البريف بدل مطلعه.
+   *
+   * اسم ملف تلغرام بيشبه عنوان القطعة، فالمطلع بيكفي وبيمنع ضجيج المتن. أما
+   * كابشن انستغرام فمنقول عن سطر النداء يلي **بآخر** البريف: «المعلومة قبل
+   * الخبر 📊 مرجعك الاقتصادي يبدأ من هون». بالمطلع لحاله بينزل المشترك لكلمتين
+   * فالمطابقة بتنرفض رغم إنها حرفية.
+   */
+  fullBrief = false,
+): { taskId: string; score: number; shared: number }[] {
   const withBrief = candidates.filter((c) => c.brief && c.brief.trim());
-  if (!withBrief.length) return null;
+  if (!withBrief.length) return [];
   const want = new Set(tokens(`${delivery.fileName ?? ""} ${delivery.caption ?? ""}`));
-  if (want.size === 0) return null;
+  if (want.size === 0) return [];
 
   // How many candidates each token appears in — a token unique to one piece is
   // worth far more than one every row shares.
   const df = new Map<string, number>();
   const perCandidate = withBrief.map((c) => {
-    const t = new Set(tokens(briefHead(c.brief!)));
+    const t = new Set(tokens(fullBrief ? c.brief! : briefHead(c.brief!)));
     for (const w of t) df.set(w, (df.get(w) ?? 0) + 1);
     return { c, t };
   });
 
-  let best: { taskId: string; score: number } | null = null;
+  const ranked: { taskId: string; score: number; shared: number }[] = [];
   for (const { c, t } of perCandidate) {
     let score = 0;
     let shared = 0;
@@ -131,9 +157,9 @@ export function matchByContent(
       score += 1 / (df.get(w) ?? 1);
     }
     if (shared < 2 && score < 0.9) continue; // need real overlap, not one stray word
-    if (!best || score > best.score) best = { taskId: c.id, score };
+    ranked.push({ taskId: c.id, score, shared });
   }
-  return best;
+  return ranked.sort((a, b) => b.score - a.score);
 }
 
 /** Flatten a Telegram message into a Delivery row. */

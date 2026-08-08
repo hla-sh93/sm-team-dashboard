@@ -16,10 +16,15 @@
  * فبتلتقط أي كرت موعده قريب وتسكّرو غلط.
  *
  * فالترتيب:
- *   ١. **المحتوى** — نصّ المنشور مقابل نصّ الخطة (نفس محرّك تلغرام). بلا أي
- *      قيد تاريخ: القطعة هي القطعة سواء نزلت مبكّر أو متأخر.
- *   ٢. **التاريخ** — بس للمنشور يلي ما لقى مطابقة بالمحتوى، وبشرط النوع.
- *   ٣. **بلا نصّ = بلا مطابقة** — التخمين بيسكّر كرت خطة بنشرة يومية.
+ *   ١. **المحتوى مقابل الخطة** — نصّ المنشور مقابل نصّ الخطة (نفس محرّك
+ *      تلغرام). بلا أي قيد تاريخ: القطعة هي القطعة سواء نزلت مبكّر أو متأخر.
+ *   ٢. **المحتوى مقابل تلغرام** — نصّ المنشور مقابل نصّ التسليم يلي بعتو
+ *      الفريق. القائدة (8/8): «طابق المحتوى بالموجود ضمن الخطة **وعلى
+ *      تلغرام**». وهاد مصدر مستقل بيمسك يلي بتفوّتو الخطة: الكابشن المنشور
+ *      منقول عن الملف المرسَل أكتر مما هو منقول عن البريف، والقطع الإضافية
+ *      (خبر عاجل، حدث طارئ) ما إلها بريف أصلاً بس إلها تسليم.
+ *   ٣. **التاريخ** — بس للمنشور يلي ما لقى مطابقة بالمحتوى، وبشرط النوع.
+ *   ٤. **بلا نصّ = بلا مطابقة** — التخمين بيسكّر كرت خطة بنشرة يومية.
  *
  * كل إقفال بياخد **تاريخ المنشور الحقيقي** لا تاريخ التسجيل، ودليله رمز
  * المنشور — فبتقدري ترجعي تفتحيه وتتأكدي.
@@ -27,12 +32,14 @@
 import { readFileSync } from "fs";
 import { PrismaClient } from "@prisma/client";
 import { isTaskDoneState } from "../src/lib/constants";
-import { matchByContent } from "../src/lib/telegram/match";
+import { rankByContent } from "../src/lib/telegram/match";
 import type { ScanResult, ScannedPost } from "./lib/instagram-scan";
 
 const prisma = new PrismaClient();
 const argv = process.argv.slice(2);
 const APPLY = argv.includes("--apply");
+/** يسمح لطبقة التاريخ تسكّر كمان — مطفية أصلاً لأنها بتغلط (شوف فوق). */
+const WITH_DATE = argv.includes("--with-date");
 const [file, companyArg] = argv.filter((a) => !a.startsWith("--"));
 
 /** المنشور ممكن ينزل بيومه أو بعده — بس مو قبل موعده بأكتر من هيك. */
@@ -42,6 +49,34 @@ const LATE_DAYS = 21;
 
 const dayDiff = (a: string, b: string) =>
   Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+
+/**
+ * المطابقة بالمحتوى لكابشن طويل — أشدّ من نظيرتها لاسم ملف.
+ *
+ * كابشن انستغرام ٢٥ كلمة أغلبها مفردات القطاع نفسه، فبيتشارك شوية كلمات مع كل
+ * بريفات الشركة. المحرّك بياخد الأعلى درجة، والأعلى بهيك حالة ممكن يكون أعلى
+ * بالضجيج. فمنشترط تلاتة مع بعض:
+ *   • **درجة مطلقة** — مجموع نُدرة الكلمات المشتركة، مو مجرّد عددها؛
+ *   • **هيمنة** — الأول لازم يكون ضعف التاني على الأقل، وإلا فالمنشور ملتبس
+ *     بين قطعتين والصح إننا ما نخمّن؛
+ *   • **عمق** — أربع كلمات مشتركة، حتى ما تكفي جملة مجاملة مشتركة.
+ * القيم انضبطت على وقائع وصل المؤكّدة: ريل «المعلومة قبل الخبر» وريل «شو عم
+ * يصير للدولار» لازم يمرقوا، والتحاليل الصباحية لازم تنرفض كلها.
+ */
+const MIN_SCORE = 1.4;
+const MIN_SHARED = 4;
+const DOMINANCE = 2;
+
+function matchCaption(
+  caption: string,
+  candidates: { id: string; brief?: string | null }[],
+): { taskId: string; score: number } | null {
+  const ranked = rankByContent({ fileName: null, caption }, candidates as never, true);
+  const [top, second] = ranked;
+  if (!top || top.score < MIN_SCORE || top.shared < MIN_SHARED) return null;
+  if (second && top.score < second.score * DOMINANCE) return null;
+  return top;
+}
 
 async function main() {
   if (!file || !companyArg) {
@@ -81,7 +116,17 @@ async function main() {
    * ذكر «أسعار» أو «اقتصاد».
    */
   const DAILY_BULLETIN = /[0-9]{1,2}\.[0-9]{1,2}\.20[0-9][0-9]|الذهب و ?العملات|التقويم ?الإ?قتصادي|أهم أحداث التقويم/;
-  const isBulletin = (p: ScannedPost) => !!p.alt && DAILY_BULLETIN.test(p.alt);
+  /**
+   * …والنشرة مو بس جدول أسعار: وصل بتنشر **تحليلاً صباحياً** كل يوم عمل كمان،
+   * نصّاً لا جدولاً — «ابدأ يومك…»، «التحليل الصباحي…»، «تقريرنا الصباحي…».
+   * هدول ١٤ ريل بالدورة، وكلهن بيحكوا لغة الخطة نفسها (سوق، ذهب، تداول)، فلو
+   * دخلوا المطابقة بيبلعوا كروت الخطة وحدة وحدة. شغل حقيقي — بس متكرّر
+   * ويومي، مو قطعة من العقد.
+   */
+  const DAILY_ANALYSIS =
+    /التحليل ?الصباحي|تحليل الذهب الصباحي|تقريرنا الصباحي|التقرير الصباحي|المفكرة الاقتصادية|ابدأ يومك|ابدأ تداولك|نفتتح تداولات|يفتتح تقرير/;
+  const isBulletin = (p: ScannedPost) =>
+    !!p.alt && (DAILY_BULLETIN.test(p.alt) || DAILY_ANALYSIS.test(p.alt));
 
   const allDated = scan.posts.filter((p): p is ScannedPost & { date: string } => !!p.date);
   const bulletins = allDated.filter(isBulletin);
@@ -99,27 +144,88 @@ async function main() {
     console.log(`  ⚠️ ${noAlt} منشور بلا نصّ — ما منقدر نميّز نشرة يومية من قطعة خطة، فما منطابقهن.
 `);
 
+  /**
+   * التسليمات المطابَقة على تلغرام، مربوطة بكرت النشر تبع نفس القطعة.
+   *
+   * الملف بيوصل على كرت إنتاج (تصوير/مونتاج/تصميم)، والنشر كرت تاني بنفس
+   * القطعة. فمنعمل جسر: نصّ التسليم ← قطعته ← كرت نشرها المفتوح.
+   */
+  const deliveries = await prisma.telegramMessage.findMany({
+    where: { companyId: co.id, taskId: { not: null } },
+    select: { caption: true, fileName: true, taskId: true },
+  });
+  const prodTasks = await prisma.task.findMany({
+    where: { id: { in: deliveries.map((d) => d.taskId!).filter(Boolean) } },
+    select: { id: true, type: true, pieceNo: true, month: true, year: true },
+  });
+  const pieceOf = new Map(prodTasks.map((t) => [t.id, t]));
+  /** نصّ التسليم بيلبس شكل «بريف» حتى يمرق بنفس المحرّك — قاعدة وحدة بالمكانين. */
+  const tgCandidates = deliveries.flatMap((d) => {
+    const piece = pieceOf.get(d.taskId!);
+    if (!piece?.type || piece.pieceNo == null) return [];
+    const pub = open.find(
+      (t) =>
+        t.type === piece.type &&
+        t.pieceNo === piece.pieceNo &&
+        t.month === piece.month &&
+        t.year === piece.year,
+    );
+    const text = `${d.fileName ?? ""} ${d.caption ?? ""}`.trim();
+    if (!pub || !text) return [];
+    return [{ ...pub, brief: text }];
+  });
+
   const used = new Set<string>();
-  const pairs: { post: ScannedPost & { date: string }; card: (typeof open)[number]; by: "محتوى" | "تاريخ" }[] = [];
+  const pairs: {
+    post: ScannedPost & { date: string };
+    card: (typeof open)[number];
+    by: "محتوى" | "تلغرام" | "تاريخ";
+  }[] = [];
   const orphanPosts: (ScannedPost & { date: string })[] = [];
+
+  const alreadyDone: { post: ScannedPost & { date: string }; card: (typeof closed)[number] }[] = [];
 
   for (const post of posts) {
     // بلا نصّ ما منقدر نجزم إذا نشرة يومية — والتخمين بيسكّر كرت خطة بنشرة.
     if (!post.alt) continue;
 
-    // ═══ المحتوى قبل التاريخ ═══
-    // خطة وصل فيها 4 بنود «خبر عاجل» بتواريخ مختلفة — التاريخ لحالو بيحطّ
-    // المنشور بأقرب كرت زمنياً، وممكن يكون الخبر العاجل الغلط. نصّ المنشور
-    // مقابل نصّ الخطة بيحسمها؛ ونفس محرّك المطابقة يلي بيشتغل على تلغرام،
-    // فقاعدة وحدة بالمكانين.
-    const free0 = open.filter((t) => !used.has(t.id));
-    const byContent = matchByContent({ fileName: null, caption: post.alt }, free0 as never);
-    if (byContent) {
-      const card = free0.find((t) => t.id === byContent.taskId)!;
+    // ═══ المفتوح والمسكّر بمقارنة وحدة، ومحصورين بالنوع ═══
+    //
+    // النوع شرط لا رفاهية: كابشن بوست «أبرز مزايا منصة التداول» طابق كرت
+    // **ريل** مسكّر لما تركناه حرّاً، وسكّر بوستاً غلط. الريل ريل والبوست بوست.
+    //
+    // ولازم يتنافسوا سوا: القطعة المسجّلة منشورة أصلاً إذا هي الأقرب، فالمنشور
+    // **تأكيد** مو شغل جديد. بلا هالخطوة بينزل لطبقة التاريخ وبيسكّر كرتاً
+    // تاني صدفةً موعده نفس اليوم — وهاد يلي صار مع ريل «المعلومة قبل الخبر».
+    const sameKind = (t: { type: string | null }) =>
+      post.kind === "REEL" ? t.type === "REEL" || t.type === "AI_REEL" : t.type === "POST";
+    const openTyped = open.filter((t) => !used.has(t.id) && sameKind(t));
+    const closedTyped = closed.filter(sameKind);
+    const hit = matchCaption(post.alt, [...openTyped, ...closedTyped]);
+    if (hit) {
+      const done = closedTyped.find((t) => t.id === hit.taskId);
+      if (done) {
+        alreadyDone.push({ post, card: done });
+        continue;
+      }
+      const card = openTyped.find((t) => t.id === hit.taskId)!;
       used.add(card.id);
       pairs.push({ post, card, by: "محتوى" });
       continue;
     }
+
+    // ═══ ثم نصّ التسليم على تلغرام ═══
+    // الكابشن المنشور غالباً منقول عن الملف يلي بعتو الفريق، لا عن البريف —
+    // والقطع الإضافية (خبر عاجل، حدث طارئ) ما إلها بريف بالخطة بس إلها تسليم.
+    const tgFree = tgCandidates.filter((t) => !used.has(t.id));
+    const byTelegram = matchCaption(post.alt, tgFree);
+    if (byTelegram) {
+      const card = open.find((t) => t.id === byTelegram.taskId)!;
+      used.add(card.id);
+      pairs.push({ post, card, by: "تلغرام" });
+      continue;
+    }
+
     // النوع بيحصر أولاً: ريل ⟷ ريل، وصورة ⟷ بوست/ستوري. الريل أحياناً بينحط
     // برابط `/p/` كمان، فبنسمح بالتجاوز **بس** لما ما يكون في مرشّح من نوعه
     // وبنفس اليوم بالضبط — بلا هالقيد صورة بتسكّر كرت ريل، وهاد يلي صار
@@ -167,11 +273,16 @@ async function main() {
     // طريقة المطابقة بتنطبع: «محتوى» يقين و«تاريخ» ترجيح — فالقائدة بتراجع
     // الترجيحات لحالها بدل ما تصدّق الكل بالتساوي.
     console.log(
-      `  ${by === "محتوى" ? "✅" : "🕐"} ${post.date} ${post.kind === "REEL" ? "ريل " : "منشور"}` +
+      `  ${by === "محتوى" ? "✅" : by === "تلغرام" ? "📨" : "🕐"} ${post.date} ${post.kind === "REEL" ? "ريل " : "منشور"}` +
         ` → ${card.type}#${card.pieceNo} (موعده ${due}` +
         `${late > 0 ? ` · تأخّر ${late}` : late < 0 ? ` · بكّر ${-late}` : " · بوقته"}) · ${by}`,
     );
-    if (!APPLY) continue;
+    // ⚠️ **التاريخ ما بيسكّر.** القائدة (8/8): «الهدف المطابقة بالمحتوى مو
+    // بالتاريخ». وهاد مو تفضيل: طبقة التاريخ لحالها جرّبناها فحطّت ريل «المعلومة
+    // قبل الخبر» على كرت بوست، وريل الذهب على كرت الدولار — لأن وصل بتنشر كل
+    // يوم فأي كرت موعده اليوم بيلقط أول منشور بيمرق. فصارت تُعرَض للمراجعة
+    // بس، إلا إذا القائدة طلبتها صراحةً بـ`--with-date`.
+    if (!APPLY || (by === "تاريخ" && !WITH_DATE)) continue;
     const at = new Date(post.date);
     await prisma.task.update({
       where: { id: card.id },
@@ -189,7 +300,18 @@ async function main() {
     });
   }
 
-  const stillOpen = open.filter((t) => !used.has(t.id));
+  // كرت انربط بالتاريخ بس ما انسكّر بيضلّ مفتوحاً فعلياً — لازم يبيّن بالقائمة.
+  const closedNow = new Set(
+    pairs.filter((p) => p.by !== "تاريخ" || WITH_DATE).map((p) => p.card.id),
+  );
+  const stillOpen = open.filter((t) => !closedNow.has(t.id));
+
+  if (alreadyDone.length) {
+    console.log(`
+  ☑️ ${alreadyDone.length} منشور طابق قطعة مسجّلة منشورة أصلاً — تأكيد بالمحتوى:`);
+    for (const { post, card } of alreadyDone)
+      console.log(`     ${post.date} → ${card.type}#${card.pieceNo}`);
+  }
 
   // اليتيم على نوعين، والخلط بينهن بيخلّي التقرير مخيف بلا سبب: منشور بيوافق
   // كرتاً **مسكّراً أصلاً** هو تأكيد إنّ تسجيلنا صح، مو شغل ضايع.
@@ -223,11 +345,15 @@ async function main() {
   📵 ${openStories.length} كرت ستوري برّا المطابقة — الستوري ما بتظهر بالشبكة`,
     );
 
-  const byContentN = pairs.filter((x) => x.by === "محتوى").length;
+  const n = (k: string) => pairs.filter((x) => x.by === k).length;
+  const sure = n("محتوى") + n("تلغرام");
   console.log(
     `
-${APPLY ? "انسكّر" : "رح ينسكّر"} ${pairs.length} كرت — ${byContentN} بالمحتوى (يقين)` +
-      ` و${pairs.length - byContentN} بالتاريخ (ترجيح).`,
+${APPLY ? "انسكّر" : "رح ينسكّر"} ${WITH_DATE ? pairs.length : sure} كرت` +
+      ` — ${n("محتوى")} بالخطة و${n("تلغرام")} بتلغرام.` +
+      (n("تاريخ")
+        ? `\n🕐 و${n("تاريخ")} ترجيح بالتاريخ **ما انسكّر** — راجعيهن، وإذا صحّ أضف --with-date.`
+        : ""),
   );
   if (!APPLY) console.log("تشغيل تجريبي — أضف --apply.");
   await prisma.$disconnect();
