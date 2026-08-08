@@ -112,14 +112,14 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
   // reply names the piece exactly — no content matching, no guessing which of
   // today's posts went out — so it closes that piece's نشر card and nothing else.
   const published = await handlePublishConfirmation(msg, chatId, delivery.sentAt);
-  if (published)
+  if (published.length)
     return {
       stored: true,
       chatId,
       chatTitle,
       unlinked: companyId == null,
       companyId,
-      taskId: published,
+      taskId: published[0],
       matchedBy: "NAME",
       advanced: true,
     };
@@ -173,42 +173,18 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
   };
 }
 
-/** Words the publisher uses to confirm a piece went out. */
-const PUBLISHED_WORDS = /(^|\s)(نشر|اننشر|تم النشر|نزل|published?)(\s|$)|✅|☑️|✔️/i;
-
 /**
- * Close a نشر card from the publisher's reply.
+ * كلمات تأكيد النشر — بتصريفاتها الفعلية.
  *
- * Verifying publication from the platforms themselves would mean a Meta app,
- * tokens and review — and would still not say WHICH plan piece a post is. A
- * reply does: Telegram carries `reply_to_message_id`, that message is already
- * linked to a task, so «نشر» on it identifies the piece with certainty.
- *
- * Returns the task id when a publish card was closed.
+ * كان الشرط «نشر» كلمة مستقلة، فـ«نشرت ستوري 16» ما بتطابق (بعدها «ت» مو
+ * مسافة) — والناشر بيكتب بالتصريف دايماً. الجذور مسموح بعدها لواحق عربية
+ * قصيرة، و«منشور»/«ناشر» مستثنيان لأنّهن وصف مو تأكيد.
  */
-async function handlePublishConfirmation(
-  msg: { reply_to_message?: { message_id?: number }; text?: string; caption?: string },
-  chatId: string,
-  at: Date,
-): Promise<string | null> {
-  const replyTo = msg.reply_to_message?.message_id;
-  if (!replyTo) return null;
-  const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
-  if (!text || !PUBLISHED_WORDS.test(text)) return null;
+const PUBLISHED_WORDS =
+  /(^|\s)(?:تم\s+النشر|نشر(?:ت|نا|و|وا)?|ان+نشر(?:ت)?|نزل(?:ت|نا|و|وا)?|نزّل(?:ت|نا)?|published?)(?=\s|$|[.،!])|✅|☑️|✔️/i;
 
-  // The message being replied to must be a delivery we already matched.
-  const target = await prisma.telegramMessage.findFirst({
-    where: { chatId, messageId: replyTo, taskId: { not: null } },
-  });
-  if (!target?.taskId) return null;
-
-  const production = await prisma.task.findUnique({ where: { id: target.taskId } });
-  if (!production?.pipelineKey) return null;
-  const publishCard = await prisma.task.findFirst({
-    where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
-  });
-  if (!publishCard || isTaskDoneState(publishCard)) return null;
-
+/** إقفال كرت نشر واحد بوقت النشر الحقيقي + دليله. */
+async function markPublished(publishCard: { id: string; startedAt: Date | null; notes: string | null }, at: Date, why: string) {
   await prisma.task.update({
     where: { id: publishCard.id },
     data: {
@@ -218,9 +194,123 @@ async function handlePublishConfirmation(
       finishedAt: at,
       completedAt: at,
       isPinned: true,
+      notes: [publishCard.notes, `تأكيد نشر على تلغرام: ${why}`].filter(Boolean).join(" · "),
     },
   });
-  return publishCard.id;
+}
+
+/**
+ * تأكيد النشر من المجموعة — مصدر الحقيقة الوحيد يلي ما بيلمس صفحات الزبائن.
+ *
+ * القائدة (8/8): «ما بدي أربط صفحات الشركات، أنا شريك بالإدارة ولست المالك…
+ * وممكن يسبّبلن حظر». فما في قراءة من المنصّات: لا API ولا سحب. المصدر الوحيد
+ * الباقي هو الناشر نفسه — والمفتاح إنّه ما ينضاف عليه ولا خطوة جديدة، بس
+ * نفهم الكلام يلي بيكتبو أصلاً.
+ *
+ * تلات أشكال، من الأقوى للأضعف:
+ *   ١. **رد** بـ«نشر» على الملف → القطعة معروفة بيقين مطلق.
+ *   ٢. رسالة بتسمّي القطع: «نشرت 7-2 و7-3» أو «تم نشر بوست 3» → منسكّرهن كلهن.
+ *   ٣. رسالة مجرّدة «تم النشر» → بتسكّر **قطعة وحدة**: أقدم كرت نشر مستحق
+ *      اليوم أو قبلو لهالشركة. عمر بيكتبها مرة لكل قطعة (شفناها مرتين ورا بعض
+ *      بتوبيك وصل 2/8) — فرسالتان بتسكّروا قطعتين، وهاد بالضبط سلوكه.
+ *
+ * ما منسكّر قطعة موعدها بالمستقبل: «تم النشر» اليوم ما بتعني نشر بكرا.
+ * بترجّع معرّفات الكروت يلي انسكّرت.
+ */
+async function handlePublishConfirmation(
+  msg: { reply_to_message?: { message_id?: number }; text?: string; caption?: string },
+  chatId: string,
+  at: Date,
+): Promise<string[]> {
+  const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
+  if (!text || !PUBLISHED_WORDS.test(text)) return [];
+
+  // ١) رد على ملف مطابَق — أقوى دليل.
+  const replyTo = msg.reply_to_message?.message_id;
+  if (replyTo) {
+    const target = await prisma.telegramMessage.findFirst({
+      where: { chatId, messageId: replyTo, taskId: { not: null } },
+    });
+    if (target?.taskId) {
+      const production = await prisma.task.findUnique({ where: { id: target.taskId } });
+      if (production?.pipelineKey) {
+        const card = await prisma.task.findFirst({
+          where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
+        });
+        if (card && !isTaskDoneState(card)) {
+          await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${target.fileName ?? "الملف"}`);
+          return [card.id];
+        }
+      }
+      return [];
+    }
+  }
+
+  // بعدها لازم نعرف الشركة — بلاها ما في مجال نحزر أي قطعة.
+  const chat = await prisma.telegramChat.findUnique({ where: { id: chatId } });
+  if (!chat?.companyId) return [];
+  const company = await prisma.company.findUnique({ where: { id: chat.companyId } });
+  if (!company) return [];
+
+  const open = (
+    await prisma.task.findMany({
+      where: { companyId: company.id, stage: "PUBLISH", status: { not: "CANCELED" } },
+      orderBy: [{ publishDate: "asc" }],
+    })
+  ).filter((t) => !isTaskDoneState(t));
+  if (!open.length) return [];
+
+  // ٢) الرسالة بتسمّي قطعاً: «7-2»، «بوست 3»، «ريل 5»، «نشرت ستوري 16».
+  //
+  // مو `parseAssetName` — هي بتلزمها سلاغ لاتيني («Wasl 7-2») والناشر بيكتب
+  // عربي بلا اسم شركة، لأنّ الشركة معروفة من التوبيك أصلاً. فمنقرأ النوع
+  // والأرقام مباشرة، ومنحصر الاختيار بالدورة الشغّالة.
+  const named: string[] = [];
+  const bucket = currentCycleBucket(company as never, at);
+  const typeWord = /بوست|post/i.test(text)
+    ? "POST"
+    : /ستوري|story/i.test(text)
+      ? "STORY"
+      : /ريل|reel/i.test(text)
+        ? "REEL"
+        : null;
+  /** أرقام القطع المذكورة: «7-2» بتعطي ٢ (شهر-قطعة)، و«ستوري 16» بتعطي ١٦. */
+  const pieceNos: number[] = [];
+  for (const m of text.matchAll(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/g)) pieceNos.push(Number(m[2]));
+  if (!pieceNos.length)
+    for (const m of text.matchAll(/(?:بوست|ستوري|ريل|post|story|reel)\s*[-#]?\s*(\d{1,3})/gi))
+      pieceNos.push(Number(m[1]));
+  for (const no of pieceNos) {
+    const hit = open.find(
+      (t) =>
+        t.pieceNo === no &&
+        (!typeWord || t.type === typeWord) &&
+        t.year === bucket.year &&
+        t.month === bucket.month,
+    );
+    if (hit && !named.includes(hit.id)) named.push(hit.id);
+  }
+  if (named.length) {
+    for (const id of named) {
+      const card = open.find((t) => t.id === id)!;
+      await markPublished(card, at, `«${text.slice(0, 40)}»`);
+    }
+    return named;
+  }
+
+  // ٣) تأكيد مجرّد → أقدم قطعة مستحقّة اليوم أو قبلو. ولا مرة قطعة مستقبلية.
+  const todayISO = at.toISOString().slice(0, 10);
+  const due = open.filter((t) => {
+    const d = (t.publishDate ?? t.readyDate)?.toISOString().slice(0, 10);
+    return d != null && d <= todayISO;
+  });
+  // قطعة محتوى قبل أي كرت متابعة إداري: «تم النشر» بتوبيك شركة بتعني قطعتها،
+  // مو كرت «تجهيز القنوات». الإداري بيتسكّر بس لما ما يكون في قطعة مستحقّة.
+  const content = due.filter((t) => t.type != null);
+  const pick = (content.length ? content : due)[0];
+  if (!pick) return [];
+  await markPublished(pick, at, `«${text.slice(0, 40)}» — أقدم قطعة مستحقّة`);
+  return [pick.id];
 }
 
 /** Find the piece this delivery belongs to, among the company's open work. */

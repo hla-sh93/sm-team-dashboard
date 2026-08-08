@@ -463,9 +463,14 @@ async function main() {
     );
     ok("متبقّي = ملتزم − منجز، وفاضي = طاقة − ملتزم", wlMath.length === 0,
       ev(wlMath.map((r) => `${r.employee.name} ${r.committedDays.toFixed(1)}/${r.doneDays.toFixed(1)}/${r.remainingDays.toFixed(1)}`)));
-    // نسبة الحمل = ملتزم ÷ طاقة
+    // نسبة الحمل = ملتزم ÷ طاقة.
+    //
+    // السماحية بتراكم من تقريبين مستقلين: `pct` محسوبة من الملتزم **الأصلي** ثم
+    // مقرّبة لصحيح (±0.5)، والمقارنة بتستعمل الملتزم **المقرّب لخانة** (±0.05
+    // ÷ الطاقة × 100 ≈ ±0.22 بطاقة ٢٣ يوم). فالفرق المشروع بيوصل ٠٫٧٢ —
+    // و٠٫٦ كانت بتطلّع إنذاراً كاذباً على سابين (55 مقابل 55.65).
     const wlPct = wl.filter(
-      (r) => r.capacityDays > 0 && Math.abs(r.pct - (r.committedDays / r.capacityDays) * 100) > 0.6,
+      (r) => r.capacityDays > 0 && Math.abs(r.pct - (r.committedDays / r.capacityDays) * 100) > 0.8,
     );
     ok("نسبة الحمل = ملتزم ÷ طاقة", wlPct.length === 0,
       ev(wlPct.map((r) => `${r.employee.name} ${r.pct.toFixed(1)}%`)));
