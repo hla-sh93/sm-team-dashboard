@@ -95,6 +95,34 @@ describe("أداة مطابقة انستغرام — الشروط يلي بتم�
   });
 });
 
+describe("المطابقة بالعدد — قاعدة باقي الشركات", () => {
+  const src = readFileSync("scripts/reconcile-by-count.ts", "utf8");
+
+  it("وصل مستثناة — زبونها بينشر بكثافة فالعدّ بيكذب", () => {
+    expect(src).toMatch(/COUNT_EXEMPT/);
+    expect(src).toMatch(/\/وصل\//);
+  });
+
+  it("العدد المسكَّر = أصغر التلاتة (مرسَل · صفحة · خطة)", () => {
+    // أي واحد فيهن بيقيّد لحاله: يلي ما انسلّم ما انعمل، ويلي ما نزل ما
+    // انتشر، والعقد سقفه.
+    expect(src).toMatch(/Math\.min\(sent, page \?\? Number\.POSITIVE_INFINITY, all\.length\)/);
+  });
+
+  it("النسخة المعدّلة مو تسليم تاني", () => {
+    expect(src).toMatch(/deliveryIdentity/);
+    expect(src).toMatch(/edited\|edit\|final/);
+  });
+
+  it("الستوري بلا قيد صفحة — ما بتظهر بالشبكة", () => {
+    expect(src).toMatch(/STORY: null/);
+  });
+
+  it("ما بيختم إنجازاً بتاريخ مستقبلي", () => {
+    expect(src).toMatch(/planned > new Date\(\) \? new Date\(\) : planned/);
+  });
+});
+
 describe("مستورد الخطط — القطعة مدخل واحد", () => {
   const src = readFileSync("scripts/import-plan-briefs.ts", "utf8");
 
