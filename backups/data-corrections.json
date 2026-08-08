@@ -1,5 +1,5 @@
 {
- "exportedAt": "2026-08-08T11:18:16.312Z",
+ "exportedAt": "2026-08-08T11:50:15.171Z",
  "note": "وقائع الداتا المحلية — بتنطبّق بالإنتاج بسياسة تقدّم-فقط (apply-data-corrections.ts)",
  "pieces": [
   {
@@ -15519,6 +15519,25 @@
    "notes": "إفادة القائدة 8/8: عقد جديد: تأكيد الزبون للتصوير — البوستات منتجاته فبدها تصوير كمان",
    "brief": null,
    "month": 7,
+   "year": 2026
+  },
+  {
+   "id": "cmskbagg000016qy0cyo34nqp",
+   "company": "وصل للتداول",
+   "title": "ريل AI إضافي — وصل: «الخبر مو مجرد تريند»",
+   "stage": "DESIGN",
+   "hours": 2,
+   "assigneeId": "e_ayman",
+   "status": "PUBLISHED",
+   "board": "DONE",
+   "workDate": "2026-07-23T00:00:00.000Z",
+   "readyDate": null,
+   "publishDate": "2026-07-23T00:00:00.000Z",
+   "startedAt": "2026-07-23T00:00:00.000Z",
+   "finishedAt": "2026-07-23T00:00:00.000Z",
+   "notes": "شغل إضافي خارج الخطة · أيمن عملُه بالذكاء الاصطناعي (إفادة القائدة 8/8) · منشور 23/7 — instagram.com/reel/DbIuVG7gsXQ",
+   "brief": null,
+   "month": 6,
    "year": 2026
   }
  ]
