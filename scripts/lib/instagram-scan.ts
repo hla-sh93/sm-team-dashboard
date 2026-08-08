@@ -90,8 +90,14 @@ export const INSTAGRAM_SCAN_SCRIPT = `(() => {
  * بالثانية وقت السكرول، فكل تغيير كان بيشغّل مسحاً كاملاً — وتجمّد المتصفح
  * فعلياً وضاعت الجلسة. الفحص كل ثانية ونصّ بيلقط نفس الشي (السكرول أبطأ من
  * هيك بكتير) وبيترك الصفحة سليمة. لا ترجع للمراقبة.
+ *
+ * ⚠️ **والحفظ على القرص لا بالذاكرة.** ضاع تعب السكرول مرتين: مرة بتحديث
+ * الصفحة ومرة بإغلاق التبويب — و٨٢ منشوراً راحوا وقت ما كانوا جاهزين للمطابقة.
+ * صار كل تغيير بينكتب على `localStorage` بمفتاح فيه اسم الحساب، فالتسليح من
+ * جديد بيرجّع يلي انجمع بدل ما يبلّش من الصفر، وما بتختلط شركة بشركة.
  */
 export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
+  const KEY = "__igStore_v1";
   const AB = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   const toDate = (sc) => {
     let id = 0n;
@@ -104,7 +110,12 @@ export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
     return d.getFullYear() > 2010 && d.getFullYear() < 2100 ? d.toISOString().slice(0, 10) : null;
   };
   if (window.__igStop) window.__igStop();
-  const store = (window.__igStore = window.__igStore || new Map());
+  const key = KEY + ":" + (location.pathname.split("/")[1] || "");
+  const store = new Map();
+  try {
+    for (const p of JSON.parse(localStorage.getItem(key) || "[]")) store.set(p.shortcode, p);
+  } catch (e) {}
+  window.__igStore = store;
 
   const box = document.createElement("div");
   box.id = "__igBadge";
@@ -125,7 +136,7 @@ export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
       // النص البديل بيوصل متأخّر أحياناً (الصورة لسا ما حمّلت) — فمنكمّل الناقص
       // على مرّات لاحقة بدل ما نتجاهل المنشور أو نكرّره.
       if (prev) {
-        if (!prev.alt && alt) prev.alt = alt;
+        if (!prev.alt && alt) { prev.alt = alt; last = -1; }
         continue;
       }
       store.set(m[2], {
@@ -137,10 +148,11 @@ export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
     }
     if (store.size === last) return;
     last = store.size;
+    try { localStorage.setItem(key, JSON.stringify([...store.values()])); } catch (e) {}
     const all = [...store.values()];
     const dated = all.filter((p) => p.date).sort((a, b) => a.date.localeCompare(b.date));
     box.innerHTML =
-      "📖 عم أقرا صفحة " + (location.pathname.split("/")[1] || "") + "<br>" +
+      "📖 عم أقرا صفحة " + (location.pathname.split("/")[1] || "") + " 💾<br>" +
       "محفوظ: <b>" + all.length + "</b> · بالنص: <b>" + all.filter((p) => p.alt).length + "</b><br>" +
       "من <b>" + (dated[0] ? dated[0].date : "—") + "</b> لـ <b>" +
       (dated.length ? dated[dated.length - 1].date : "—") + "</b>";
@@ -151,10 +163,22 @@ export const INSTAGRAM_COLLECTOR_SCRIPT = `(() => {
   return JSON.stringify({ armed: true, collected: store.size });
 })()`;
 
-/** قراءة يلي انجمع — بترجّع نفس شكل `ScanResult`. */
+/**
+ * قراءة يلي انجمع — بترجّع نفس شكل `ScanResult`.
+ *
+ * بتقرا من `localStorage` مباشرة مو من الذاكرة، فبتشتغل حتى لو التبويب انسكّر
+ * وانفتح من جديد بلا تسليح.
+ */
 export const INSTAGRAM_COLLECTOR_READ = `(() => {
-  const store = window.__igStore;
-  if (!store) return JSON.stringify({ error: "المجمّع مو مسلّح" });
+  const key = "__igStore_v1:" + (location.pathname.split("/")[1] || "");
+  let store = window.__igStore;
+  if (!store) {
+    try {
+      store = new Map();
+      for (const p of JSON.parse(localStorage.getItem(key) || "[]")) store.set(p.shortcode, p);
+    } catch (e) { store = null; }
+  }
+  if (!store || !store.size) return JSON.stringify({ error: "المجمّع مو مسلّح" });
   const posts = [...store.values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   return JSON.stringify({
     handle: (location.pathname.split("/")[1] || "").replace(/[^\\w.]/g, ""),
