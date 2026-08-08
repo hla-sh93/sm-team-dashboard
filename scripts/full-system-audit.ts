@@ -901,6 +901,22 @@ async function main() {
     ok("ولا ملف وصل لتوبيك مربوط وضل بلا كرت", missed.length === 0,
       ev(missed.map((m) => `${m.fileName ?? m.kind}`), 4));
 
+    // ── كل تصوير إضافي إلو مونتاج ──
+    //
+    // القائدة (8/8): «صورنا للمخبر 2 ريل… ليش ما بيّن عند أليسار؟» — كروت
+    // التصوير الإضافية كانت بتنعمل بلا مرحلة مونتاج، فالمصوّر بيصوّر
+    // والمونتيرة ما بتشوف شي وشغلها ما بينحسب. خط الإنتاج المخطّط بيفكّها
+    // لحاله؛ الإضافي بيحتاج `pair-adhoc-shoots-with-edit`.
+    const adhocShoots = live.filter((t) => t.kind === "ADHOC" && t.stage === "SHOOT");
+    const orphanShoots = adhocShoots.filter(
+      (s) => !live.some((e) => e.kind === "ADHOC" && e.stage === "EDIT" && e.blockedById === s.id),
+    );
+    ok(
+      `كل تصوير إضافي إلو كرت مونتاج (${adhocShoots.length - orphanShoots.length}/${adhocShoots.length})`,
+      orphanShoots.length === 0,
+      ev(orphanShoots.map((s) => `${coById.get(s.companyId ?? "")?.name}: ${s.title}`), 4),
+    );
+
     // ── قاعدة التسمية: كل قطعة مفتوحة لازم تنمسك بالتسميتين ──
     //
     // القائدة (3/8): «بتكتب ريل 7-2 وبتكون بخطة بين 15/7 و15/8، وبيجو التيم
