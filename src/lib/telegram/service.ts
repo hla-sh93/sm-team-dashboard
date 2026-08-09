@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { loadLiveTasks } from "@/lib/live-tasks";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
+import { buildWeeklyPublishDigest } from "./weekly";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
@@ -71,6 +72,43 @@ export type SendBriefResult =
  * ماجد's and سارة's sheets were queued behind عمر's oversized one and were
  * simply never sent.
  */
+/**
+ * الملخّص الأسبوعي للنشر — الرسالة الوحيدة يلي بتروح **للمجموعة**.
+ *
+ * القائدة (2026-08-08): «يصير البوت يبعت على الGeneral كل اسبوع ما سيتم نشره
+ * حسب الأيام». البريف اليومي بيضلّ بخاصّها لأنه توزيع شغل ورأي، أما جدول
+ * النشر فحقيقة متّفق عليها مع الناشر وكل الفريق بيلزمو يشوفها سوا.
+ *
+ * بينبعت على توبيك الفريق (`isTeam`)، وإذا ما انلقى بيرجع لمحادثة القائدة
+ * بدل ما يضيع — وصولُه متأخّراً أهون من ما يوصل أبداً.
+ */
+export async function sendWeeklyPublishDigest(
+  today = new Date(),
+  opts: { next?: boolean } = {},
+): Promise<SendBriefResult> {
+  if (!isTelegramConfigured()) return { ok: false, error: "البوت غير مضبوط (TELEGRAM_BOT_TOKEN)" };
+  const team = await prisma.telegramChat.findFirst({ where: { isTeam: true } });
+  const chatId = team?.id ?? (await getLeadChatId());
+  if (!chatId) return { ok: false, error: "ما في توبيك فريق ولا محادثة مستلمة" };
+
+  const [companies, tasks] = await Promise.all([
+    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    loadLiveTasks(today.getFullYear(), today.getMonth()),
+  ]);
+  const digest = buildWeeklyPublishDigest(today, companies as never, tasks as never, opts);
+  if (!digest.text) return { ok: true, sent: 0 };
+
+  let sent = 0;
+  const failures: string[] = [];
+  for (const part of splitForTelegram(digest.text, TG_CHUNK)) {
+    const res = await sendMessage(chatId, part);
+    if (res.ok) sent++;
+    else failures.push(res.error ?? "خطأ");
+  }
+  if (!sent) return { ok: false, error: failures[0] ?? "ما انبعتت ولا رسالة" };
+  return { ok: true, sent, ...(failures.length ? { failed: failures } : {}) };
+}
+
 export async function sendDailyBrief(
   today = new Date(),
   wave: BriefWave = "all",
