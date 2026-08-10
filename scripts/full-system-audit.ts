@@ -241,6 +241,30 @@ async function main() {
       ev(splitBrief.map(([k]) => k)),
     );
 
+    // الريل بينصوّر بسكربت — بلا وصف الكرت بيقول «ريل ٣» وبس وماجد بيوقف.
+    // القائدة (10/8): «كل المهام الدورية لازم يكون الها وصف، أو على الأقل
+    // الريلات، لأن البوستات تتغير حسب رغبة الزبون والمنتجات». وهاد الفحص
+    // أضيق من «كل كرت مفتوح إلو وصف» وأقبل للتنفيذ: بيسمّي الشركة والرقم.
+    const reelNoBrief = live.filter(
+      (t) =>
+        (t.type === "REEL" || t.type === "AI_REEL") &&
+        (t.stage === "SHOOT" || t.stage === "EDIT") &&
+        !isTaskDoneState(t) &&
+        planDue(t) &&
+        !t.brief?.trim() &&
+        !(t.pipelineKey && briefOfPiece.has(t.pipelineKey)),
+    );
+    const reelGaps = new Map<string, Set<number>>();
+    for (const t of reelNoBrief) {
+      const n = t.companyId ? (coById.get(t.companyId)?.name ?? "—") : "—";
+      reelGaps.set(n, (reelGaps.get(n) ?? new Set()).add(t.pieceNo ?? 0));
+    }
+    ok(
+      "كل ريل مستحقّ إلو سكربت تصوير",
+      reelGaps.size === 0,
+      [...reelGaps].map(([k, v]) => `${k} ${[...v].sort((a, b) => a - b).join(",")}`).join(" · "),
+    );
+
     const adhocNoTitle = live.filter((t) => t.kind === "ADHOC" && !t.title?.trim());
     ok("كل كرت إضافي إلو عنوان", adhocNoTitle.length === 0, ev(adhocNoTitle.map((t) => t.id)));
 
