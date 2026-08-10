@@ -46,6 +46,17 @@ const arg = (k: string) => {
 const companyArg = argv.filter((a) => !a.startsWith("--"))[0];
 const exportPath = arg("--export");
 const scanPath = arg("--scan");
+/**
+ * حصر التطبيق بنوع أو أكتر: `--only POST` أو `--only POST,REEL`.
+ *
+ * لأن الأنواع أدلّتها مختلفة القوة: البوست والريل بتثبتهن الصفحة، أما الستوري
+ * فما بتظهر — فالإقرار فيها بيتّكل على العدّ لحاله. لما القائدة تأكّد نوعاً
+ * دون غيره، منطبّق يلي أكّدته وبس ومنعرض الباقي.
+ */
+const ONLY = (arg("--only") ?? "")
+  .split(",")
+  .map((s) => s.trim().toUpperCase())
+  .filter(Boolean);
 
 /** الشركات يلي زبونها بيغرق الصفحة بشغله — العدّ ما بيميّز عندها. */
 const COUNT_EXEMPT = [/وصل/];
@@ -69,24 +80,42 @@ function typeOfFile(name: string): Kind | null {
   const n = normalise(name);
   if (/\bstory\b|ستوري/.test(n)) return "STORY";
   if (/\breels?\b|ريل/.test(n)) return "REEL";
-  if (/\bposts?\b|بوست/.test(n)) return "POST";
+  // الكاروسيل بوست بعدّة شرائح — ونفس المفردات يلي بيعرفها محرّك تلغرام
+  // (`typeHintFrom`). بدونها راحت خمس شرائح للبلسم لخانة الستوري.
+  if (/\bposts?\b|بوست|كاروسيل|carousel/.test(n)) return "POST";
   // الفيديو ريل بأمان — الستوري المصوّرة بتحمل كلمة «story» عادةً (ماجد بيلتزم).
   if (/\.(mp4|mov|avi)$/i.test(name)) return "REEL";
   return null;
 }
 
 /**
+ * ملفات ما بتنعدّ تسليماً مهما مين بعتها.
+ *
+ * اللوغو والخطّ والتيمبليت والخطة أصولُ عمل، مو قطعاً من العقد — وبما إنّ
+ * الستوري بتنعرف **بالباقي**، أي ملف ما بينشال منها بينضاف لعدّها. البلسم
+ * لحالها كان عندها لوغو PDF وPNG وملف خطّ من القائدة، فطلعوا تلات ستوريات
+ * ما بتوجد. نفس منطق `NOT_A_DELIVERABLE` بمستورد التصدير.
+ */
+const NOT_A_DELIVERABLE =
+  /\b(logo|profile|cover|template|تيمبليت)\b|\.(ttf|otf|woff2?|zip|rar|docx?|pdf|pptx?|xlsx?)$/i;
+
+/**
  * هوية التسليم — النسخة المعدّلة مو تسليم تاني.
  * القائدة (8/8): «ماتعد التعديلات انو مرتين .. هو نفس الريل بس معدل».
  */
 function deliveryIdentity(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\.[a-z0-9]+$/i, "")
-    .replace(/\b(edited|edit|final|v\d+|copy)\b/g, "")
-    .replace(/_\d+$/, "")
-    .replace(/[\s_-]+/g, " ")
-    .trim();
+  return (
+    name
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/\b(edited|edit|final|v\d+|copy)\b/g, "")
+      // شرائح الكاروسيل قطعة **وحدة**: «carousel 01 -8-2» و«carousel 05 -8-2»
+      // نفس البوست. بلا هالسطر خمس شرائح بتاكل خمس قطع من الخطة.
+      .replace(/\b(carousel|كاروسيل)\s*0*\d+/g, "carousel")
+      .replace(/_\d+$/, "")
+      .replace(/[\s_-]+/g, " ")
+      .trim()
+  );
 }
 
 async function main() {
@@ -134,6 +163,7 @@ async function main() {
     if (t == null || !mine.has(t)) continue;
     if (!isProducer((m as { from?: string }).from)) continue;
     const name = (m as { file_name?: string }).file_name;
+    if (name && NOT_A_DELIVERABLE.test(name)) continue;
     if (!name) {
       // تلغرام بيشيل اسم أي ملف بينبعت **كصورة** — بيصير `photos/photo_12@…`.
       // فالتصميم يلي انبعت صورة بيوصل بلا اسم إطلاقاً، وتجاهله بيخسّرنا شغلاً
@@ -177,11 +207,12 @@ async function main() {
     // أصغر القيود — والصفحة بتنحسب بس لما يكون في جرد.
     const cap = Math.min(sent, page ?? Number.POSITIVE_INFINITY, all.length);
     const extra = Math.max(0, cap - done.length);
-    const picked = open.slice(0, extra);
+    const picked = ONLY.length && !ONLY.includes(kind) ? [] : open.slice(0, extra);
     toClose.push(...picked);
     console.log(
       `   ${kind.padEnd(6)} ${String(sent).padStart(5)} ${String(page ?? "—").padStart(5)}` +
-        ` ${String(all.length).padStart(4)} ${String(done.length).padStart(5)}  ⇒ ${picked.length}`,
+        ` ${String(all.length).padStart(4)} ${String(done.length).padStart(5)}  ⇒ ${picked.length}` +
+        (ONLY.length && !ONLY.includes(kind) && extra ? `  (${extra} مؤجّلة — برّا --only)` : ""),
     );
   }
 
