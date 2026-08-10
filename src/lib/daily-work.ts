@@ -177,6 +177,13 @@ export function compareDailyWorkTasks(
   const stageRank = (STAGE_RANK[a.stage ?? ""] ?? 9) - (STAGE_RANK[b.stage ?? ""] ?? 9);
   if (stageRank !== 0) return stageRank;
 
+  // قطع نفس الجلسة بتتساوى بكل شي — نفس اليوم ونفس الجاهزية ونفس الأولوية —
+  // فالترتيب كان بيسقط على المعرّف العشوائي، وطلع بالبريف «عبادة: ريل-2
+  // وريل-1» بينما مانغو طلعت «ريل-1 وريل-2». القائدة: «ليش بلشت بريل 2
+  // عبادة؟ المفروض متل مانغو». الرقم هو الترتيب الطبيعي يلي بيقراه البشر.
+  const pieceRank = (a.pieceNo ?? 9999) - (b.pieceNo ?? 9999);
+  if (pieceRank !== 0) return pieceRank;
+
   return a.id.localeCompare(b.id);
 }
 

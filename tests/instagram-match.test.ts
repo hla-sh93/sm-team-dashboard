@@ -158,4 +158,9 @@ describe("اليوم المثبّت — البريف بيحترم موعد ال�
     expect(konst).toMatch(/function pinnedForLater/);
     expect(konst).toMatch(/if \(pinnedForLater\(t, now\)\) return false;/);
   });
+  it("قطع نفس الجلسة بتنقرا بترتيب رقمها", () => {
+    // «عبادة: ريل-2 وريل-1» بينما مانغو «ريل-1 وريل-2» — القطعتان متساويتان
+    // بكل شي فسقط الترتيب على المعرّف العشوائي.
+    expect(day).toMatch(/const pieceRank = \(a\.pieceNo \?\? 9999\) - \(b\.pieceNo \?\? 9999\)/);
+  });
 });
