@@ -41,7 +41,7 @@ async function bookingCard(companyName: string, dueISO: string, note: string) {
       title: `تأكيد موعد التصوير مع الزبون — ${co.name}`,
       hours: 0.5,
       quantity: 1,
-      priority: "HIGH",
+      priority: "URGENT", // «HIGH» مو قيمة معرّفة — النموذج بيرفض الكرت
       status: "NOT_STARTED",
       board: "TODO",
       stage: "PUBLISH", // متابعة، مو إنتاج — ما بتاخد طاقة تصميم
@@ -110,7 +110,7 @@ async function main() {
             title: "كتابة سكريبت ريل بديل — مخبر د.نور (طلب الدكتورة)",
             hours: 2,
             quantity: 1,
-            priority: "HIGH",
+            priority: "URGENT", // «HIGH» مو قيمة معرّفة — النموذج بيرفض الكرت
             status: "NOT_STARTED",
             board: "TODO",
             stage: "WRITE",

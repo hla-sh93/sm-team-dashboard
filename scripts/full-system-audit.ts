@@ -426,11 +426,15 @@ async function main() {
       if (!plan) continue;
       const cards = cycleCards.get(co.id)!;
       // حساب يدوي: قطعة منشورة = كرت نشرها منجز
-      const keys = new Set(cards.filter((t) => t.type).map((t) => t.pipelineKey ?? t.id));
+      // الشغل الإضافي مو من الخطة، فما بيدخل بعدّادها — ولو كان نوعه ريل أو
+      // بوست. ريل أيمن بالذكاء الاصطناعي لوصل (`ADHOC`) كان بيزيد «المنتَج»
+      // واحداً عن الدالة، فيبان خلاف بين رقمين صحيحين كل واحد بمكانه.
+      const planCards = cards.filter((t) => t.kind !== "ADHOC");
+      const keys = new Set(planCards.filter((t) => t.type).map((t) => t.pipelineKey ?? t.id));
       let manualPub = 0;
       let manualProd = 0;
       for (const k of keys) {
-        const g = cards.filter((t) => (t.pipelineKey ?? t.id) === k);
+        const g = planCards.filter((t) => (t.pipelineKey ?? t.id) === k);
         const pub = g.find((t) => t.stage === "PUBLISH");
         const edit = g.find((t) => t.stage === "EDIT");
         const prod = g.find((t) => t.stage === "DESIGN" || t.stage === "SHOOT");
@@ -830,9 +834,14 @@ async function main() {
       const snapMap = new Map(snapTasks.filter((t) => t.pieceNo != null).map((t) => [pk(t), t]));
       const nowKeyed = live.filter((t) => t.pieceNo != null);
 
+      // إعادة الفتح **المقصودة** مو ضياع: كرت انسكّر بلا دليل وقبل موعده
+      // بينفتح بقرار (`reopen-unevidenced-publishes`)، وبيحمل سببه على
+      // `notes`. بلا هالاستثناء الفحص بينبّه على كل تصحيح متعمّد، فبيصير
+      // التنبيه ضجيجاً — والضجيج بيخبّي الضياع الحقيقي.
+      const reopenedOnPurpose = (t: { notes?: string | null }) => /أُعيد فتحه/.test(t.notes ?? "");
       const lost = nowKeyed.filter((t) => {
         const o = snapMap.get(pk(t as never));
-        return o && wasDone(o) && !isTaskDoneState(t);
+        return o && wasDone(o) && !isTaskDoneState(t) && !reopenedOnPurpose(t as never);
       });
       ok("ولا إنجاز مسجّل رجع مفتوح", lost.length === 0,
         ev(lost.map((t) => `${coById.get(t.companyId ?? "")?.name} ${t.type}#${t.pieceNo} ${t.stage}`), 4));
