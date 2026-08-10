@@ -32,6 +32,23 @@ function manualDayISO(task: Pick<Task, "manualDay">): string | null {
   return task.manualDay ? dateISO(task.manualDay) : null;
 }
 
+/**
+ * اليوم **المثبَّت** لهالكرت — تجاوز «بدّل» أو موعد ثبّتته القائدة بنفسها.
+ *
+ * الاتنان نفس المعنى: يوم محدّد بالإيد، مو ترجيح المحرّك. وكان الفرز بيعرف
+ * الأول وبس، فطلع بالبريف إنّ ماجد يصوّر **المخبر اليوم** بينما موعد المخبر
+ * الأربعاء — الكرت غلب بالاستحقاق رغم إنّ يومه مثبّت بعدين، وعبادة ومانغو
+ * (موعدهن اليوم فعلاً) ما ظهروا أصلاً. القائدة: «انا عطيتك خطة التصوير
+ * هالاسبوع… ليش خليته يصور غير شي؟ المخبر مو اليوم موعده».
+ *
+ * `isPinned` لحاله ما بيكفي — كتير كروت مثبّتة لتنجو من إعادة الجدولة بس
+ * يومها من المحرّك. الشرط إنّو **مثبّت ومعو `workDate`**: هيك بيكون اليوم
+ * قراراً لا حساباً.
+ */
+function fixedDayISO(task: Pick<Task, "manualDay" | "isPinned" | "workDate">): string | null {
+  return manualDayISO(task) ?? (task.isPinned && task.workDate ? dateISO(task.workDate) : null);
+}
+
 function deadlineISO(task: Pick<Task, "readyDate" | "publishDate" | "stage">): string | null {
   if (task.stage === "PUBLISH") {
     return dateISO(task.publishDate) ?? dateISO(task.readyDate);
@@ -126,7 +143,7 @@ export function compareDailyWorkTasks(
   // «بدّل» tops the person's queue, regardless of priority/deadline. Only bites
   // on its own day, so it silently expires afterwards.
   const manualTodayRank =
-    Number(manualDayISO(a) !== todayISO) - Number(manualDayISO(b) !== todayISO);
+    Number(fixedDayISO(a) !== todayISO) - Number(fixedDayISO(b) !== todayISO);
   if (manualTodayRank !== 0) return manualTodayRank;
 
   const activeRank = Number(!isActive(a)) - Number(!isActive(b));
@@ -218,7 +235,7 @@ export function selectDailyWorkTasks({
       // A task the lead parked on a LATER day (via «بدّل») is held out of today's
       // queue until that day arrives. Its own day (== today) and any past day
       // stay eligible, so the override self-expires.
-      const md = manualDayISO(task);
+      const md = fixedDayISO(task);
       return !(md != null && md > todayISO);
     })
     .sort((a, b) => compareDailyWorkTasks(a, b, { todayISO, companyPriority }));

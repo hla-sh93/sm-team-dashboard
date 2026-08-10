@@ -96,6 +96,8 @@ export type TaskDoneState = {
   readyDate?: Date | string | null;
   workDate?: Date | string | null;
   publishDate?: Date | string | null;
+  /** يوم ثبّتته القائدة بالإيد — بيغيّر معنى «متأخر» (شوف `isTaskLateState`). */
+  isPinned?: boolean | null;
 };
 
 const DONE_STATE_VALUES = new Set<string>([...DONE_STATUSES, "DONE", "DELIVERED"]);
@@ -136,8 +138,26 @@ export function taskDeadline(t: TaskDoneState): Date | null {
   return toDate(t.readyDate) ?? toDate(t.publishDate);
 }
 
+/**
+ * الشغل يلي يومه **مثبّت بالإيد** ما بينحسب متأخراً قبل ما يجي يومه.
+ *
+ * موعد التصوير بيتحدّد مع الزبون، فكرت تصوير المخبر موعده الأربعاء ولو كان
+ * استحقاقه الأصلي مرق. عرضه «متأخر» يوم الاثنين بيخلّي ماجد يلاحق شغلاً ما
+ * إجا دوره، وبيغرق لائحة المتأخرات بأشياء مجدولة فعلاً. القائدة (10/8):
+ * «المخبر مو اليوم موعده».
+ *
+ * الشرط `isPinned` + `workDate` — نفس شرط `fixedDayISO` بمنتقي اليوم، حتى
+ * البريف والتأخير يقولوا نفس الشي.
+ */
+function pinnedForLater(t: TaskDoneState, now: Date): boolean {
+  if (!t.isPinned) return false;
+  const day = toDate(t.workDate);
+  return day != null && dateKey(day) > dateKey(now);
+}
+
 export function isTaskLateState(t: TaskDoneState, now = new Date()): boolean {
   if (isTaskDoneState(t)) return false;
+  if (pinnedForLater(t, now)) return false;
   const deadline = taskDeadline(t);
   return deadline != null && dateKey(deadline) < dateKey(now);
 }

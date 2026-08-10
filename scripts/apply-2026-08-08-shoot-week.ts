@@ -82,9 +82,46 @@ async function adhocShoot(coId: string, coName: string, a: Appt) {
   });
 }
 
+/**
+ * الموعد تأكّد ⇒ كرت «تأكيد الموعد» خلص شغله.
+ *
+ * القائدة (8/8): «مهام السيلز ما منتدخل فيها، بس مافيك تضيف شخص وتترك شخص».
+ * وكانت محقّة بالملاحظة: طلع كرتَي متابعة لسارة وولا واحد لمايكل. السبب مو
+ * تحيّز — الكرت بينعمل لصاحب الحساب أياً كان، ووقتها مانغو وعبادة (الاتنان
+ * لسارة) كانوا الموعدين الوحيدين غير المؤكّدين.
+ *
+ * بس الاختلال حقيقي بالنتيجة، وعلاجه إنّ **الإقفال يمشي بنفس القاعدة**: أي
+ * شركة موعدها انأكّد بجدول القائدة، كرت متابعتها بينسكّر — بلا استثناء ولا
+ * لائحة أسماء. فما بيصير حدا معلّق عليه شغل خلص.
+ */
+async function closeBookingCard(coId: string, coName: string, label: string) {
+  const cards = await prisma.task.findMany({
+    where: { companyId: coId, title: { contains: "تأكيد موعد التصوير" }, status: { not: "CANCELED" } },
+  });
+  const open = cards.filter((t) => !isTaskDoneState(t));
+  if (!open.length) return;
+  console.log(`     ↳ ${open.length} كرت تأكيد موعد → منجز (الموعد صار مؤكّداً)`);
+  if (!APPLY) return;
+  for (const t of open) {
+    const at = new Date();
+    await prisma.task.update({
+      where: { id: t.id },
+      data: {
+        status: "READY",
+        board: "DONE",
+        startedAt: t.startedAt ?? at,
+        finishedAt: at,
+        completedAt: at,
+        notes: [t.notes, `تأكّد بجدول القائدة 8/8: ${coName} ${label}`].filter(Boolean).join(" · "),
+      },
+    });
+  }
+}
+
 async function applyAppointment(a: Appt) {
   const co = await prisma.company.findFirst({ where: { name: { contains: a.company } } });
   if (!co) return console.log(`  ⚠️ ${a.company} — ما لقيتها`);
+  await closeBookingCard(co.id, co.name, `${a.date}${a.time ? ` ${a.time}` : ""}`);
   if (co.reels + co.aiReels === 0) return adhocShoot(co.id, co.name, a);
   const shootDate = new Date(a.date);
   const deliverBy = new Date(shootDate);

@@ -137,3 +137,25 @@ describe("مستورد الخطط — القطعة مدخل واحد", () => {
     expect(src).toMatch(/updateMany\(\{ where: \{ pipelineKey: t\.pipelineKey \}, data: \{ brief \} \}\)/);
   });
 });
+
+describe("اليوم المثبّت — البريف بيحترم موعد القائدة", () => {
+  const day = readFileSync("src/lib/daily-work.ts", "utf8");
+  const konst = readFileSync("src/lib/constants.ts", "utf8");
+
+  it("الكرت المثبّت ليوم جاي ما بيدخل قائمة اليوم", () => {
+    // ماجد طلع بالبريف «يصوّر المخبر اليوم» وموعد المخبر الأربعاء، وعبادة
+    // ومانغو (موعدهن اليوم) ما ظهروا — لأن الفرز كان بيعرف «بدّل» وبس.
+    expect(day).toMatch(/function fixedDayISO/);
+    expect(day).toMatch(/manualDayISO\(task\) \?\? \(task\.isPinned && task\.workDate/);
+    expect(day).not.toMatch(/const md = manualDayISO\(task\);/);
+  });
+
+  it("والفرز بيصدّر المثبّت لليوم", () => {
+    expect(day).toMatch(/fixedDayISO\(a\) !== todayISO/);
+  });
+
+  it("والمثبّت لبكرا مو متأخر", () => {
+    expect(konst).toMatch(/function pinnedForLater/);
+    expect(konst).toMatch(/if \(pinnedForLater\(t, now\)\) return false;/);
+  });
+});
