@@ -1,5 +1,5 @@
 {
- "exportedAt": "2026-08-10T07:39:07.155Z",
+ "exportedAt": "2026-08-10T07:44:08.891Z",
  "note": "وقائع الداتا المحلية — بتنطبّق بالإنتاج بسياسة تقدّم-فقط (apply-data-corrections.ts)",
  "pieces": [
   {
@@ -15881,6 +15881,44 @@
    "finishedAt": null,
    "notes": "مونتاج التصوير الإضافي — بينفتح لما يخلص «تصوير ريل — التدريب (خارج الخطة)»",
    "brief": null,
+   "month": 7,
+   "year": 2026
+  },
+  {
+   "id": "cmsmxcx6n0001e6p7zt64ras8",
+   "company": "كابرياني",
+   "title": "تصميم موقع كابرياني",
+   "stage": "DESIGN",
+   "hours": 40,
+   "assigneeId": "e_hla",
+   "status": "NOT_STARTED",
+   "board": "TODO",
+   "workDate": "2026-08-09T00:00:00.000Z",
+   "readyDate": null,
+   "publishDate": null,
+   "startedAt": null,
+   "finishedAt": null,
+   "notes": "طلب القائدة 8/8 — ٥ أيام عمل",
+   "brief": null,
+   "month": 7,
+   "year": 2026
+  },
+  {
+   "id": "cmsmxcx6z0003e6p7lvxfkqbn",
+   "company": "المدارس",
+   "title": "بوست عودة العام الدراسي — SKM",
+   "stage": "DESIGN",
+   "hours": 2,
+   "assigneeId": "e_sabin",
+   "status": "NOT_STARTED",
+   "board": "TODO",
+   "workDate": "2026-08-10T00:00:00.000Z",
+   "readyDate": null,
+   "publishDate": null,
+   "startedAt": null,
+   "finishedAt": null,
+   "notes": "طلب الزبون عبر القائدة 8/8 — النشر قبل ١٨/٨",
+   "brief": "إعلان عودة — Smart Kids Montessori School\n\nالفكرة: العدّ التنازلي لعودة الفريق يوم ١٨ آب للعام الدراسي الجديد.\n\nالنصّ المقترح من الزبون:\n\"The countdown is on… ⏳✨\nOur team will be back on August 18th at Smart Kids Montessori School!\nManagers ready to host you!\nLet's kick off a new academic year filled with learning, growth, and confidence 📚\nSee you soon!\"\n\nالزبون منفتح على أفكار بديلة للتصميم والصياغة.",
    "month": 7,
    "year": 2026
   }
