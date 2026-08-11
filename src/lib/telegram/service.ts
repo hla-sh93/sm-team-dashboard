@@ -9,7 +9,7 @@ import { loadLiveTasks } from "@/lib/live-tasks";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
 import { buildWeeklyPublishDigest } from "./weekly";
-import { buildDailyDoneReport } from "./done-report";
+import { buildDailyDoneReport, DONE_REPORT_PEOPLE, type DeliveryLine } from "./done-report";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
@@ -124,12 +124,32 @@ export async function sendDailyDoneReport(today = new Date()): Promise<SendBrief
   const chatId = await getLeadChatId();
   if (!chatId) return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
 
-  const [employees, companies, tasks] = await Promise.all([
+  const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const [employees, companies, tasks, todayMessages] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     loadLiveTasks(today.getFullYear(), today.getMonth()),
+    // تسليمات اليوم من جدول الرسائل مباشرة — مو من الكروت. الملف يلي ما
+    // طابق كرتاً بيظهر «غير مطابق» بدل ما يختفي (سؤال القائدة 11/8 عن
+    // صورة أيمن على Siizen يلي التقرير ما ذكرها).
+    prisma.telegramMessage.findMany({ where: { sentAt: { gte: dayStart } } }),
   ]);
-  const report = buildDailyDoneReport(today, employees as never, companies as never, tasks as never);
+  const coName = new Map(companies.map((c) => [c.id, c.name]));
+  const deliveries: DeliveryLine[] = todayMessages.map((m) => ({
+    senderName: m.senderName,
+    companyName: m.companyId ? (coName.get(m.companyId) ?? null) : null,
+    kind: m.kind,
+    fileName: m.fileName,
+    matched: m.taskId != null,
+  }));
+  const report = buildDailyDoneReport(
+    today,
+    employees as never,
+    companies as never,
+    tasks as never,
+    DONE_REPORT_PEOPLE,
+    deliveries,
+  );
   if (!report.text) return { ok: true, sent: 0 };
 
   let sent = 0;

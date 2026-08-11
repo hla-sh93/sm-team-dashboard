@@ -139,3 +139,28 @@ describe("حصيلة الفريق — بقسم حلا وحده", () => {
     expect(t.indexOf("حصيلة الفريق اليوم")).toBeGreaterThan(t.indexOf("■ حلا"));
   });
 });
+
+describe("تسليمات تلغرام — التقرير بيشوفها ولو ما طابقت", () => {
+  // القائدة (11/8): أيمن بعت صورة على Siizen والتقرير ما ذكرها، ولا شو باعتة
+  // سابين. السبب: التقرير كان يقرا الكروت المسكّرة وبس — والملف يلي ما طابق
+  // كرتاً ما بيسكّر شي فبيختفي كأنّو ما وصل.
+  const d = (o: Partial<import("../src/lib/telegram/done-report").DeliveryLine>) => ({
+    senderName: "أيمن", companyName: "Siizen", kind: "PHOTO", fileName: null, matched: false, ...o,
+  });
+
+  it("الملف غير المطابق بيظهر معلَّماً — مو مخفياً", () => {
+    const r = buildDailyDoneReport(TODAY, EMPS, COS, [], undefined, [d({})]);
+    expect(r.text).toContain("تلغرام اليوم: 1 ملف — منها 1 غير مطابق ⚠️");
+    expect(r.text).toContain("Siizen: أيمن 1 (1 غير مطابق)");
+  });
+
+  it("الصفر بينكتب صراحةً — يوم بلا تسليمات خبرٌ لا فراغ", () => {
+    const r = buildDailyDoneReport(TODAY, EMPS, COS, []);
+    expect(r.text).toContain("تلغرام اليوم: ولا ملف وصل.");
+  });
+
+  it("النصوص ما بتتحسب ملفات", () => {
+    const r = buildDailyDoneReport(TODAY, EMPS, COS, [], undefined, [d({ kind: "TEXT" })]);
+    expect(r.text).toContain("ولا ملف وصل");
+  });
+});

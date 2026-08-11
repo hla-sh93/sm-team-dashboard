@@ -23,6 +23,26 @@ import { buildContentNumbers } from "@/lib/cards";
 /** من بيوصله التقرير — بالأسماء كما بالقاعدة. */
 export const DONE_REPORT_PEOPLE = ["عمر", "حلا"] as const;
 
+/**
+ * تسليم وصل على تلغرام اليوم — كما خزّنه البوت الحي.
+ *
+ * القائدة (11/8): «اليوم بعت أيمن صورة على مجموعة siizen بس بالتقرير ما
+ * ذكرته، ولا ذكرت سابين شو باعتة. شو المشكلة؟».
+ *
+ * والمشكلة إنّ التقرير كان بيقرا **الكروت المسكّرة وبس**: الملف يلي بيوصل
+ * وما بيطابق كرتاً (صورة بلا اسم، شركة جديدة، تسمية غريبة) ما بيسكّر شي —
+ * فبيختفي من التقرير كأنّو ما وصل. صار للتسليمات قسم خاص، والحرّ منها
+ * بينسمّى «غير مطابق» بدل ما ينخبى: هيك التقرير نفسه بيصير جهاز فحص
+ * الالتقاط — إذا بعت حدا ملفاً وما ظهر بالمسا، فالبوت ما لقطه أصلاً.
+ */
+export type DeliveryLine = {
+  senderName: string | null;
+  companyName: string | null;
+  kind: string;
+  fileName: string | null;
+  matched: boolean;
+};
+
 export type DoneReport = {
   /** اليوم يلي التقرير عنه. */
   day: Date;
@@ -105,6 +125,43 @@ function teamOutput(
   return out;
 }
 
+/** قسم «وصل على تلغرام اليوم» — مجمّع بالشركة ثم المرسِل. */
+function deliveriesSection(deliveries: DeliveryLine[]): string[] {
+  const KIND_WORD: Record<string, string> = {
+    PHOTO: "صورة",
+    VIDEO: "فيديو",
+    DOCUMENT: "ملف",
+    AUDIO: "صوت",
+  };
+  const media = deliveries.filter((d) => KIND_WORD[d.kind]);
+  // الصفر بينكتب صراحةً: «ولا ملف» خبر بحدّ ذاته — يوم شغل بلا ولا تسليم
+  // إمّا عطلة أو التقاط مقطوع، والقائدة لازم تشوفه لا تستنتجه من الغياب.
+  if (!media.length) return ["تلغرام اليوم: ولا ملف وصل."];
+
+  const byCo = new Map<string, Map<string, { n: number; unmatched: number }>>();
+  for (const d of media) {
+    const co = d.companyName ?? "بلا شركة";
+    const from = d.senderName ?? "—";
+    const perFrom = byCo.get(co) ?? new Map();
+    const v = perFrom.get(from) ?? { n: 0, unmatched: 0 };
+    v.n++;
+    if (!d.matched) v.unmatched++;
+    perFrom.set(from, v);
+    byCo.set(co, perFrom);
+  }
+  const unmatched = media.filter((d) => !d.matched).length;
+  const out = [
+    `تلغرام اليوم: ${media.length} ملف` + (unmatched ? ` — منها ${unmatched} غير مطابق ⚠️` : ""),
+  ];
+  for (const [co, perFrom] of byCo) {
+    const inner = [...perFrom.entries()]
+      .map(([from, v]) => `${from} ${v.n}${v.unmatched ? ` (${v.unmatched} غير مطابق)` : ""}`)
+      .join(" · ");
+    out.push(`${co}: ${inner}`);
+  }
+  return out;
+}
+
 /**
  * يبني تقرير المنجَز لآخر النهار.
  *
@@ -120,6 +177,7 @@ export function buildDailyDoneReport(
   companies: Company[],
   tasks: Task[],
   people: readonly string[] = DONE_REPORT_PEOPLE,
+  deliveries: DeliveryLine[] = [],
 ): DoneReport {
   const iso = toISODate(at);
   const coById = new Map(companies.map((c) => [c.id, c]));
@@ -178,6 +236,7 @@ export function buildDailyDoneReport(
     if (emp.name === "حلا") {
       const summary = teamOutput(tasks, iso, coById);
       if (summary.length) lines.push("", ...summary);
+      lines.push("", ...deliveriesSection(deliveries));
     }
     lines.push("");
   }
