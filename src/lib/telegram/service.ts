@@ -9,6 +9,7 @@ import { loadLiveTasks } from "@/lib/live-tasks";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
 import { buildWeeklyPublishDigest } from "./weekly";
+import { buildDailyDoneReport } from "./done-report";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
@@ -101,6 +102,39 @@ export async function sendWeeklyPublishDigest(
   let sent = 0;
   const failures: string[] = [];
   for (const part of splitForTelegram(digest.text, TG_CHUNK)) {
+    const res = await sendMessage(chatId, part);
+    if (res.ok) sent++;
+    else failures.push(res.error ?? "خطأ");
+  }
+  if (!sent) return { ok: false, error: failures[0] ?? "ما انبعتت ولا رسالة" };
+  return { ok: true, sent, ...(failures.length ? { failed: failures } : {}) };
+}
+
+/**
+ * تقرير المنجَز اليومي — ٥ مساءً بتوقيت دمشق، لخاصّ القائدة.
+ *
+ * القائدة (10/8): «بدي منك تخلي البوت يبعتلي الساعة 5 تماما بتوقيت سورية:
+ * ارسال تقرير العمل المنجز اليومي لكل من عمر وحلا».
+ *
+ * لخاصّها لا للمجموعة: التقرير بيقيس شغل شخصين بالاسم، وهاد حديث قائد مع
+ * حاله. الوحيد يلي بينزل بالمجموعة هو جدول النشر الأسبوعي.
+ */
+export async function sendDailyDoneReport(today = new Date()): Promise<SendBriefResult> {
+  if (!isTelegramConfigured()) return { ok: false, error: "البوت غير مضبوط (TELEGRAM_BOT_TOKEN)" };
+  const chatId = await getLeadChatId();
+  if (!chatId) return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
+
+  const [employees, companies, tasks] = await Promise.all([
+    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    loadLiveTasks(today.getFullYear(), today.getMonth()),
+  ]);
+  const report = buildDailyDoneReport(today, employees as never, companies as never, tasks as never);
+  if (!report.text) return { ok: true, sent: 0 };
+
+  let sent = 0;
+  const failures: string[] = [];
+  for (const part of splitForTelegram(report.text, TG_CHUNK)) {
     const res = await sendMessage(chatId, part);
     if (res.ok) sent++;
     else failures.push(res.error ?? "خطأ");
