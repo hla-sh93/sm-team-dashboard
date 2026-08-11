@@ -291,3 +291,29 @@ describe("الإنجاز والعدّادات", () => {
     expect([...seen.entries()].filter(([, n]) => n > 1).map(([k]) => k)).toEqual([]);
   });
 });
+
+describe("سكربتات الوقائع — «خُذ أول N» لازم يكون خاملاً", () => {
+  it("أي سكربت بيقتطع عدداً من المفتوح بيفحص المسجّل قبله", () => {
+    // السكربت المتقارب (بيحسب الهدف وبيسنده) خامل بطبعه: `fix-offday-workdates`
+    // بيحرّك الشغل عن يوم العطلة، وتكراره ما بيلاقي شي. الخطر بنمط واحد:
+    // **«خُذ أول N من المفتوح وسكّرهن»** — لأن «المفتوح» بيتغيّر بعد كل
+    // تشغيل، فالمرّة الجاية بياخد التاليين. `apply-2026-08-11-majed-shot`
+    // وقع فيها فعلاً: سكّر ٥ كروت بدل ٥، وبإعادته سكّر ٤ زيادة.
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: { build: string } };
+    const inBuild = [...new Set([...pkg.scripts.build.matchAll(/tsx (scripts\/[\w.-]+\.ts)/g)].map((m) => m[1]))];
+    const risky: string[] = [];
+    for (const f of inBuild) {
+      const src = readFileSync(f, "utf8");
+      // الاقتطاع من لائحة مفتوحة + كتابة = تراكمي إلا إذا في حارس عدّ.
+      const slices = /\.slice\(0,\s*[a-zA-Z]/.test(src) && /isTaskDoneState/.test(src);
+      if (!slices) continue;
+      // الحراسة شكلان، والاتنان صحيحان: **عبارة** («مسجّل أصلاً») أو **حساب
+      // المتبقّي** (`need = المطلوب − المنجز` ثم خروج إذا ≤ 0). برو بتستعمل
+      // التاني، فحصرها بالعبارة كان بيتّهم سكربتاً سليماً.
+      const guarded =
+        /already|أصلاً/.test(src) || /const need =|remaining|- done/.test(src);
+      if (!guarded) risky.push(f);
+    }
+    expect(risky).toEqual([]);
+  });
+});
