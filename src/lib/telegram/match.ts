@@ -339,7 +339,22 @@ export function matchDelivery(
   // so try every reading in order and take the first that names a REAL open
   // piece — an existing piece is far stronger evidence than either convention.
   const types = candidateTypesFor(delivery.kind);
-  const parsedRaw = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  /**
+   * الكابشن العربي المرقّم بيمرق باسم شركة توبيكه.
+   *
+   * «بوست 8-1» على توبيك Siizen واضحة تماماً للبشر — التوبيك بيسمّي الشركة
+   * والكابشن بيسمّي القطعة. بس `parseAssetName` بتشترط اسماً لاتينياً، فكانت
+   * ترجع null والصورة تنخزّن «غير مطابقة» رغم إنّ المرسِل التزم بالاتفاق
+   * (القائدة 11/8: «هو بعت رقم البوست والشهر متل ما اتفقنا»).
+   *
+   * فمنعيد القراءة باسم الشركة مسبوقاً — **بس لمّا ما يكون في اسم أصلاً**:
+   * لو في اسم لاتيني بيخالف الشركة (ملف BW منقول لتوبيك Siizen) بيضلّ
+   * الرفض كما هو، لأن الاسم الصريح أقوى من مكان الإرسال.
+   */
+  const parsedRaw =
+    parseAssetName(delivery.fileName) ??
+    parseAssetName(delivery.caption) ??
+    parseAssetName(`${companySlug} ${delivery.fileName ?? delivery.caption ?? ""}`);
   // `parseAssetName` بترتّب شهر-أول ثم قطعة-أول. لما يكون عرف الشركة معروفاً
   // منقلب الترتيب — القراءة الصح بتنجرّب أولاً بدل ما تخسر بالصدفة.
   const parsed =
