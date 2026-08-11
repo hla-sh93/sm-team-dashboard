@@ -110,3 +110,32 @@ describe("الشغل متعدّد الأيام", () => {
     expect(after.text).not.toContain("تصميم موقع كابرياني");
   });
 });
+
+describe("حصيلة الفريق — بقسم حلا وحده", () => {
+  const day = { status: "READY", board: "DONE", completedAt: new Date("2026-08-10T12:00:00") };
+  const COS2 = [co("c1", "وصل"), co("c2", "البلسم"), co("c3", "برو")];
+  const TASKS = [
+    task({ assigneeId: "e_sabin", companyId: "c2", stage: "DESIGN", type: "POST", ...day }),
+    task({ assigneeId: "e_sabin", companyId: "c2", stage: "DESIGN", type: "POST", pieceNo: 2, ...day }),
+    task({ assigneeId: "e_sabin", companyId: "c3", stage: "DESIGN", type: "POST", pieceNo: 3, ...day }),
+    task({ assigneeId: "e_majed", companyId: "c1", stage: "SHOOT", type: "REEL", ...day }),
+    task({ assigneeId: "e_majed", companyId: "c1", stage: "SHOOT", type: "REEL", pieceNo: 2, ...day }),
+  ];
+
+  it("بتجمّع بالمرحلة ثم الشركة مع العدد", () => {
+    const r = buildDailyDoneReport(TODAY, EMPS, COS2, TASKS);
+    expect(r.text).toContain("حصيلة الفريق اليوم");
+    expect(r.text).toContain("تصميم: البلسم 2 بوست · برو 1 بوست");
+    expect(r.text).toContain("تصوير: وصل 2 ريل");
+  });
+
+  it("بترتيب السلسلة: تصميم قبل تصوير", () => {
+    const t = buildDailyDoneReport(TODAY, EMPS, COS2, TASKS).text!;
+    expect(t.indexOf("تصميم:")).toBeLessThan(t.indexOf("تصوير:"));
+  });
+
+  it("بتطلع بقسم حلا وبس — عمر بيهمّه شغله هو", () => {
+    const t = buildDailyDoneReport(TODAY, EMPS, COS2, TASKS).text!;
+    expect(t.indexOf("حصيلة الفريق اليوم")).toBeGreaterThan(t.indexOf("■ حلا"));
+  });
+});

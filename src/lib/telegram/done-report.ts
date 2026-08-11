@@ -52,6 +52,60 @@ function label(
 }
 
 /**
+ * حصيلة إنتاج الفريق لليوم — مجمّعة بالمرحلة ثم بالشركة.
+ *
+ * القائدة (10/8): «بتقرير حلا بدي تشوف كم ريل تصور، كم تصميم تصمم ولمين —
+ * يعني اذكر مثلا البلسم 5 بوستات، برو 3 بوستات… تم تصوير 1 ريل كذا».
+ *
+ * وهاد سؤال قائد لا سؤال منفّذ: مو «شو عمل فلان» بل «شو طلع من الفريق اليوم
+ * ولمين». فسطر حلا مو شغلها الشخصي — هو حصيلة النهار كلّها، لأن هيك بتقرا
+ * الإنتاج بنظرة وحدة بدل ما تجمع من ستّ لوائح.
+ *
+ * التجميع بالمرحلة أولاً لأن السؤال بيتغيّر معها: «كم تصميم» غير «كم تصوير»
+ * غير «كم نشر» — والخلط بينهن بيرجّع رقماً بلا معنى.
+ */
+function teamOutput(
+  tasks: Task[],
+  iso: string,
+  companies: Map<string, Company>,
+): string[] {
+  const STAGE_WORD: Record<string, string> = {
+    DESIGN: "تصميم",
+    SHOOT: "تصوير",
+    EDIT: "مونتاج",
+    PUBLISH: "نشر",
+    WRITE: "كتابة",
+  };
+  /** المرحلة ← الشركة ← النوع ← العدد. */
+  const byStage = new Map<string, Map<string, Map<string, number>>>();
+  for (const t of tasks) {
+    if (!finishedOn(t, iso) || !t.stage || !STAGE_WORD[t.stage]) continue;
+    const coName = t.companyId ? (companies.get(t.companyId)?.name ?? "—") : "بلا شركة";
+    // الكرت الإضافي ما إلو نوع قطعة، فبينحسب بعنوانه العام «شغل إضافي».
+    const type = t.type ? (CONTENT_TYPE_LABELS[t.type as ContentType] ?? t.type) : "شغل إضافي";
+    const perCo = byStage.get(t.stage) ?? new Map<string, Map<string, number>>();
+    const perType = perCo.get(coName) ?? new Map<string, number>();
+    perType.set(type, (perType.get(type) ?? 0) + (t.quantity ?? 1));
+    perCo.set(coName, perType);
+    byStage.set(t.stage, perCo);
+  }
+  if (!byStage.size) return [];
+
+  const out = ["حصيلة الفريق اليوم:"];
+  // بترتيب السلسلة لا بترتيب الظهور — الكتابة قبل التصميم قبل النشر.
+  for (const stage of ["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]) {
+    const perCo = byStage.get(stage);
+    if (!perCo) continue;
+    const parts = [...perCo.entries()].map(([co, types]) => {
+      const inner = [...types.entries()].map(([ty, n]) => `${n} ${ty}`).join(" و");
+      return `${co} ${inner}`;
+    });
+    out.push(`${STAGE_WORD[stage]}: ${parts.join(" · ")}`);
+  }
+  return out;
+}
+
+/**
  * يبني تقرير المنجَز لآخر النهار.
  *
  * بيعرض تلات كتل لكل شخص، وكل وحدة بتجاوب سؤالاً مختلفاً:
@@ -119,6 +173,12 @@ export function buildDailyDoneReport(
     }
     // المتأخر بالعدد بس — تفصيله بالبريف الصباحي، وتكراره بيطوّل بلا جديد.
     if (late.length) lines.push(`متأخر عليه: ${late.length}`);
+    // حصيلة الفريق بتنحط عند القائدة وحدها: هي يلي بتقرا الإنتاج ككل، وعمر
+    // بيهمّه شغله هو. تكرارها بالقسمين بيطوّل الرسالة بلا فايدة.
+    if (emp.name === "حلا") {
+      const summary = teamOutput(tasks, iso, coById);
+      if (summary.length) lines.push("", ...summary);
+    }
     lines.push("");
   }
 
