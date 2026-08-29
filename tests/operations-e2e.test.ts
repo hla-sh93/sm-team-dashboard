@@ -398,6 +398,37 @@ describe("task operations", () => {
     expect(after.finishedAt).toBeTruthy();
   });
 
+  it("corrects a published card's actual publish date without changing its state", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-actual-publish-date`,
+      posts: 1,
+      stories: 0,
+      reels: 0,
+      aiReels: 0,
+    });
+    await actions.generateSchedule(YEAR, MONTH);
+    const card = (await contentOf(co.id)).find(
+      (task: any) => task.stage === "PUBLISH" && task.type === "POST",
+    );
+    expect(card).toBeTruthy();
+    expect((await actions.updateTaskStatus(card.id, "PUBLISHED")).ok).toBe(true);
+
+    const before = await prisma.task.findUnique({ where: { id: card.id } });
+    const result = await actions.updateTaskDetails([card.id], {
+      publishDate: "2026-07-24",
+    });
+    expect(result.ok, `updateTaskDetails failed: ${result.error}`).toBe(true);
+
+    const after = await prisma.task.findUnique({ where: { id: card.id } });
+    expect(after.status).toBe("PUBLISHED");
+    expect(after.board).toBe("DONE");
+    expect(after.title).toBe(before.title);
+    expect(toISODate(after.publishDate)).toBe("2026-07-24");
+    expect(toISODate(after.completedAt)).toBe("2026-07-24");
+    expect(toISODate(after.finishedAt)).toBe("2026-07-24");
+  });
+
   it("a deleted auto piece stays deleted after regeneration", async () => {
     if (skip()) return;
     const co = await makeCompany({ name: `${uniq}-delete-piece` });

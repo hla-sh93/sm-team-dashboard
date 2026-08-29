@@ -62,6 +62,7 @@ export default function TaskForm({
     status: "NOT_STARTED",
     workDate: "",
     readyDate: "",
+    publishDate: "",
     quantity: 1,
     isPinned: false,
     notes: "",
@@ -75,6 +76,7 @@ export default function TaskForm({
     status: t.status,
     workDate: t.workDate ? toISODate(new Date(t.workDate)) : "",
     readyDate: t.readyDate ? toISODate(new Date(t.readyDate)) : "",
+    publishDate: t.publishDate ? toISODate(new Date(t.publishDate)) : "",
     quantity: t.quantity ?? 1,
     isPinned: t.isPinned,
     notes: t.notes ?? "",
@@ -104,6 +106,10 @@ export default function TaskForm({
           title: form.title.trim(),
           workDate: form.workDate || null,
           readyDate: form.readyDate || null,
+          publishDate:
+            task?.kind === "CONTENT" && task.stage === "PUBLISH"
+              ? form.publishDate || null
+              : undefined,
           assigneeId: form.assigneeId || null,
           priority: form.priority,
           status: form.status,
@@ -206,6 +212,17 @@ export default function TaskForm({
               <Input type="date" value={form.readyDate} onChange={(e) => set("readyDate", e.target.value)} />
             </div>
           </div>
+
+          {isEdit && task?.kind === "CONTENT" && task.stage === "PUBLISH" && (
+            <div className="space-y-1.5">
+              <Label>تاريخ النشر</Label>
+              <Input
+                type="date"
+                value={form.publishDate}
+                onChange={(e) => set("publishDate", e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-4">
             {isAdhoc && (

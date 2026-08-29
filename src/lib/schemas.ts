@@ -151,6 +151,7 @@ export const taskDetailsSchema = z
     title: z.string().max(200).nullable().optional(),
     workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
     readyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
+    publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
     assigneeId: z.string().min(1).nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
     status: z.enum(STATUSES).optional(),

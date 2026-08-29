@@ -138,6 +138,7 @@ export type TaskDetailsInput = {
   title?: string | null;
   workDate?: string | null; // YYYY-MM-DD (start)
   readyDate?: string | null; // YYYY-MM-DD (end / deadline)
+  publishDate?: string | null; // YYYY-MM-DD (actual/scheduled publish date)
   assigneeId?: string | null;
   priority?: string;
   status?: string;
@@ -175,8 +176,11 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       iso === undefined ? cur : iso ? fromISODate(iso) : null;
     const workDate = setDate(input.workDate, before.workDate);
     const readyDate = setDate(input.readyDate, before.readyDate);
+    const publishDate = setDate(input.publishDate, before.publishDate);
     const doneAt = done
-      ? inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
+      ? input.publishDate !== undefined && publishDate
+        ? publishDate
+        : inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
       : null;
     let startedAt = before.startedAt;
     let finishedAt = before.finishedAt;
@@ -209,6 +213,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
         title: input.title !== undefined ? input.title : before.title,
         workDate,
         readyDate,
+        publishDate,
         assigneeId:
           input.assigneeId !== undefined ? input.assigneeId || null : before.assigneeId,
         priority: input.priority ?? before.priority,
@@ -242,6 +247,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       input.priority !== undefined ||
       input.workDate !== undefined ||
       input.readyDate !== undefined ||
+      input.publishDate !== undefined ||
       input.days != null ||
       input.quantity != null;
     if (reschedule) await generateSchedule(before.year, before.month);
