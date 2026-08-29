@@ -31,12 +31,25 @@ const swallow = async (fn: () => Promise<unknown>) => {
   }
 };
 
+/**
+ * بصمة «الواقع المسجّل» — يلي ما بيحق للتوليد يغيّره:
+ *   • الحالة والمرحلة والمكلّف والبريف والملاحظات ورقم القطعة — للكل.
+ *   • المواعيد — للمنجز والمثبّت بس: الكرت المفتوح غير المثبّت جدوله ملك
+ *     المحرّك وإعادة تخطيطه مشروعة (جدارات بتنزاح لما تتغيّر قواعد النشر).
+ *   • المقارنة باليوم المحلي لا باللحظة: سكربتات التصحيح بتخزّن منتصف ليل UTC
+ *     والمحرّك منتصف الليل المحلي — نفس اليوم، والفرق تمثيل مو واقع.
+ */
 async function fingerprint() {
   const rows = await prisma.task.findMany({ orderBy: { id: "asc" } });
-  return rows.map((t) =>
-    [t.id, t.status, t.board, t.assigneeId, t.pieceNo, t.isPinned, t.brief?.length ?? 0,
-     t.publishDate?.getTime() ?? 0, t.workDate?.getTime() ?? 0, t.finishedAt?.getTime() ?? 0].join("|"),
-  );
+  const day = (d: Date | null) =>
+    d ? `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}` : "·";
+  return rows.map((t) => {
+    const settled = t.board === "DONE" || t.isPinned;
+    return [t.id, t.status, t.board, t.assigneeId, t.pieceNo, t.isPinned,
+      t.brief?.length ?? 0, t.notes?.length ?? 0, day(t.finishedAt),
+      settled ? day(t.workDate) : "~",
+      t.board === "DONE" ? day(t.publishDate) : "~"].join("|");
+  });
 }
 
 async function main() {

@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
+import {
+  retimeEditsAfterActualShoot,
+  snapPipelineWorkDatesToAssigneeWorkDays,
+} from "@/lib/schedule-retime";
 import { isTrainerSuppliedContentCompany } from "@/lib/content-source";
 import { loadState } from "@/lib/schedule-data";
 import {
@@ -444,132 +448,10 @@ export async function generateSchedule(year: number, month: number) {
   }
 }
 
-/**
- * Re-date every مونتاج card to the working day after its shoot ACTUALLY
- * finished, once preservation has restored `finishedAt` onto the shoot card.
- *
- * `expandPipeline` can only use planned dates, so a reel planned for 1/6 and
- * shot on 5/7 produced a montage card due 2/6 — a month "late" before the
- * footage existed. Cards whose shoot has not happened yet keep their planned
- * date; they are blocked anyway.
- */
-function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays: number[]) {
-  // A reel that is already PUBLISHED was obviously cut — its montage card is a
-  // new stage on an old piece, and must not resurface as open work on أليسار.
-  const publishedKeys = new Set(
-    pipe
-      .filter((t) => t.stage === "PUBLISH" && (t.board === "DONE" || t.status === "PUBLISHED"))
-      .map((t) => t.pipelineKey),
-  );
-  for (const t of pipe) {
-    if (t.stage !== "EDIT" || !publishedKeys.has(t.pipelineKey)) continue;
-    t.board = "DONE";
-    t.status = "READY";
-  }
-
-  // …وبالعكس: مونتاج مسجّل «منجز» وتصويره لسا ما صار وقطعته ما انتشرت هو حالة
-  // مستحيلة. صارت لما كرت مونتاج انسكّر بجولة سابقة ثم رجع التصوير مفتوح —
-  // وخطوة الحفظ بتعيد تثبيت الإغلاق للأبد. القاعدة: ما في كرت بيضل منجز
-  // وحاجزه مفتوح إلا إذا النشر أثبت إنّو صار.
-  const shotDone = new Set(
-    pipe.filter((t) => t.stage === "SHOOT" && (t.board === "DONE" || t.status === "READY"))
-      .map((t) => t.pipelineKey),
-  );
-  for (const t of pipe) {
-    if (t.stage !== "EDIT" || t.board !== "DONE") continue;
-    if (publishedKeys.has(t.pipelineKey) || shotDone.has(t.pipelineKey)) continue;
-    t.board = "TODO";
-    t.status = "NOT_STARTED";
-    t.startedAt = null;
-    t.finishedAt = null;
-    t.completedAt = null;
-  }
-
-  // كرت النشر «جهوزيته» هي يوم نشره — ما إلها معنى تاني. تثبيت قديم كان بيجمّد
-  // `readyDate` على تاريخ منقرض فيطلع «نشر 10/8 وجهوزيته 19/8».
-  for (const t of pipe) {
-    if (t.stage === "PUBLISH" && t.publishDate) t.readyDate = t.publishDate;
-  }
-
-  // ومونتاج مؤرّخ **قبل** تصويره المخطّط حالة مستحيلة كمان — بيصير لما تثبيت
-  // قديم يضل معلّق بعد ما ينزاح موعد التصوير. منعيد تأريخه لليوم التالي للتصوير.
-  const shootPlan = new Map<string, string>();
-  for (const t of pipe) {
-    if (t.stage !== "SHOOT" || !t.pipelineKey) continue;
-    const d = t.readyDate ?? t.workDate;
-    if (d) shootPlan.set(t.pipelineKey, d);
-  }
-  for (const t of pipe) {
-    if (t.stage !== "EDIT" || !t.pipelineKey) continue;
-    const shoot = shootPlan.get(t.pipelineKey);
-    const own = t.readyDate ?? t.workDate;
-    if (!shoot || !own || own > shoot) continue;
-    const d = new Date(`${shoot}T00:00:00`);
-    let guard = 0;
-    do {
-      d.setDate(d.getDate() + 1);
-      guard++;
-    } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    t.workDate = iso;
-    t.readyDate = iso;
-  }
-
-  const shotAt = new Map<string, Date>();
-  for (const t of pipe) {
-    if (t.stage !== "SHOOT" || !t.pipelineKey || !t.finishedAt) continue;
-    shotAt.set(t.pipelineKey, t.finishedAt);
-  }
-  // The publish-date clamp below is ONLY legitimate for a piece that already
-  // went out: it must have been cut beforehand. For a piece still unpublished
-  // whose shoot landed late, clamping would date the montage BEFORE the footage
-  // exists — the honest reading is that the montage is simply late too.
-  for (const t of pipe) {
-    if (t.stage !== "EDIT" || !t.pipelineKey) continue;
-    const done = shotAt.get(t.pipelineKey);
-    if (!done) continue;
-    const d = new Date(done);
-    let guard = 0;
-    do {
-      d.setDate(d.getDate() + 1);
-      guard++;
-    } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate(),
-    ).padStart(2, "0")}`;
-    // …لكن أبداً بعد يوم النشر **لقطعة انتشرت فعلاً**: كروت حزيران المنشورة
-    // إجاها `finishedAt` من يوم استيراد الأرشيف (5/7) مو من يوم التصوير، فطلع
-    // مونتاج برو مؤرّخ 5/7 لريل انتشر 12/6.
-    const isPublished = publishedKeys.has(t.pipelineKey);
-    t.workDate = isPublished && t.publishDate && iso > t.publishDate ? t.publishDate : iso;
-    t.readyDate = t.workDate;
-  }
-}
-
-function snapPipelineWorkDatesToAssigneeWorkDays(
-  pipe: PipelineTask[],
-  employees: { id: string; workDays: string | number[] }[],
-) {
-  const workDaysByEmployee = new Map(
-    employees.map((e) => [e.id, parseWorkDays(e.workDays)]),
-  );
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate(),
-    ).padStart(2, "0")}`;
-  for (const task of pipe) {
-    if (!task.assigneeId || !task.workDate) continue;
-    const workDays = workDaysByEmployee.get(task.assigneeId);
-    if (!workDays) continue;
-    const d = D(task.workDate);
-    if (!d || workDays.includes(d.getDay())) continue;
-    const snapped = task.readyDate || task.publishDate
-      ? backWorkday(d, workDays)
-      : forwardWorkday(d, workDays);
-    task.workDate = iso(snapped);
-  }
-}
-
+// retimeEditsAfterActualShoot و snapPipelineWorkDatesToAssigneeWorkDays انتقلوا
+// لـ`@/lib/schedule-retime` (تدقيق 11/8): هالملف "use server" فما بيصدّر غير
+// async — والقاعدة الجديدة «الكرت المنجز موعده تاريخ مو خطة» لازمها اختبارات
+// وحدة مباشرة.
 // NOTE: clearMonthSchedule was removed (2026-07-08 audit): it had no UI caller
 // but remained a publicly callable server action that wiped a month's generated
 // schedule. Regeneration via generateSchedule covers every legitimate use.

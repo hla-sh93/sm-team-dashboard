@@ -223,11 +223,21 @@ export function applyPipelinePreservation(
     // manual edit, and re-importing the .docx every month is not a real option.
     if (saved.brief != null) task.brief = saved.brief;
     if (saved.notes != null) task.notes = saved.notes;
+    // كرت **منجز** موعده تاريخ، مو خطة — بينحفظ ولو ما كان مثبّتاً. الاسترجاع
+    // كان مشروطاً بالتثبيت، فمونتاج توظيف ريل ٢ المنجز يوم 2/8 (بلا تثبيت) رجع
+    // من التوليد مؤرّخاً 9/8 — يوم الخطة، مو يوم الشغل الحقيقي. `finishedAt`
+    // وحده ما بيكفي: الشاشات والتقارير بتعرض `workDate`.
+    if (saved.board === "DONE") {
+      if (saved.workDate) task.workDate = iso(saved.workDate);
+      if (saved.readyDate) task.readyDate = iso(saved.readyDate);
+      if (saved.publishDate) task.publishDate = iso(saved.publishDate);
+    }
     if (saved.isPinned) {
       task.isPinned = true;
       if (saved.title != null) task.title = saved.title;
       if (saved.workDate) task.workDate = iso(saved.workDate);
       if (saved.readyDate) task.readyDate = iso(saved.readyDate);
+      if (saved.publishDate) task.publishDate = iso(saved.publishDate);
       if (saved.manualDay) task.manualDay = iso(saved.manualDay);
       if (saved.assigneeId) task.assigneeId = saved.assigneeId;
       if (saved.priority) task.priority = saved.priority;
