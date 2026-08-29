@@ -145,6 +145,21 @@ export const taskSchema = z.object({
 });
 export type TaskInput = z.infer<typeof taskSchema>;
 
+/** Direct server-action boundary for edits to existing cards. */
+export const taskDetailsSchema = z
+  .object({
+    title: z.string().max(200).nullable().optional(),
+    workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
+    readyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
+    assigneeId: z.string().min(1).nullable().optional(),
+    priority: z.enum(PRIORITIES).optional(),
+    status: z.enum(STATUSES).optional(),
+    days: z.coerce.number().min(0).max(60).nullable().optional(),
+    quantity: z.coerce.number().int().min(1).max(10_000).nullable().optional(),
+    isPinned: z.boolean().optional(),
+  })
+  .strict();
+
 // ============================================
 // STATUS UPDATES
 // ============================================

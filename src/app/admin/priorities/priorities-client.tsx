@@ -171,7 +171,7 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
         {companies.length === 0 && (
           <Card className="text-center py-12">
             <div className="text-fg-muted">
-              لا توجد شركات. أضيفي شركات من قسم "الشركات" أولاً.
+              لا توجد شركات. أضيفي شركات من قسم «الشركات» أولاً.
             </div>
           </Card>
         )}

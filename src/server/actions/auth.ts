@@ -87,7 +87,7 @@ export async function loginAction(
 
 /** Sign out of the admin area. */
 export async function logoutAction(): Promise<{ ok: true }> {
-  destroySession();
+  await destroySession();
   revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -15,11 +15,11 @@ export const maxDuration = 60;
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`)
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
+  if (!secret)
+    return NextResponse.json({ ok: false, error: "cron_not_configured" }, { status: 503 });
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${secret}`)
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   // Two scheduled calls a day (see vercel.json): ?wave=general at 07:45 and
   // ?wave=detail at 08:00. An unrecognised value sends everything, so a

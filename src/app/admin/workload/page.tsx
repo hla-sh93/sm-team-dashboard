@@ -10,9 +10,9 @@ import { AlertTriangle } from "lucide-react";
 export default async function WorkloadPage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  const { year, month } = await resolveActiveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(await searchParams);
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);
   const publishFetchEnd = new Date(year, month + 1, 2);

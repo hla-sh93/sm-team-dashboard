@@ -19,4 +19,15 @@ describe("§9 criterion 12 — CSV export", () => {
     const csv = toCSV(["a", "b"], [["1", "2"]]);
     expect(csv).toContain("\r\n");
   });
+
+  it("neutralizes spreadsheet formulas in untrusted text without changing numbers", () => {
+    const csv = toCSV(
+      ["value"],
+      [["=HYPERLINK(\"https://example.invalid\")"], [" +SUM(1,2)"], ["@cmd"], [-42]],
+    );
+    expect(csv).toContain("'=HYPERLINK");
+    expect(csv).toContain("' +SUM(1,2)");
+    expect(csv).toContain("'@cmd");
+    expect(csv).toContain("\r\n-42");
+  });
 });

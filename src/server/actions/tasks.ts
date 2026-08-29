@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants";
 import {
   taskSchema,
+  taskDetailsSchema,
   statusSchema,
   photoStatusSchema,
   type TaskInput,
@@ -155,6 +156,14 @@ export type TaskDetailsInput = {
 export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) {
   const primary = ids[0];
   if (!primary) return { ok: false as const, error: "لا توجد مهمة" };
+  const parsedInput = taskDetailsSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return {
+      ok: false as const,
+      error: parsedInput.error.errors[0]?.message ?? "بيانات غير صالحة",
+    };
+  }
+  input = parsedInput.data;
   try {
     const before = await prisma.task.findUnique({ where: { id: primary } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };

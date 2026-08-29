@@ -1,9 +1,9 @@
 import OverviewView from "./OverviewView";
 
-export default function HomePage({
+export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  return <OverviewView searchParams={searchParams} />;
+  return <OverviewView searchParams={await searchParams} />;
 }

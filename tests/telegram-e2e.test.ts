@@ -13,6 +13,7 @@
 import { copyFileSync, existsSync, readFileSync, rmSync } from "fs";
 import { createHash } from "crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assertIsolatedTestDatabaseUrl } from "./_helpers/test-database";
 
 const REAL = "prisma/dev.db";
 const COPY = "prisma/.telegram-e2e.db";
@@ -41,7 +42,7 @@ const photoUpdate = (o: { caption?: string; msgId: number; thread: number; from:
 beforeAll(async () => {
   realBefore = fingerprint(REAL);
   copyFileSync(REAL, COPY);
-  process.env.DATABASE_URL = `file:${process.cwd()}/${COPY}`;
+  process.env.DATABASE_URL = assertIsolatedTestDatabaseUrl(`file:${process.cwd()}/${COPY}`);
   db = await import("../src/lib/db");
   ingest = await import("../src/lib/telegram/ingest");
   report = await import("../src/lib/telegram/done-report");

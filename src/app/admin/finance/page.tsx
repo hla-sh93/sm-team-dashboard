@@ -14,9 +14,9 @@ const money = (n: number) => {
 export default async function FinancePage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  const { year, month } = await resolveActiveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(await searchParams);
   const label = monthLabel({ year, month });
   const [employees, companies] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),

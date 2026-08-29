@@ -21,9 +21,10 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 
 ## 1. Tech stack & how to run
 
-- **Next.js 14** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
+- **Next.js 15** (App Router) + **TypeScript** + **Tailwind**. RTL, Tajawal font.
 - **Prisma** ORM. **SQLite locally**, **Postgres (Neon) in production**.
-- **Vitest** tests (**204**). Enums stored as **String**; `Int[]` (workDays) as JSON.
+- **Vitest** tests (**452** across 40 files at the 2026-08-26 QA baseline). Enums
+  are stored as **String**; `Int[]` (workDays) as JSON.
 - Two suites go beyond fixtures: **`tests/data-integrity.test.ts`** audits the REAL
   database read-only (orphan refs, duplicate detKeys, cycle sanity, piece
   numbering, impossible timestamps) — a failure there is a DATA problem to fix
@@ -39,7 +40,7 @@ cards, achievement + delay reports, and a profit/loss view per contract.
 ### Commands
 ```bash
 npm run dev          # local dev (SQLite)
-npm test             # vitest (204)
+npm test             # vitest (452 at the QA baseline)
 npm run typecheck    # tsc --noEmit
 npm run db:push      # prisma db push (SQLite)
 npm run db:seed      # tsx prisma/seed.ts  (NON-destructive — §9)
@@ -51,8 +52,10 @@ Stop the dev server before `next build` AND before `prisma generate`/`db push`
 - Git remote **GitLab** (`gitlab.com/hla2.sh93/socialmediateam`). **Vercel
   auto‑deploys `main`** (production) on push; non‑main branches get **preview**
   deployments. DB: **Neon Postgres**; env var must be `DATABASE_URL`.
-- Build runs `prisma db push --accept-data-loss` (additive columns are safe) +
-  non‑destructive seed + `next build`. After deploy, click **إعادة الجدولة** per
+- Schema deployment is an explicit operator step (`npm run db:deploy:schema`),
+  while `npm run build` only generates the Postgres client and compiles Next.js.
+  Data repair/import/seed scripts are never build side effects. After deploy,
+  click **إعادة الجدولة** per
   month to (re)build the pipeline with the latest rules.
 - Local and production databases are separate. To apply the current targeted
   June data fixes to either one, set `DATABASE_URL` to that target and run

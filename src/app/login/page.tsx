@@ -7,10 +7,10 @@ export const metadata = { title: "دخول الإدارة" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { from?: string };
+  searchParams: Promise<{ from?: string }>;
 }) {
   // Only allow same-app admin paths as the post-login destination.
-  const rawFrom = searchParams.from ?? "/admin";
+  const rawFrom = (await searchParams).from ?? "/admin";
   const from = rawFrom.startsWith("/admin") ? rawFrom : "/admin";
 
   if (await isAuthenticated()) redirect(from);

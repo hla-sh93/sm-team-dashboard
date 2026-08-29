@@ -17,11 +17,11 @@ export const maxDuration = 60;
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`)
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
+  if (!secret)
+    return NextResponse.json({ ok: false, error: "cron_not_configured" }, { status: 503 });
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${secret}`)
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   // الافتراضي **الأسبوع الجاي**: الرسالة بتنبعت الخميس، ونشرة نفس الأسبوع
   // بتكون خلصت. `?next=0` بترجّع أسبوع اليوم للمعاينة.
   const next = new URL(req.url).searchParams.get("next") !== "0";

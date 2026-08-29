@@ -6,7 +6,7 @@
  * (finance, salaries, contracts, team, plans). This module password-protects
  * the admin area.
  *
- * Design for THIS stack (Next 14 App Router, Prisma, no auth library):
+ * Design for THIS stack (Next 15 App Router, Prisma, no auth library):
  *  - Password + signing secret live in the DB `Setting` table (never hardcoded,
  *    never shipped to the client). `ADMIN_PASSWORD` / `AUTH_SECRET` env vars
  *    OVERRIDE the DB values when present (best practice for hosts that set env).
@@ -196,7 +196,8 @@ async function isValidToken(token: string | undefined): Promise<boolean> {
 // --- session cookie ---------------------------------------------------------
 
 export async function createSession(): Promise<void> {
-  cookies().set(SESSION_COOKIE, await makeToken(), {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, await makeToken(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -205,8 +206,9 @@ export async function createSession(): Promise<void> {
   });
 }
 
-export function destroySession(): void {
-  cookies().set(SESSION_COOKIE, "", {
+export async function destroySession(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -217,7 +219,8 @@ export function destroySession(): void {
 
 /** True when the current request carries a valid admin session. */
 export async function isAuthenticated(): Promise<boolean> {
-  return isValidToken(cookies().get(SESSION_COOKIE)?.value);
+  const cookieStore = await cookies();
+  return isValidToken(cookieStore.get(SESSION_COOKIE)?.value);
 }
 
 /** Page guard (server components / layouts): redirect to login when not

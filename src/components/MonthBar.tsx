@@ -52,14 +52,24 @@ export function MonthBar({
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1 bg-bg-elev border border-border rounded-lg p-1">
-        <button onClick={next} className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim">
-          <ChevronRight className="w-4 h-4" />
+        <button
+          type="button"
+          aria-label="الشهر التالي"
+          onClick={next}
+          className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
+        >
+          <ChevronRight aria-hidden="true" className="w-4 h-4" />
         </button>
         <span className="px-3 text-sm font-semibold min-w-[120px] text-center">
           {ARABIC_MONTHS[month]} {year}
         </span>
-        <button onClick={prev} className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim">
-          <ChevronLeft className="w-4 h-4" />
+        <button
+          type="button"
+          aria-label="الشهر السابق"
+          onClick={prev}
+          className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
+        >
+          <ChevronLeft aria-hidden="true" className="w-4 h-4" />
         </button>
       </div>
       {showGenerate && (

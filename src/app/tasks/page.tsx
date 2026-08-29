@@ -1,9 +1,9 @@
 import TasksView from "./TasksView";
 
-export default function TasksPage({
+export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  return <TasksView searchParams={searchParams} />;
+  return <TasksView searchParams={await searchParams} />;
 }

@@ -1,6 +1,6 @@
 # Deploying to Vercel
 
-This is a Next.js 14 app using Prisma + **Postgres**. Vercel's filesystem is
+This is a Next.js 15 app using Prisma + **Postgres**. Vercel's filesystem is
 read-only at runtime, so a hosted Postgres database is required (SQLite won't
 work in production).
 
@@ -13,12 +13,18 @@ work in production).
    Postgres** (Vercel Postgres / Neon, free tier). Connect it to the project.
    Vercel sets the `DATABASE_URL` environment variable automatically for all
    environments (Production, Preview, Development).
-4. **Deploy.** If the very first build ran before the database was connected,
-   just hit **Redeploy** once `DATABASE_URL` is present.
+4. **Initialize or update the schema explicitly** from a trusted operator shell
+   with the production `DATABASE_URL`: `npm run db:deploy:schema`. This command
+   does not opt into data loss; Prisma refuses destructive changes.
+5. **Configure security secrets before exposing the deployment:**
+   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and a long random `AUTH_SECRET` for admin;
+   `CRON_SECRET` for scheduled endpoints; and the Telegram token/webhook secret
+   only when Telegram is enabled. A public deployment without admin credentials
+   exposes the intentional first-run owner-creation screen.
+6. **Deploy.** Builds compile the application and never mutate application data.
 
-That's it. The build command (`prisma db push` → seed → `next build`) creates
-the tables and seeds the §8 data on first deploy. The seed is **idempotent** —
-later deploys never wipe your data (it only seeds an empty database).
+Seeding/importing is a separate, explicit operator decision. Never attach seed,
+snapshot import, repair, or reconciliation scripts to the Vercel build command.
 
 ## After it's live
 
@@ -41,11 +47,9 @@ npm run db:import-prod
 
 `db:import-prod` refuses to run unless `DATABASE_URL` points at Postgres. After
 the import, redeploy or refresh the app; Vercel will read the copied data.
-If Vercel keeps Postgres secrets hidden from `env pull`, run a one-off deploy:
-
-```
-vercel deploy --prod --force --build-env IMPORT_LOCAL_SNAPSHOT=1
-```
+If Vercel keeps Postgres secrets hidden from `env pull`, perform the import from
+a trusted operator shell that has a short-lived production `DATABASE_URL`.
+The build no longer imports snapshots, even when `IMPORT_LOCAL_SNAPSHOT` is set.
 
 ## Two schemas (local SQLite vs production Postgres)
 
@@ -53,13 +57,16 @@ vercel deploy --prod --force --build-env IMPORT_LOCAL_SNAPSHOT=1
 - `prisma/schema.postgres.prisma` — **Postgres**, used by Vercel (selected with
   `--schema` in the build command). Keep the two models in sync.
 
-## Build pipeline (configured in package.json)
+## Safe build and schema commands
 
 ```
-postinstall : prisma generate                       (local SQLite client)
-build       : prisma generate --schema=prisma/schema.postgres.prisma
-              && prisma db push --schema=prisma/schema.postgres.prisma
-                   --accept-data-loss --skip-generate
-              && tsx prisma/seed.ts                 (idempotent — empty DB only)
-              && next build
+postinstall      : prisma generate                  (local SQLite client)
+db:deploy:schema : prisma db push --schema=prisma/schema.postgres.prisma
+                   --skip-generate                  (explicit operator action)
+build            : prisma generate --schema=prisma/schema.postgres.prisma
+                   && next build                    (no database writes)
 ```
+
+The repository has no Prisma migration history; schema rollout currently uses
+explicit, non-destructive `db push`. Review the generated diff and back up the
+database before every production schema change.

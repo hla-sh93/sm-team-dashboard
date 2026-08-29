@@ -51,7 +51,7 @@ cp prisma/dev.db "prisma/dev.backup-$(date +%Y%m%d-%H%M).db"
 
 ## التقنيات
 
-- **Next.js 14** (App Router) + **Server Actions** (CRUD بدون REST)
+- **Next.js 15** (App Router) + **Server Actions** (CRUD بدون REST)
 - **TypeScript** + **Zod** (تحقق المدخلات) + **React Hook Form**
 - **Tailwind CSS** — RTL، **تيمة فاتحة** (Vuexy)، لون أساسي أكوا `#0a8fa3`
 - **Prisma** — **SQLite** محلياً، **Postgres (Neon)** في الإنتاج

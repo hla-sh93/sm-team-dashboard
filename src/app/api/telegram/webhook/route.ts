@@ -17,7 +17,10 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const secret = webhookSecret();
-  if (secret && req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+  if (!secret) {
+    return NextResponse.json({ ok: false }, { status: 503 });
+  }
+  if (req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
     // Not Telegram — refuse without leaking whether the endpoint exists.
     return NextResponse.json({ ok: false }, { status: 401 });
   }

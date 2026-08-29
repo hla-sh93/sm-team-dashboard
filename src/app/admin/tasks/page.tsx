@@ -1,9 +1,9 @@
 import TasksView from "../../tasks/TasksView";
 
-export default function AdminTasksPage({
+export default async function AdminTasksPage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  return <TasksView searchParams={searchParams} />;
+  return <TasksView searchParams={await searchParams} />;
 }

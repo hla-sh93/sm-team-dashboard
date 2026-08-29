@@ -26,9 +26,9 @@ import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  const { year, month } = await resolveActiveMonth(searchParams);
+  const { year, month } = await resolveActiveMonth(await searchParams);
   const label = monthLabel({ year, month });
 
   const [employees, companies, tasks] = await Promise.all([

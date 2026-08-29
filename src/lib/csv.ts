@@ -5,7 +5,11 @@
 export const BOM = "﻿";
 
 function escapeCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
+  const raw = v == null ? "" : String(v);
+  // Spreadsheet applications evaluate text beginning with these characters as
+  // formulas. Exported names/titles are untrusted text, so prefix an apostrophe
+  // (the standard spreadsheet literal marker). Numeric values stay numeric.
+  const s = typeof v === "string" && /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

@@ -6,9 +6,9 @@ import PublishingClient from "./publishing-client";
 export default async function PublishingPage({
   searchParams,
 }: {
-  searchParams: { y?: string; m?: string };
+  searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  const { year, month } = await resolvePublishMonth(searchParams);
+  const { year, month } = await resolvePublishMonth(await searchParams);
   const [employees, companies, bucketTasks, continuationRaw, carryover] = await Promise.all([
     prisma.employee.findMany(),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),

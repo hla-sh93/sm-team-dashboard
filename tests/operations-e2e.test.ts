@@ -43,9 +43,96 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", async () => {
   const { PrismaClient } = await import("@prisma/client");
+  const { assertIsolatedTestDatabaseUrl } = await import("./_helpers/test-database");
+  const url = assertIsolatedTestDatabaseUrl(`file:${scratch.target}`);
   return {
-    prisma: new PrismaClient({ datasources: { db: { url: `file:${scratch.target}` } } }),
+    prisma: new PrismaClient({ datasources: { db: { url } } }),
   };
+});
+
+describe("critical-operation concurrency", () => {
+  it("allows only one of two simultaneous creates with the same company name", async () => {
+    if (skip()) return;
+    const name = `${uniq}-concurrent-create`;
+    const [first, second] = await Promise.all([
+      actions.createCompany(companyInput({ name })),
+      actions.createCompany(companyInput({ name })),
+    ]);
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    expect(await prisma.company.count({ where: { name } })).toBe(1);
+  });
+
+  it("leaves one coherent piece set after simultaneous month regeneration", async () => {
+    if (skip()) return;
+    const name = `${uniq}-concurrent-schedule`;
+    expect(
+      (
+        await actions.createCompany(
+          companyInput({ name, posts: 3, stories: 0, reels: 0, aiReels: 0 }),
+        )
+      ).ok,
+    ).toBe(true);
+    const company = await prisma.company.findUnique({ where: { name } });
+    expect(company).not.toBeNull();
+
+    const results = await Promise.all([
+      actions.generateSchedule(YEAR, MONTH),
+      actions.generateSchedule(YEAR, MONTH),
+    ]);
+    expect(results.some((result: { ok: boolean }) => result.ok)).toBe(true);
+
+    const pieceStages = await prisma.task.findMany({
+      where: {
+        companyId: company.id,
+        year: YEAR,
+        month: MONTH,
+        pieceNo: { not: null },
+        stage: { in: ["DESIGN", "PUBLISH"] },
+      },
+      select: { pieceNo: true, stage: true },
+    });
+    const identities = pieceStages.map((task: any) => `${task.pieceNo}|${task.stage}`);
+    expect(pieceStages).toHaveLength(6);
+    expect(new Set(identities).size).toBe(identities.length);
+  });
+
+  it("keeps duplicate publication confirmation logically idempotent", async () => {
+    if (skip()) return;
+    const name = `${uniq}-concurrent-publish`;
+    expect(
+      (
+        await actions.createCompany(
+          companyInput({ name, posts: 1, stories: 0, reels: 0, aiReels: 0 }),
+        )
+      ).ok,
+    ).toBe(true);
+    expect((await actions.generateSchedule(YEAR, MONTH)).ok).toBe(true);
+    const company = await prisma.company.findUnique({ where: { name } });
+    const publish = await prisma.task.findFirst({
+      where: { companyId: company.id, stage: "PUBLISH" },
+    });
+    expect(publish).not.toBeNull();
+
+    const [first, second] = await Promise.all([
+      actions.updateTaskStatus(publish.id, "PUBLISHED"),
+      actions.updateTaskStatus(publish.id, "PUBLISHED"),
+    ]);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+
+    const rows = await prisma.task.findMany({ where: { id: publish.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("PUBLISHED");
+    expect(rows[0].board).toBe("DONE");
+    const predecessors = await prisma.task.findMany({
+      where: {
+        pipelineKey: rows[0].pipelineKey,
+        stage: { in: ["DESIGN", "SHOOT", "EDIT"] },
+      },
+    });
+    expect(predecessors.every((task: any) => task.board === "DONE")).toBe(true);
+  });
 });
 
 // Imported dynamically in beforeAll so the mocks above are wired up first.
@@ -352,6 +439,25 @@ describe("task operations", () => {
     // Manual work has no generated counterpart to resurrect, so it is removed
     // outright rather than soft-canceled like an engine-owned piece.
     expect(await prisma.task.findUnique({ where: { id: row.id } })).toBeNull();
+  });
+
+  it("rejects invalid detail enums from a direct server-action call", async () => {
+    if (skip()) return;
+    const co = await makeCompany({ name: `${uniq}-invalid-detail-enums` });
+    await actions.generateSchedule(YEAR, MONTH);
+    const card = (await contentOf(co.id)).find((task: any) => task.stage === "DESIGN");
+    const before = await prisma.task.findUnique({ where: { id: card.id } });
+
+    const result = await actions.updateTaskDetails([card.id], {
+      priority: "DROP_EVERYTHING",
+      status: "IMPOSSIBLE_STATE",
+    });
+    expect(result.ok).toBe(false);
+
+    const after = await prisma.task.findUnique({ where: { id: card.id } });
+    expect(after.priority).toBe(before.priority);
+    expect(after.status).toBe(before.status);
+    expect(after.board).toBe(before.board);
   });
 });
 
