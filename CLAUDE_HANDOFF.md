@@ -8,7 +8,7 @@ Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **BRU tri-source reconciliation; publication-date correction prepared locally but not deployed or applied**
+Current phase: **Worktree committed in five scoped commits and verified green (453 tests, build passes). Release blocked on adding `CRON_SECRET` to Vercel production — see §10. BRU date correction still unapplied.**
 
 ## 1. How to read this handoff
 
@@ -334,6 +334,51 @@ Read these before making architectural or deployment changes:
 
 **[PENDING USER DECISION]** Before deployment, the user must explicitly choose whether to deploy the complete current local worktree (the 53 QA files plus the four date files), or authorize a safely isolated release plan. Do not assume that approval from the request to correct dates.
 
+### 2026-08-29 update — worktree committed, and a hard release blocker found
+
+**[VERIFIED]** The dirty worktree no longer exists. All work is committed in five scoped commits on
+`codex/qa-deep-stabilization`, so nothing can be lost between agents and any scope can be reverted alone:
+
+| Commit | Scope | Author of the work |
+| --- | --- | --- |
+| `28b7ec9` | QA stabilization (read-only build, fail-closed secrets, Next 15, Zod, CSV, headers, guards) | Codex |
+| `5042963` | Regeneration-reality guard (completed cards keep their real dates) | Claude |
+| `136754f` | Actual publication-date correction (schema, action, form, test) | Codex |
+| `b53cb24` | This shared handoff record + agent pointers | Codex, extended by Claude |
+| `e7cc220` | `tsconfig` excludes `tmp/` so the local build gate works at all | Claude |
+
+**[VERIFIED]** Clean-tree verification after committing: `npx vitest run` → **453/453 in 40 files**;
+`npm run build` → **succeeds** (Next 15.5.21, all routes compiled). The local DB hash is unchanged.
+
+**[VERIFIED] 🔴 RELEASE BLOCKER — deploying as-is silently kills all three Telegram reports.**
+
+- `vercel.json` schedules four crons: daily brief (two waves), weekly digest, and the 17:00 done report.
+- Commit `28b7ec9` correctly made every cron route **fail closed**: when `CRON_SECRET` is absent the route
+  now returns `503` before doing any work.
+- **`CRON_SECRET` does not exist in the Vercel production environment.** A production env listing shows only
+  `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_BOT_TOKEN` alongside the Postgres/Neon variables.
+- The code currently live in production (`5c3e9e1`) fails **open** — it skips the check when the secret is
+  missing — which is the only reason the reports run today.
+
+Therefore: **deploy this branch without adding `CRON_SECRET` first and the morning brief, the weekly digest,
+and the 17:00 done report all stop.** They would fail as `503` inside Vercel's cron log, with no message in
+Telegram — the failure mode is silence, which is the hardest kind to notice.
+
+Required release order (do not reorder):
+
+1. Add `CRON_SECRET` to the Vercel **production** environment. Vercel automatically sends
+   `Authorization: Bearer $CRON_SECRET` on cron invocations once that variable exists, so no code change is
+   needed. The value must be generated and entered by the user — an agent must not create or handle it.
+2. Merge/deploy the branch.
+3. Verify each cron route answers `401` to an unauthenticated request (proving fail-closed is live) and that
+   the next scheduled report actually arrives in Telegram.
+4. Verify the production edit dialog now exposes `تاريخ النشر`, then apply the seven BRU dates from §6.
+
+**[VERIFIED]** Deploying is otherwise *safer* than the current production state: the old build ran
+`prisma db push --accept-data-loss`, imported a local snapshot, and executed roughly thirty data-repair
+scripts on every deploy. After `28b7ec9` the build only compiles, so a deployment can no longer overwrite
+production data — which is also what protects any live reconciliation work from being erased by the next push.
+
 ## 11. Exact next actions
 
 1. Read this file and run `git status --short`; preserve all existing user work.
@@ -375,6 +420,21 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-08-29 — Claude — Worktree committed, build gate repaired, release blocker found
+
+- **[VERIFIED]** Committed the entire dirty worktree as five scoped commits (table in §10) so no work can be
+  lost between agents and each scope is independently revertible. Working tree is now clean.
+- **[VERIFIED]** Repaired the local build gate: `tmp/worktrees/task-descriptions/` is a second full copy of
+  the repository, and TypeScript was compiling both, so `npm run build` failed on duplicate declarations.
+  `tmp/` is git-ignored, so Vercel never saw it — the *local* gate was broken while the real one was fine,
+  which is the worst arrangement: verification fails for a fake reason and gets ignored. `tsconfig.json` now
+  excludes `tmp` and `.generated`; the build passes.
+- **[VERIFIED] 🔴 Found the release blocker documented in §10:** `CRON_SECRET` is absent from Vercel
+  production while the new cron routes fail closed on a missing secret. Deploying without adding it first
+  stops all three Telegram reports silently. Not deployed; awaiting the user.
+- Removed the four `scripts/.diag-*.ts` scratch files (session diagnostics for the date defect, now closed)
+  and the `prisma/.audit-copy.db` working copy.
 
 ### 2026-08-29 — Claude — Deep test pass and regeneration-reality guard
 
