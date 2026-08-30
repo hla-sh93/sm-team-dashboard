@@ -8,7 +8,7 @@ Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Worktree committed in five scoped commits and verified green (453 tests, build passes). Release blocked on adding `CRON_SECRET` to Vercel production — see §10. BRU date correction still unapplied.**
+Current phase: **Released to production and verified live (six commits, `main` = `c919060`). `CRON_SECRET` is set and the crons are fail-closed in production. Next: apply the seven BRU dates from §6.**
 
 ## 1. How to read this handoff
 
@@ -350,7 +350,9 @@ Read these before making architectural or deployment changes:
 **[VERIFIED]** Clean-tree verification after committing: `npx vitest run` → **453/453 in 40 files**;
 `npm run build` → **succeeds** (Next 15.5.21, all routes compiled). The local DB hash is unchanged.
 
-**[VERIFIED] 🔴 RELEASE BLOCKER — deploying as-is silently kills all three Telegram reports.**
+**[RESOLVED 2026-08-29] 🟢 The release blocker below is closed. `CRON_SECRET` was added to Vercel production by the user and the branch is deployed. The description is kept because it explains why the variable must never be removed.**
+
+**[VERIFIED] Original blocker — deploying without `CRON_SECRET` silently kills all three Telegram reports.**
 
 - `vercel.json` schedules four crons: daily brief (two waves), weekly digest, and the 17:00 done report.
 - Commit `28b7ec9` correctly made every cron route **fail closed**: when `CRON_SECRET` is absent the route
@@ -420,6 +422,29 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-08-29 — Claude — Released to production and verified live
+
+- **[USER-CONFIRMED]** The user added `CRON_SECRET` to the Vercel production environment (type `Secret`).
+  The value was generated and entered by the user; no agent saw or handled it.
+- **[LIVE]** `main` fast-forwarded `5c3e9e1` → `c919060` and deployed. The push was made as
+  `git push origin codex/qa-deep-stabilization:main`, which never checks out a branch, so the shared
+  working directory was not disturbed while the other agent was active in it.
+- **[LIVE/VERIFIED]** Production checks after the deployment:
+  - `/icon.svg` → `200`. That file exists only in `28b7ec9`, so the new build is confirmed live.
+  - `GET /api/cron/done-report` without credentials → **`401 {"ok":false,"error":"unauthorized"}`**.
+    `401` rather than `503` is the decisive result: it proves both that the fail-closed code is live and
+    that `CRON_SECRET` is readable by the runtime. Vercel supplies the bearer token to its own cron
+    invocations, so the scheduled reports authenticate normally.
+  - `/today` renders with real production data.
+- **[VERIFIED]** No production data was written by this release. The build is compile-only since `28b7ec9`,
+  and the Prisma schema is unchanged across all six commits (`git diff 5c3e9e1..HEAD -- prisma/` is empty),
+  so no schema push was required.
+- **[PENDING]** Minor: the browser console reports a React hydration mismatch (minified error #418) on
+  `/today`. The page renders correctly and this is not known to be a regression from this release — it was
+  not measured before it. Worth a look, not a blocker.
+- **[PENDING]** Next action is unchanged and belongs to the matching lane: apply the seven BRU actual dates
+  from §6 using the `تاريخ النشر` field now live in the edit dialog, then verify each card.
 
 ### 2026-08-29 — Claude — Worktree committed, build gate repaired, release blocker found
 
