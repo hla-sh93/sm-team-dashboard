@@ -92,6 +92,7 @@ export default function TaskForm({
     setForm((f) => ({ ...f, [k]: v }));
   const isDesignUnitEditable =
     isEdit && task?.kind === "CONTENT" && task.stage !== "PUBLISH" && task.type === "POST";
+  const isPublishCard = isEdit && task?.kind === "PUBLISH" && task.stage === "PUBLISH";
   const postFormat = Number(form.quantity) > 1 ? "CAROUSEL" : "SINGLE";
 
   const onSubmit = (e: React.FormEvent) => {
@@ -106,10 +107,7 @@ export default function TaskForm({
           title: form.title.trim(),
           workDate: form.workDate || null,
           readyDate: form.readyDate || null,
-          publishDate:
-            task?.kind === "CONTENT" && task.stage === "PUBLISH"
-              ? form.publishDate || null
-              : undefined,
+          publishDate: isPublishCard ? form.publishDate || null : undefined,
           assigneeId: form.assigneeId || null,
           priority: form.priority,
           status: form.status,
@@ -213,7 +211,7 @@ export default function TaskForm({
             </div>
           </div>
 
-          {isEdit && task?.kind === "CONTENT" && task.stage === "PUBLISH" && (
+          {isPublishCard && (
             <div className="space-y-1.5">
               <Label>تاريخ النشر</Label>
               <Input
