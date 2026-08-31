@@ -13,6 +13,7 @@ import {
   correctLatestRenewal,
   endContract,
 } from "@/server/actions/companies";
+import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
 import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
@@ -135,6 +136,40 @@ export default function CompaniesClient({
           toast(`تم تصحيح آخر تجديد لـ ${c.name} وإعادة بناء دورته فقط`);
           router.refresh();
         } else toast(r.error, "error");
+      });
+    });
+  };
+
+  /** Paste a validated JSON plan payload. The selected card supplies the company
+   * id, so a payload copied from another client cannot accidentally target it. */
+  const onImportPlan = (c: Company) => {
+    Swal.fire({
+      title: `استيراد خطة — ${c.name}`,
+      input: "textarea",
+      inputLabel: "بيانات الخطة JSON",
+      inputPlaceholder: '{"year":2026,"month":8,"items":[...]}',
+      inputAttributes: { dir: "ltr", spellcheck: "false" },
+      showCancelButton: true,
+      confirmButtonText: "تحقق وطبّق الخطة",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#0a8fa3",
+    }).then((res) => {
+      if (!res.isConfirmed || !res.value) return;
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(res.value as string) as Record<string, unknown>;
+      } catch {
+        toast("JSON غير صالح — لم يتغير شيء", "error");
+        return;
+      }
+      delete payload.companyName;
+      payload.companyId = c.id;
+      start(async () => {
+        const result = await applyCompanyPlanUpdate(payload);
+        if (result.ok) {
+          toast(`تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}`);
+          router.refresh();
+        } else toast(result.error, "error");
       });
     });
   };
@@ -321,6 +356,14 @@ export default function CompaniesClient({
                   </button>
                 )}
               </div>
+            )}
+            {c.managed && (
+              <button
+                className="mt-3 text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
+                onClick={() => onImportPlan(c)}
+              >
+                استيراد خطة JSON
+              </button>
             )}
           </Card>
           );

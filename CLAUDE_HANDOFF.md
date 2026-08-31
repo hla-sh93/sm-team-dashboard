@@ -8,7 +8,7 @@ Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Production is still verified through `22cffc5`. The user authenticated the in-app admin session. A safe, company-scoped latest-renewal correction and a validated plan-import path are implemented locally for Wasl; 460/460 tests and the production build pass. Nothing in Wasl production has been changed yet: deployment, live renewal correction, plan application, and live verification are the immediate next actions.**
+Current phase: **Commit `da39956` is live on Vercel. Wasl's production renewal is corrected: the only cycles are `21/7 → 21/8` and `1/9 → 1/10`; the wrong `21/8` renewal is gone. The validated 43-piece plan has not yet been applied. A generic JSON-plan import control is implemented and verified locally (460/460 + build) and is awaiting its small follow-up deployment before the plan and six dated Ayman assignments can be applied live.**
 
 ## 1. How to read this handoff
 
@@ -139,7 +139,9 @@ Other scope notes:
 - **[LIVE/VERIFIED 2026-08-31]** The user authenticated the controlled in-app admin session. The live Wasl edit dialog showed two stored cycles: `21/7 → 21/8` and the wrong `21/8 → 21/9`. The normal form cannot safely correct the second one because its editable start field is the original publication anchor.
 - **[LOCAL-ONLY]** A dedicated `correctLatestRenewal` action and `صحّح آخر تجديد` admin control now replace only the latest renewal, calculate the full shared schedule but persist only the selected company's rows, build the new bucket first, and remove the obsolete bucket second. Tests prove that the prior-cycle rows remain byte-identical.
 - **[LOCAL-ONLY]** `scripts/data/wasl-plan-2026-09.json` contains 8 reel, 15 post, and 20 story briefs from the verified PDF, with no blank or duplicate pieces. Unsupported numbers are explicitly marked `تحتاج تحقق ومصدر قبل النشر`. The payload pins Post 1–3 and Story 1–3 design cards to 2026-08-30, pins Post 1 publication to 2026-09-01, and does not assign a reel shoot date.
-- **[PENDING]** Deploy the local code, correct the live renewal from `2026-08-21` to `2026-09-01`, apply the validated plan payload through the authenticated admin endpoint, then verify the previous and new cycles live before reporting Wasl.
+- **[LIVE/VERIFIED 2026-08-31]** Commit `da39956` was pushed to both branches and reached production. The dedicated control corrected the live renewal from `2026-08-21` to `2026-09-01`. The live card now says `الدورة تبدأ 1 أيلول`; the edit dialog shows exactly `21 تموز → 21 آب` and `1 أيلول → 1 تشرين الأول`. The original anchor and previous cycle remain present.
+- **[LOCAL-ONLY]** The server plan importer is live, and a generic visible `استيراد خطة JSON` control was added locally so the authenticated manager/agent can invoke it through the supported UI without inspecting cookies or bypassing the application. It passes 460/460 tests and the production build, but this follow-up control is not deployed yet.
+- **[PENDING]** Deploy the plan-import control, apply `scripts/data/wasl-plan-2026-09.json`, then verify briefs/owners/dates and both task buckets live before reporting Wasl.
 
 ### Schools additional design requests
 
@@ -422,7 +424,9 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 - **[LOCAL-ONLY]** Added an admin-protected, all-or-nothing plan-update path. It validates every `(type, pieceNo)` mapping before writing, copies each description to every pipeline stage, refuses incomplete maps, and can pin explicitly supplied design/publication dates without changing owners or status.
 - **[VERIFIED — FILES/LOCAL]** Converted the visually checked Wasl Plan 2 into `scripts/data/wasl-plan-2026-09.json`: exactly 8 reels, 15 posts, and 20 stories, no blanks or duplicate identities. The four items with source-sensitive facts are labelled for verification instead of being presented as established facts. Post 1–3 and Story 1–3 design are pinned to 2026-08-30; Post 1 publication is pinned to 2026-09-01; no reel shoot date is assigned.
 - **[VERIFIED]** `npm run typecheck`, 460/460 tests in 42 files, and `npm run build` pass. The integration suite exercises correction, prior-history preservation, complete brief propagation, explicit-date pins, and no-partial-write failure.
-- **[PENDING]** No production Wasl value has changed yet. Next: commit/push/deploy, then use the authenticated session to correct the renewal, apply the payload, and verify the old/new cycles and all team assignments live before reporting Wasl.
+- **[LIVE/VERIFIED]** Commit `da39956` was pushed to `origin/main` and `origin/codex/qa-deep-stabilization`; Vercel served the new correction control. Using the authenticated UI, Wasl's latest renewal was changed from 2026-08-21 to 2026-09-01. A fresh reload and edit-dialog inspection show only `21/7 → 21/8` and `1/9 → 1/10`; the original publication anchor and previous cycle remain intact.
+- **[LOCAL-ONLY]** Added a generic `استيراد خطة JSON` UI control so the validated server action can be invoked through supported, auditable admin UI. The selected company id is forced by the card, preventing a pasted payload from targeting another client. The follow-up still passes 460/460 and the production build.
+- **[PENDING]** Deploy the small import-control follow-up, apply the Wasl payload, and verify old/new task buckets plus all 43 descriptions, six Ayman dates, and first publication live before reporting Wasl.
 
 ### 2026-08-30 — Codex — Publish-date UI hotfix and Wasl audit started
 
