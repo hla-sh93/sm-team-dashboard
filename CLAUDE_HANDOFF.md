@@ -2,13 +2,13 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-08-29**
+Last updated: **2026-08-31**
 
 Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Released to production and verified live (six commits, `main` = `c919060`). `CRON_SECRET` is set and the crons are fail-closed in production. Next: apply the seven BRU dates from §6.**
+Current phase: **Production is still verified through `22cffc5`. The user authenticated the in-app admin session. A safe, company-scoped latest-renewal correction and a validated plan-import path are implemented locally for Wasl; 460/460 tests and the production build pass. Nothing in Wasl production has been changed yet: deployment, live renewal correction, plan application, and live verification are the immediate next actions.**
 
 ## 1. How to read this handoff
 
@@ -90,6 +90,7 @@ The user does not want superficial count matching. When a discrepancy appears, o
 - Schools brief PDF: `C:\Users\hla2-\Downloads\September Awareness Campaign2026 (2).pdf`
 - Original QA request: `C:\Users\hla2-\.codex\attachments\a7cc5a45-92e4-4851-a075-a7a782812f42\pasted-text.txt`
 - Contract-cycle clarification: `C:\Users\hla2-\.codex\attachments\b52edb9d-c3d6-4b1f-aa8f-4113c1a02067\pasted-text.txt`
+- Claude's detailed handoff artifact supplied by the user: <https://claude.ai/code/artifact/a3225a7c-deec-49f4-8207-3be5892fef2f>
 
 ### Instagram pages supplied by the user
 
@@ -102,7 +103,7 @@ The user does not want superficial count matching. When a discrepancy appears, o
 | PhoeniJobs | <https://www.instagram.com/phoenijobs.sy/> | Managed |
 | Mango | <https://www.instagram.com/mango.mangoo2026/> | Managed |
 | BW Marketing Services | <https://www.instagram.com/bw.marketingservices/> | Managed |
-| Wasl FX | <https://www.instagram.com/wasl.fx/> | Second cycle started; see company notes below |
+| Wasl FX | <https://www.instagram.com/wasl.fx/> | Previous cycle closed; new cycle must start with first publication on 2026-09-01; see company notes below |
 | Agalya | <https://www.instagram.com/agalya.beauty.clinic/> | Plan finished and not renewed; no publication reconciliation needed |
 | Chinese Center Mall | <https://www.instagram.com/chinese_center_mall_latakia/> | Plan finished and not renewed; no publication reconciliation needed |
 | Dr Nour Lab | <https://www.instagram.com/dr.nourlab/> | Managed |
@@ -127,9 +128,18 @@ Other scope notes:
 
 ### Wasl
 
-- **[USER-CONFIRMED]** The second cycle has started.
-- **[USER-CONFIRMED]** Nothing has been published in that second cycle yet.
-- Required work is communication and preparation, followed by setting shooting and publishing dates. Do not invent those dates.
+- **[USER-CONFIRMED 2026-08-30]** Treat every task in the previous cycle as finished.
+- **[USER-CONFIRMED 2026-08-30]** The renewal/next publishing cycle starts on **2026-09-01**, which is also the required first-publication date. Do not anchor this cycle on the signature date or on 2026-08-21.
+- **[USER-CONFIRMED 2026-08-30]** Ayman's work for today, 2026-08-30, is design for the first **3 posts + 3 stories** of the new cycle.
+- **[USER-CONFIRMED 2026-08-30]** The team will try to shoot one reel. No shooting date is confirmed, so do not invent one.
+- **[LIVE/VERIFIED]** The July-cycle view contains 103 Wasl cards: 100 previous-cycle cards are already `منجز`; the only three open cards belong to the incorrectly generated `21/8 → 20/9` cycle, not to the finished `13/7 → 12/8` cycle.
+- **[LIVE/VERIFIED]** The August view currently reports 105 pending and 33 done Wasl cards because Vercel generated a cycle labelled `21/8 → 20/9`. This conflicts with the user's 2026-09-01 renewal decision and must be corrected at the company-cycle source before task regeneration.
+- **[VERIFIED — FILES]** `D:\smart touch\social media plans\وصل للتداول\Wasl_Content_Plan NO.2- AUG.pdf` is the newest plan file (modified 2026-08-29). It was text-extracted and all 23 pages were visually inspected. It defines **8 reels + 15 posts + 20 stories**, matching the live company quantities, and supplies item-level content for all pieces. The first three posts and first three stories therefore must use those descriptions; do not leave them as `بلا وصف`.
+- **[VERIFIED — FILES]** `Wasl_Content_Plan NO.1- AUG.docx` is an older publication calendar (modified 2026-08-26) covering 2026-07-21 through 2026-08-22. Its structural text was read; LibreOffice was unavailable for DOCX rendering, so it is not the source for the new cycle's item briefs.
+- **[LIVE/VERIFIED 2026-08-31]** The user authenticated the controlled in-app admin session. The live Wasl edit dialog showed two stored cycles: `21/7 → 21/8` and the wrong `21/8 → 21/9`. The normal form cannot safely correct the second one because its editable start field is the original publication anchor.
+- **[LOCAL-ONLY]** A dedicated `correctLatestRenewal` action and `صحّح آخر تجديد` admin control now replace only the latest renewal, calculate the full shared schedule but persist only the selected company's rows, build the new bucket first, and remove the obsolete bucket second. Tests prove that the prior-cycle rows remain byte-identical.
+- **[LOCAL-ONLY]** `scripts/data/wasl-plan-2026-09.json` contains 8 reel, 15 post, and 20 story briefs from the verified PDF, with no blank or duplicate pieces. Unsupported numbers are explicitly marked `تحتاج تحقق ومصدر قبل النشر`. The payload pins Post 1–3 and Story 1–3 design cards to 2026-08-30, pins Post 1 publication to 2026-09-01, and does not assign a reel shoot date.
+- **[PENDING]** Deploy the local code, correct the live renewal from `2026-08-21` to `2026-09-01`, apply the validated plan payload through the authenticated admin endpoint, then verify the previous and new cycles live before reporting Wasl.
 
 ### Schools additional design requests
 
@@ -250,16 +260,16 @@ Design evidence:
 
 ## 7. Why the dates were wrong
 
-**[VERIFIED]** The application historically stores the planned publishing date when a user confirms publication:
+**[VERIFIED]** Before commit `136754f`, the application stored the planned publishing date when a user confirmed publication:
 
 - `src/app/publishing/publishing-client.tsx`: `markPiecesPublished` does not collect an actual date in the UI.
 - `src/server/actions/tasks.ts`: `markPiecesPublished(ids, date?)` falls back to the task's planned `publishDate` when no explicit date is supplied.
 
-Therefore “published” could be correct while the displayed date remained the old schedule date.
+Therefore “published” could be correct while the displayed date remained the old schedule date. The editing defect is fixed and deployed; the seven existing BRU records still need one-time data correction.
 
-## 8. Local code work prepared for publication-date correction
+## 8. Publication-date correction feature — committed and live
 
-The following four changes are **[LOCAL-ONLY]**, unstaged on top of the broader staged QA work, and not deployed:
+The following four changes are committed in `136754f`, pushed, deployed, and **[LIVE/VERIFIED]**:
 
 1. `src/lib/schemas.ts`
    - Added optional validated `publishDate` to `taskDetailsSchema`.
@@ -277,11 +287,13 @@ Test evidence:
 - RED: the focused test initially failed because `publishDate` was rejected as an unknown field.
 - GREEN: `npx vitest run tests/operations-e2e.test.ts` passed **25/25** after implementation.
 - A targeted TypeScript run excluding the unrelated duplicate `tmp/worktrees` tree passed.
-- Standard `npm run typecheck` still encountered unrelated duplicate-worktree/baseline errors under `tmp/worktrees/task-descriptions`; do not misreport this as a defect in the four-file date patch.
+- Commit `e7cc220` permanently excludes ignored `tmp/` and `.generated/` copies from TypeScript, repairing the local build gate.
+- Current clean-tree verification: **453/453 tests**, **57/57 deep checks**, and the Next.js production build pass.
+- **[LIVE/VERIFIED]** The production task-edit dialog now exposes `تاريخ النشر`.
 
 ## 9. Earlier deep QA stabilization work
 
-A major QA stabilization set already exists in the worktree as **53 staged files** (approximately 2,888 insertions and 874 deletions). It must not be silently mixed with a small production data/date change.
+The earlier QA stabilization set, regeneration-reality fix, publication-date feature, build-gate fix, and handoff documentation are now separated into seven scoped commits, pushed, and deployed. The worktree is clean; the former 57-file loss risk is resolved.
 
 Main outcomes documented in `docs/qa/FINAL_QA_REPORT.md` and `docs/qa/CHANGELOG_QA.md`:
 
@@ -294,7 +306,7 @@ Main outcomes documented in `docs/qa/FINAL_QA_REPORT.md` and `docs/qa/CHANGELOG_
 - Added security headers, accessible month controls, and an app icon.
 - Added a fail-closed test-database guard.
 - Added concurrency, HTTP boundary, timezone, load, regeneration, and tooling-safety coverage.
-- Final recorded QA baseline: **452/452 tests passing in 40 files**, typecheck/lint/schema validation/build passing at the end of that audit, valuable local DB hash unchanged.
+- Current recorded baseline: **453/453 tests passing in 40 files**, **57/57 deep checks**, typecheck/lint/schema validation/build passing, and the valuable local DB hash unchanged.
 
 Known risks from the QA report remain important:
 
@@ -316,28 +328,9 @@ Read these before making architectural or deployment changes:
 - `DEPLOY.md`
 - `tasks/plan.md`
 
-## 10. Deployment state and blocker
+## 10. Repository, deployment, and verification state
 
-- **[VERIFIED]** Latest production deployment inspected:
-  - ID: `dpl_FCubNnaU4H8U9r7zo1MzCJQpoZTb`
-  - Deployment URL: <https://socialmediateam-33y74g7lg-sebaalsaeed03-7448s-projects.vercel.app>
-  - Production alias: <https://socialmediateam.vercel.app>
-  - Status: Ready
-  - Created: 2026-08-29 08:41 Baghdad
-- **[VERIFIED]** The production edit dialog still did not contain `تاريخ النشر`, proving the four-file date UI patch was not live at the time of inspection.
-- Two ordinary deploy attempts failed during upload with `fetch failed`.
-- A full-workspace archive deploy hung and was terminated.
-- A clean temporary deployment copy was created at `tmp\vercel-date-deploy-20260829-2024` with 309 files and current tracked contents.
-- Deployment of that copy was not allowed because it would publish the full repository, including 53 broader staged changes, while the user had only authorized BRU date correction. Do not bypass that safety boundary.
-- `vercel env run` did not expose the required production database secrets locally, so direct production DB mutation was not available.
-- Telegram-bot token access was discussed but no token availability or value was verified in the retained evidence. Do not assume access, and never copy a token into this file.
-
-**[PENDING USER DECISION]** Before deployment, the user must explicitly choose whether to deploy the complete current local worktree (the 53 QA files plus the four date files), or authorize a safely isolated release plan. Do not assume that approval from the request to correct dates.
-
-### 2026-08-29 update — worktree committed, and a hard release blocker found
-
-**[VERIFIED]** The dirty worktree no longer exists. All work is committed in five scoped commits on
-`codex/qa-deep-stabilization`, so nothing can be lost between agents and any scope can be reverted alone:
+**[VERIFIED]** The former dirty worktree is resolved. Eight scoped code/release commits are pushed on `codex/qa-deep-stabilization` and `origin/main`, and each scope can be reverted independently:
 
 | Commit | Scope | Author of the work |
 | --- | --- | --- |
@@ -346,57 +339,56 @@ Read these before making architectural or deployment changes:
 | `136754f` | Actual publication-date correction (schema, action, form, test) | Codex |
 | `b53cb24` | This shared handoff record + agent pointers | Codex, extended by Claude |
 | `e7cc220` | `tsconfig` excludes `tmp/` so the local build gate works at all | Claude |
+| `c919060` | Release-readiness handoff and the original `CRON_SECRET` blocker | Claude |
+| `bb09751` | Live-release verification and resolved-blocker handoff | Claude |
+| `22cffc5` | Show `تاريخ النشر` for real `kind=PUBLISH` cards, plus a real-form regression test | Codex |
 
-**[VERIFIED]** Clean-tree verification after committing: `npx vitest run` → **453/453 in 40 files**;
-`npm run build` → **succeeds** (Next 15.5.21, all routes compiled). The local DB hash is unchanged.
+Current Git state checked on 2026-08-31:
 
-**[RESOLVED 2026-08-29] 🟢 The release blocker below is closed. `CRON_SECRET` was added to Vercel production by the user and the branch is deployed. The description is kept because it explains why the variable must never be removed.**
+- `HEAD` = `22cffc5` (full SHA can be re-read with Git).
+- `origin/main` = `22cffc5`.
+- `origin/codex/qa-deep-stabilization` = `22cffc5`.
+- `git status --short` contains the in-progress Wasl correction/import implementation, its tests/data, and this handoff update. These changes are **local-only and uncommitted** until the next release step.
+- There are exactly eight pushed commits after the former production base `5c3e9e1`.
 
-**[VERIFIED] Original blocker — deploying without `CRON_SECRET` silently kills all three Telegram reports.**
+**[LIVE/VERIFIED]** Production release state:
 
-- `vercel.json` schedules four crons: daily brief (two waves), weekly digest, and the 17:00 done report.
-- Commit `28b7ec9` correctly made every cron route **fail closed**: when `CRON_SECRET` is absent the route
-  now returns `503` before doing any work.
-- **`CRON_SECRET` does not exist in the Vercel production environment.** A production env listing shows only
-  `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_BOT_TOKEN` alongside the Postgres/Neon variables.
-- The code currently live in production (`5c3e9e1`) fails **open** — it skips the check when the secret is
-  missing — which is the only reason the reports run today.
+- The user added `CRON_SECRET` to Vercel production. No agent saw, generated, copied, or stored its value.
+- The branch was pushed to `main` and deployed without disturbing the shared working directory.
+- `/icon.svg` returned `200`, confirming the new build is live.
+- An unauthenticated `GET /api/cron/done-report` returned `401`, proving both that the fail-closed code is live and that the runtime can read `CRON_SECRET`. A missing runtime secret would produce `503` instead.
+- `/today` rendered real production data.
+- The production edit dialog now exposes `تاريخ النشر` on real `kind=PUBLISH` cards. The first release used the impossible `kind=CONTENT && stage=PUBLISH` condition; `22cffc5` repaired it and the live BRU Reel 1 dialog showed the field with three date inputs.
+- The release wrote no production application data: the build is compile-only and `git diff 5c3e9e1..bb09751 -- prisma/` is empty, so no schema push was required.
+- A fingerprinted backup of the local database was taken before deep verification, and every test/deep-audit run left the original database byte-identical.
+- Latest local gates for the Wasl work: **460/460 tests** in 42 files, `npm run typecheck`, and `npm run build` pass. The build logs expected Prisma datasource warnings during caught page-data reads because the local `.env` points to SQLite while the production-schema client expects PostgreSQL; the build exits successfully and production receives its real PostgreSQL URL.
 
-Therefore: **deploy this branch without adding `CRON_SECRET` first and the morning brief, the weekly digest,
-and the 17:00 done report all stop.** They would fail as `503` inside Vercel's cron log, with no message in
-Telegram — the failure mode is silence, which is the hardest kind to notice.
+**[RESOLVED]** The previous hard release blocker is closed. Never remove `CRON_SECRET`: without it, all three protected Telegram report routes fail closed with `503`, and scheduled reports stop silently.
 
-Required release order (do not reorder):
+Remaining non-blockers:
 
-1. Add `CRON_SECRET` to the Vercel **production** environment. Vercel automatically sends
-   `Authorization: Bearer $CRON_SECRET` on cron invocations once that variable exists, so no code change is
-   needed. The value must be generated and entered by the user — an agent must not create or handle it.
-2. Merge/deploy the branch.
-3. Verify each cron route answers `401` to an unauthenticated request (proving fail-closed is live) and that
-   the next scheduled report actually arrives in Telegram.
-4. Verify the production edit dialog now exposes `تاريخ النشر`, then apply the seven BRU dates from §6.
-
-**[VERIFIED]** Deploying is otherwise *safer* than the current production state: the old build ran
-`prisma db push --accept-data-loss`, imported a local snapshot, and executed roughly thirty data-repair
-scripts on every deploy. After `28b7ec9` the build only compiles, so a deployment can no longer overwrite
-production data — which is also what protects any live reconciliation work from being erased by the next push.
+- **[PENDING]** Cards closed directly from the UI do not receive a durable evidence line in `notes`, which conflicts with the user's “closure requires evidence” operating rule. This needs a separate design/fix; do not mix it with BRU date correction.
+- **[PENDING]** `/today` logged a React hydration mismatch (minified error `#418`) during Claude's production inspection. The page rendered and data was unaffected. Investigate separately.
+- Telegram-bot token access was discussed, but agents must not expose or copy token values into logs or this file.
 
 ## 11. Exact next actions
 
 1. Read this file and run `git status --short`; preserve all existing user work.
-2. Ask/confirm the deployment scope if it has not been explicitly answered after this handoff.
-3. Once deployment scope is authorized, deploy safely and verify the production edit dialog exposes `تاريخ النشر`.
-4. Apply only the seven BRU actual dates listed above. Do not change counts, descriptions, assignees, or statuses; keep Post 3 done and unchanged.
-5. Re-open Vercel and verify every corrected card, plus BRU aggregate counts and states.
-6. Send the user the completed BRU report: ready, published, remaining, and due/overdue items.
-7. Continue to the next company only after the user accepts BRU, because the user requested company-by-company reconciliation.
+2. Review, commit, and push the local Wasl correction/import implementation. Wait for the production deployment to become ready and verify the new `صحّح آخر تجديد` control and authenticated `/admin/api/plan-update` route exist before mutating data.
+3. In the already authenticated admin session, correct Wasl's latest renewal from **2026-08-21** to **2026-09-01**. This must use the dedicated correction path, not the company's original `publishStartDate` field.
+4. Apply `scripts/data/wasl-plan-2026-09.json` through the authenticated admin endpoint. The complete-map guard must return success for exactly 8 reels + 15 posts + 20 stories; otherwise stop without partial writes.
+5. Verify live that the old `2026-08-21` bucket has no Wasl auto cards, the previous `21/7 → 21/8` rows remain completed/unchanged, and the new cycle reads `1/9 → 1/10` (displayed last day may be `30/9`).
+6. Verify all 43 new-cycle pieces have descriptions; Post 1–3 and Story 1–3 design cards remain dated 2026-08-30 and assigned to Ayman; Post 1 is the first publication on 2026-09-01; no reel shoot date was invented. Then send the user the Wasl ready/published/remaining/schedule report before moving to Agalya.
+7. Keep the seven authorized BRU actual-date corrections from §6 pending; none were changed in this session. The user's latest message moved Wasl ahead of BRU.
+8. After Wasl acceptance, follow the user's requested order: Agalya (all closed/no renewal), BRU (two reels filmed awaiting edit + one ready at Omar, plus pending date correction), Dr Nour Lab, Siizen, Albalsam, then Mango.
+9. Handle the missing evidence-line behavior and `/today` hydration warning as separate backlog items.
 
 ## 12. Safety constraints for the next agent
 
 - Never publish, send Telegram messages, post to Instagram, or mutate external data merely to inspect it.
 - Browser access to social pages is read-only unless the user separately authorizes an action.
 - Do not expose Telegram tokens, database URLs, cookies, or Vercel secrets in logs or this file.
-- Do not delete, reset, or overwrite the dirty worktree. The 53 staged files and four unstaged date files are intentional and have different scopes.
+- The code worktree was clean at `22cffc5`; `CLAUDE_HANDOFF.md` is intentionally modified for the active Wasl investigation. Inspect ownership and preserve unrelated work; never use broad reset/checkout commands.
 - Do not use a prompt example to replace real plan quantities or dates.
 - Do not treat an influencer/collaboration post as the agency's work without ownership/content evidence.
 - Do not use raw photos as completion evidence.
@@ -422,6 +414,35 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-08-31 — Codex — Safe Wasl correction and complete plan payload prepared locally
+
+- **[LIVE/VERIFIED]** The user signed into the controlled in-app admin session. Wasl's live company card still has 15 posts, 8 reels, and 20 stories, and its edit dialog shows cycle 1 `21/7 → 21/8` plus the incorrect renewal cycle `21/8 → 21/9`. The existing edit form cannot safely repair the second cycle because its date field edits the original publication anchor.
+- **[LOCAL-ONLY]** Added a dedicated, admin-protected latest-renewal correction. It replaces only the latest renewal, calculates the complete shared schedule so capacity stays consistent, but persists only the selected company's generated rows. The replacement cycle is built before the obsolete bucket is removed. A permanent integration test proves the previous-cycle rows remain byte-identical and other buckets are scoped correctly.
+- **[LOCAL-ONLY]** Added an admin-protected, all-or-nothing plan-update path. It validates every `(type, pieceNo)` mapping before writing, copies each description to every pipeline stage, refuses incomplete maps, and can pin explicitly supplied design/publication dates without changing owners or status.
+- **[VERIFIED — FILES/LOCAL]** Converted the visually checked Wasl Plan 2 into `scripts/data/wasl-plan-2026-09.json`: exactly 8 reels, 15 posts, and 20 stories, no blanks or duplicate identities. The four items with source-sensitive facts are labelled for verification instead of being presented as established facts. Post 1–3 and Story 1–3 design are pinned to 2026-08-30; Post 1 publication is pinned to 2026-09-01; no reel shoot date is assigned.
+- **[VERIFIED]** `npm run typecheck`, 460/460 tests in 42 files, and `npm run build` pass. The integration suite exercises correction, prior-history preservation, complete brief propagation, explicit-date pins, and no-partial-write failure.
+- **[PENDING]** No production Wasl value has changed yet. Next: commit/push/deploy, then use the authenticated session to correct the renewal, apply the payload, and verify the old/new cycles and all team assignments live before reporting Wasl.
+
+### 2026-08-30 — Codex — Publish-date UI hotfix and Wasl audit started
+
+- **[VERIFIED/LIVE]** The release claim that `تاريخ النشر` was available was false for real publish cards: production cards use `kind=PUBLISH`, while the form checked the impossible `kind=CONTENT && stage=PUBLISH` combination. No business data was changed while diagnosing this.
+- **[VERIFIED]** Added a real `TaskForm` regression test, fixed the condition, generated the correct Prisma client for the suite, and passed 454/454 tests plus `npm run build`. Commit `22cffc5` was pushed to both the branch and `main`; Vercel deployment `dpl_HRNSt5kPmv5Zmo882uc6pFCZV4ub` reached `Ready`. The public BRU Reel 1 dialog then showed `تاريخ النشر` with its existing 2026-07-23 value.
+- **[USER-CONFIRMED]** The user changed the immediate company order and supplied new facts: Wasl previous cycle fully done; renewal/first publication on 2026-09-01; Ayman designs 3 posts + 3 stories on 2026-08-30; try to shoot one reel without a confirmed date. Agalya is fully closed/no renewal; BRU has two filmed reels awaiting edit plus one ready with Omar; Dr Nour, Siizen, Albalsam, and Mango require later matching.
+- **[LIVE/VERIFIED]** Wasl's live July-cycle view has 100 completed previous-cycle cards plus three open cards explicitly labelled as carryover from the wrong `21/8 → 20/9` cycle. The August view reports 105 pending and 33 done because that wrong cycle was already generated.
+- **[VERIFIED — FILES]** Read `Wasl_Content_Plan NO.1- AUG.docx` structurally and extracted/visually inspected all 23 pages of the newer `Wasl_Content_Plan NO.2- AUG.pdf`. Plan 2 contains complete briefs for 8 reels, 15 posts, and 20 stories and is the source for the new cycle.
+- **[BLOCKED]** The source renewal record can only be changed through the authenticated admin area. The in-app browser reached the admin login; Chrome extension control is unavailable because its native-host registration is missing. No password, cookie, Vercel secret, Telegram token, or database URL was exposed or copied. The attempted full production-environment pull was rejected and not performed.
+- **[PENDING]** User should sign into the admin page in the controlled browser and reply `تم`. Then perform the exact Wasl actions in §11, verify live, and report Wasl before touching the next company.
+- No Wasl task value, contract record, Instagram item, Telegram message, or BRU date was changed in this audit step.
+
+### 2026-08-30 — Codex — Claude release report reconciled into canonical state
+
+- **[USER-CONFIRMED]** Received Claude's detailed report and summary: the former 57-file loss risk is resolved through seven scoped commits; three core defects are fixed; the production cron secret was added and verified; the release is live; no production application data was written.
+- **[VERIFIED]** Local Git agrees: clean `codex/qa-deep-stabilization` worktree at `bb09751`; both `origin/main` and `origin/codex/qa-deep-stabilization` point to the same commit; exactly seven commits follow `5c3e9e1`.
+- **[VERIFIED]** Updated the stale current-state sections that still described the publication-date feature as local-only and deployment as blocked. Historical session-log entries remain unchanged.
+- Added the user-supplied Claude artifact URL to the source registry. The artifact was not publicly readable from the available browser session, so no extra facts were inferred from it; the user's summary, Claude's committed handoff, and Git were used instead.
+- **[PENDING]** Next action is the already-authorized one-time correction of the seven BRU publication dates, followed by live Vercel verification and the BRU ready/published/remaining report.
+- No Vercel data, Telegram message, Instagram content, code behavior, or deployment was changed in this reconciliation step.
 
 ### 2026-08-29 — Claude — Released to production and verified live
 

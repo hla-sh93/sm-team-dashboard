@@ -10,10 +10,11 @@ import {
   deleteCompany,
   archiveCompany,
   renewContract,
+  correctLatestRenewal,
   endContract,
 } from "@/server/actions/companies";
 import { toast } from "@/components/ui/toaster";
-import { contractStateOf, type ContractState } from "@/lib/contract";
+import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
 import type { Company, Employee } from "@/types";
 import { Plus, Pencil, Trash2, CalendarClock } from "lucide-react";
@@ -108,6 +109,36 @@ export default function CompaniesClient({
     });
   };
 
+  /** Fix a wrongly entered last renewal while preserving the original start and
+   * every earlier cycle. This is available even while the wrong cycle is active,
+   * unlike the normal «جدّد» decision. */
+  const onCorrectLatestRenewal = (c: Company) => {
+    const renewals = parseRenewals(c).sort((a, b) => a.getTime() - b.getTime());
+    const latest = renewals[renewals.length - 1];
+    if (!latest) return;
+    Swal.fire({
+      title: `تصحيح آخر تجديد — ${c.name}`,
+      input: "date",
+      inputValue: toISODate(latest),
+      inputLabel: "تاريخ بدء دورة النشر الصحيح",
+      text: "سيُستبدل آخر تجديد فقط، وتبقى كل الدورات الأقدم وسجلها كما هي.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "صحّح آخر تجديد",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#0a8fa3",
+    }).then((res) => {
+      if (!res.isConfirmed || !res.value) return;
+      start(async () => {
+        const r = await correctLatestRenewal(c.id, res.value as string);
+        if (r.ok) {
+          toast(`تم تصحيح آخر تجديد لـ ${c.name} وإعادة بناء دورته فقط`);
+          router.refresh();
+        } else toast(r.error, "error");
+      });
+    });
+  };
+
   /** "Not renewed" — hard stop + pause. Reversible by renewing later. */
   const onEndContract = (c: Company) => {
     Swal.fire({
@@ -190,6 +221,7 @@ export default function CompaniesClient({
         {companies.map((c) => {
           const state = contractStateOf(c);
           const chip = contractChip(state);
+          const hasRenewals = parseRenewals(c).length > 0;
           // The renewal question only exists once a cycle is ending or over.
           const needsAnswer =
             state.state === "due_soon" ||
@@ -279,6 +311,14 @@ export default function CompaniesClient({
                       </button>
                     )}
                   </>
+                )}
+                {hasRenewals && (
+                  <button
+                    className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-warning/10 hover:text-warning"
+                    onClick={() => onCorrectLatestRenewal(c)}
+                  >
+                    صحّح آخر تجديد
+                  </button>
                 )}
               </div>
             )}

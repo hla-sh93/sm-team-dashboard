@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { assertAdmin } from "@/lib/auth";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
@@ -190,7 +191,11 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
  * kept; only their computed workDate/overflow are written back. Re-run anytime
  * after adding/editing tasks, companies or plans — it reschedules everyone.
  */
-export async function generateSchedule(year: number, month: number) {
+async function generateScheduleInternal(
+  year: number,
+  month: number,
+  onlyCompanyId: string | null,
+) {
   try {
     const state = await loadState(year, month);
     const result = buildSchedule(state);
@@ -275,7 +280,12 @@ export async function generateSchedule(year: number, month: number) {
     // the card's تعديل) we also keep their title / dates / owner / priority so
     // hitting إعادة الجدولة never throws the edit away.
     const existing = await prisma.task.findMany({
-      where: { isAuto: true, year, month },
+      where: {
+        isAuto: true,
+        year,
+        month,
+        ...(onlyCompanyId ? { companyId: onlyCompanyId } : {}),
+      },
       select: {
         pipelineKey: true,
         stage: true,
@@ -317,7 +327,12 @@ export async function generateSchedule(year: number, month: number) {
     // replace below too — matched by detKey, falling back to (company, kind,
     // session no.) when a regenerated shoot date shifted the detKey.
     const existingSessions = await prisma.photoSession.findMany({
-      where: { isAuto: true, year, month },
+      where: {
+        isAuto: true,
+        year,
+        month,
+        ...(onlyCompanyId ? { companyId: onlyCompanyId } : {}),
+      },
       select: { detKey: true, companyId: true, kind: true, no: true, status: true },
     });
     const sessionStatusByDet = new Map<string, string>();
@@ -329,19 +344,29 @@ export async function generateSchedule(year: number, month: number) {
       if (!sessionStatusByPos.has(pos)) sessionStatusByPos.set(pos, s.status);
     }
 
-    const adhocTasks = result.tasks.filter((t) => t.kind === "ADHOC");
+    const adhocTasks = onlyCompanyId
+      ? []
+      : result.tasks.filter((t) => t.kind === "ADHOC");
 
     // A dormant company (paused / archived) is NOT planned by the engine, so a
     // blanket delete wipes its cards and nothing regenerates them: Siizen's 26
     // filled-in cards vanished on an unrelated regeneration, plan text and all.
     // Its work is deliberately parked, not cancelled — leave it alone.
     const dormantIds = state.companies.filter((c) => c.status !== "active").map((c) => c.id);
-    const replaceScope = {
-      isAuto: true,
-      year,
-      month,
-      ...(dormantIds.length ? { NOT: { companyId: { in: dormantIds } } } : {}),
-    };
+    const replaceScope = onlyCompanyId
+      ? { isAuto: true, year, month, companyId: onlyCompanyId }
+      : {
+          isAuto: true,
+          year,
+          month,
+          ...(dormantIds.length ? { NOT: { companyId: { in: dormantIds } } } : {}),
+        };
+    const pipeToWrite = onlyCompanyId
+      ? pipe.filter((task) => task.companyId === onlyCompanyId)
+      : pipe;
+    const sessionsToWrite = onlyCompanyId
+      ? result.sessions.filter((session) => session.companyId === onlyCompanyId)
+      : result.sessions;
 
     await prisma.$transaction(async (tx) => {
       // Replace generated cards + auto sessions (keep ad-hoc, isAuto=false).
@@ -350,7 +375,7 @@ export async function generateSchedule(year: number, month: number) {
 
       const now = new Date();
       await tx.task.createMany({
-        data: pipe.map((t) => {
+        data: pipeToWrite.map((t) => {
           // Preserved work history (or a sensible first-time stamp): started
           // when the card ever left TODO, finished/completed only when DONE.
           const done = t.board === "DONE";
@@ -392,9 +417,9 @@ export async function generateSchedule(year: number, month: number) {
         }),
       });
 
-      if (result.sessions.length > 0) {
+      if (sessionsToWrite.length > 0) {
         await tx.photoSession.createMany({
-          data: result.sessions.map((s) => ({
+          data: sessionsToWrite.map((s) => ({
             no: s.no,
             kind: s.kind,
             shootDate: s.shootDate,
@@ -435,10 +460,10 @@ export async function generateSchedule(year: number, month: number) {
 
     revalidateAll();
     const stages = {
-      write: pipe.filter((p) => p.stage === "WRITE").length,
-      design: pipe.filter((p) => p.stage === "DESIGN").length,
-      shoot: pipe.filter((p) => p.stage === "SHOOT").length,
-      publish: pipe.filter((p) => p.stage === "PUBLISH").length,
+      write: pipeToWrite.filter((p) => p.stage === "WRITE").length,
+      design: pipeToWrite.filter((p) => p.stage === "DESIGN").length,
+      shoot: pipeToWrite.filter((p) => p.stage === "SHOOT").length,
+      publish: pipeToWrite.filter((p) => p.stage === "PUBLISH").length,
     };
     return { ok: true as const, stages, warnings: result.warnings };
   } catch (e) {
@@ -446,6 +471,23 @@ export async function generateSchedule(year: number, month: number) {
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };
   }
+}
+
+/** Rebuild one company's cards inside a month bucket without rewriting any
+ * other company's generated rows. The full schedule is still calculated first,
+ * so shared workload/capacity decisions stay identical to a normal regeneration;
+ * only the persistence scope is narrowed. */
+export async function generateCompanySchedule(companyId: string, year: number, month: number) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  return generateScheduleInternal(year, month, companyId);
+}
+
+export async function generateSchedule(year: number, month: number) {
+  return generateScheduleInternal(year, month, null);
 }
 
 // retimeEditsAfterActualShoot و snapPipelineWorkDatesToAssigneeWorkDays انتقلوا

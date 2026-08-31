@@ -3,9 +3,14 @@
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
-import { cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
-import { formatDateShort } from "@/lib/dates";
-import { generateSchedule } from "./schedule";
+import {
+  cyclesOf,
+  naturalCycleEnd,
+  parseRenewals,
+  serializeRenewals,
+} from "@/lib/contract";
+import { formatDateShort, toISODate } from "@/lib/dates";
+import { generateCompanySchedule, generateSchedule } from "./schedule";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -233,6 +238,105 @@ export async function renewContract(companyId: string, startDateISO: string) {
     return { ok: true as const, data: updated };
   } catch {
     return { ok: false as const, error: "فشل تسجيل التجديد" };
+  }
+}
+
+/**
+ * Correct the most recently recorded renewal without touching the original
+ * publication anchor or any earlier cycle. This is intentionally separate from
+ * updateCompany: editing the company form must never rewrite contract history.
+ *
+ * Both affected month buckets are rebuilt for THIS company only. The new bucket
+ * is written first; the obsolete bucket is removed second, so a transient
+ * failure can leave an obvious duplicate to clean up but cannot erase the old
+ * cards before the replacement exists.
+ */
+export async function correctLatestRenewal(companyId: string, startDateISO: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateISO)) {
+    return { ok: false as const, error: "تاريخ غير صالح" };
+  }
+
+  try {
+    const start = parseContractDate(startDateISO);
+    if (!start || Number.isNaN(start.getTime()) || toISODate(start) !== startDateISO) {
+      return { ok: false as const, error: "تاريخ غير صالح" };
+    }
+
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+
+    const renewals = parseRenewals(co).sort((a, b) => a.getTime() - b.getTime());
+    if (renewals.length === 0) {
+      return { ok: false as const, error: "لا يوجد تجديد مسجّل لتصحيحه" };
+    }
+
+    const oldStart = renewals[renewals.length - 1];
+    const previousStart =
+      renewals.length > 1
+        ? renewals[renewals.length - 2]
+        : co.publishStartDate
+          ? new Date(co.publishStartDate)
+          : null;
+    if (!previousStart) {
+      return { ok: false as const, error: "لا يوجد تاريخ بدء نشر سابق لبناء الدورة" };
+    }
+    const earliest = naturalCycleEnd(previousStart);
+    if (start.getTime() < earliest.getTime()) {
+      return {
+        ok: false as const,
+        error: `الدورة السابقة تنتهي ${formatDateShort(earliest)} — لا يمكن أن يبدأ التجديد قبلها`,
+      };
+    }
+    if (toISODate(oldStart) === startDateISO) {
+      return { ok: true as const, data: co, unchanged: true as const };
+    }
+
+    const correctedRenewals = [...renewals.slice(0, -1), start];
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        renewals: serializeRenewals(correctedRenewals),
+        contractEndedAt: null,
+        status: co.status === "paused" ? "active" : co.status,
+      },
+    });
+
+    const newBucket = { year: start.getFullYear(), month: start.getMonth() };
+    const oldBucket = { year: oldStart.getFullYear(), month: oldStart.getMonth() };
+    const built = await generateCompanySchedule(companyId, newBucket.year, newBucket.month);
+    if (!built.ok) {
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { renewals: co.renewals, contractEndedAt: co.contractEndedAt, status: co.status },
+      });
+      return {
+        ok: false as const,
+        error: `لم يُحفظ التصحيح لأن بناء الدورة الجديدة فشل: ${built.error}`,
+      };
+    }
+
+    if (oldBucket.year !== newBucket.year || oldBucket.month !== newBucket.month) {
+      const cleaned = await generateCompanySchedule(companyId, oldBucket.year, oldBucket.month);
+      if (!cleaned.ok) {
+        revalidateAll();
+        return {
+          ok: false as const,
+          corrected: true as const,
+          error:
+            "تَصحّح تاريخ التجديد وبُنيت الدورة الجديدة، لكن بقيت كروت الدورة الخاطئة وتحتاج إعادة المحاولة لتنظيفها.",
+        };
+      }
+    }
+
+    revalidateAll();
+    return { ok: true as const, data: updated };
+  } catch {
+    return { ok: false as const, error: "فشل تصحيح آخر تجديد" };
   }
 }
 

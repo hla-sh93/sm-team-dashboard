@@ -143,6 +143,8 @@ let actions: {
   deleteCompany: any;
   archiveCompany: any;
   renewContract: any;
+  correctLatestRenewal: any;
+  applyCompanyPlanUpdate: any;
   endContract: any;
   generateSchedule: any;
   createTask: any;
@@ -162,6 +164,7 @@ beforeAll(async () => {
   prisma = (await import("@/lib/db")).prisma;
   const companies = await import("@/server/actions/companies");
   const schedule = await import("@/server/actions/schedule");
+  const plans = await import("@/server/actions/plans");
   const tasks = await import("@/server/actions/tasks");
   actions = {
     createCompany: companies.createCompany,
@@ -169,6 +172,8 @@ beforeAll(async () => {
     deleteCompany: companies.deleteCompany,
     archiveCompany: companies.archiveCompany,
     renewContract: companies.renewContract,
+    correctLatestRenewal: companies.correctLatestRenewal,
+    applyCompanyPlanUpdate: plans.applyCompanyPlanUpdate,
     endContract: companies.endContract,
     generateSchedule: schedule.generateSchedule,
     createTask: tasks.createTask,
@@ -544,6 +549,133 @@ describe("contract renewal lifecycle", () => {
     const co = await makeCompany({ name: `${uniq}-baddate` });
     expect((await actions.renewContract(co.id, "10-08-2026")).ok).toBe(false);
     expect((await actions.renewContract(co.id, "")).ok).toBe(false);
+  });
+
+  it("corrects only the latest renewal, removes its wrong bucket and preserves prior history", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-correct-renewal`,
+      contractStartDate: "2026-07-21",
+      publishStartDate: "2026-07-21",
+      posts: 2,
+      stories: 0,
+    });
+
+    await actions.generateSchedule(YEAR, 6);
+    const prior = await prisma.task.findMany({
+      where: { companyId: co.id, year: YEAR, month: 6 },
+      orderBy: { id: "asc" },
+    });
+    expect(prior.length).toBeGreaterThan(0);
+
+    expect((await actions.renewContract(co.id, "2026-08-21")).ok).toBe(true);
+    expect(
+      await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 7 } }),
+    ).toBeGreaterThan(0);
+
+    const result = await actions.correctLatestRenewal(co.id, "2026-09-01");
+    expect(result.ok, result.error).toBe(true);
+
+    const corrected = await prisma.company.findUnique({ where: { id: co.id } });
+    expect(contract.parseRenewals(corrected).map(toISODate)).toEqual(["2026-09-01"]);
+    expect(await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 7 } })).toBe(0);
+    expect(
+      await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 8 } }),
+    ).toBeGreaterThan(0);
+
+    const priorAfter = await prisma.task.findMany({
+      where: { companyId: co.id, year: YEAR, month: 6 },
+      orderBy: { id: "asc" },
+    });
+    expect(priorAfter).toEqual(prior);
+  });
+
+  it("refuses to correct a missing renewal or overlap the previous natural cycle", async () => {
+    if (skip()) return;
+    const none = await makeCompany({
+      name: `${uniq}-correct-none`,
+      contractStartDate: "2026-07-21",
+      publishStartDate: "2026-07-21",
+    });
+    expect((await actions.correctLatestRenewal(none.id, "2026-09-01")).ok).toBe(false);
+
+    expect((await actions.renewContract(none.id, "2026-08-21")).ok).toBe(true);
+    const overlap = await actions.correctLatestRenewal(none.id, "2026-08-20");
+    expect(overlap.ok).toBe(false);
+    expect(overlap.error).toMatch(/تنتهي/);
+    const unchanged = await prisma.company.findUnique({ where: { id: none.id } });
+    expect(contract.parseRenewals(unchanged).map(toISODate)).toEqual(["2026-08-21"]);
+  });
+
+  it("imports every plan brief across its pipeline and pins explicit preparation/publication dates", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-plan-import`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 2,
+      stories: 1,
+    });
+    await actions.generateSchedule(YEAR, 8);
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      items: [
+        { type: "POST", pieceNo: 1, brief: "وصف البوست الأول" },
+        { type: "POST", pieceNo: 2, brief: "وصف البوست الثاني" },
+        { type: "STORY", pieceNo: 1, brief: "وصف الستوري الأولى" },
+      ],
+      prepareOn: {
+        date: "2026-08-30",
+        items: [
+          { type: "POST", pieceNo: 1 },
+          { type: "STORY", pieceNo: 1 },
+        ],
+      },
+      publishOn: { date: "2026-09-01", item: { type: "POST", pieceNo: 1 } },
+    });
+    expect(result.ok, result.error).toBe(true);
+
+    const postOne = await prisma.task.findMany({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1 },
+    });
+    expect(postOne.length).toBeGreaterThan(1);
+    expect(postOne.every((task: any) => task.brief === "وصف البوست الأول")).toBe(true);
+    const design = postOne.find((task: any) => task.stage === "DESIGN");
+    expect(toISODate(design.workDate)).toBe("2026-08-30");
+    expect(toISODate(design.manualDay)).toBe("2026-08-30");
+    expect(design.isPinned).toBe(true);
+    const publish = postOne.find((task: any) => task.stage === "PUBLISH");
+    expect(toISODate(publish.publishDate)).toBe("2026-09-01");
+    expect(toISODate(publish.workDate)).toBe("2026-09-01");
+    expect(publish.isPinned).toBe(true);
+  });
+
+  it("refuses an incomplete plan mapping before writing any descriptions", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-plan-import-missing`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      items: [
+        { type: "POST", pieceNo: 1, brief: "لا يجب أن يُكتب" },
+        { type: "POST", pieceNo: 99, brief: "قطعة غير موجودة" },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(
+      await prisma.task.count({ where: { companyId: co.id, brief: { not: null } } }),
+    ).toBe(0);
   });
 
   it("«لم يُجدد» pauses the company and blocks every later cycle", async () => {
