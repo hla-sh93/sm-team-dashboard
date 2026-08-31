@@ -167,7 +167,10 @@ export default function CompaniesClient({
       start(async () => {
         const result = await applyCompanyPlanUpdate(payload);
         if (result.ok) {
-          toast(`تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}`);
+          const closed = result.closedPreviousTasks
+            ? ` وإغلاق ${result.closedPreviousTasks} مهمة سابقة`
+            : "";
+          toast(`تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}${closed}`);
           router.refresh();
         } else toast(result.error, "error");
       });

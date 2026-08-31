@@ -617,6 +617,58 @@ describe("contract renewal lifecycle", () => {
       stories: 1,
     });
     await actions.generateSchedule(YEAR, 8);
+    const priorOpen = await prisma.task.create({
+      data: {
+        title: `${uniq}-سابق بلا وصف`,
+        kind: "ADHOC",
+        status: "NOT_STARTED",
+        board: "TODO",
+        companyId: co.id,
+        year: YEAR,
+        month: 7,
+        workDate: new Date(2026, 7, 29),
+        brief: null,
+        notes: null,
+      },
+    });
+    const priorPublish = await prisma.task.create({
+      data: {
+        title: `${uniq}-نشر سابق بوصف`,
+        kind: "PUBLISH",
+        type: "POST",
+        stage: "PUBLISH",
+        status: "NOT_STARTED",
+        board: "TODO",
+        companyId: co.id,
+        year: YEAR,
+        month: 7,
+        publishDate: new Date(2026, 7, 31),
+        workDate: new Date(2026, 7, 31),
+        brief: "وصف محفوظ",
+      },
+    });
+    const priorCanceled = await prisma.task.create({
+      data: {
+        title: `${uniq}-ملغاة سابقة`,
+        kind: "ADHOC",
+        status: "CANCELED",
+        board: "TODO",
+        companyId: co.id,
+        year: YEAR,
+        month: 7,
+      },
+    });
+    const currentManual = await prisma.task.create({
+      data: {
+        title: `${uniq}-يدوية بالدورة الحالية`,
+        kind: "ADHOC",
+        status: "NOT_STARTED",
+        board: "TODO",
+        companyId: co.id,
+        year: YEAR,
+        month: 8,
+      },
+    });
 
     const result = await actions.applyCompanyPlanUpdate({
       companyId: co.id,
@@ -635,8 +687,10 @@ describe("contract renewal lifecycle", () => {
         ],
       },
       publishOn: { date: "2026-09-01", item: { type: "POST", pieceNo: 1 } },
+      closePreviousOpenTasks: { decisionDate: "2026-08-30" },
     });
     expect(result.ok, result.error).toBe(true);
+    expect(result.closedPreviousTasks).toBe(2);
 
     const postOne = await prisma.task.findMany({
       where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1 },
@@ -651,6 +705,24 @@ describe("contract renewal lifecycle", () => {
     expect(toISODate(publish.publishDate)).toBe("2026-09-01");
     expect(toISODate(publish.workDate)).toBe("2026-09-01");
     expect(publish.isPinned).toBe(true);
+
+    const closedPrior = await prisma.task.findUnique({ where: { id: priorOpen.id } });
+    expect(closedPrior.board).toBe("DONE");
+    expect(closedPrior.status).toBe("READY");
+    expect(closedPrior.brief).toBe("تحتاج محتوى");
+    expect(closedPrior.notes).toMatch(/قرار المديرة/);
+    expect(toISODate(closedPrior.completedAt)).toBe("2026-08-30");
+
+    const closedPublish = await prisma.task.findUnique({ where: { id: priorPublish.id } });
+    expect(closedPublish.status).toBe("PUBLISHED");
+    expect(closedPublish.brief).toBe("وصف محفوظ");
+    expect(toISODate(closedPublish.completedAt)).toBe("2026-08-31");
+    expect((await prisma.task.findUnique({ where: { id: priorCanceled.id } })).status).toBe(
+      "CANCELED",
+    );
+    expect((await prisma.task.findUnique({ where: { id: currentManual.id } })).board).toBe(
+      "TODO",
+    );
   });
 
   it("refuses an incomplete plan mapping before writing any descriptions", async () => {

@@ -64,5 +64,8 @@
   "publishOn": {
     "date": "2026-09-01",
     "item": { "type": "POST", "pieceNo": 1 }
+  },
+  "closePreviousOpenTasks": {
+    "decisionDate": "2026-08-30"
   }
 }

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
+import { DONE_STATUSES, normalizeStatusForStage } from "@/lib/constants";
 import { fromISODate, toISODate } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
@@ -41,6 +42,11 @@ const planUpdateSchema = z
       .object({
         date: isoDate,
         item: pieceRef,
+      })
+      .optional(),
+    closePreviousOpenTasks: z
+      .object({
+        decisionDate: isoDate,
       })
       .optional(),
   })
@@ -148,6 +154,30 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       }
     }
 
+    const previousOpenTasks = data.closePreviousOpenTasks
+      ? await prisma.task.findMany({
+          where: {
+            companyId,
+            OR: [
+              { year: { lt: data.year } },
+              { year: data.year, month: { lt: data.month } },
+            ],
+            status: { notIn: [...DONE_STATUSES, "CANCELED"] },
+            board: { not: "DONE" },
+          },
+          select: {
+            id: true,
+            stage: true,
+            workDate: true,
+            readyDate: true,
+            publishDate: true,
+            startedAt: true,
+            brief: true,
+            notes: true,
+          },
+        })
+      : [];
+
     const writes = data.items.map((item) =>
       prisma.task.updateMany({
         where: {
@@ -203,12 +233,57 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       );
     }
 
+    if (data.closePreviousOpenTasks) {
+      const decisionDate = fromISODate(data.closePreviousOpenTasks.decisionDate);
+      const decisionLabel = data.closePreviousOpenTasks.decisionDate
+        .split("-")
+        .reverse()
+        .join("/");
+      const evidence = `أُغلقت بقرار المديرة: اعتُبرت كل مهام الدورات السابقة منجزة بتاريخ ${decisionLabel}.`;
+
+      for (const task of previousOpenTasks) {
+        const datedValues = [
+          decisionDate,
+          task.workDate,
+          task.readyDate,
+          task.publishDate,
+        ].filter((value): value is Date => value instanceof Date);
+        const completedAt = new Date(Math.max(...datedValues.map((value) => value.getTime())));
+        const existingNotes = task.notes?.trim();
+
+        writes.push(
+          prisma.task.updateMany({
+            where: {
+              id: task.id,
+              status: { notIn: [...DONE_STATUSES, "CANCELED"] },
+              board: { not: "DONE" },
+            },
+            data: {
+              status: normalizeStatusForStage("READY", task.stage),
+              board: "DONE",
+              brief: task.brief?.trim() ? task.brief : "تحتاج محتوى",
+              notes: existingNotes ? `${existingNotes}\n${evidence}` : evidence,
+              startedAt: task.startedAt ?? completedAt,
+              finishedAt: completedAt,
+              completedAt,
+            },
+          }),
+        );
+      }
+    }
+
     const results = await prisma.$transaction(writes);
+    const closedPreviousTasks = previousOpenTasks.length
+      ? results
+          .slice(results.length - previousOpenTasks.length)
+          .reduce((sum, result) => sum + result.count, 0)
+      : 0;
     revalidatePath("/", "layout");
     return {
       ok: true as const,
       company: company.name,
       describedPieces: data.items.length,
+      closedPreviousTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),
     };
   } catch {
