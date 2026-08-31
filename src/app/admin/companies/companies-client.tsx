@@ -170,7 +170,12 @@ export default function CompaniesClient({
           const closed = result.closedPreviousTasks
             ? ` وإغلاق ${result.closedPreviousTasks} مهمة سابقة`
             : "";
-          toast(`تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}${closed}`);
+          const restored = result.restoredTasks
+            ? ` واستعادة ${result.restoredTasks} مهمة من الإغلاق الخاطئ`
+            : "";
+          toast(
+            `تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}${closed}${restored}`,
+          );
           router.refresh();
         } else toast(result.error, "error");
       });

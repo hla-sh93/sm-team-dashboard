@@ -7,7 +7,16 @@ const plan = JSON.parse(
   items: Array<{ type: string; pieceNo: number; brief: string }>;
   prepareOn: { date: string; items: Array<{ type: string; pieceNo: number }> };
   publishOn: { date: string; item: { type: string; pieceNo: number } };
-  closePreviousOpenTasks: { decisionDate: string };
+  closePreviousOpenTasks: {
+    decisionDate: string;
+    beforeDate: string;
+    restoreMistakenClosures: Array<{
+      type: string;
+      pieceNo: number;
+      stage: string;
+      status: string;
+    }>;
+  };
 };
 
 describe("Wasl September plan payload", () => {
@@ -35,6 +44,13 @@ describe("Wasl September plan payload", () => {
       date: "2026-09-01",
       item: { type: "POST", pieceNo: 1 },
     });
-    expect(plan.closePreviousOpenTasks).toEqual({ decisionDate: "2026-08-30" });
+    expect(plan.closePreviousOpenTasks).toEqual({
+      decisionDate: "2026-08-30",
+      beforeDate: "2026-09-01",
+      restoreMistakenClosures: [
+        { type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED" },
+        { type: "POST", pieceNo: 2, stage: "DESIGN", status: "NOT_STARTED" },
+      ],
+    });
   });
 });

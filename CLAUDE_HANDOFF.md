@@ -8,7 +8,7 @@ Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Commit `e36245e` is live on Vercel. Wasl's renewal is corrected and the validated 43-piece September plan is applied live. Live reconciliation then exposed 10 older open carryover/manual cards with blank descriptions. A tightly scoped follow-up is verified locally (460/460 + typecheck + build): on the next plan import it closes only open pre-September Wasl cards under the manager's 2026-08-30 decision, preserves existing descriptions, fills blanks with `تحتاج محتوى`, and records durable evidence. It is not deployed or applied live yet.**
+Current phase: **Commit `302ba9b` is live on Vercel. It closed 11 genuine older Wasl carryover/manual cards, but live verification immediately caught that its month-bucket criterion also closed September Post 1 and Post 2 design cards because their preparation starts on 2026-08-30. Post 3 remains independently `IN_PROGRESS`. A local recovery/fix now uses the latest scheduled task date against the explicit 2026-09-01 cutoff, restores only Post 1–2 to `NOT_STARTED`, removes their mistaken closure evidence/timestamps, and leaves the 11 real prior tasks done. It passes 460/460 tests, typecheck, and build; deployment and live repair are pending.**
 
 ## 1. How to read this handoff
 
@@ -141,9 +141,10 @@ Other scope notes:
 - **[LIVE/VERIFIED]** `scripts/data/wasl-plan-2026-09.json` supplied 8 reel, 15 post, and 20 story briefs from the verified PDF, with no blank or duplicate pieces. Unsupported numbers are explicitly marked `تحتاج تحقق ومصدر قبل النشر`. The imported payload pins Post 1–3 and Story 1–3 design cards to 2026-08-30, pins Post 1 publication to 2026-09-01, and does not assign a reel shoot date.
 - **[LIVE/VERIFIED 2026-08-31]** Commit `da39956` was pushed to both branches and reached production. The dedicated control corrected the live renewal from `2026-08-21` to `2026-09-01`. The live card now says `الدورة تبدأ 1 أيلول`; the edit dialog shows exactly `21 تموز → 21 آب` and `1 أيلول → 1 تشرين الأول`. The original anchor and previous cycle remain present.
 - **[LIVE/VERIFIED 2026-08-31]** Commit `e36245e` deployed the generic visible `استيراد خطة JSON` control. The plan was applied through the authenticated UI. Live task cards then showed all new-cycle briefs, Post 1 publication on 2026-09-01, and Post 1–3 plus Story 1–3 design cards assigned to Ayman on 2026-08-30.
-- **[LIVE/VERIFIED 2026-08-31]** The post-import Wasl view still contained 10 older open cards outside the September bucket: three additional Story cards from `1/8 → 31/8` and approximately seven `نشرات الصرف والمفكرة الاقتصادية` cards. They had blank descriptions and conflicted with the user's decision that every previous-cycle task is finished. They were preserved during the first import rather than being silently rewritten.
-- **[LOCAL-ONLY]** The plan action and Wasl payload now support an explicit `closePreviousOpenTasks` manager decision dated 2026-08-30. It targets only open buckets before September, excludes completed and cancelled rows, sets stage-appropriate completion, preserves nonblank briefs, fills blank briefs with `تحتاج محتوى`, and appends a durable evidence line. Tests also prove that current-cycle manual tasks are untouched. This follow-up passes 460/460 tests, typecheck, and the production build.
-- **[PENDING]** Deploy the scoped prior-task closure, re-apply the Wasl payload, verify exactly 10 older cards close and the September plan remains unchanged, then report Wasl to the user.
+- **[LIVE/VERIFIED 2026-08-31]** The post-import Wasl view contained **11** older open cards outside the September cycle: three additional Story cards from `1/8 → 31/8` and eight `نشرات الصرف والمفكرة الاقتصادية` cards. They had blank descriptions and conflicted with the user's decision that every previous-cycle task is finished.
+- **[LIVE/VERIFIED 2026-08-31]** Commit `302ba9b` deployed the explicit manager-decision closure and the payload was re-applied. The 11 real older cards closed, but the live verification gate caught a scope defect before reporting completion: Post 1 and Post 2 September design cards also moved to `READY/DONE` because their 2026-08-30 preparation date placed them in an earlier month bucket. Post 3 is `IN_PROGRESS` and was not changed by the closure. The live Wasl board currently shows 93 TODO, 1 DOING, and 2 DONE cards for the new cycle.
+- **[LOCAL-ONLY]** The corrected action uses the latest of `workDate`, `readyDate`, and `publishDate` against an explicit `beforeDate: 2026-09-01`; a task that extends into September cannot be classified as previous merely because preparation began in August. A one-time, evidence-gated recovery targets only Post 1–2 DESIGN, restores their verified prior state `NOT_STARTED/TODO`, removes the mistaken evidence line and timestamps, and cannot touch Post 3 or the 11 genuine older completions. Tests cover the mis-bucketed September case and exact recovery. Full gates pass: 460/460, typecheck, build.
+- **[PENDING]** Deploy the recovery/fix, re-apply the Wasl payload, verify 95 TODO + 1 DOING + 0 DONE for the new cycle, no old blank/open carryovers, unchanged dates/briefs, then report Wasl to the user.
 
 ### Schools additional design requests
 
@@ -334,7 +335,7 @@ Read these before making architectural or deployment changes:
 
 ## 10. Repository, deployment, and verification state
 
-**[VERIFIED]** The former dirty worktree is resolved. Ten scoped code/release commits are pushed on `codex/qa-deep-stabilization` and `origin/main`, and each scope can be reverted independently:
+**[VERIFIED]** The former dirty worktree is resolved. Eleven scoped code/release commits are pushed on `codex/qa-deep-stabilization` and `origin/main`, and each scope can be reverted independently:
 
 | Commit | Scope | Author of the work |
 | --- | --- | --- |
@@ -348,14 +349,15 @@ Read these before making architectural or deployment changes:
 | `22cffc5` | Show `تاريخ النشر` for real `kind=PUBLISH` cards, plus a real-form regression test | Codex |
 | `da39956` | Safe Wasl renewal correction plus validated all-or-nothing plan import | Codex |
 | `e36245e` | Visible authenticated JSON-plan import control | Codex |
+| `302ba9b` | Evidence-backed prior-cycle closure; live verification exposed a month-bucket scope defect now under repair | Codex |
 
 Current Git state checked on 2026-08-31:
 
-- `HEAD` = `e36245e` (full SHA can be re-read with Git).
-- `origin/main` = `e36245e`.
-- `origin/codex/qa-deep-stabilization` = `e36245e`.
-- `git status --short` contains only the scoped pre-September closure implementation, its tests/payload, the result toast, and this handoff update. These changes are **local-only and uncommitted** until the next release step.
-- There are exactly ten pushed commits after the former production base `5c3e9e1`.
+- `HEAD` = `302ba9b` (full SHA can be re-read with Git).
+- `origin/main` = `302ba9b`.
+- `origin/codex/qa-deep-stabilization` = `302ba9b`.
+- `git status --short` contains only the date-cutoff correction, exact Post 1–2 recovery payload/tests/UI result, and this handoff update. These changes are **local-only and uncommitted** until the next release step.
+- There are exactly eleven pushed commits after the former production base `5c3e9e1`.
 
 **[LIVE/VERIFIED]** Production release state:
 
@@ -380,11 +382,11 @@ Remaining non-blockers:
 ## 11. Exact next actions
 
 1. Read this file and run `git status --short`; preserve all existing user work.
-2. Review, commit, and push the local scoped pre-September closure follow-up. Wait for the production deployment before mutating live data.
-3. Re-apply `scripts/data/wasl-plan-2026-09.json` through the authenticated visible import control. The complete-map guard must still accept exactly 8 reels + 15 posts + 20 stories, and the success toast must report the previous-task closure count.
-4. Verify live that exactly 10 old open cards closed, each formerly blank brief is now `تحتاج محتوى`, and each closure has the manager-decision evidence line. Confirm no cancelled card changed.
-5. Verify the old `2026-08-21` auto bucket remains absent, the cycles still read `21/7 → 21/8` and `1/9 → 1/10`, and all 43 September pieces still have descriptions.
-6. Verify Post 1–3 and Story 1–3 design cards remain dated 2026-08-30 and assigned to Ayman; Post 1 remains the first publication on 2026-09-01; no reel shoot date was invented. Then send the user the Wasl ready/published/remaining/schedule report before moving to Agalya.
+2. Commit and push the local date-cutoff correction and exact Post 1–2 recovery. Wait for the production deployment before re-applying the payload.
+3. Re-apply `scripts/data/wasl-plan-2026-09.json` through the authenticated visible import control. The toast should report two restored tasks and zero newly closed tasks because the 11 genuine older cards are already done.
+4. Verify live that Post 1–2 DESIGN are back to `NOT_STARTED/TODO`, Post 3 DESIGN remains `IN_PROGRESS/DOING`, and the new-cycle group reads 95 TODO + 1 DOING + 0 DONE.
+5. Verify no older open/blank Wasl carryovers remain; the 11 old cards remain completed with `تحتاج محتوى` for formerly blank briefs. Confirm no cancelled card changed.
+6. Verify the cycles still read `21/7 → 21/8` and `1/9 → 1/10`, all 43 September pieces retain descriptions, Post/Story 1–3 remain assigned to Ayman on 2026-08-30, Post 1 publication remains 2026-09-01, and no reel shoot date was manually invented. Then report Wasl before moving to Agalya.
 7. Keep the seven authorized BRU actual-date corrections from §6 pending; none were changed in this session. The user's latest message moved Wasl ahead of BRU.
 8. After Wasl acceptance, follow the user's requested order: Agalya (all closed/no renewal), BRU (two reels filmed awaiting edit + one ready at Omar, plus pending date correction), Dr Nour Lab, Siizen, Albalsam, then Mango.
 9. Handle the missing evidence-line behavior and `/today` hydration warning as separate backlog items.
@@ -420,6 +422,14 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-08-31 — Codex — Live Wasl closure verified; scope defect caught and recovery prepared
+
+- **[LIVE/VERIFIED]** Commit `302ba9b` reached Vercel and the manager-decision payload was re-applied. Global TODO decreased by 11 and the Wasl board lost the three old additional Stories plus eight exchange/economic-calendar cards as intended.
+- **[LIVE/VERIFIED]** The post-mutation verification gate caught an additional effect before any completion report: September Post 1 and Post 2 DESIGN were `READY/DONE`, while Post 3 remained independently `IN_PROGRESS`. The cause is structural: those September preparation cards start on 2026-08-30, so a month-bucket cutoff misclassified them as previous work.
+- **[LOCAL-ONLY]** Replaced bucket classification with an explicit 2026-09-01 date cutoff over the task's latest scheduled date. Added an exact evidence-gated recovery for Post 1–2 DESIGN only; it restores `NOT_STARTED/TODO`, clears the mistaken completion timestamps/evidence, and leaves Post 3 plus the 11 real older completions unchanged.
+- **[VERIFIED]** Tests reproduce a current-cycle task stored/prepared in an earlier month, prove it is never closed, prove the exact mistaken closure is restored, and retain all prior guards. Full gates pass: 460/460 tests, typecheck, production build.
+- **[PENDING]** Deploy, apply the recovery payload, verify the expected 95 TODO + 1 DOING + 0 DONE new-cycle state, then finish the Wasl report.
 
 ### 2026-08-31 — Codex — Wasl plan applied live; older-open discrepancy isolated
 

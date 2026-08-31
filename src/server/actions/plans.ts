@@ -3,7 +3,11 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
-import { DONE_STATUSES, normalizeStatusForStage } from "@/lib/constants";
+import {
+  DONE_STATUSES,
+  normalizeStatusForStage,
+  statusToBoard,
+} from "@/lib/constants";
 import { fromISODate, toISODate } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
@@ -47,6 +51,16 @@ const planUpdateSchema = z
     closePreviousOpenTasks: z
       .object({
         decisionDate: isoDate,
+        beforeDate: isoDate,
+        restoreMistakenClosures: z
+          .array(
+            pieceRef.extend({
+              stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
+              status: z.literal("NOT_STARTED"),
+            }),
+          )
+          .max(50)
+          .optional(),
       })
       .optional(),
   })
@@ -55,6 +69,24 @@ const planUpdateSchema = z
   });
 
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
+const stageKeyOf = (item: { type: string; pieceNo: number; stage: string }) =>
+  `${keyOf(item)}|${item.stage}`;
+
+function latestScheduledDate(task: {
+  workDate: Date | null;
+  readyDate: Date | null;
+  publishDate: Date | null;
+}) {
+  const dates = [task.workDate, task.readyDate, task.publishDate].filter(
+    (value): value is Date => value instanceof Date,
+  );
+  return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null;
+}
+
+function managerDecisionEvidence(decisionDate: string) {
+  const decisionLabel = decisionDate.split("-").reverse().join("/");
+  return `أُغلقت بقرار المديرة: اعتُبرت كل مهام الدورات السابقة منجزة بتاريخ ${decisionLabel}.`;
+}
 
 /**
  * Apply a verified, item-level content plan to an already generated company
@@ -154,14 +186,10 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       }
     }
 
-    const previousOpenTasks = data.closePreviousOpenTasks
+    const previousOpenCandidates = data.closePreviousOpenTasks
       ? await prisma.task.findMany({
           where: {
             companyId,
-            OR: [
-              { year: { lt: data.year } },
-              { year: data.year, month: { lt: data.month } },
-            ],
             status: { notIn: [...DONE_STATUSES, "CANCELED"] },
             board: { not: "DONE" },
           },
@@ -175,6 +203,59 @@ export async function applyCompanyPlanUpdate(input: unknown) {
             brief: true,
             notes: true,
           },
+        })
+      : [];
+    const previousCutoff = data.closePreviousOpenTasks
+      ? fromISODate(data.closePreviousOpenTasks.beforeDate)
+      : null;
+    const previousOpenTasks = previousCutoff
+      ? previousOpenCandidates.filter((task) => {
+          const latest = latestScheduledDate(task);
+          return latest != null && latest.getTime() < previousCutoff.getTime();
+        })
+      : [];
+
+    const restoreSpecs = data.closePreviousOpenTasks?.restoreMistakenClosures ?? [];
+    const restoreSpecMap = new Map(restoreSpecs.map((item) => [stageKeyOf(item), item]));
+    const closureEvidence = data.closePreviousOpenTasks
+      ? managerDecisionEvidence(data.closePreviousOpenTasks.decisionDate)
+      : "";
+    const restoreCandidates = restoreSpecs.length
+      ? await prisma.task.findMany({
+          where: {
+            companyId,
+            status: { in: [...DONE_STATUSES] },
+            board: "DONE",
+            OR: restoreSpecs.map((item) => ({
+              type: item.type,
+              pieceNo: item.pieceNo,
+              stage: item.stage,
+            })),
+          },
+          select: {
+            id: true,
+            type: true,
+            pieceNo: true,
+            stage: true,
+            workDate: true,
+            readyDate: true,
+            publishDate: true,
+            notes: true,
+          },
+        })
+      : [];
+    const tasksToRestore = previousCutoff
+      ? restoreCandidates.filter((task) => {
+          if (!task.type || task.pieceNo == null || !task.stage) return false;
+          const latest = latestScheduledDate(task);
+          return (
+            restoreSpecMap.has(
+              stageKeyOf({ type: task.type, pieceNo: task.pieceNo, stage: task.stage }),
+            ) &&
+            latest != null &&
+            latest.getTime() >= previousCutoff.getTime() &&
+            task.notes?.split(/\r?\n/).some((line) => line.trim() === closureEvidence)
+          );
         })
       : [];
 
@@ -233,22 +314,14 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       );
     }
 
+    const closureWriteStart = writes.length;
     if (data.closePreviousOpenTasks) {
       const decisionDate = fromISODate(data.closePreviousOpenTasks.decisionDate);
-      const decisionLabel = data.closePreviousOpenTasks.decisionDate
-        .split("-")
-        .reverse()
-        .join("/");
-      const evidence = `أُغلقت بقرار المديرة: اعتُبرت كل مهام الدورات السابقة منجزة بتاريخ ${decisionLabel}.`;
 
       for (const task of previousOpenTasks) {
-        const datedValues = [
-          decisionDate,
-          task.workDate,
-          task.readyDate,
-          task.publishDate,
-        ].filter((value): value is Date => value instanceof Date);
-        const completedAt = new Date(Math.max(...datedValues.map((value) => value.getTime())));
+        const latest = latestScheduledDate(task);
+        const completedAt =
+          latest && latest.getTime() > decisionDate.getTime() ? latest : decisionDate;
         const existingNotes = task.notes?.trim();
 
         writes.push(
@@ -262,7 +335,9 @@ export async function applyCompanyPlanUpdate(input: unknown) {
               status: normalizeStatusForStage("READY", task.stage),
               board: "DONE",
               brief: task.brief?.trim() ? task.brief : "تحتاج محتوى",
-              notes: existingNotes ? `${existingNotes}\n${evidence}` : evidence,
+              notes: existingNotes
+                ? `${existingNotes}\n${closureEvidence}`
+                : closureEvidence,
               startedAt: task.startedAt ?? completedAt,
               finishedAt: completedAt,
               completedAt,
@@ -272,10 +347,45 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       }
     }
 
+    const restoreWriteStart = writes.length;
+    for (const task of tasksToRestore) {
+      const spec = restoreSpecMap.get(
+        stageKeyOf({ type: task.type!, pieceNo: task.pieceNo!, stage: task.stage! }),
+      )!;
+      const cleanedNotes =
+        task.notes
+          ?.split(/\r?\n/)
+          .filter((line) => line.trim() !== closureEvidence)
+          .join("\n")
+          .trim() || null;
+      writes.push(
+        prisma.task.updateMany({
+          where: {
+            id: task.id,
+            status: { in: [...DONE_STATUSES] },
+            board: "DONE",
+          },
+          data: {
+            status: spec.status,
+            board: statusToBoard(spec.status),
+            notes: cleanedNotes,
+            startedAt: null,
+            finishedAt: null,
+            completedAt: null,
+          },
+        }),
+      );
+    }
+
     const results = await prisma.$transaction(writes);
     const closedPreviousTasks = previousOpenTasks.length
       ? results
-          .slice(results.length - previousOpenTasks.length)
+          .slice(closureWriteStart, closureWriteStart + previousOpenTasks.length)
+          .reduce((sum, result) => sum + result.count, 0)
+      : 0;
+    const restoredTasks = tasksToRestore.length
+      ? results
+          .slice(restoreWriteStart, restoreWriteStart + tasksToRestore.length)
           .reduce((sum, result) => sum + result.count, 0)
       : 0;
     revalidatePath("/", "layout");
@@ -284,6 +394,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       company: company.name,
       describedPieces: data.items.length,
       closedPreviousTasks,
+      restoredTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),
     };
   } catch {

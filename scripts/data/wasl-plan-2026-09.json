@@ -66,6 +66,11 @@
     "item": { "type": "POST", "pieceNo": 1 }
   },
   "closePreviousOpenTasks": {
-    "decisionDate": "2026-08-30"
+    "decisionDate": "2026-08-30",
+    "beforeDate": "2026-09-01",
+    "restoreMistakenClosures": [
+      { "type": "POST", "pieceNo": 1, "stage": "DESIGN", "status": "NOT_STARTED" },
+      { "type": "POST", "pieceNo": 2, "stage": "DESIGN", "status": "NOT_STARTED" }
+    ]
   }
 }

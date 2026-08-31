@@ -617,6 +617,29 @@ describe("contract renewal lifecycle", () => {
       stories: 1,
     });
     await actions.generateSchedule(YEAR, 8);
+    const mistakenEvidence =
+      "أُغلقت بقرار المديرة: اعتُبرت كل مهام الدورات السابقة منجزة بتاريخ 30/08/2026.";
+    const mistakenlyClosedDesign = await prisma.task.findFirstOrThrow({
+      where: {
+        companyId: co.id,
+        year: YEAR,
+        month: 8,
+        type: "POST",
+        pieceNo: 1,
+        stage: "DESIGN",
+      },
+    });
+    await prisma.task.update({
+      where: { id: mistakenlyClosedDesign.id },
+      data: {
+        status: "READY",
+        board: "DONE",
+        notes: mistakenEvidence,
+        startedAt: new Date(2026, 7, 30),
+        finishedAt: new Date(2026, 7, 30),
+        completedAt: new Date(2026, 7, 30),
+      },
+    });
     const priorOpen = await prisma.task.create({
       data: {
         title: `${uniq}-سابق بلا وصف`,
@@ -669,6 +692,20 @@ describe("contract renewal lifecycle", () => {
         month: 8,
       },
     });
+    const misbucketedCurrent = await prisma.task.create({
+      data: {
+        title: `${uniq}-تحضير أيلول داخل حزمة آب`,
+        kind: "ADHOC",
+        status: "NOT_STARTED",
+        board: "TODO",
+        companyId: co.id,
+        year: YEAR,
+        month: 7,
+        workDate: new Date(2026, 7, 30),
+        readyDate: new Date(2026, 8, 6),
+        publishDate: new Date(2026, 8, 8),
+      },
+    });
 
     const result = await actions.applyCompanyPlanUpdate({
       companyId: co.id,
@@ -687,10 +724,17 @@ describe("contract renewal lifecycle", () => {
         ],
       },
       publishOn: { date: "2026-09-01", item: { type: "POST", pieceNo: 1 } },
-      closePreviousOpenTasks: { decisionDate: "2026-08-30" },
+      closePreviousOpenTasks: {
+        decisionDate: "2026-08-30",
+        beforeDate: "2026-09-01",
+        restoreMistakenClosures: [
+          { type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED" },
+        ],
+      },
     });
     expect(result.ok, result.error).toBe(true);
     expect(result.closedPreviousTasks).toBe(2);
+    expect(result.restoredTasks).toBe(1);
 
     const postOne = await prisma.task.findMany({
       where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1 },
@@ -723,6 +767,18 @@ describe("contract renewal lifecycle", () => {
     expect((await prisma.task.findUnique({ where: { id: currentManual.id } })).board).toBe(
       "TODO",
     );
+    expect(
+      (await prisma.task.findUnique({ where: { id: misbucketedCurrent.id } })).board,
+    ).toBe("TODO");
+    const restoredDesign = await prisma.task.findUnique({
+      where: { id: mistakenlyClosedDesign.id },
+    });
+    expect(restoredDesign.status).toBe("NOT_STARTED");
+    expect(restoredDesign.board).toBe("TODO");
+    expect(restoredDesign.notes).toBeNull();
+    expect(restoredDesign.startedAt).toBeNull();
+    expect(restoredDesign.finishedAt).toBeNull();
+    expect(restoredDesign.completedAt).toBeNull();
   });
 
   it("refuses an incomplete plan mapping before writing any descriptions", async () => {
