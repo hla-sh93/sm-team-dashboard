@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { forwardWorkday, fromISODate, parseWorkDays, shiftDays } from "@/lib/dates";
+import { forwardWorkday, fromISODate, parseWorkDays, shiftDays, WORK_WEEK } from "@/lib/dates";
 import {
   DONE_STATUSES,
   inferHistoricalCompletionDate,
@@ -543,8 +543,8 @@ export async function updateDailyTasks(
       : [];
     const workDaysById = new Map(emps.map((e) => [e.id, parseWorkDays(e.workDays)]));
     const nextDayFor = (assigneeId: string | null) => {
-      const wd = (assigneeId && workDaysById.get(assigneeId)) || [6, 0, 1, 2, 3];
-      return forwardWorkday(shiftDays(today, 1), wd.length ? wd : [6, 0, 1, 2, 3]);
+      const wd = (assigneeId && workDaysById.get(assigneeId)) || WORK_WEEK;
+      return forwardWorkday(shiftDays(today, 1), wd.length ? wd : WORK_WEEK);
     };
 
     await prisma.$transaction([

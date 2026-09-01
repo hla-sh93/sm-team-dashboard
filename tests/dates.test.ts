@@ -5,7 +5,9 @@ import {
   forwardWorkday,
   addWorkdaysFor,
   batchSizes,
-  firstSaturday,
+  firstWeekStart,
+  WEEK_START_DAY,
+  WORK_WEEK,
   formatDateShort,
   formatMonthLabel,
   formatWeekLabel,
@@ -83,8 +85,10 @@ describe("workday helpers (§4.1, §4.5)", () => {
   it("parseWorkDays handles JSON, arrays, and bad input", () => {
     expect(parseWorkDays("[6,0,1,2,3]")).toEqual([6, 0, 1, 2, 3]);
     expect(parseWorkDays([0, 1, 2, 3, 4])).toEqual([0, 1, 2, 3, 4]);
-    expect(parseWorkDays(null)).toEqual([6, 0, 1, 2, 3]);
-    expect(parseWorkDays("garbage")).toEqual([6, 0, 1, 2, 3]);
+    // البديل هو أسبوع العمل الرسمي، مو رقم محفور — لما تتغيّر عطلة الفريق
+    // بيتغيّر معها بمكان واحد.
+    expect(parseWorkDays(null)).toEqual(WORK_WEEK);
+    expect(parseWorkDays("garbage")).toEqual(WORK_WEEK);
   });
 
   it("backWorkday on a Saturday publish lands on the previous Wednesday (skips Thu/Fri)", () => {
@@ -116,25 +120,26 @@ describe("workday helpers (§4.1, §4.5)", () => {
 });
 
 describe("calendar (§5.1)", () => {
-  it("firstSaturday is a Saturday in the month", () => {
-    const fs = firstSaturday(2026, 6);
-    expect(fs.getDay()).toBe(6);
+  it("أسبوع النشر بيبلّش بأول يوم من أسبوع العمل", () => {
+    const fs = firstWeekStart(2026, 6);
+    expect(fs.getDay()).toBe(WEEK_START_DAY);
     expect(fs.getMonth()).toBe(6);
     expect(fs.getDate()).toBeLessThanOrEqual(7);
   });
 
-  it("weeks() returns 4 weeks of Sat..Wed", () => {
+  it("weeks() بتعطي ٤ أسابيع من أيام العمل الخمسة", () => {
     const w = weeks(2026, 6);
     expect(w).toHaveLength(4);
     for (const week of w) {
       expect(week).toHaveLength(5);
-      expect(week.map((d) => d.getDay())).toEqual([6, 0, 1, 2, 3]);
+      // نفس ترتيب أسبوع العمل — عطلة الفريق ما بتنجدول فيها نشر.
+      expect(week.map((d) => d.getDay())).toEqual(WORK_WEEK);
     }
     // consecutive weeks are 7 days apart
     expect(w[1][0].getTime() - w[0][0].getTime()).toBe(7 * 86400000);
   });
 
-  it("periodDays spans from firstSaturday-7 to week4 Wednesday", () => {
+  it("periodDays بتمتدّ من بداية الأسبوع الأول − ٧ لآخر يوم بالأسبوع الرابع", () => {
     const w = weeks(2026, 6);
     const pd = periodDays(2026, 6);
     const start = pd[0];

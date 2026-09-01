@@ -21,8 +21,6 @@ import {
   WEEKDAY_ORDER,
   WEEKDAY_LABELS,
   WORKDAYS_DEFAULT,
-  WORKDAYS_AYMAN,
-  WORKDAYS_PHOTO,
   ROLE_LABELS,
 } from "@/lib/constants";
 import { parseWorkDays } from "@/lib/dates";
@@ -35,10 +33,11 @@ interface Props {
   employee?: Employee | null;
 }
 
+// أسبوع الفريق (الأحد → الخميس) هو الافتراضي؛ الباقي لحالات فردية.
 const PRESETS = [
-  { label: "السبت → الأربعاء", days: WORKDAYS_DEFAULT },
-  { label: "الأحد → الخميس", days: WORKDAYS_AYMAN },
-  { label: "السبت → الخميس (مصور)", days: WORKDAYS_PHOTO },
+  { label: "الأحد → الخميس (أسبوع الفريق)", days: WORKDAYS_DEFAULT },
+  { label: "السبت → الأربعاء", days: [6, 0, 1, 2, 3] },
+  { label: "الأحد → الخميس + السبت", days: [6, 0, 1, 2, 3, 4] },
 ];
 
 export default function MemberForm({ open, onOpenChange, employee }: Props) {

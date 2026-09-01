@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
+import { isTaskDoneState } from "@/lib/constants";
 import { buildSchedule } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
@@ -481,6 +482,11 @@ async function generateScheduleInternal(
     // is what prevents it from timing out when there are many of them.
     for (const a of adhocTasks) {
       if (!a.sourceId) continue;
+      // كرت منجز موعده **سجل مو خطة** — نفس قاعدة `schedule-retime.ts`. الحشر
+      // بيرجّع كل كرت ليوم دوام صاحبه، وهاد صحيح للشغل القادم بس. الأثر بان
+      // لما صارت عطلة الفريق جمعة+سبت: ٦ كروت ادهوك منجزة فعلاً يوم سبت كانت
+      // رح تنسحب للخميس، فيصير السجل يكذب عن يوم الشغل الحقيقي.
+      if (isTaskDoneState({ status: a.status })) continue;
       await prisma.task.update({
         where: { id: a.sourceId },
         data: { workDate: a.workDate, overflow: a.overflow },

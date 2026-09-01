@@ -282,6 +282,49 @@ describe("توليدان على نسخة الداتا الحقيقية — ال�
   });
 
   /**
+   * عطلة الفريق صارت الجمعة والسبت (قرار القائدة ١/٩). يعني كل كرت **منجز**
+   * يوم سبت صار واقع على يوم عطلة — والحشر شغلته يرجّع الكروت لأيام الدوام.
+   * بلا حارس، ٦ كروت ادهوك منجزة فعلاً يوم السبت بتنسحب للخميس ويصير السجل
+   * يكذب عن يوم الشغل الحقيقي. القاعدة: موعد الكرت المنجز سجل، مو خطة.
+   */
+  it("تغيير أسبوع العمل ما بيحرّك يوم كرت منجز", async () => {
+    if (skip()) return;
+    const { WORK_WEEK } = await import("@/lib/dates");
+    const previous: { id: string; workDays: string }[] = await prisma.employee.findMany({
+      select: { id: true, workDays: true },
+    });
+    try {
+      await prisma.employee.updateMany({ data: { workDays: JSON.stringify(WORK_WEEK) } });
+      // المنجز بس: الكرت المفتوح — حتى المثبّت — من حقّه ينزاح عن يوم صار عطلة،
+      // لأنّ ما في حدا بيشتغل فيه. يلي ممنوع هو تحريك شغل **صار**.
+      const doneDays = async () => {
+        const rows = await prisma.task.findMany({ orderBy: { id: "asc" } });
+        const m = new Map<string, string>();
+        for (const t of rows) {
+          if (t.board !== "DONE") continue;
+          m.set(t.id, `${day(t.workDate)}|${day(t.readyDate)}|${t.status}|${t.board}`);
+        }
+        return m;
+      };
+      const before = await doneDays();
+      const res = (await generateSchedule(2026, 7)) as { ok: boolean };
+      expect(res.ok).toBe(true);
+      const after = await doneDays();
+      const broken: string[] = [];
+      for (const [id, was] of before) {
+        const now = after.get(id);
+        if (now !== was) broken.push(`${id}: قبل ${was} · بعد ${now}`);
+      }
+      expect(broken, broken.slice(0, 10).join(" | ")).toEqual([]);
+    } finally {
+      for (const e of previous) {
+        await prisma.employee.update({ where: { id: e.id }, data: { workDays: e.workDays } });
+      }
+      await generateSchedule(2026, 7);
+    }
+  });
+
+  /**
    * التوليد المحصور على شركة وحدة بيستبدل نطاق الحذف كلّه بـ«هالشركة»، فبيسقط
    * معه استثناء الشركات الراكدة. والمحرّك ما بيخطّط للراكدة — فالحذف بيصير
    * والبديل بيرجع فاضي، ومنخسر كروتها بلا ولا رسالة. هاد يلي صار مع Siizen

@@ -39,6 +39,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { workRoster } from "@/lib/team";
 
 /** Unified calendar item: a production task OR a photographer session. */
 type CalItem =
@@ -150,7 +151,9 @@ export default function TasksClient({
   // بيرجع تلقائياً أول ما ينسند عليه كرت.
   const filterPeople = useMemo(() => {
     const holdsWork = new Set(tasks.map((t) => t.assigneeId).filter(Boolean) as string[]);
-    return employees.filter((e) => e.isScheduled || e.salary > 0 || holdsWork.has(e.id));
+    // السيلز والمصوّر الفريلانس برّا قوائم الشغل (قرار القائدة ١/٩)، ويلي
+    // ماسك كرت مفتوح بيضل ظاهر لحدّ ما ينسكّر أو ينتقل.
+    return workRoster(employees, holdsWork);
   }, [employees, tasks]);
 
   const photographer = employees.find((e) => e.isPhotographer);

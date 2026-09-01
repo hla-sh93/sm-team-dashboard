@@ -4,6 +4,17 @@
  * Weekend: Thursday(4) + Friday(5)
  */
 
+/**
+ * أسبوع العمل — **المصدر الوحيد**. قرار القائدة (١/٩/٢٠٢٦): عطلة الفريق
+ * الجمعة والسبت، والدوام من الأحد للخميس. كل قيمة افتراضية بالكود بتقرا من
+ * هون، وأي شخص إلو أيام مختلفة بتتخزّن بسجلّه هو (`Employee.workDays`).
+ * (getDay(): الأحد ٠ … السبت ٦.)
+ */
+export const WORK_WEEK: number[] = [0, 1, 2, 3, 4];
+
+/** أول يوم بأسبوع العمل — عليه بتنبني أسابيع النشر. */
+export const WEEK_START_DAY = WORK_WEEK[0];
+
 export const ARABIC_MONTHS = [
   'كانون الثاني',
   'شباط',
@@ -84,7 +95,7 @@ export function formatDateCard(date: Date | string): string {
  * If N=0, returns the same date.
  * If start is a weekend, first move forward to nearest workday.
  */
-export function addWorkingDays(start: Date, days: number, workDays: number[] = [6, 0, 1, 2, 3]): Date {
+export function addWorkingDays(start: Date, days: number, workDays: number[] = WORK_WEEK): Date {
   const d = new Date(start);
   if (days === 0) return d;
   let added = 0;
@@ -102,7 +113,7 @@ export function addWorkingDays(start: Date, days: number, workDays: number[] = [
  * addWorkingDaysInclusive(Mon, 1) = Mon (1-day task)
  * addWorkingDaysInclusive(Mon, 2) = Tue (2-day task)
  */
-export function addWorkingDaysInclusive(start: Date, days: number, workDays: number[] = [6, 0, 1, 2, 3]): Date {
+export function addWorkingDaysInclusive(start: Date, days: number, workDays: number[] = WORK_WEEK): Date {
   if (days <= 1) return new Date(start);
   return addWorkingDays(start, days - 1, workDays);
 }
@@ -110,7 +121,7 @@ export function addWorkingDaysInclusive(start: Date, days: number, workDays: num
 /**
  * Skip forward to the next workday if the date is a weekend.
  */
-export function nextWorkday(date: Date, workDays: number[] = [6, 0, 1, 2, 3]): Date {
+export function nextWorkday(date: Date, workDays: number[] = WORK_WEEK): Date {
   const d = new Date(date);
   while (!isWorkDay(d, workDays)) d.setDate(d.getDate() + 1);
   return d;
@@ -129,7 +140,7 @@ export function getMonthDays(year: number, month: number): Date[] {
 /**
  * Get only working days in a month.
  */
-export function getWorkingDaysInMonth(year: number, month: number, workDays: number[] = [6, 0, 1, 2, 3]): Date[] {
+export function getWorkingDaysInMonth(year: number, month: number, workDays: number[] = WORK_WEEK): Date[] {
   return getMonthDays(year, month).filter((d) => isWorkDay(d, workDays));
 }
 
@@ -153,7 +164,7 @@ export function getWeekDays(anchor: Date): Date[] {
 /**
  * Get the working days of the week containing the date.
  */
-export function getWorkingWeekDays(anchor: Date, workDays: number[] = [6, 0, 1, 2, 3]): Date[] {
+export function getWorkingWeekDays(anchor: Date, workDays: number[] = WORK_WEEK): Date[] {
   return getWeekDays(anchor).filter((d) => isWorkDay(d, workDays));
 }
 
@@ -224,9 +235,9 @@ export function formatWeekLabel(date: Date): string {
 // ============================================================================
 
 /** Parse a workDays value (JSON string or array) into getDay() numbers.
- *  Falls back to Sat→Wed [6,0,1,2,3] when missing/invalid. */
+ *  Falls back to أسبوع العمل (`WORK_WEEK`) when missing/invalid. */
 export function parseWorkDays(raw: string | number[] | null | undefined): number[] {
-  const fallback = [6, 0, 1, 2, 3];
+  const fallback = WORK_WEEK;
   if (raw == null) return fallback;
   let arr: unknown = raw;
   if (typeof raw === 'string') {
@@ -284,18 +295,20 @@ export function addWorkdaysFor(start: Date, n: number, workDays: number[]): Date
 }
 
 /** First Saturday (getDay()===6) of the month. */
-export function firstSaturday(year: number, month: number): Date {
+/** أول يوم عمل من نوع بداية الأسبوع بالشهر (اليوم الأول من أسبوع النشر). */
+export function firstWeekStart(year: number, month: number): Date {
   const d = new Date(year, month, 1);
-  while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
+  while (d.getDay() !== WEEK_START_DAY) d.setDate(d.getDate() + 1);
   return d;
 }
 
 /**
- * The four publishing weeks. weeks[wi] = [Sat,Sun,Mon,Tue,Wed] Date objects,
- * starting at the first Saturday of the month (§5.1).
+ * أسابيع النشر الأربعة. weeks[wi] = خمسة أيام عمل متتالية بتبلّش من أول يوم
+ * بداية أسبوع بالشهر (§5.1). بتتبع `WORK_WEEK` — لما تتغيّر عطلة الفريق،
+ * أيام النشر بتتغيّر معها بدل ما يتجدول نشر بيوم ما في حدا بيشتغل فيه.
  */
 export function weeks(year: number, month: number): Date[][] {
-  const sat0 = firstSaturday(year, month);
+  const sat0 = firstWeekStart(year, month);
   const result: Date[][] = [];
   for (let wi = 0; wi < 4; wi++) {
     const week: Date[] = [];
@@ -310,16 +323,15 @@ export function weeks(year: number, month: number): Date[][] {
 }
 
 /**
- * All calendar days in the scheduling period: from (firstSaturday − 7) through
- * the last Wednesday of week 4 inclusive — this includes prep days from the end
- * of the prior month (§5.1, §5.6 case 6).
+ * كل أيام فترة الجدولة: من (بداية الأسبوع الأول − ٧) لآخر يوم بالأسبوع الرابع،
+ * فبتدخل أيام التحضير من آخر الشهر السابق (§5.1, §5.6 case 6).
  */
 export function periodDays(year: number, month: number): Date[] {
-  const sat0 = firstSaturday(year, month);
+  const sat0 = firstWeekStart(year, month);
   const start = new Date(sat0);
   start.setDate(sat0.getDate() - 7);
   const end = new Date(sat0);
-  end.setDate(sat0.getDate() + 3 * 7 + 4); // week 4 Wednesday
+  end.setDate(sat0.getDate() + 3 * 7 + 4); // آخر يوم عمل بالأسبوع الرابع
   const days: Date[] = [];
   const cur = new Date(start);
   while (cur <= end) {
@@ -393,16 +405,16 @@ export function cycleWeekOf(date: Date, cycleDays: Date[]): number {
 
 /**
  * Working days available for employee packing across a window that may stretch
- * past the calendar month — from (firstSaturday − 7) of the bucket month through
+ * past the calendar month — from (بداية الأسبوع الأول − ٧) of the bucket month through
  * `until` (inclusive). Contract-cycle companies push work into the following
  * month, so the packing canvas must reach far enough to hold it.
  */
 export function packingWindowDays(year: number, month: number, until: Date): Date[] {
-  const sat0 = firstSaturday(year, month);
+  const sat0 = firstWeekStart(year, month);
   const start = new Date(sat0);
   start.setDate(sat0.getDate() - 7);
   const periodEnd = new Date(sat0);
-  periodEnd.setDate(sat0.getDate() + 3 * 7 + 4); // week 4 Wednesday
+  periodEnd.setDate(sat0.getDate() + 3 * 7 + 4); // آخر يوم عمل بالأسبوع الرابع
   const end = until.getTime() > periodEnd.getTime() ? new Date(until) : periodEnd;
   const days: Date[] = [];
   const cur = new Date(start);

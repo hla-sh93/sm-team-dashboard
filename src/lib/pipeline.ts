@@ -14,6 +14,7 @@
  * and the June actuals seed so the whole app shares one pipeline shape.
  */
 import { LEAD, statusToBoard, type Board } from "./constants";
+import { WORK_WEEK } from "./dates";
 
 export type PipelineContentItem = {
   id?: string;
@@ -167,7 +168,7 @@ export function expandPipeline(
   const out: PipelineTask[] = [];
   const { writerId, publisherId, year, month, companyName } = opts;
   const writeBoard = opts.writeBoard ?? "TODO";
-  const publisherWorkDays = opts.publisherWorkDays ?? [6, 0, 1, 2, 3];
+  const publisherWorkDays = opts.publisherWorkDays ?? WORK_WEEK;
   const editorWorkDays = opts.editorWorkDays ?? publisherWorkDays;
   const pfx = opts.idPrefix ?? "";
 

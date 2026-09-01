@@ -32,8 +32,7 @@ import {
   addWorkdaysFor,
   parseWorkDays,
   ARABIC_DAYS,
-  ARABIC_MONTHS,
-} from "@/lib/dates";
+  ARABIC_MONTHS, WORK_WEEK } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import { updateDailyTasks } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
@@ -50,6 +49,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { workRoster } from "@/lib/team";
 
 export default function OverviewClient({
   year,
@@ -174,11 +174,12 @@ export default function OverviewClient({
   //  - off with no open work           → عطلة
   //  - no open work at all             → متفرّغ لعمل إضافي
   const refDayObj = fromISODate(todayISO);
-  // Freelancers (ألبير, غسان+مايك) have no standing schedule — they are hired
-  // per shoot. Showing them every day as «متفرّغ» reads as idle staff, so they
-  // appear only while they actually hold open work.
-  const rosterToday = employees.filter(
-    (e) => e.isScheduled || e.salary > 0 || (openByPerson.get(e.id)?.length ?? 0) > 0,
+  // فريق السوشال ميديا بس (قرار القائدة ١/٩): السيلز مسؤولين حسابات مو
+  // منتِجين، والمصوّر الفريلانس بينشغّل عند الحاجة — الاتنين ما بيظهروا هون.
+  // ويلي ماسك شغل مفتوح بيضل ظاهر مهما كان دوره، مشان ما يضيع كرت بصمت.
+  const rosterToday = workRoster(
+    employees,
+    new Set(employees.filter((e) => (openByPerson.get(e.id)?.length ?? 0) > 0).map((e) => e.id)),
   );
   const dayByPerson = rosterToday.map((e) => ({
     emp: e,
@@ -255,7 +256,7 @@ export default function OverviewClient({
 
   // ---- المهام الحرجة: not-done tasks whose deadline is overdue or within ≤2
   // working days. Deadline = readyDate (design/adhoc) else publishDate.
-  const soonISO = toISODate(addWorkdaysFor(new Date(), 2, [6, 0, 1, 2, 3]));
+  const soonISO = toISODate(addWorkdaysFor(new Date(), 2, WORK_WEEK));
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   // A card whose blocker is still open is not on fire — whoever holds the
   // blocker is. أليسار's montage cards were showing as her overdue work for

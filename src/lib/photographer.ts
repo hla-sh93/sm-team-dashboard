@@ -12,8 +12,7 @@ import {
   footageDeadline,
   shootWindow,
   type PhotoKind,
-  type PhotoStatus,
-} from "./constants";
+  type PhotoStatus, WORKDAYS_PHOTO } from "./constants";
 import { getWorkingDaysInMonth } from "./dates";
 
 export type ReelTask = {
@@ -51,7 +50,7 @@ export type PhotographerResult = {
 };
 
 function photoWorkDaysOf(raw: number[] | undefined): number[] {
-  return raw && raw.length ? raw : [6, 0, 1, 2, 3]; // Sat→Wed (no Thu shooting)
+  return raw && raw.length ? raw : WORKDAYS_PHOTO;
 }
 
 export function buildPhotoSessions(

@@ -1,3 +1,5 @@
+import { WORK_WEEK } from "./dates";
+
 /**
  * Reference constants — SOCIAL_SCHEDULER_SPEC.md appendix + §4.
  * These are the configurable defaults; runtime overrides live in `Setting`
@@ -194,12 +196,16 @@ export const PHOTO_STATUS_LABELS: Record<PhotoStatus, string> = {
 
 // ============================================
 // WORK DAYS  (§4.1 — JS getDay(): Sun=0 .. Sat=6)
+//
+// أسبوع العمل موجود بمكان واحد: `WORK_WEEK` بـ`dates.ts`. قرار القائدة
+// (١/٩/٢٠٢٦): عطلة الفريق الجمعة والسبت، والدوام من الأحد للخميس — لحلا
+// وأيمن وعمر وسابين وماجد وأليسار. كانت هون تلات قيم منفصلة (افتراضي ·
+// استثناء أيمن · المصوّر)، وصارت وحدة؛ وأي شخص إلو أيام غير بتتخزّن بسجلّه.
 // ============================================
-export const WORKDAYS_DEFAULT = [6, 0, 1, 2, 3]; // Sat→Wed (off Thu+Fri)
-export const WORKDAYS_AYMAN = [0, 1, 2, 3, 4]; // Sun→Thu (off Sat+Fri — exception)
-// Photographer: Sat→Wed. No shooting on Thursday except special cases (user
-// rule); Friday always off.
-export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
+export const WORKDAYS_DEFAULT = WORK_WEEK;
+/** المصوّر على نفس الأسبوع — ما عاد في استثناء «ما في تصوير الخميس»: الخميس
+ *  صار يوم دوام، والعطلة جمعة وسبت. */
+export const WORKDAYS_PHOTO = WORK_WEEK;
 
 // ============================================
 // TASK HOURS — **ما في رقم هون عن قصد.**
@@ -232,10 +238,12 @@ export const LEAD_MIN = 1;
 
 // ============================================
 // PUBLISH DAY ORDER within a week  (§4.4)
-// Index into [Sat,Sun,Mon,Tue,Wed] = 0..4; fill in order then wrap k % 5.
+// فهرس داخل أيام أسبوع العمل الخمسة (`WORK_WEEK`) = 0..4؛ بينعبّى بالترتيب
+// وبيلفّ k % 5. الأرقام نمط توزيع على الأسبوع، مو أيام مسمّاة — فلما يتغيّر
+// أسبوع العمل، التوزيع بينتقل معه.
 // ============================================
 export const ORDER: Record<ContentType, number[]> = {
-  POST: [0, 2, 4, 1, 3], // Sat, Mon, Wed, Sun, Tue
+  POST: [0, 2, 4, 1, 3], // الأول، التالت، الخامس، التاني، الرابع من أيام الأسبوع
   AI_REEL: [1, 3, 0, 4, 2], // Sun, Tue, Sat, Wed, Mon
   REEL: [1, 3, 4, 2, 0], // Sun, Tue, Wed, Mon, Sat
   STORY: [0, 1, 2, 3, 4], // every day, wraps on repeat
@@ -331,7 +339,7 @@ export const WEEKDAY_LABELS: Record<number, string> = {
 export const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
 
 // Publishing week = Sat→Wed (5 days). Index 0..4 maps to these getDay values.
-export const PUBLISH_WEEK_DAYS = [6, 0, 1, 2, 3] as const; // Sat,Sun,Mon,Tue,Wed
+export const PUBLISH_WEEK_DAYS = WORK_WEEK; // نفس أسبوع العمل — النشر بيوم دوام
 
 // Per-content-type accent colors for calendar chips (hex; design palette).
 export const CONTENT_TYPE_COLORS: Record<ContentType, string> = {

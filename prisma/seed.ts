@@ -21,6 +21,7 @@ import { expandPipeline } from "../src/lib/pipeline";
 import { isTrainerSuppliedContentCompany } from "../src/lib/content-source";
 import { WORK_DAY_HOURS } from "../src/lib/capacity";
 import { parseWorkDays } from "../src/lib/dates";
+import { WORKDAYS_DEFAULT } from "../src/lib/constants";
 
 const prisma = new PrismaClient();
 
@@ -97,7 +98,7 @@ async function seedJuneActuals() {
     publishBoard: () => "TODO",
     writeBoard: "DONE",
     idPrefix: "jun_",
-    writerWorkDays: [6, 0, 1, 2, 3],
+    writerWorkDays: WORKDAYS_DEFAULT,
     publisherWorkDays,
     skipWritingForCompany: trainerSuppliedContent,
   });

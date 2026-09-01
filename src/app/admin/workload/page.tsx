@@ -4,7 +4,8 @@ import { Avatar } from "@/components/ui/badge";
 import { MonthBar } from "@/components/MonthBar";
 import { resolveActiveMonth } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, isTaskDoneState } from "@/lib/constants";
+import { workRoster } from "@/lib/team";
 import { AlertTriangle } from "lucide-react";
 
 export default async function WorkloadPage({
@@ -34,8 +35,15 @@ export default async function WorkloadPage({
     }),
   ]);
 
+  // فريق السوشال ميديا بس — السيلز والفريلانس برّا (قرار القائدة ١/٩)، إلا
+  // لو ماسكين شغل مفتوح.
+  const openHolders = new Set(
+    tasks.filter((t) => !isTaskDoneState(t) && t.assigneeId).map((t) => t.assigneeId!),
+  );
+  const roster = workRoster(employees, openHolders);
+
   // Whole team, designers first (days), then the rest (by item count).
-  const workload = computeWorkload(employees, tasks, year, month, sessions, companies).sort(
+  const workload = computeWorkload(roster, tasks, year, month, sessions, companies).sort(
     (a, b) =>
       Number(b.tracksDays) - Number(a.tracksDays) ||
       b.pct - a.pct ||

@@ -168,7 +168,9 @@ describe("§9 acceptance — holiday respect (criterion 5)", () => {
 
     const task = buildSchedule(state).tasks.find((t) => t.detKey === "adhoc:pinned_friday")!;
     expect(task.isPinned).toBe(true);
-    expect(toISODate(task.workDate!)).toBe("2026-07-01"); // previous working day
+    // آخر يوم دوام قبل الجمعة — مع أسبوع الفريق (الأحد→الخميس) هو الخميس ٢/٧.
+    // التأكيد الحقيقي هو السطر التالي: الكرت وقع على يوم دوام صاحبه.
+    expect(toISODate(task.workDate!)).toBe("2026-07-02");
     expect(parseWorkDays(employees.find((e) => e.id === EMP.sabin)!.workDays).includes(task.workDate!.getDay())).toBe(true);
   });
 });

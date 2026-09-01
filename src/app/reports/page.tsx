@@ -20,6 +20,7 @@ import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import { currentCycleBucket } from "@/lib/contract";
 import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
+import { workRoster } from "@/lib/team";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
 import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
@@ -39,6 +40,14 @@ export default async function ReportsPage({
   ]);
 
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+
+  // فريق السوشال ميديا بس (قرار القائدة ١/٩): السيلز والمصوّر الفريلانس ما
+  // بيظهروا بقوائم المهام والإنجاز — إلا لو لسا ماسكين كرت مفتوح، فيضلّوا
+  // بوجّها لحدّ ما ينسكّر بدل ما يضيع بصمت.
+  const openHolders = new Set(
+    tasks.filter((t) => !isTaskDoneState(t) && t.assigneeId).map((t) => t.assigneeId!),
+  );
+  const roster = workRoster(employees, openHolders);
 
   // سبب انزياح الخطة لكل شركة (قرار القائدة ١/٩): وقت التصوير بيعتمد على
   // الزبون وممكن يتغيّر بآخر لحظة — فإمّا الخطة تنحافظ، أو يكون السبب واضح
@@ -122,7 +131,7 @@ export default async function ReportsPage({
     .reduce((a, t) => a + qty(t), 0);
 
   const workload = computeWorkload(
-    employees.filter((e) => e.isScheduled),
+    roster.filter((e) => e.isScheduled),
     tasks,
     year,
     month,
@@ -169,7 +178,7 @@ export default async function ReportsPage({
   const lateStages = [...lateByStage.entries()].sort(
     (a, b) => STAGE_ORDER.indexOf(a[0]) - STAGE_ORDER.indexOf(b[0]),
   );
-  const lateByPerson = employees
+  const lateByPerson = roster
     .map((e) => {
       const mine = lateTasks.filter((t) => t.assigneeId === e.id);
       const maxDays = mine.reduce((a, t) => Math.max(a, daysLateOf(t)), 0);
@@ -178,7 +187,7 @@ export default async function ReportsPage({
     .filter((x) => x.count > 0)
     .sort((a, b) => b.count - a.count || b.maxDays - a.maxDays);
 
-  const teamRows: ReportRow[] = employees.map((e) => {
+  const teamRows: ReportRow[] = roster.map((e) => {
     const w = workload.find((x) => x.employee.id === e.id);
     return {
       employee: e.name,
@@ -210,7 +219,7 @@ export default async function ReportsPage({
       status: STATUS_LABELS[t.status as Status] ?? t.status,
     }));
 
-  const contributors = employees.filter((e) => (byAssignee.get(e.id) ?? []).length > 0);
+  const contributors = roster.filter((e) => (byAssignee.get(e.id) ?? []).length > 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -258,7 +267,7 @@ export default async function ReportsPage({
             <div>
               <div className="text-xs text-fg-muted">المساهمون</div>
               <div className="display-font text-2xl">
-                {contributors.length} / {employees.length}
+                {contributors.length} / {roster.length}
               </div>
             </div>
           </div>
@@ -401,7 +410,7 @@ export default async function ReportsPage({
 
       <div className="space-y-4">
         <h2 className="display-font text-lg">تفاصيل المهام لكل شخص</h2>
-        {employees.map((e) => {
+        {roster.map((e) => {
           const mine = allByAssignee.get(e.id) ?? [];
           if (mine.length === 0) return null;
           const total = mine.reduce((a, t) => a + qty(t), 0);
