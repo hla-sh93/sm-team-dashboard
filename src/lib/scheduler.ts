@@ -19,6 +19,7 @@ import {
   type TaskKind,
   CONTENT_TYPE_LABELS,
   LEAD,
+  isPublishableDay,
   SHOOT_BEFORE_MONTAGE,
   PRIORITY_RANK,
 } from "./constants";
@@ -312,7 +313,10 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         : csMidnight;
     if (productionFloor) productionFloorByCompany.set(co.id, productionFloor);
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
-    const cycleDays = cyc.days.filter((d) => d.getDay() !== 5);
+    // النشر بيمرق بأيام الدوام + السبت (قرار القائدة ١/٩: «السبت مسموح للنشر
+    // بس، مو للإنتاج»). الجمعة مستثناة. الشرط كان رقماً حرفياً `!== 5` — صار
+    // قاعدة مسمّاة بمكان واحد مع باقي أيام الأسبوع.
+    const cycleDays = cyc.days.filter(isPublishableDay);
     const cycleLen = cycleDays.length;
     // Cold-start publish floors per type: writing (2d) + the type's own
     // production lead must fit INSIDE the cycle. POST/AI 2+2, STORY 2+1,

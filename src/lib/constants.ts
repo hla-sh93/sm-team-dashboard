@@ -339,7 +339,22 @@ export const WEEKDAY_LABELS: Record<number, string> = {
 export const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
 
 // Publishing week = Sat→Wed (5 days). Index 0..4 maps to these getDay values.
-export const PUBLISH_WEEK_DAYS = WORK_WEEK; // نفس أسبوع العمل — النشر بيوم دوام
+/**
+ * أيام النشر المسموحة = أيام الدوام **+ السبت**.
+ *
+ * قرار القائدة (١/٩/٢٠٢٦): «السبت مسموح للنشر بس، مو للإنتاج». المنشور
+ * بيتجهّز قبله بيومين وبينجدول مسبقاً، فنزوله يوم عطلة ما بيتطلّب حدا شغّال —
+ * أمّا شغل الإنتاج (تصميم · تصوير · مونتاج · كتابة) فما بينحطّ أبداً على يوم
+ * عطلة. الجمعة مستثناة من الاتنين.
+ *
+ * وهاد يلي بيخلّي تقويم العميل ما يتحرّك لمّا تغيّرت عطلة الفريق: ١٦ قطعة
+ * قادمة نشرها يوم سبت ضلّت مكانها.
+ */
+export const PUBLISH_WEEK_DAYS = [...WORK_WEEK, 6];
+
+/** هل بيصير ينزل نشر بهاليوم؟ (الجمعة لأ، وباقي الأيام نعم.) */
+export const isPublishableDay = (d: Date): boolean =>
+  PUBLISH_WEEK_DAYS.includes(d.getDay());
 
 // Per-content-type accent colors for calendar chips (hex; design palette).
 export const CONTENT_TYPE_COLORS: Record<ContentType, string> = {
