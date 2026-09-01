@@ -112,6 +112,31 @@ The user does not want superficial count matching. When a discrepancy appears, o
   - **[PENDING]** The simulation ran on the 2026-08-26 local snapshot, which does **not** contain Wasl's
     live September cycle (43 pieces, 20 stories). Wasl's stories are exactly what this change moves, so
     the live number of moved cards will be higher than 26.
+  **[USER-CONFIRMED 2026-09-01 — DECIDED AND IMPLEMENTED]** The lead answered all three open points and
+  told the agent to apply them:
+  1. **Shoot time is dynamic** — it depends on the client's availability more than the team's, so the
+     engine must plan a **window (from date → to date)**, and when the shoot moves the plan must be
+     preserved as far as possible; where it cannot, the **cause of the shift must be visible in each
+     company's final report**.
+  2. **One source of truth** for every fixed number — "الرقم مو كل ما بدي غيره لازم يتغير بعدّة أماكن".
+  3. **The photographer's limit is the count only** (reels per day), not company grouping — "لما ما بيكون
+     عنا شي رح يتأخر، عادي يكونوا لشركة وحدة".
+  **[VERIFIED — LOCAL]** Implemented in `a5c2b6c`, `ae064fa`, `5898891`: `LEAD` is the single lead source
+  (STORY/REEL raised 1 → 2); `shootWindow`/`footageDeadline`/`montageDay` derive the whole reel chain from
+  it in **working days**; montage is dated from the publish date (not from the shoot) so a shoot moving
+  inside its window changes nothing downstream; per-item hours now derive from each person's stored
+  `rates`, so the daily count exists only in the employee record (default 6/day per the lead's rule);
+  the one-shoot-batch-per-day rule was replaced by a per-day reel **count** cap read from the
+  photographer's own rate; and `scheduleShiftNotes` explains every remaining shift in the company report.
+  `PHOTO_SHOOT_LEAD`, `PHOTO_DELIVER_LEAD`, and `TYPE_HOURS` were deleted — two were dead, one was a
+  second copy of a number that already lived in the employee record.
+  **[VERIFIED — ISOLATED SIMULATION]** On a copy of the local database: pieces breaking the two-day rule
+  went **14 → 0** of 78 upcoming publications (52 now sit at exactly two days); 100 open cards were
+  re-dated; **0 publication dates changed, 0 completed/closed cards changed, 0 cards lost** (1098 before
+  and after).
+  **[PENDING]** Two things are NOT done: (a) the stored per-person rates on production still say 8/day for
+  أيمن and سابين and 4/day for حلا, which override the new 6/day default — each is one field in شاشة
+  الفريق; (b) production keeps the old dates until someone presses «إعادة الجدولة» for a month bucket.
 - **[USER-CONFIRMED]** When two companies need the same person (designer/photographer), the limit may be
   exceeded so both are delivered; the piece delivered on one day's notice is marked `urgent`.
   **[VERIFIED]** `Priority.URGENT` exists and the scheduler gives URGENT/ADHOC an ASAP slot
@@ -464,6 +489,32 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-01 — Claude — Lead's three decisions implemented, pushed to main
+
+- **[USER-CONFIRMED]** The lead decided: shoot time is a **window**, not a fixed day (client-driven, may
+  change at the last minute — preserve the plan, or make the cause of the shift explicit in the company
+  report); **one source of truth** for every fixed number; and the photographer's limit is the **count**
+  of reels per day, not how many companies share the day. She then said: push, and fix all the problems
+  without losing data.
+- **[VERIFIED]** Pushed to `origin/main` and the branch, in scoped commits: `487a4b2` (Wasl payload no
+  longer asks to reopen Post 1–2), `3c30566` (simulation evidence in the docs), `a5c2b6c` (single source
+  for leads/capacities + shoot window + montage dated from publish + count-only photographer cap),
+  `ae064fa` (shift reasons in the per-company report), `5898891` (the whole chain in working days).
+  `main` is at `5898891`; GitLab confirms it (`git ls-remote`).
+- **[VERIFIED]** Gates on every step: 479/479 tests in 44 files, `npx tsc --noEmit`, and `npm run build`
+  all pass; the SQLite client was regenerated after the Postgres build so the suite stays valid. The new
+  rule tests were confirmed RED against the previous engine before they went green.
+- **[VERIFIED]** Effect measured on an isolated copy (the original `prisma/dev.db` hash is unchanged):
+  rule violations **14 → 0** of 78 upcoming publications; 100 open cards re-dated; **0 publication dates,
+  0 completed cards, 0 lost cards**. Nothing was written to production, and no data script was run.
+- **[VERIFIED]** `c658acf` is on GitLab `main` — the earlier "push not verified" note is resolved. The
+  site answers 200 on `/icon.svg` and `/reports`, but that proves the app is up, not that the newest
+  build finished; the new behaviour is only observable after a regeneration.
+- **[PENDING]** Production data step the agent cannot reach: أيمن/سابين still carry a stored rate of
+  8/day and حلا 4/day, which override the new 6/day rule. One field each in شاشة الفريق.
+- **[PENDING]** Production keeps its current dates until «إعادة الجدولة» is pressed per month bucket. The
+  measurement above is what that press will do.
 
 ### 2026-09-01 — Claude — Lead-time and capacity change simulated on isolated copies; nothing applied
 
