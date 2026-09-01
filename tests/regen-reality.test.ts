@@ -191,6 +191,11 @@ describe("توليدان على نسخة الداتا الحقيقية — ال�
   type Reality = Map<string, string>;
   let prisma: any;
   let generateSchedule: (y: number, m: number) => Promise<unknown>;
+  let generateCompanySchedule: (
+    id: string,
+    y: number,
+    m: number,
+  ) => Promise<{ ok: boolean; error?: string }>;
 
   const day = (d: Date | null) =>
     d
@@ -233,7 +238,9 @@ describe("توليدان على نسخة الداتا الحقيقية — ال�
   beforeAll(async () => {
     if (skip()) return;
     prisma = (await import("@/lib/db")).prisma;
-    ({ generateSchedule } = await import("@/server/actions/schedule"));
+    ({ generateSchedule, generateCompanySchedule } = await import(
+      "@/server/actions/schedule"
+    ));
   });
 
   afterAll(async () => {
@@ -272,5 +279,51 @@ describe("توليدان على نسخة الداتا الحقيقية — ال�
     expect(res.ok).toBe(true);
     const after = await snapshotReality();
     expect([...after.entries()]).toEqual([...before.entries()]);
+  });
+
+  /**
+   * التوليد المحصور على شركة وحدة بيستبدل نطاق الحذف كلّه بـ«هالشركة»، فبيسقط
+   * معه استثناء الشركات الراكدة. والمحرّك ما بيخطّط للراكدة — فالحذف بيصير
+   * والبديل بيرجع فاضي، ومنخسر كروتها بلا ولا رسالة. هاد يلي صار مع Siizen
+   * (٢٦ كرت)، والمول الصيني اليوم مؤرشفة وعندها ٥٨ كرت وعندها تجديدات يعني
+   * بتوصل لمسار تصحيح التجديد يلي بينادي التوليد المحصور.
+   */
+  const dormancyGuard = async (
+    field: "status" | "managed",
+    value: string | boolean,
+  ) => {
+    const row = await prisma.task.findFirst({
+      where: { isAuto: true, year: 2026, month: 7, companyId: { not: null } },
+      select: { companyId: true },
+    });
+    const companyId: string | null = row?.companyId ?? null;
+    if (!companyId) return; // ما في كروت مولّدة — ما في شي نحرسه
+
+    const scope = { isAuto: true, year: 2026, month: 7, companyId };
+    const before = await prisma.task.count({ where: scope });
+    expect(before).toBeGreaterThan(0);
+
+    const original = await prisma.company.findUnique({ where: { id: companyId } });
+    await prisma.company.update({ where: { id: companyId }, data: { [field]: value } });
+    try {
+      const res = await generateCompanySchedule(companyId, 2026, 7);
+      expect(res.ok).toBe(false);
+      expect(await prisma.task.count({ where: scope })).toBe(before); // ولا كرت انمحى
+    } finally {
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { [field]: (original as never)[field] },
+      });
+    }
+  };
+
+  it("شركة موقوفة: التوليد المحصور بينرفض وكروتها بتضل كما هي", async () => {
+    if (skip()) return;
+    await dormancyGuard("status", "paused");
+  });
+
+  it("وغير المُدارة كمان — الإدارة شرط متل الحالة", async () => {
+    if (skip()) return;
+    await dormancyGuard("managed", false);
   });
 });

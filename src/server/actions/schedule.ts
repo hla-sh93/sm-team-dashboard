@@ -198,6 +198,32 @@ async function generateScheduleInternal(
 ) {
   try {
     const state = await loadState(year, month);
+
+    // الشركة يلي المحرّك بيخطّط إلها فعلاً — نفس شرط `scheduler.ts` حرفياً.
+    // أي شركة برّا هالشرط ما بينولّد إلها ولا كرت، فحذف كروتها بلا ما ينبني
+    // بديل = محو صامت.
+    const isPlanned = (c: { managed: boolean; status?: string | null }) =>
+      c.managed && (c.status ?? "active") === "active";
+
+    // التوليد المحصور على شركة وحدة بيستبدل نطاق الحذف بـ«هالشركة» — فبيسقط
+    // معه استثناء الشركات الراكدة تحت. ولو مرقت شركة راكدة من هون: الحذف
+    // بيصير والتوليد بيرجع فاضي، فبتضيع كروتها كلها. هاد يلي صار مع Siizen
+    // (٢٦ كرت) قبل، والمول الصيني اليوم مؤرشفة وعندها ٥٨ كرت وعندها تجديدات
+    // فبتوصل لنفس المسار. الحارس هون مو شرط لازم حدا يتذكّره بكل نقطة نداء —
+    // هو رفض عند المصدر، وبيفشل بصوت بدل ما يمحي بصمت.
+    if (onlyCompanyId) {
+      const target = state.companies.find((c) => c.id === onlyCompanyId);
+      if (!target)
+        return { ok: false as const, error: "الشركة غير موجودة في هذه الدورة" };
+      if (!isPlanned(target))
+        return {
+          ok: false as const,
+          error:
+            "الشركة موقوفة أو مؤرشفة أو غير مُدارة — المحرّك ما بيولّد إلها كروت، " +
+            "وإعادة بناء دورتها لحالها بتمحي كروتها بلا بديل. فعّليها أولاً.",
+        };
+    }
+
     const result = buildSchedule(state);
 
     const writerId = state.employees.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
@@ -352,7 +378,10 @@ async function generateScheduleInternal(
     // blanket delete wipes its cards and nothing regenerates them: Siizen's 26
     // filled-in cards vanished on an unrelated regeneration, plan text and all.
     // Its work is deliberately parked, not cancelled — leave it alone.
-    const dormantIds = state.companies.filter((c) => c.status !== "active").map((c) => c.id);
+    // نفس المقياس تبع المحرّك: كان الاستثناء بيفحص الحالة وبس، والمحرّك بيفحص
+    // الحالة **والإدارة** — فشركة نشطة بس غير مُدارة كانت تنحذف كروتها بلا بديل.
+    // اليوم كابرياني والمدارس بلا كروت مولّدة فما ظهر الأثر، بس الثغرة مفتوحة.
+    const dormantIds = state.companies.filter((c) => !isPlanned(c)).map((c) => c.id);
     const replaceScope = onlyCompanyId
       ? { isAuto: true, year, month, companyId: onlyCompanyId }
       : {
