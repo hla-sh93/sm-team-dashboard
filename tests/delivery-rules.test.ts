@@ -11,6 +11,7 @@ import {
   LEAD,
   SHOOT_BEFORE_MONTAGE,
   footageDeadline,
+  montageDay,
   shootWindow,
 } from "@/lib/constants";
 import { expandPipeline } from "@/lib/pipeline";
@@ -76,6 +77,22 @@ describe("قواعد المهل — مصدر واحد", () => {
   it("آخر موعد لوصول اللقطات = يوم قبل المونتاج", () => {
     const publish = D("2026-09-21");
     expect(days(footageDeadline(publish), publish)).toBe(LEAD.REEL + 1);
+  });
+
+  // العطلة (الخميس/الجمعة) كانت تاكل الهامش: نشر الأحد ناقص يومين تقويم =
+  // الجمعة، والمونتيرة ما بتشتغل — فكان المونتاج يطلع السبت، يعني يوم قبل
+  // النشر، أو يوم النشر نفسه. المهلة بتنحسب بأيام العمل: المونتاج بينزل
+  // للأربعا، والنافذة بتنزل معه بدل ما ينضغط التسليم.
+  it("العطلة بتزحزح كل السلسلة، ما بتاكل الهامش", () => {
+    const publish = D("2026-09-06"); // الأحد
+    const editor = [6, 0, 1, 2, 3]; // السبت→الأربعا
+    expect(toISODate(montageDay(publish, editor))).toBe("2026-09-02"); // الأربعاء
+    expect(toISODate(footageDeadline(publish, editor))).toBe("2026-09-01"); // الثلاثاء
+    const w = shootWindow(publish, editor);
+    expect(toISODate(w.earliest)).toBe("2026-08-30");
+    expect(toISODate(w.latest)).toBe("2026-08-31");
+    // والنتيجة: المونتاج جاهز قبل النشر بأربعة أيام، لا بيوم ولا بصفر.
+    expect(days(montageDay(publish, editor), publish)).toBeGreaterThanOrEqual(LEAD.REEL);
   });
 });
 

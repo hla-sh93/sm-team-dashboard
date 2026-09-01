@@ -220,6 +220,14 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   const { year, month } = state;
   const warnings: SchedulerWarning[] = [];
   const empById = new Map(state.employees.map((e) => [e.id, e]));
+  // المونتيرة — نفس المقياس المستعمل بـ`schedule.ts`. نافذة التصوير بتنحسب
+  // رجوعاً من يوم مونتاجها، فلازم أيام دوامها تكون معروفة هون.
+  const editorWorkDays = parseWorkDays(
+    (state.employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role))?.workDays ?? null) as
+      | string
+      | number[]
+      | null,
+  );
   const workDaysOf = (id: string | null): number[] => {
     const e = id ? empById.get(id) : undefined;
     return parseWorkDays(e ? (e.workDays as string | number[]) : null);
@@ -460,6 +468,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       comps,
       parseWorkDays(emp.workDays as string | number[]),
       reelsPerDayOf(emp),
+      editorWorkDays,
     );
     sessions.push(...photo.sessions);
     warnings.push(...photo.warnings);

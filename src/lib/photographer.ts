@@ -72,6 +72,9 @@ export function buildPhotoSessions(
   /** سقف المصوّر اليومي بالعدد (ريلات/يوم) — من معدّله المخزَّن. قرار القائدة
    *  (١/٩): القيد على العدد، مو على عدد الشركات. */
   maxReelsPerDay = 6,
+  /** أيام دوام المونتيرة — النافذة بتنحسب رجوعاً من يوم مونتاجها، فالعطلة
+   *  بتزحزح التصوير بدل ما تاكل هامش التسليم. */
+  editorWorkDays?: number[],
 ): PhotographerResult {
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
@@ -175,7 +178,7 @@ export function buildPhotoSessions(
       // أوسع طرف (`earliest`) فيبقى يوم هامش جوّا النافذة إذا الزبون أخّرنا —
       // وبما إن المونتاج بينتخطّط من يوم النشر مو من يوم التصوير، أي حركة
       // **جوّا النافذة** ما بتزحزح لا المونتاج ولا النشر.
-      const window = shootWindow(epub);
+      const window = shootWindow(epub, editorWorkDays);
       let shoot = backWorkday(window.earliest, photoWork);
       if (shoot.getTime() > SHOOT_CAP.getTime()) {
         shoot = backWorkday(SHOOT_CAP, photoWork);
@@ -230,7 +233,7 @@ export function buildPhotoSessions(
       // تسليم اللقطات: خلال ٣ أيام من التصوير، وقبل يوم المونتاج بيوم — يعني
       // نشر − ٣ (constants.footageDeadline). كان الحدّ «نشر − ١»، وهو يلي كان
       // بيخلّي المونتاج ينزل يوم النشر أو قبله بيوم ويكسر قاعدة اليومين.
-      const footageBy = footageDeadline(epub);
+      const footageBy = footageDeadline(epub, editorWorkDays);
       const deliverTarget =
         footageBy.getTime() < shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS).getTime()
           ? footageBy

@@ -267,28 +267,52 @@ export const SHOOT_BEFORE_MONTAGE = { min: 2, max: 3 };
 /** تسليم صور نزلة التصوير العامة (PHOTOSHOOT) بعد يومين عمل. */
 export const PHOTOSHOOT_DELIVER_DAYS = 2;
 
+const shiftCalendarDays = (date: Date, days: number) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const snapBack = (date: Date, workDays?: number[]) => {
+  if (!workDays?.length) return date;
+  const d = new Date(date);
+  let guard = 0;
+  while (!workDays.includes(d.getDay()) && guard < 14) {
+    d.setDate(d.getDate() - 1);
+    guard++;
+  }
+  return d;
+};
+
+/**
+ * يوم جهوزية المونتاج المخطَّط: قبل النشر بـ`LEAD.REEL`، وعلى يوم دوام
+ * المونتيرة. **بأيام العمل مو بالتقويم** — عطلة الخميس/الجمعة كانت تبلع
+ * الهامش فيطلع المونتاج يوم النشر نفسه.
+ */
+export function montageDay(publishDate: Date, editorWorkDays?: number[]): Date {
+  return snapBack(shiftCalendarDays(publishDate, -LEAD.REEL), editorWorkDays);
+}
+
 /**
  * نافذة التصوير لقطعة نشرها `publishDate` — «لازم التصوير بين هالتاريخين».
- * `latest` هو آخر يوم لسا بيسمح بمونتاج على القاعدة، و`earliest` أوسع هامش.
- * كلها مشتقّة من `LEAD.REEL` — ما في رقم تصوير مستقل يتناقض معها.
+ * مشتقّة من **يوم المونتاج** رجوعاً (٢–٣ أيام)، فأي عطلة بتزحزح المونتاج
+ * بتزحزح النافذة معه بدل ما تاكل الهامش.
  */
-export function shootWindow(publishDate: Date): { earliest: Date; latest: Date } {
-  const back = (days: number) => {
-    const d = new Date(publishDate);
-    d.setDate(d.getDate() - days);
-    return d;
-  };
+export function shootWindow(
+  publishDate: Date,
+  editorWorkDays?: number[],
+): { earliest: Date; latest: Date } {
+  const montage = montageDay(publishDate, editorWorkDays);
   return {
-    earliest: back(LEAD.REEL + SHOOT_BEFORE_MONTAGE.max),
-    latest: back(LEAD.REEL + SHOOT_BEFORE_MONTAGE.min),
+    earliest: shiftCalendarDays(montage, -SHOOT_BEFORE_MONTAGE.max),
+    latest: shiftCalendarDays(montage, -SHOOT_BEFORE_MONTAGE.min),
   };
 }
 
-/** آخر يوم يُقبل فيه وصول اللقطات للمونتيرة = نشر − (مهلة المونتاج + يوم). */
-export function footageDeadline(publishDate: Date): Date {
-  const d = new Date(publishDate);
-  d.setDate(d.getDate() - (LEAD.REEL + FOOTAGE_BEFORE_MONTAGE));
-  return d;
+/** آخر يوم تقدر توصل فيه اللقطات: آخر يوم دوام للمونتيرة قبل يوم المونتاج. */
+export function footageDeadline(publishDate: Date, editorWorkDays?: number[]): Date {
+  const montage = montageDay(publishDate, editorWorkDays);
+  return snapBack(shiftCalendarDays(montage, -FOOTAGE_BEFORE_MONTAGE), editorWorkDays);
 }
 
 // ============================================
