@@ -2,13 +2,13 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Commit `302ba9b` is live on Vercel. It closed 11 genuine older Wasl carryover/manual cards, but live verification immediately caught that its month-bucket criterion also closed September Post 1 and Post 2 design cards because their preparation starts on 2026-08-30. Post 3 remains independently `IN_PROGRESS`. A local recovery/fix now uses the latest scheduled task date against the explicit 2026-09-01 cutoff, restores only Post 1–2 to `NOT_STARTED`, removes their mistaken closure evidence/timestamps, and leaves the 11 real prior tasks done. It passes 460/460 tests, typecheck, and build; deployment and live repair are pending.**
+Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
 
 ## 1. How to read this handoff
 
@@ -79,6 +79,45 @@ The user does not want superficial count matching. When a discrepancy appears, o
 - **[USER-CONFIRMED]** If one request contains multiple posts/designs, create each item separately with its own description.
 - Existing application quantities, capacities, dates, durations, and workflows are primary; prompt examples must not overwrite them.
 
+### Delivery lead time and cycle containment (stated 2026-09-01)
+
+- **[USER-CONFIRMED]** A publishing cycle starts at the **first actual publication** and runs 30 days. It is
+  not the contract signature date. **[VERIFIED]** Encoded: `publishStartDate` anchors the cycle in
+  `src/lib/contract.ts`.
+- **[USER-CONFIRMED]** Every publication of a plan must fall **inside** that 30-day window.
+  **[VERIFIED]** True for Wasl cycle 2 on production, but nothing in the engine *enforces* it — a piece
+  scheduled outside the window is not currently flagged.
+- **[USER-CONFIRMED]** Every task is delivered **at least two days** before its publication date; one day is
+  permitted only when necessary, and such work should carry an `urgent` marker.
+  **[VERIFIED] ⚠️ Partially violated today** — `src/lib/constants.ts:226` sets the default lead to
+  `POST: 2`, `AI_REEL: 2`, **`STORY: 1`**, **`REEL: 1`** (the shoot itself is 3 days via
+  `PHOTO_SHOOT_LEAD`). So stories and reel montage are scheduled on the exception lead, not the rule.
+  Raising them to 2 compresses every design date by a day — **[PENDING]** the user's decision, not an
+  agent's.
+  **[VERIFIED 2026-09-01 — isolated simulation]** Flipping those constants does **not** enforce the rule.
+  On isolated copies of `prisma/dev.db` (hash `563799…8744e`, byte-identical before and after; no repo
+  file left modified), every open bucket (Aug/Sep/Oct) was regenerated with `STORY: 2`, `REEL: 2`,
+  `PHOTO_SHOOT_LEAD: 4`:
+  - 26 STORY design cards move 1–4 days **earlier** (مانغو 7 · مركز البلسم 12 · عبادة 7). **No publication
+    date changes at all** — the client-facing calendar is untouched.
+  - Of the 78 upcoming publications, **14** break the two-day rule today (7 same-day, 6 one-day, 1
+    negative). The change fixes exactly **2** of them (عبادة STORY 8 and STORY 10) and creates **1** new
+    overdue card (عبادة STORY 8 design lands on 2026-08-31, one day before today).
+  - The other **12 are all reel montage**, and `LEAD.REEL` does not schedule montage: `pipeline.ts` dates
+    the EDIT card from the shoot delivery, not from `publishDate − LEAD.REEL`. `PHOTO_SHOOT_LEAD` is read
+    only by the first-cycle publish floor (`scheduler.ts:297`), never by shoot planning. Both constants
+    are inert for existing work.
+  - **[INFERENCE]** Enforcing the rule for reels is engine work inside the reel pipeline (montage ≥2 days
+    before publish, shoot ≥2–3 days before montage) with its own tests — not a constant flip.
+  - **[PENDING]** The simulation ran on the 2026-08-26 local snapshot, which does **not** contain Wasl's
+    live September cycle (43 pieces, 20 stories). Wasl's stories are exactly what this change moves, so
+    the live number of moved cards will be higher than 26.
+- **[USER-CONFIRMED]** When two companies need the same person (designer/photographer), the limit may be
+  exceeded so both are delivered; the piece delivered on one day's notice is marked `urgent`.
+  **[VERIFIED]** `Priority.URGENT` exists and the scheduler gives URGENT/ADHOC an ASAP slot
+  (`scheduler.ts` §5.4), but there is no separate delivery marker and no explicit capacity override.
+  **[PENDING]** Decide whether `urgent` is display-only or real scheduling behaviour before building on it.
+
 ## 4. Source registry
 
 ### Local project and evidence
@@ -143,8 +182,12 @@ Other scope notes:
 - **[LIVE/VERIFIED 2026-08-31]** Commit `e36245e` deployed the generic visible `استيراد خطة JSON` control. The plan was applied through the authenticated UI. Live task cards then showed all new-cycle briefs, Post 1 publication on 2026-09-01, and Post 1–3 plus Story 1–3 design cards assigned to Ayman on 2026-08-30.
 - **[LIVE/VERIFIED 2026-08-31]** The post-import Wasl view contained **11** older open cards outside the September cycle: three additional Story cards from `1/8 → 31/8` and eight `نشرات الصرف والمفكرة الاقتصادية` cards. They had blank descriptions and conflicted with the user's decision that every previous-cycle task is finished.
 - **[LIVE/VERIFIED 2026-08-31]** Commit `302ba9b` deployed the explicit manager-decision closure and the payload was re-applied. The 11 real older cards closed, but the live verification gate caught a scope defect before reporting completion: Post 1 and Post 2 September design cards also moved to `READY/DONE` because their 2026-08-30 preparation date placed them in an earlier month bucket. Post 3 is `IN_PROGRESS` and was not changed by the closure. The live Wasl board currently shows 93 TODO, 1 DOING, and 2 DONE cards for the new cycle.
-- **[LOCAL-ONLY]** The corrected action uses the latest of `workDate`, `readyDate`, and `publishDate` against an explicit `beforeDate: 2026-09-01`; a task that extends into September cannot be classified as previous merely because preparation began in August. A one-time, evidence-gated recovery targets only Post 1–2 DESIGN, restores their verified prior state `NOT_STARTED/TODO`, removes the mistaken evidence line and timestamps, and cannot touch Post 3 or the 11 genuine older completions. Tests cover the mis-bucketed September case and exact recovery. Full gates pass: 460/460, typecheck, build.
-- **[PENDING]** Deploy the recovery/fix, re-apply the Wasl payload, verify 95 TODO + 1 DOING + 0 DONE for the new cycle, no old blank/open carryovers, unchanged dates/briefs, then report Wasl to the user.
+- **[USER-CONFIRMED/LIVE-VERIFIED 2026-09-01 — SUPERSEDES THE RECOVERY TARGET ABOVE]** Post 1–3 DESIGN are genuine completed work, all assigned to Ayman with work date 2026-08-30. A fresh Wasl-only reload shows 93 TODO, 0 DOING, 0 REVIEW, and 3 DONE. Do not restore Post 1 or Post 2 to `NOT_STARTED`.
+- **[LIVE/VERIFIED 2026-09-01]** The Wasl dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 PUBLISH remains TODO with publication scheduled for 2026-09-01; this is a schedule value, not evidence that Instagram publication occurred.
+- **[LIVE/VERIFIED 2026-09-01]** The company edit dialog shows exactly two cycles: `21 تموز → 21 آب` and `1 أيلول → 1 تشرين الأول`. Cycle 2 has exactly 15 posts, 8 reels, and 20 stories. The live publishing list contains all 43 pieces, starting with Post 1 on 2026-09-01 and ending with Post 15, Reel 8, and Story 20 on 2026-09-30. No cycle-2 publication date exceeds the 2026-10-01 boundary.
+- **[LIVE/VERIFIED 2026-09-01]** Reel 1 SHOOT is assigned to Majed and remains TODO. After reload its stored dates are still start 2026-09-06 and end 2026-09-07, with publication 2026-09-08. The required correction is start 2026-09-01 and end 2026-09-01. The controlled in-app browser produced an update toast, but a fresh reload proved the date values had not changed; native date-input automation updated the DOM property without updating React state. No production data mutation resulted from the attempts.
+- **[LOCAL-ONLY 2026-09-01]** Commit `c658acf` contains the safer explicit-cutoff classification using the latest of `workDate`, `readyDate`, and `publishDate`. Its push/deployment is not verified despite local remote-tracking refs. The uncommitted Wasl payload now retains `beforeDate: 2026-09-01` and removes `restoreMistakenClosures`, preventing any future import of this payload from reverting Post 1–2 DESIGN. Fresh verification passes 460/460 tests and `npm run typecheck`.
+- **[PENDING]** Correct Reel 1 SHOOT start/end to 2026-09-01 through a date-input path that actually reaches React state, reload, and verify both stored values. Later remove only the stale mistaken-closure evidence line from Post 1–2 notes without changing their `DONE` status. Do not re-import the payload merely to attempt the obsolete recovery.
 
 ### Schools additional design requests
 
@@ -351,13 +394,12 @@ Read these before making architectural or deployment changes:
 | `e36245e` | Visible authenticated JSON-plan import control | Codex |
 | `302ba9b` | Evidence-backed prior-cycle closure; live verification exposed a month-bucket scope defect now under repair | Codex |
 
-Current Git state checked on 2026-08-31:
+Current Git state checked on 2026-09-01:
 
-- `HEAD` = `302ba9b` (full SHA can be re-read with Git).
-- `origin/main` = `302ba9b`.
-- `origin/codex/qa-deep-stabilization` = `302ba9b`.
-- `git status --short` contains only the date-cutoff correction, exact Post 1–2 recovery payload/tests/UI result, and this handoff update. These changes are **local-only and uncommitted** until the next release step.
-- There are exactly eleven pushed commits after the former production base `5c3e9e1`.
+- `HEAD` = `c658acf` (`fix: preserve Wasl September preparation tasks`).
+- Local remote-tracking refs currently also display `c658acf`, but the user's latest continuity record says its push failed authentication and production is still expected at `302ba9b`; do not treat those refs as deployment evidence.
+- Production is last browser-verified at `302ba9b`. No current Vercel proof was obtained for `c658acf`.
+- `git status --short` contains the Wasl payload safeguard, its focused regression expectation, and this handoff update. These changes are **local-only and uncommitted**.
 
 **[LIVE/VERIFIED]** Production release state:
 
@@ -369,7 +411,7 @@ Current Git state checked on 2026-08-31:
 - The production edit dialog now exposes `تاريخ النشر` on real `kind=PUBLISH` cards. The first release used the impossible `kind=CONTENT && stage=PUBLISH` condition; `22cffc5` repaired it and the live BRU Reel 1 dialog showed the field with three date inputs.
 - The release wrote no production application data: the build is compile-only and `git diff 5c3e9e1..bb09751 -- prisma/` is empty, so no schema push was required.
 - A fingerprinted backup of the local database was taken before deep verification, and every test/deep-audit run left the original database byte-identical.
-- Latest local gates for the Wasl work: **460/460 tests** in 42 files, `npm run typecheck`, and `npm run build` pass. The build logs expected Prisma datasource warnings during caught page-data reads because the local `.env` points to SQLite while the production-schema client expects PostgreSQL; the build exits successfully and production receives its real PostgreSQL URL.
+- The 460/460 test, typecheck, and build result belongs to the earlier `c658acf` state. Fresh verification for the uncommitted payload safeguard is recorded in the latest session log below; do not carry old gate counts forward as fresh evidence.
 
 **[RESOLVED]** The previous hard release blocker is closed. Never remove `CRON_SECRET`: without it, all three protected Telegram report routes fail closed with `503`, and scheduled reports stop silently.
 
@@ -382,12 +424,12 @@ Remaining non-blockers:
 ## 11. Exact next actions
 
 1. Read this file and run `git status --short`; preserve all existing user work.
-2. Commit and push the local date-cutoff correction and exact Post 1–2 recovery. Wait for the production deployment before re-applying the payload.
-3. Re-apply `scripts/data/wasl-plan-2026-09.json` through the authenticated visible import control. The toast should report two restored tasks and zero newly closed tasks because the 11 genuine older cards are already done.
-4. Verify live that Post 1–2 DESIGN are back to `NOT_STARTED/TODO`, Post 3 DESIGN remains `IN_PROGRESS/DOING`, and the new-cycle group reads 95 TODO + 1 DOING + 0 DONE.
-5. Verify no older open/blank Wasl carryovers remain; the 11 old cards remain completed with `تحتاج محتوى` for formerly blank briefs. Confirm no cancelled card changed.
-6. Verify the cycles still read `21/7 → 21/8` and `1/9 → 1/10`, all 43 September pieces retain descriptions, Post/Story 1–3 remain assigned to Ayman on 2026-08-30, Post 1 publication remains 2026-09-01, and no reel shoot date was manually invented. Then report Wasl before moving to Agalya.
-7. Keep the seven authorized BRU actual-date corrections from §6 pending; none were changed in this session. The user's latest message moved Wasl ahead of BRU.
+2. Do not restore Post 1–2 DESIGN and do not re-import the payload for the obsolete recovery; their current `DONE` state is user-confirmed and live-verified.
+3. Correct only Reel 1 SHOOT, assigned to Majed: start 2026-09-01 and end 2026-09-01. The current live values are still 2026-09-06 and 2026-09-07. Reload and re-filter to Wasl after saving, because the previous in-app automation attempt did not reach React state.
+4. After explaining the discrepancy, remove only the stale mistaken-closure evidence line from Post 1–2 DESIGN notes. Preserve their `DONE` status, owner Ayman, and 2026-08-30 work date.
+5. Verify live that Wasl still reads 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; all 43 pieces retain descriptions; the 11 older carryovers remain done; the cycles remain `21/7 → 21/8` and `1/9 → 1/10`; and Post 1 publication remains scheduled for 2026-09-01. Keep actual published count at zero until external or application evidence proves publication.
+6. Before any release claim, prove whether `c658acf` is actually on Vercel. Do not infer deployment from local `origin/*` refs and do not use an alternative deployment path silently.
+7. Keep the seven authorized BRU actual-date corrections from §6 pending; none were changed in this session. Wasl remains the only company in scope until accepted.
 8. After Wasl acceptance, follow the user's requested order: Agalya (all closed/no renewal), BRU (two reels filmed awaiting edit + one ready at Omar, plus pending date correction), Dr Nour Lab, Siizen, Albalsam, then Mango.
 9. Handle the missing evidence-line behavior and `/today` hydration warning as separate backlog items.
 
@@ -422,6 +464,60 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-01 — Claude — Lead-time and capacity change simulated on isolated copies; nothing applied
+
+Lane: local engine analysis only. **No production access, no deployment, no Telegram/Instagram action, no
+push.** The two ready commits (`ab86171` stagnant-company regeneration guard, `c658acf` Wasl preparation
+preservation) remain unpushed and still await the user's explicit word.
+
+- **[VERIFIED]** Data safety: four isolated copies of `prisma/dev.db` were driven; the original's sha256
+  stayed `563799682c02bcbd62d3c413754293e32d5f5c214c47c74f080e212c48a8744e` before and after every run.
+  `src/lib/constants.ts` was temporarily patched per scenario and restored from a pristine copy;
+  `git status --short` is unchanged (the same three pre-existing modified files). The scratch harness was
+  removed from `scripts/` and kept in the session scratchpad.
+- **[VERIFIED]** Method: `generateSchedule` was run twice over each open bucket (2026 months 7·8·9 =
+  Aug/Sep/Oct) per scenario, so both sides are compared after the engine has settled. A control run with
+  unchanged constants reproduced the stored state **byte-identically** (0 of 1098 cards changed), which is
+  what makes every delta below attributable to the constants and not to regeneration noise.
+- **[VERIFIED]** Lead-time scenario (`STORY 1→2`, `REEL 1→2`, `PHOTO_SHOOT_LEAD 3→4`): 26 STORY design
+  cards move 1–4 days earlier, 0 publication dates change, 1 new overdue card appears. Only 2 of the 14
+  live rule violations are fixed; the other 12 are reel montage, which `LEAD.REEL` does not schedule. See
+  §3 for the full evidence, including the two effectively inert constants.
+- **[VERIFIED]** Capacity scenario (designer 6/day via `TYPE_HOURS 0.8→1.333`, حلا 3/day via
+  `hoursPerDay 4`, rates 8→6): only 4 cards move (1–3 days earlier), no new overdue cards, no publication
+  date changes. Reason: the binding constraint is not capacity — measured peak designer load is **3 cards
+  per day** (Ayman 19 cards over 14 days, Sabin 30 over 24). The engine's real designer ceiling today is
+  **10/day** (`hoursPerDay 8 ÷ TYPE_HOURS 0.8`), while the workload screen uses the per-employee rate of
+  **8/day**, and the user's rule is **6/day** — three different numbers in three places. Lowering it is
+  therefore mostly a truth-in-reporting change, not a scheduling change: September commitment moves from
+  2.5→2.8 days for Ayman and 3.7→4.1 for Sabin, out of 22 working days.
+- **[VERIFIED]** Photographer constraint: Majed never exceeds the user's 3-companies-per-day limit in the
+  current plan (every shoot day is a single company), but **4 days carry 3 reels for the same company**
+  (التوظيف on 2026-09-02, 09-16, 09-30, 10-14), which breaks the user's "2 reels per company per day"
+  rule. That limit is a grouping constraint the flat daily-hours model cannot express; it is engine work
+  in `scheduler.ts` with its own tests, not a constant.
+- **[PENDING]** Scope limit stated to the user: the local snapshot is dated 2026-08-26 and does **not**
+  contain Wasl's live September cycle (43 pieces, 20 stories), so the live count of moved cards will be
+  higher than 26 and the workload figures are lower than production's.
+- No constant, capacity, rate, task date, or business rule was changed. The decision remains the user's.
+
+### 2026-09-01 — Codex — Wasl cycle-2 boundary and full publication distribution verified live
+
+- **[LIVE/VERIFIED]** The Wasl company dialog shows cycle 2 exactly as `1 أيلول → 1 تشرين الأول`, after the earlier `21 تموز → 21 آب` cycle. The live contract quantities are 15 posts, 8 reels, and 20 stories.
+- **[LIVE/VERIFIED]** Filtered the production publishing page to Wasl and counted all 43 pieces. Posts are scheduled on Sep 1, 8, 9, 13–16, 20–22, and 26–30; reels on Sep 8, 10, 12, 17, 19, 23, 24, and 30; stories on Sep 8–10, 12–17, 19–24, and 26–30.
+- **[LIVE/VERIFIED]** The first publication is Post 1 on 2026-09-01. The final Post 15, Reel 8, and Story 20 are all on 2026-09-30. Thus 2026-10-01 is the closing boundary, with no publication from this cycle scheduled after it.
+- No production or local plan value was changed during this verification; the existing distribution already satisfies the requested cycle boundary.
+
+### 2026-09-01 — Codex — Wasl live state re-verified; obsolete recovery removed locally
+
+- **[LIVE/VERIFIED]** Re-filtered production to Wasl after reload. The board shows 93 TODO, 0 DOING, 0 REVIEW, and 3 DONE. The completed cards are Post 1–3 DESIGN, assigned to Ayman with work date 2026-08-30, matching the latest user-confirmed truth.
+- **[LIVE/VERIFIED]** The dashboard shows 0/43 published, 3 ready, and 40 remaining. Post 1 publication is scheduled for 2026-09-01 but remains TODO, so actual publication is not proven.
+- **[LIVE/VERIFIED]** Reel 1 SHOOT is assigned to Majed and still reloads with start 2026-09-06 and end 2026-09-07. The required dates are both 2026-09-01. Multiple controlled in-app interactions did not persist the native date input: a React-triggering rerender restored the original value before submission, and a full reload confirmed no production mutation.
+- **[LOCAL-ONLY]** Removed `closePreviousOpenTasks.restoreMistakenClosures` from `scripts/data/wasl-plan-2026-09.json` while preserving the explicit 2026-09-01 cutoff. Updated the focused payload test to require the safe shape. The test was observed failing before the JSON change and passing afterward.
+- **[VERIFIED]** After regenerating the local SQLite Prisma client, the complete suite passed 460/460 tests in 42 files; `npm run typecheck` also passed. The first full-suite attempt failed only because the installed Prisma client had been generated from the PostgreSQL production schema, and no application assertion failed after restoring the test client.
+- **[LOCAL/LIVE SPLIT]** Local HEAD is `c658acf`, but production remains last verified at `302ba9b`; local remote-tracking labels are not accepted as Vercel evidence. No commit, push, deployment, payload import, note cleanup, or successful production data edit occurred in this continuation.
+- **[PENDING]** Persist and reload-verify Reel 1 SHOOT at 2026-09-01/2026-09-01, then clean only the stale closure evidence line from Post 1–2 notes without changing `DONE`.
 
 ### 2026-08-31 — Codex — Live Wasl closure verified; scope defect caught and recovery prepared
 
