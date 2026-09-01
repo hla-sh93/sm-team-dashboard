@@ -490,6 +490,47 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-01 — Claude — Team roster narrowed, work week moved to Sun→Thu, publish-day rule named
+
+- **[USER-CONFIRMED]** Sales (سارة، مايكل) and the on-demand freelance photographers (غسان+مايك، ألبير)
+  are **not** members of the social-media team: they must not appear in task, achievement, or workload
+  lists. Sales remain only as the company's account owner. "بدي التيم الأساسي فقط يلي عم يتولّدله مهام".
+- **[USER-CONFIRMED]** The whole core team (حلا، أيمن، عمر، سابين، ماجد، أليسار) is now off **Friday and
+  Saturday** and works **Sunday → Thursday**.
+- **[USER-CONFIRMED]** Asked what to do about the 16 upcoming publications that fall on a Saturday, the
+  lead chose: **Saturday is allowed for publishing only, never for production work.** The client calendar
+  therefore does not move.
+- **[VERIFIED]** Implemented in `0a7b556` and `1dff554`:
+  - `src/lib/team.ts` decides membership **by role and state, not by name** — sales are out, an
+    unscheduled photographer is out until activated — with one deliberate exception: anyone still holding
+    **open work** stays visible, so no open card is ever hidden by removing its owner from a list. Applied
+    to the reports, workload, today/overview, and tasks surfaces; the team-admin screen, the company
+    account-owner field, and the finance report intentionally keep everyone.
+  - The work week is now one value (`WORK_WEEK` in `dates.ts`). It replaced three separate constants
+    (default / Ayman exception / photographer) and seven literal `[6,0,1,2,3]` copies across the code.
+    Publishing weeks, packing windows, and every fallback derive from it.
+  - `PUBLISH_WEEK_DAYS` = working days **+ Saturday**, with `isPublishableDay` replacing the bare
+    `d.getDay() !== 5` inside the engine.
+- **[VERIFIED] 🔴 Bug found by the week change and fixed:** the post-transaction ad-hoc write-back in
+  `schedule.ts` re-dated **completed** ad-hoc cards onto working days. Six cards that were genuinely done
+  on a Saturday would have been rewritten to the previous Thursday, falsifying the record. The guard now
+  skips completed rows; the regression test is red without it and green with it, on a copy of the real
+  database.
+- **[VERIFIED]** Final measurement on an isolated copy (the original `prisma/dev.db` hash unchanged):
+  **0 publication dates changed, 0 completed cards changed, 0 cards lost** (1098 → 1098); 192 open cards
+  re-dated by the day's rule changes together. 488/488 tests, typecheck, and build pass.
+- **[PENDING]** Production data the agent cannot reach (no usable production `DATABASE_URL`: the pulled
+  `.env.production.local` holds redacted 11-character placeholders). Each is one field in شاشة الفريق:
+  1. Set workDays to الأحد→الخميس for حلا، أيمن، عمر، سابين، ماجد، أليسار — their stored records still say
+     السبت→الأربعاء, and the stored value wins over the new default.
+  2. Set أيمن/سابين posts-per-day and stories-per-day to 6, and حلا to 3 — their stored 8/8/4 override the
+     new 6-per-day rule.
+  3. سارة's one open ad-hoc card («استلام حسابات التواصل والصلاحيات — مانغو», 2026-08-01) keeps her visible
+     by design. Closing it or moving it to حلا removes her from every list.
+- **[PENDING]** نوال was not named in the work-week change and still stores السبت→الأربعاء; four of her
+  writing cards therefore still sit on a Saturday. Ask before changing her week.
+- **[PENDING]** Production keeps its current dates until «إعادة الجدولة» is pressed per month bucket.
+
 ### 2026-09-01 — Claude — Lead's three decisions implemented, pushed to main
 
 - **[USER-CONFIRMED]** The lead decided: shoot time is a **window**, not a fixed day (client-driven, may
