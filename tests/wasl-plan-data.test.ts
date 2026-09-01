@@ -10,7 +10,7 @@ const plan = JSON.parse(
   closePreviousOpenTasks: {
     decisionDate: string;
     beforeDate: string;
-    restoreMistakenClosures: Array<{
+    restoreMistakenClosures?: Array<{
       type: string;
       pieceNo: number;
       stage: string;
@@ -47,10 +47,6 @@ describe("Wasl September plan payload", () => {
     expect(plan.closePreviousOpenTasks).toEqual({
       decisionDate: "2026-08-30",
       beforeDate: "2026-09-01",
-      restoreMistakenClosures: [
-        { type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED" },
-        { type: "POST", pieceNo: 2, stage: "DESIGN", status: "NOT_STARTED" },
-      ],
     });
   });
 });
