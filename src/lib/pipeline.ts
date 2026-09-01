@@ -13,7 +13,7 @@
  * tasks (write + design/shoot + publish). It's used by the July regen script
  * and the June actuals seed so the whole app shares one pipeline shape.
  */
-import { statusToBoard, type Board } from "./constants";
+import { LEAD, statusToBoard, type Board } from "./constants";
 
 export type PipelineContentItem = {
   id?: string;
@@ -102,6 +102,15 @@ function fwdWorkdays(iso: string, n: number, workDays: number[]): string {
     guard++;
     if (workDays.includes(dt.getDay())) left--;
   }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
+    dt.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+/** Shift a YYYY-MM-DD by `n` CALENDAR days (المهل بالتقويم، والسناب بعدها). */
+function shiftCalendar(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
     dt.getDate(),
   ).padStart(2, "0")}`;
@@ -261,8 +270,23 @@ export function expandPipeline(
     const editId = `${pfx}e_${it.companyId}_${it.type}_${seq}`;
     const wantsEdit = scope === "SHOOT" && !!opts.editorId;
     if (wantsEdit) {
+      // المونتاج بينتخطّط من **يوم النشر**: جاهز قبله بـ`LEAD.REEL` (قاعدة
+      // القائدة: كل تسليم قبل النشر بيومين). مو من يوم التصوير — وهاد يلي
+      // بيخلّي حركة التصوير جوّا نافذته ما تزحزح لا المونتاج ولا النشر:
+      // الخطة بتنحافظ ما دامت اللقطات وصلت بوقتها.
+      // بيتأخّر بس لمّا اللقطات نفسها تتأخّر — عندها اليوم التالي لوصولها،
+      // لأن ما بينصفّى مونتاج قبل ما توجد اللقطات.
       const shotOn = it.readyDate ?? it.workDate ?? it.publishDate;
-      const editDay = shotOn ? fwdWorkdays(shotOn, 1, editorWorkDays) : null;
+      const afterFootage = shotOn ? fwdWorkdays(shotOn, 1, editorWorkDays) : null;
+      const plannedEdit = it.publishDate
+        ? snapBackWorkday(shiftCalendar(it.publishDate, -LEAD.REEL), editorWorkDays)
+        : null;
+      const editDay =
+        plannedEdit && afterFootage
+          ? afterFootage > plannedEdit
+            ? afterFootage
+            : plannedEdit
+          : (plannedEdit ?? afterFootage);
       // ما بيصير المونتاج يتخطّى يوم النشر — إذا التصوير تأخّر، بينحطّ على يوم
       // عمل النشر نفسه بدل ما يطلع كرت مستحق بعد ما القطعة نزلت.
       const publishWork = it.publishDate ? snapBackWorkday(it.publishDate, editorWorkDays) : null;

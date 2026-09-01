@@ -53,7 +53,10 @@ describe("جدولة جلسات التصوير", () => {
     }
   });
 
-  it("مصوّر واحد ما بيصوّر شركتين بنفس اليوم", () => {
+  // قرار القائدة (١/٩): القيد على **عدد** الريلات باليوم، مو على عدد الشركات.
+  // «لما ما بيكون عنا شي رح يتأخر، عادي يكونوا لشركة وحدة.» فشركتين بنفس اليوم
+  // مسموحة ما دام المجموع ضمن سقف المصوّر.
+  it("شركتين بنفس يوم التصوير مسموحة ما دام العدد ضمن السقف", () => {
     const r = buildPhotoSessions(
       2026,
       7,
@@ -63,9 +66,38 @@ describe("جدولة جلسات التصوير", () => {
         co("c", [reel("c", 1, 11), reel("c", 2, 15)]),
       ],
       WORK,
+      6,
     );
-    const days = r.sessions.filter((s) => s.kind === "REELS").map((s) => iso(s.shootDate));
-    expect(new Set(days).size).toBe(days.length);
+    const reelSessions = r.sessions.filter((s) => s.kind === "REELS");
+    const perDay = new Map<string, number>();
+    for (const s of reelSessions) {
+      const k = iso(s.shootDate);
+      perDay.set(k, (perDay.get(k) ?? 0) + s.reelCount);
+    }
+    // في يوم واحد على الأقل بيجمع أكتر من شركة — القيد القديم كان بيمنعها.
+    expect(reelSessions.length).toBeGreaterThan(perDay.size);
+    // وما في يوم بيتجاوز السقف.
+    for (const count of perDay.values()) expect(count).toBeLessThanOrEqual(6);
+  });
+
+  it("ما بيتجاوز سقف المصوّر اليومي بالعدد", () => {
+    const r = buildPhotoSessions(
+      2026,
+      7,
+      [
+        co("a", [reel("a", 1, 12), reel("a", 2, 12), reel("a", 3, 12)]),
+        co("b", [reel("b", 1, 12), reel("b", 2, 12), reel("b", 3, 12)]),
+        co("c", [reel("c", 1, 12), reel("c", 2, 12), reel("c", 3, 12)]),
+      ],
+      WORK,
+      3,
+    );
+    const perDay = new Map<string, number>();
+    for (const s of r.sessions.filter((x) => x.kind === "REELS")) {
+      const k = iso(s.shootDate);
+      perDay.set(k, (perDay.get(k) ?? 0) + s.reelCount);
+    }
+    for (const count of perDay.values()) expect(count).toBeLessThanOrEqual(3);
   });
 
   it("ولا تصوير ولا تسليم قبل بداية العقد", () => {

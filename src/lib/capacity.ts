@@ -6,8 +6,12 @@
  * we derive: hours-per-item (for the hours-based workload) and the expected
  * duration of a task in working days (quantity ÷ rate).
  *
- * Designer capacity (items/day): 10 posts OR 10 stories OR 1 AI-reel on an
- * 8-hour day · Nawal 0.5 plans (= 2 days/company) · photographer 3 reels/day.
+ * **هون مصدر «كم قطعة بالنهار» الوحيد.** المحرّك (الجدولة) وشاشة الحمل
+ * والتقارير كلهم بيقروا من نفس المعدّل: معدّل الشخص المخزَّن إن وُجد، وإلا
+ * الافتراضي تحت. تعديل الرقم من شاشة الفريق بيغيّر الجدولة والحمل سوا.
+ *
+ * أرقام القائدة (١/٩/٢٠٢٦): المصمّم ٦ تصاميم باليوم (بوستات وستوريز مخلوطة)،
+ * المونتيرة ٣ ريلات كحد أقصى، المصوّر ٦ ريلات باليوم.
  *
  * REEL was 3-per-2-days back when ONE person shot and cut the same reel. Since
  * shooting (ماجد) and editing (أليسار) are separate people working in parallel,
@@ -15,11 +19,14 @@
  * completed shoots (see brief.ts EDITS_PER_DAY), so this rate is the shoot.
  */
 export const DEFAULT_RATES: Record<string, number> = {
-  POST: 10, // 10 posts/day
-  STORY: 10, // 10 stories/day
-  AI_REEL: 1, // 1 AI reel/day
-  REEL: 3, // photographer: 3 reels/day (shooting only — editing is أليسار's)
-  PLAN: 0.5, // 1 company plan per 2 working days
+  POST: 6, // ٦ تصاميم/يوم — قاعدة القائدة (١/٩)
+  STORY: 6, // نفس سلّة التصميم: بوستات وستوريز مخلوطة
+  AI_REEL: 1, // ريل AI واحد باليوم
+  // REEL بيعني «تصوير» للمصوّر و«مونتاج» للمونتيرة — رقمين مختلفين لنفس المفتاح،
+  // فالحقيقة بسجلّ الشخص لا هون: ماجد ٦ تصوير/يوم · أليسار ٣ مونتاج/يوم.
+  // هاد الافتراضي بس لشخص جديد بلا معدّل مخزَّن.
+  REEL: 3,
+  PLAN: 0.5, // خطة شركة كل يومَي عمل
 };
 
 /**

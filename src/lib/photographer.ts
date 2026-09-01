@@ -6,7 +6,14 @@
  * and the per-reel ready/shoot dates.
  */
 import { batchSizes, backWorkday, forwardWorkday, addWorkdaysFor, prevMonth, weeks } from "./dates";
-import type { PhotoKind, PhotoStatus } from "./constants";
+import {
+  PHOTO_DELIVER_MAX_DAYS,
+  PHOTOSHOOT_DELIVER_DAYS,
+  footageDeadline,
+  shootWindow,
+  type PhotoKind,
+  type PhotoStatus,
+} from "./constants";
 import { getWorkingDaysInMonth } from "./dates";
 
 export type ReelTask = {
@@ -62,6 +69,9 @@ export function buildPhotoSessions(
     notBefore?: Date | null;
   }[],
   photographerWorkDays: number[],
+  /** سقف المصوّر اليومي بالعدد (ريلات/يوم) — من معدّله المخزَّن. قرار القائدة
+   *  (١/٩): القيد على العدد، مو على عدد الشركات. */
+  maxReelsPerDay = 6,
 ): PhotographerResult {
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
@@ -102,10 +112,12 @@ export function buildPhotoSessions(
 
   const companiesWithReels = reelsByCompany.filter((c) => c.reels.length > 0);
 
-  // One photographer can't run two REEL batches on the same day. All companies
-  // in this call share one photographer, so track his booked shoot days across
-  // companies and nudge collisions to the nearest free working day.
-  const usedReelDays = new Set<string>();
+  // سقف اليوم **بالعدد** لا بعدد الشركات (قرار القائدة ١/٩): «مو مهم إذا
+  // لشركة وحدة أو أكتر — هاد قيد جدولة وتأخيرات بس». كان القيد نزلة وحدة
+  // باليوم، فكان يزحّط تصوير شركتين ما بينهم تعارض حقيقي.
+  const reelsBookedPerDay = new Map<string, number>();
+  const bookedOn = (d: Date) => reelsBookedPerDay.get(toKeyDate(d)) ?? 0;
+  const fitsOn = (d: Date, count: number) => bookedOn(d) + count <= maxReelsPerDay;
 
   companiesWithReels.forEach((co, ci) => {
     const reels = [...co.reels].sort((a, b) => {
@@ -130,7 +142,7 @@ export function buildPhotoSessions(
     if (nb && photoShootDate.getTime() < nb.getTime()) {
       photoShootDate = forwardWorkday(nb, photoWork);
     }
-    const photoDeliver = addWorkdaysFor(photoShootDate, 2, photoWork);
+    const photoDeliver = addWorkdaysFor(photoShootDate, PHOTOSHOOT_DELIVER_DAYS, photoWork);
     sessions.push({
       detKey: `${co.companyId}|PHOTOSHOOT|${toKeyDate(photoShootDate)}|1`,
       companyId: co.companyId,
@@ -158,8 +170,13 @@ export function buildPhotoSessions(
         batch[0].publishDate,
       );
 
-      // shoot = backWorkday(epub − 3); clamp to SHOOT_CAP (no week-4 shooting).
-      let shoot = backWorkday(shiftCal(epub, -3), photoWork);
+      // نافذة التصوير مشتقّة من يوم النشر (constants.shootWindow): المونتاج
+      // جاهز قبل النشر بيومين، والتصوير قبل المونتاج بيومين لتلاتة. منخطّط على
+      // أوسع طرف (`earliest`) فيبقى يوم هامش جوّا النافذة إذا الزبون أخّرنا —
+      // وبما إن المونتاج بينتخطّط من يوم النشر مو من يوم التصوير، أي حركة
+      // **جوّا النافذة** ما بتزحزح لا المونتاج ولا النشر.
+      const window = shootWindow(epub);
+      let shoot = backWorkday(window.earliest, photoWork);
       if (shoot.getTime() > SHOOT_CAP.getTime()) {
         shoot = backWorkday(SHOOT_CAP, photoWork);
       }
@@ -182,40 +199,42 @@ export function buildPhotoSessions(
       if (nb && shoot.getTime() < nb.getTime()) {
         shoot = forwardWorkday(nb, photoWork);
       }
-      // Cross-company double-booking guard: if this day is already taken by
-      // another batch of the same photographer, try earlier free working days
-      // first (moving earlier only ADDS lead — always safe), then later ones up
-      // to the no-last-week cap. When nothing is free, keep the day and warn.
-      if (usedReelDays.has(toKeyDate(shoot))) {
+      // ازدحام اليوم بالعدد: نفس اليوم بيستقبل نزلات عدّة شركات ما دام مجموع
+      // الريلات ضمن سقف المصوّر. لما يمتلئ بس، منزحزح — الأبكر أولاً (بيزيد
+      // الهامش فبيضل آمن)، وبعدها الأمتأخر لحدود منع الأسبوع الأخير.
+      if (!fitsOn(shoot, batch.length)) {
         let placed: Date | null = null;
         let back = new Date(shoot);
         for (let i = 0; i < 10 && !placed; i++) {
           back = backWorkday(shiftCal(back, -1), photoWork);
           if (nb && back.getTime() < nb.getTime()) break;
-          if (!usedReelDays.has(toKeyDate(back))) placed = back;
+          if (fitsOn(back, batch.length)) placed = back;
         }
         let fwd = new Date(shoot);
         for (let i = 0; i < 10 && !placed; i++) {
           fwd = forwardWorkday(shiftCal(fwd, 1), photoWork);
           if (fwd.getTime() > SHOOT_CAP.getTime()) break;
-          if (!usedReelDays.has(toKeyDate(fwd))) placed = fwd;
+          if (fitsOn(fwd, batch.length)) placed = fwd;
         }
         if (placed) {
           shoot = placed;
         } else {
           warnings.push({
             level: "warning",
-            message: `${co.companyName}: يوم التصوير متعارض مع نزلة شركة أخرى لنفس المصور — عدّليه يدوياً`,
+            message: `${co.companyName}: يوم التصوير تجاوز سقف المصوّر اليومي (${maxReelsPerDay} ريل) — عدّليه يدوياً`,
             companyId: co.companyId,
           });
         }
       }
-      usedReelDays.add(toKeyDate(shoot));
-      // deliver = backWorkday(min(epub − 1, shoot + 3)), never before the shoot.
+      reelsBookedPerDay.set(toKeyDate(shoot), bookedOn(shoot) + batch.length);
+      // تسليم اللقطات: خلال ٣ أيام من التصوير، وقبل يوم المونتاج بيوم — يعني
+      // نشر − ٣ (constants.footageDeadline). كان الحدّ «نشر − ١»، وهو يلي كان
+      // بيخلّي المونتاج ينزل يوم النشر أو قبله بيوم ويكسر قاعدة اليومين.
+      const footageBy = footageDeadline(epub);
       const deliverTarget =
-        shiftCal(epub, -1).getTime() < shiftCal(shoot, 3).getTime()
-          ? shiftCal(epub, -1)
-          : shiftCal(shoot, 3);
+        footageBy.getTime() < shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS).getTime()
+          ? footageBy
+          : shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS);
       let deliver = backWorkday(deliverTarget, photoWork);
       if (deliver.getTime() < shoot.getTime()) deliver = new Date(shoot);
 
@@ -228,10 +247,10 @@ export function buildPhotoSessions(
           companyId: co.companyId,
         });
       }
-      if (deliver.getTime() >= epub.getTime()) {
+      if (deliver.getTime() > footageBy.getTime()) {
         warnings.push({
           level: "warning",
-          message: `${co.companyName}: تسليم ريلات بعد موعد النشر — هامش غير كافٍ`,
+          message: `${co.companyName}: اللقطات بتوصل بعد ${toKeyDate(footageBy)} — المونتاج ما بيلحق يجهز قبل النشر بيومين`,
           companyId: co.companyId,
         });
       }

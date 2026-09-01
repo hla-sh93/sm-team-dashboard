@@ -82,7 +82,10 @@ const baseTask = (overrides: Record<string, unknown>) =>
 
 describe("workload", () => {
   it("uses the agreed default production rates", () => {
-    expect(taskDays({}, "POST", 10)).toBe(1);
+    // ٦ تصاميم باليوم — رقم القائدة (١/٩). ونفس المعدّل يلي بيقرا منه المحرّك
+    // وقت الحشر، فما في نسختين للرقم.
+    expect(taskDays({}, "POST", 6)).toBe(1);
+    expect(taskDays({}, "STORY", 6)).toBe(1);
     // 3 reels = ONE shooting day. It was 3-per-2-days while a single person both
     // shot and cut a reel; ماجد shoots and أليسار edits in parallel now.
     expect(taskDays({}, "REEL", 3)).toBe(1);

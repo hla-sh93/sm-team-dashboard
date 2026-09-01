@@ -202,33 +202,33 @@ export const WORKDAYS_AYMAN = [0, 1, 2, 3, 4]; // Sun→Thu (off Sat+Fri — exc
 export const WORKDAYS_PHOTO = [6, 0, 1, 2, 3];
 
 // ============================================
-// TASK HOURS  — drives the schedule packing (placement per day).
-// Designer day = 8h → 10 posts/day (0.8h), 10 stories/day (0.8h), 1 AI-reel/day (8h).
-// KEEP IN SYNC with DEFAULT_RATES (lib/capacity.ts) so the schedule and the
-// workload screen agree on the same per-day output.
+// TASK HOURS — **ما في رقم هون عن قصد.**
+// كم قطعة بينتج الشخص بالنهار رقم واحد بمكان واحد: معدّله المخزَّن (`rates`
+// بسجلّ الموظف، وبديله `DEFAULT_RATES` بـ`capacity.ts`)، وبينتعدّل من شاشة
+// الفريق. المحرّك بيشتقّ الساعات منه عبر `hoursPerItem` (capacity.ts).
+//
+// كان هون `TYPE_HOURS = 0.8` يعني ١٠ قطع/يوم، ومعدّل أيمن المخزَّن ٨/يوم —
+// نفس الرقم بمكانين وبقيمتين: المحرّك بيحشر ١٠ وشاشة الحمل بتقول ٨. القاعدة
+// اليوم: الرقم بمكان واحد، والباقي بيشتقّ منه.
 // ============================================
-export const TYPE_HOURS: Record<Exclude<ContentType, "REEL">, number> = {
-  POST: 0.8,
-  AI_REEL: 8,
-  STORY: 0.8,
-};
-
-/** Hours an employee spends on a content task. Real REELs are the
- *  photographer's job and never consume designer/employee hours (§4.2, §10). */
-export function hoursForType(type: ContentType): number {
-  if (type === "REEL") return 0;
-  return TYPE_HOURS[type];
-}
 
 // ============================================
-// DESIGN LEAD TIMES  (§4.5 — readyDate = publishDate − lead, back to workday)
+// DELIVERY LEAD TIMES  (§4.5 — readyDate = publishDate − lead, back to workday)
+//
+// قاعدة القائدة (١/٩/٢٠٢٦): **كل قطعة تُسلَّم قبل النشر بيومين**، ويوم واحد
+// عند الضرورة فقط — والقطعة يلي بتنسلّم بيوم بتنوسم `urgent` لصاحبها.
+// هاد **المصدر الوحيد** للمهل: المحرّك والمونتاج ونافذة التصوير كلهم بيقروا
+// من هون. كانت الستوري ١ والريل ١، يعني مجدولين على مهلة الضرورة لا القاعدة.
 // ============================================
 export const LEAD: Record<ContentType, number> = {
   POST: 2,
   AI_REEL: 2,
-  STORY: 1,
-  REEL: 1, // photographer deliver-by handled separately (§4.6)
+  STORY: 2,
+  REEL: 2, // جهوزية المونتاج قبل النشر (التصوير بيتحسب رجوعاً منها — تحت)
 };
+
+/** أقصر مهلة مقبولة عند الضرورة. أقل من `LEAD` وأكبر أو يساوي هاد = ضيّق الوقت. */
+export const LEAD_MIN = 1;
 
 // ============================================
 // PUBLISH DAY ORDER within a week  (§4.4)
@@ -249,12 +249,47 @@ export const CAP_HLA = 3;
 
 // ============================================
 // PHOTOGRAPHER  (§4.6)
+//
+// وقت التصوير **ديناميكي**: بيعتمد على الزبون ووقته أكتر من الفريق، فالمحرّك
+// ما بيثبّت يوم — بيعطي **نافذة من تاريخ لتاريخ** والزبون بيختار جواتها.
+// النافذة بتنشتقّ من يوم النشر رجوعاً: مونتاج جاهز قبل النشر بـ`LEAD.REEL`،
+// واللقطات بتوصل المونتيرة قبل يوم المونتاج بيوم، والتصوير قبل المونتاج
+// بيومين لتلاتة. مثال القائدة: نشر الاثنين → مونتاج السبت → تصوير الأربعا/الخميس.
 // ============================================
 export const PHOTO_BATCH_MIN = 2;
 export const PHOTO_BATCH_MAX = 3;
-export const PHOTO_DELIVER_MAX_DAYS = 3; // deliver within 3 days of shoot
-export const PHOTO_DELIVER_LEAD = 1; // deliver ≥ 1 day before publish
-export const PHOTO_SHOOT_LEAD = 3; // shoot ≈ publish − 3
+/** أقصى مهلة لتسليم اللقطات بعد يوم التصوير. */
+export const PHOTO_DELIVER_MAX_DAYS = 3;
+/** اللقطات لازم تكون بإيد المونتيرة قبل يوم المونتاج بيوم. */
+export const FOOTAGE_BEFORE_MONTAGE = 1;
+/** التصوير قبل المونتاج بيومين إلى تلاتة (قاعدة القائدة). */
+export const SHOOT_BEFORE_MONTAGE = { min: 2, max: 3 };
+/** تسليم صور نزلة التصوير العامة (PHOTOSHOOT) بعد يومين عمل. */
+export const PHOTOSHOOT_DELIVER_DAYS = 2;
+
+/**
+ * نافذة التصوير لقطعة نشرها `publishDate` — «لازم التصوير بين هالتاريخين».
+ * `latest` هو آخر يوم لسا بيسمح بمونتاج على القاعدة، و`earliest` أوسع هامش.
+ * كلها مشتقّة من `LEAD.REEL` — ما في رقم تصوير مستقل يتناقض معها.
+ */
+export function shootWindow(publishDate: Date): { earliest: Date; latest: Date } {
+  const back = (days: number) => {
+    const d = new Date(publishDate);
+    d.setDate(d.getDate() - days);
+    return d;
+  };
+  return {
+    earliest: back(LEAD.REEL + SHOOT_BEFORE_MONTAGE.max),
+    latest: back(LEAD.REEL + SHOOT_BEFORE_MONTAGE.min),
+  };
+}
+
+/** آخر يوم يُقبل فيه وصول اللقطات للمونتيرة = نشر − (مهلة المونتاج + يوم). */
+export function footageDeadline(publishDate: Date): Date {
+  const d = new Date(publishDate);
+  d.setDate(d.getDate() - (LEAD.REEL + FOOTAGE_BEFORE_MONTAGE));
+  return d;
+}
 
 // ============================================
 // WEEKDAY LABELS (Arabic, Sat-first display order)

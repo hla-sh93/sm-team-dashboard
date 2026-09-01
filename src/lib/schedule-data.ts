@@ -21,6 +21,9 @@ export async function loadEmployees(): Promise<EmployeeInput[]> {
     workDays: e.workDays,
     isScheduled: e.isScheduled,
     isPhotographer: e.isPhotographer,
+    // معدّل الشخص (قطع/يوم) — منه بيشتقّ المحرّك ساعة القطعة، فالجدولة وشاشة
+    // الحمل بيقروا نفس الرقم بدل نسختين متناقضتين.
+    rates: e.rates,
   }));
 }
 

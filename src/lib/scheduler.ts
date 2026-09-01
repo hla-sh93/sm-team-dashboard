@@ -19,10 +19,10 @@ import {
   type TaskKind,
   CONTENT_TYPE_LABELS,
   LEAD,
-  PHOTO_SHOOT_LEAD,
+  SHOOT_BEFORE_MONTAGE,
   PRIORITY_RANK,
-  hoursForType,
 } from "./constants";
+import { hoursPerItem, ratePerDay } from "./capacity";
 import {
   addWorkingDays,
   backWorkday,
@@ -50,6 +50,8 @@ export type EmployeeInput = {
   workDays: number[] | string;
   isScheduled: boolean;
   isPhotographer: boolean;
+  /** معدّله المخزَّن (قطع/يوم) كـJSON — منه بتنشتقّ ساعة القطعة. فاضي = الافتراضي. */
+  rates?: string | null;
 };
 
 export type CompanyInput = {
@@ -194,6 +196,26 @@ const PLAN_KEYS: Record<ContentType, "posts" | "reels" | "stories" | "aiReels"> 
 // Processing order for content generation (§5.2).
 const TYPE_ORDER: ContentType[] = ["REEL", "AI_REEL", "POST", "STORY"];
 
+/**
+ * ساعات القطعة على نهار صاحبها — مشتقّة من **معدّله** (قطع/يوم)، لا من رقم
+ * ثابت بالكود. هيك «كم قطعة بالنهار» موجود بمكان واحد: سجلّ الشخص (وبديله
+ * `DEFAULT_RATES`)، والجدولة وشاشة الحمل بيقروا منه سوا.
+ *
+ * الريل الحقيقي شغل المصوّر وبينجدول بنزلات تصوير، فما بياخد ساعات من نهار
+ * حدا بالحشر (§4.2 · §10).
+ */
+function hoursForTask(emp: EmployeeInput | undefined, type: ContentType): number {
+  if (type === "REEL") return 0;
+  return hoursPerItem(emp ?? { hoursPerDay: 8 }, type);
+}
+
+/** سقف المصوّر اليومي **بالعدد** — قرار القائدة (١/٩): المهم كم ريل بالنهار،
+ *  مو لكم شركة. معدّله المخزَّن هو الرقم. */
+function reelsPerDayOf(emp: EmployeeInput | undefined): number {
+  const rate = emp ? ratePerDay(emp, "REEL") : 0;
+  return rate > 0 ? Math.floor(rate) : 1;
+}
+
 export function buildSchedule(state: SchedulerState): SchedulerResult {
   const { year, month } = state;
   const warnings: SchedulerWarning[] = [];
@@ -294,7 +316,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         POST: WRITE_LEAD_DAYS + LEAD.POST,
         AI_REEL: WRITE_LEAD_DAYS + LEAD.AI_REEL,
         STORY: WRITE_LEAD_DAYS + LEAD.STORY,
-        REEL: WRITE_LEAD_DAYS + PHOTO_SHOOT_LEAD,
+        REEL: WRITE_LEAD_DAYS + LEAD.REEL + SHOOT_BEFORE_MONTAGE.max,
       };
       // Prep week: whatever the per-type lead works out to, NOTHING publishes
       // inside the first week of the contract.
@@ -327,7 +349,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         title: `${CONTENT_TYPE_LABELS[type]} — ${co.name}`,
         companyId: co.id,
         assigneeId: ownerId,
-        hours: hoursForType(type),
+        hours: hoursForTask(empById.get(ownerId ?? ""), type),
         priority: "NORMAL",
         status: "NOT_STARTED",
         publishDate,
@@ -437,6 +459,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       month,
       comps,
       parseWorkDays(emp.workDays as string | number[]),
+      reelsPerDayOf(emp),
     );
     sessions.push(...photo.sessions);
     warnings.push(...photo.warnings);
