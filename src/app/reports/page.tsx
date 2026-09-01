@@ -19,6 +19,7 @@ import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import { currentCycleBucket } from "@/lib/contract";
+import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
 import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
@@ -38,6 +39,16 @@ export default async function ReportsPage({
   ]);
 
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+
+  // سبب انزياح الخطة لكل شركة (قرار القائدة ١/٩): وقت التصوير بيعتمد على
+  // الزبون وممكن يتغيّر بآخر لحظة — فإمّا الخطة تنحافظ، أو يكون السبب واضح
+  // بالتقرير. مشتقّ من الداتا وقت العرض، فما بيقدر يتناقض معها.
+  const shiftByCompany = new Map<string, ShiftNote[]>();
+  for (const note of scheduleShiftNotes(tasks)) {
+    const list = shiftByCompany.get(note.companyId) ?? [];
+    list.push(note);
+    shiftByCompany.set(note.companyId, list);
+  }
   const isDone = isTaskDoneState;
   const done = tasks.filter((t) => isDone(t));
   const qty = (t: { quantity?: number }) => t.quantity ?? 1;
@@ -321,6 +332,17 @@ export default async function ReportsPage({
                     </div>
                   ))}
                 </div>
+                {(shiftByCompany.get(co.id)?.length ?? 0) > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border-soft space-y-1">
+                    <p className="text-[11px] text-fg-muted">سبب الانزياح عن الخطة</p>
+                    {shiftByCompany.get(co.id)!.map((n) => (
+                      <p key={n.pipelineKey} className="text-[11px] text-warning">
+                        {n.pieceNo ? `ريل ${n.pieceNo}: ` : ""}
+                        {n.text}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
