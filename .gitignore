@@ -34,6 +34,12 @@ tmp/
 # multi-megabyte SQLite binaries that only matter on this machine. `*.db` above
 # misses them because they carry a suffix (dev.db.before-…).
 backups/dev.db.*
+# لقطات الإنتاج وسجلّاتها: فيها الداتا كاملة (شركات وكروت وموظفين). أي `git add -A`
+# بعد نسخة يومية كان بيرفع قاعدة الزبائن للمستودع — فبتنتجاهل من المصدر.
+backups/prod-*.json
+backups/prod-*.json.sha256
+backups/backup-log.txt
+backups/backup-task.log
 backups/local-db-snapshot.*.json
 backups/baseline-task-counts.json
 
