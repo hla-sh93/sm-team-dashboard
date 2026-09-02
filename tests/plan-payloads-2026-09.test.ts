@@ -29,17 +29,19 @@ describe("حمولة خطة التوظيف — أيلول", () => {
     const items = tawzeef.items ?? [];
     const count = (type: string) => items.filter((i) => i.type === type).length;
     expect(count("REEL")).toBe(8);
-    expect(count("POST")).toBe(8);
+    // ١٠ بوستات: ٨ من ملف الخطة، و٩ و١٠ تسليم سابين على تلغرام (١/٩) —
+    // «التوظيف ١٠ بوست» قرار القائدة (٢/٩).
+    expect(count("POST")).toBe(10);
     expect(count("STORY")).toBe(0);
-    expect(items.length).toBe(16);
+    expect(items.length).toBe(18);
     expect(items.every((i) => i.brief.trim().length > 20)).toBe(true);
     const keys = items.map((i) => `${i.type}|${i.pieceNo}`);
     expect(new Set(keys).size).toBe(keys.length);
     // أرقام القطع متسلسلة ١..٨ لكل نوع — أي فجوة معناها قطعة ضايعة من الملف.
-    for (const type of ["REEL", "POST"]) {
-      const nos = items.filter((i) => i.type === type).map((i) => i.pieceNo).sort((a, b) => a - b);
-      expect(nos).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    }
+    const reelNos = items.filter((i) => i.type === "REEL").map((i) => i.pieceNo).sort((a, b) => a - b);
+    expect(reelNos).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    const postNos = items.filter((i) => i.type === "POST").map((i) => i.pieceNo).sort((a, b) => a - b);
+    expect(postNos).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it("بتستهدف دورة أيلول وبتقفل يلي قبل ١/٩ حصراً", () => {
