@@ -781,6 +781,92 @@ describe("contract renewal lifecycle", () => {
     expect(restoredDesign.completedAt).toBeNull();
   });
 
+  /**
+   * شركة خلصت دورتها وما جدّدت (أغاليا) — ما في خطة جديدة أصلاً، وكل المطلوب
+   * إقفال يلي ضلّ مفتوح من الدورة السابقة. قبل هيك كانت `items` إلزامية فكان
+   * لازم نخترع «قطع» مالها وجود مشان نمرق من التحقّق.
+   */
+  it("يقفل الدورة السابقة بحمولة بلا خطة — وما بيمسّ المنجز ولا الملغى ولا الجديد", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-close-only`,
+      contractStartDate: "2026-08-01",
+      publishStartDate: "2026-08-01",
+      posts: 1,
+      stories: 0,
+    });
+    const priorOpen = await prisma.task.create({
+      data: {
+        title: `${uniq}-مفتوحة من الدورة السابقة`,
+        kind: "ADHOC", status: "NOT_STARTED", board: "TODO",
+        companyId: co.id, year: YEAR, month: 7,
+        workDate: new Date(2026, 7, 20),
+      },
+    });
+    const priorDone = await prisma.task.create({
+      data: {
+        title: `${uniq}-منجزة سابقاً`,
+        kind: "ADHOC", status: "READY", board: "DONE",
+        companyId: co.id, year: YEAR, month: 7,
+        workDate: new Date(2026, 7, 18),
+        completedAt: new Date(2026, 7, 18),
+      },
+    });
+    const priorCanceled = await prisma.task.create({
+      data: {
+        title: `${uniq}-ملغاة`,
+        kind: "ADHOC", status: "CANCELED", board: "TODO",
+        companyId: co.id, year: YEAR, month: 7,
+      },
+    });
+    const afterCutoff = await prisma.task.create({
+      data: {
+        title: `${uniq}-شغل الدورة الجديدة`,
+        kind: "ADHOC", status: "NOT_STARTED", board: "TODO",
+        companyId: co.id, year: YEAR, month: 8,
+        workDate: new Date(2026, 8, 3),
+      },
+    });
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      closePreviousOpenTasks: { decisionDate: "2026-09-01", beforeDate: "2026-09-01" },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.describedPieces).toBe(0);
+    expect(result.closedPreviousTasks).toBe(1);
+
+    const closed = await prisma.task.findUnique({ where: { id: priorOpen.id } });
+    expect(closed.board).toBe("DONE");
+    expect(closed.notes).toMatch(/قرار المديرة/);
+    // المنجز والملغى والجديد ما انلمسوا.
+    expect((await prisma.task.findUnique({ where: { id: priorDone.id } })).board).toBe("DONE");
+    expect(toISODate((await prisma.task.findUnique({ where: { id: priorDone.id } })).completedAt))
+      .toBe("2026-08-18");
+    expect((await prisma.task.findUnique({ where: { id: priorCanceled.id } })).status).toBe("CANCELED");
+    expect((await prisma.task.findUnique({ where: { id: afterCutoff.id } })).board).toBe("TODO");
+  });
+
+  it("يرفض حمولة فاضية — لا خطة ولا إقفال", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-empty-payload`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/فاضية/);
+  });
+
   it("refuses an incomplete plan mapping before writing any descriptions", async () => {
     if (skip()) return;
     const co = await makeCompany({

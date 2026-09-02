@@ -28,6 +28,9 @@ const planUpdateSchema = z
     year: z.number().int().min(2000).max(2100),
     month: z.number().int().min(0).max(11),
     requireComplete: z.boolean().optional(),
+    // اختيارية: في حالات ما فيها خطة جديدة أصلاً — شركة خلصت دورتها وما جدّدت
+    // (أغاليا)، وكل يلي مطلوب إقفال يلي ضل مفتوح من الدورة السابقة. بلا هيك
+    // كان لازم نخترع «قطع» مالها وجود مشان نمرق من التحقّق.
     items: z
       .array(
         pieceRef.extend({
@@ -35,7 +38,8 @@ const planUpdateSchema = z
         }),
       )
       .min(1)
-      .max(300),
+      .max(300)
+      .optional(),
     prepareOn: z
       .object({
         date: isoDate,
@@ -66,6 +70,9 @@ const planUpdateSchema = z
   })
   .refine((value) => Boolean(value.companyId || value.companyName), {
     message: "يلزم تحديد الشركة",
+  })
+  .refine((value) => Boolean(value.items?.length || value.closePreviousOpenTasks), {
+    message: "الحمولة فاضية — لا خطة ولا إقفال",
   });
 
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
@@ -112,7 +119,8 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     };
   }
   const data = parsed.data;
-  const itemKeys = data.items.map(keyOf);
+  const items = data.items ?? [];
+  const itemKeys = items.map(keyOf);
   const itemKeySet = new Set(itemKeys);
   if (itemKeySet.size !== itemKeys.length) {
     return { ok: false as const, error: "الخطة تحتوي قطعة مكررة" };
@@ -259,7 +267,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
         })
       : [];
 
-    const writes = data.items.map((item) =>
+    const writes = items.map((item) =>
       prisma.task.updateMany({
         where: {
           companyId,
@@ -392,7 +400,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     return {
       ok: true as const,
       company: company.name,
-      describedPieces: data.items.length,
+      describedPieces: items.length,
       closedPreviousTasks,
       restoredTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),
