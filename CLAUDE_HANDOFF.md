@@ -538,8 +538,10 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
   local rows and the field has no admin UI. المدارس and كابرياني have none by design.
 - **[PENDING]** Two steps only the lead can take: put the same `CRON_SECRET` value into local `.env.local`
   (no agent handles it), and create the 12:00 daily Windows scheduled task that runs `npm run backup:daily`.
-- **[PENDING]** The competition story for التوظيف: add it to the contract quantity, or record it as extra
-  work? Not decided.
+- **[USER-CONFIRMED 2026-09-02]** The competition story for التوظيف is **extra work outside the plan**.
+  التوظيف's story quantity stays **0**; the story is recorded as an `ADHOC` card under سابين dated
+  2026-09-01 and done. Same rule already applied to event-driven work: raising the contract quantity would
+  double-count the piece in every cycle report.
 - **[PENDING]** A fresh Telegram export was being produced by the lead; matching starts once it lands.
 
 ### 2026-09-02 — Claude — Audit/cleanup plan written; work-week and load items parked by the lead
