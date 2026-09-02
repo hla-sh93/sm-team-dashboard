@@ -518,6 +518,32 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-02 — Claude — Audit/cleanup plan written; work-week and load items parked by the lead
+
+- **[USER-CONFIRMED]** The lead parked two items that were on the pending list: the six people's work-week
+  switch ("طالما موجود بالواجهة خيار تبديل الأيام تركه" — she will do it in شاشة الفريق), and both نوال's
+  week and the capacity/rate change ("نوال لسا ما قررت، هو والحمل كمان"). Neither is an agent task now.
+- **[USER-CONFIRMED]** New request: a company-by-company audit and cleanup — contract/cycle dates, work
+  completed, what was actually published and when, what remains with its required publish dates, then a
+  reschedule that finishes production before those dates, ending in a cycle-status report per company.
+  Matching sources: the plan files, the Telegram export, and each client's Instagram page (read-only
+  browsing). Before any of it: a **daily 12:00 backup of the Vercel data pulled down to the local copy,
+  keeping only the last 3 snapshots**, losing nothing.
+- **[VERIFIED]** Plan written and pushed: `tasks/plan-audit-cleanup-2026-09.md` (commit `60d7543`). It
+  fixes the evidence hierarchy (Instagram decides "published", Telegram decides "delivered", the plan
+  decides "owed", the card follows), the seven-step per-company path, the reschedule rules already in the
+  engine, the report shape, and the company order.
+- **[VERIFIED]** The backup design had to route around a real obstacle: no agent can reach the production
+  database. It is a fail-closed `GET /api/backup/export` (503 without `CRON_SECRET`, 401 on a wrong one,
+  read-only), a local puller with a shrink guard that refuses to overwrite on a suspiciously small
+  snapshot, rotation that keeps the newest three and deletes only after the new one verifies, and a local
+  import that fingerprints `prisma/dev.db` first. Vercel cron cannot do this — free-plan delay plus a
+  read-only filesystem.
+- **[PENDING]** Nothing has been built for the backup yet — the plan is awaiting the lead's go-ahead, and
+  the export secret must be placed in a local environment variable by her (no agent handles it).
+- **[PENDING]** Still needed from the lead: a Telegram export newer than 2026-08-27, the missing Instagram
+  handles, and the التوظيف 8-vs-10 posts decision.
+
 ### 2026-09-02 — Claude — Cycle-boundary payloads for وصل/التوظيف/أغاليا; closure without a plan
 
 - **[USER-CONFIRMED]** The lead set the boundary: previous cycles of وصل, التوظيف, and أغاليا count as
