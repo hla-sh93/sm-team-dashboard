@@ -2,7 +2,7 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-09-01**
+Last updated: **2026-09-02**
 
 Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
@@ -213,6 +213,34 @@ Other scope notes:
 - **[LIVE/VERIFIED 2026-09-01]** Reel 1 SHOOT is assigned to Majed and remains TODO. After reload its stored dates are still start 2026-09-06 and end 2026-09-07, with publication 2026-09-08. The required correction is start 2026-09-01 and end 2026-09-01. The controlled in-app browser produced an update toast, but a fresh reload proved the date values had not changed; native date-input automation updated the DOM property without updating React state. No production data mutation resulted from the attempts.
 - **[LOCAL-ONLY 2026-09-01]** Commit `c658acf` contains the safer explicit-cutoff classification using the latest of `workDate`, `readyDate`, and `publishDate`. Its push/deployment is not verified despite local remote-tracking refs. The uncommitted Wasl payload now retains `beforeDate: 2026-09-01` and removes `restoreMistakenClosures`, preventing any future import of this payload from reverting Post 1–2 DESIGN. Fresh verification passes 460/460 tests and `npm run typecheck`.
 - **[PENDING]** Correct Reel 1 SHOOT start/end to 2026-09-01 through a date-input path that actually reaches React state, reload, and verify both stored values. Later remove only the stale mistaken-closure evidence line from Post 1–2 notes without changing their `DONE` status. Do not re-import the payload merely to attempt the obsolete recovery.
+
+### التوظيف (PhoeniJobs) and أغاليا — cycle boundary decided 2026-09-02
+
+- **[USER-CONFIRMED 2026-09-02]** For وصل, التوظيف, and أغاليا: every task of the **previous** cycle is
+  finished — strictly anything dated **before 2026-09-01**. The new cycle for **وصل and التوظيف** runs
+  **1/9 → 30/9**. Cycle-2 content lives in the Telegram channel or in `D:\smart touch\social media plans`.
+- **[VERIFIED — FILES]** `التوظيف - Jobs\Phoeni Jobs - Sept-Plan NO.2.docx` is the September content plan.
+  Its table was parsed row by row: **8 reels (1–8) and 8 posts (1–8)**, each with a script and a caption.
+  `PhoeniTech - JobsPlan 3 months .pdf` is the launch/ops plan already represented as ad-hoc cards, not a
+  content plan; its Arabic text does not extract (glyph encoding), so it was not used as a brief source.
+- **[VERIFIED — FILES]** أغاليا's folder holds only `Agalya - July.docx`. There is no new plan, which
+  matches "finished and not renewed". Closure is all that is required.
+- **⚠️ [PENDING — DISCREPANCY SHOWN, NOT RESOLVED]** The plan file has **8 posts**; the company record says
+  **10**. Nothing was reconciled: `tawzeef-plan-2026-09.json` carries no `requireComplete`, so it describes
+  the 8 real pieces and leaves any 9th/10th without a description rather than inventing content. The lead
+  decides: drop the company to 8 posts, or supply the two missing briefs.
+- **[LOCAL-ONLY — needs live confirmation]** In the 2026-08-26 local snapshot التوظيف already carries
+  renewals `["2026-09-01","2026-10-01"]` with `publishStartDate` 2026-08-01, so the 1/9 → 1/10 bucket
+  exists. Confirm in the live company dialog before importing.
+- **[LOCAL-ONLY]** Open pre-1/9 cards in that same snapshot: التوظيف **40**, أغاليا **9**, وصل **62**
+  (وصل's number is stale — production already closed its 11 real carryovers under `302ba9b`).
+- **[VERIFIED — LOCAL]** `applyCompanyPlanUpdate` now accepts a **closure-only** payload (`items` optional,
+  and an empty payload is refused). Three payloads are committed for the authenticated
+  `استيراد خطة JSON` control: `tawzeef-plan-2026-09.json`, `agalya-close-2026-09.json`,
+  `wasl-close-2026-09.json`.
+- **[PENDING]** None of the three has been applied. No agent can reach the production database
+  (`.env.production.local` holds redacted 11-character placeholders), so the lead applies them through the
+  admin UI.
 
 ### Schools additional design requests
 
@@ -489,6 +517,25 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-02 — Claude — Cycle-boundary payloads for وصل/التوظيف/أغاليا; closure without a plan
+
+- **[USER-CONFIRMED]** The lead set the boundary: previous cycles of وصل, التوظيف, and أغاليا count as
+  finished (strictly before 2026-09-01); the new cycle for وصل and التوظيف is 1/9 → 30/9; cycle-2 content
+  is in Telegram or the content library.
+- **[VERIFIED]** Parsed `Phoeni Jobs - Sept-Plan NO.2.docx` as a table (17 rows): 8 reels + 8 posts, each
+  with script and caption. Briefs were written as faithful one-line summaries in the same style as the
+  Wasl payload — no invented content, and the two source files that are not content plans were excluded.
+- **[VERIFIED]** `items` became optional in `applyCompanyPlanUpdate` so a company with no new plan
+  (أغاليا) can be closed through the same audited path; a payload with neither plan nor closure is now
+  refused. New tests prove a closure-only payload closes only open pre-cutoff work and leaves completed,
+  cancelled, and new-cycle cards untouched.
+- **[VERIFIED]** Gates: 494/494 tests in 46 files and `npx tsc --noEmit`. Pushed to `origin/main` as
+  `0129159`.
+- **⚠️ [PENDING]** التوظيف plan/company mismatch: 8 posts in the file, 10 on the company record. Shown to
+  the lead, deliberately not reconciled.
+- **[PENDING]** The three payloads still need to be applied through the authenticated admin UI, and the
+  live التوظيف cycle dialog should be confirmed as 1/9 → 1/10 first. No production data was changed.
 
 ### 2026-09-01 — Claude — Team roster narrowed, work week moved to Sun→Thu, publish-day rule named
 
