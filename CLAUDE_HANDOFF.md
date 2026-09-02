@@ -518,6 +518,30 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-02 — Claude — Daily backup built and live; Jobs plan settled at 10 posts
+
+- **[USER-CONFIRMED]** Go-ahead to build the backup first. Also: التوظيف is **10 posts** — the plan file's
+  8 plus two Sabin delivered on Telegram on 2026-09-01 (a competition post and a statistics post). She
+  also mentioned a **competition story**, while التوظيف's plan carries zero stories — flagged, not acted on.
+- **[VERIFIED/LIVE]** `GET /api/backup/export` is deployed and answers **401** without credentials. That is
+  the decisive result: 401 rather than 503 proves both that the route is live and that `CRON_SECRET` is
+  readable by the runtime. The route is read-only and GET-only.
+- **[VERIFIED]** Local side: `npm run backup:pull` (fetch → verify → write → rotate) and
+  `npm run backup:sync` (safety copy of `prisma/dev.db` → single-transaction import → count check), with
+  `npm run backup:daily` chaining both. Guards: a truncated snapshot (header counts ≠ actual), an empty
+  core table, or a >20% shrink against the last good snapshot is refused **before** anything is written or
+  deleted; rotation keeps the newest three and deletes only after the new file's on-disk hash verifies;
+  `dev.db` safety copies are deliberately outside that rotation; auth keys are never exported.
+- **[VERIFIED]** Gates: 508/508 tests in 47 files, typecheck, and production build. Pushed as `e5dfd36`.
+- **[VERIFIED]** Instagram handles for all 14 managed companies now live in
+  `scripts/data/instagram-handles.json` — in the repo, not the database, because the daily sync overwrites
+  local rows and the field has no admin UI. المدارس and كابرياني have none by design.
+- **[PENDING]** Two steps only the lead can take: put the same `CRON_SECRET` value into local `.env.local`
+  (no agent handles it), and create the 12:00 daily Windows scheduled task that runs `npm run backup:daily`.
+- **[PENDING]** The competition story for التوظيف: add it to the contract quantity, or record it as extra
+  work? Not decided.
+- **[PENDING]** A fresh Telegram export was being produced by the lead; matching starts once it lands.
+
 ### 2026-09-02 — Claude — Audit/cleanup plan written; work-week and load items parked by the lead
 
 - **[USER-CONFIRMED]** The lead parked two items that were on the pending list: the six people's work-week
