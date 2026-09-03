@@ -321,7 +321,8 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
     }
 
     if (oldBucket.year !== newBucket.year || oldBucket.month !== newBucket.month) {
-      const cleaned = await generateCompanySchedule(companyId, oldBucket.year, oldBucket.month);
+      // التفريغ مقصود كمان: الدورة انزاحت لبكت تاني، فالبكت القديم لازم يفضى.
+      const cleaned = await generateCompanySchedule(companyId, oldBucket.year, oldBucket.month, true);
       if (!cleaned.ok) {
         revalidateAll();
         return {
@@ -394,7 +395,9 @@ export async function removeLatestRenewal(companyId: string, confirmDoneCards?: 
 
     // كروت الدورة المشالة بتروح بإعادة توليد دلوها: ما عاد إلها دورة فالمحرّك
     // بيرجع فاضي، والحذف بيمسّ المولَّد تلقائياً بس — الكروت اليدوية بتضل.
-    const cleaned = await generateCompanySchedule(companyId, bucket.year, bucket.month);
+    // `true` = التفريغ مقصود: هي الدورة انشالت، فكروتها المولّدة لازم تروح.
+    // بلاها بيرفض الحارس الحذف (شوف `allowEmptyRebuild`).
+    const cleaned = await generateCompanySchedule(companyId, bucket.year, bucket.month, true);
     if (!cleaned.ok) {
       await prisma.company.update({
         where: { id: companyId },

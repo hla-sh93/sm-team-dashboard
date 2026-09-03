@@ -196,6 +196,16 @@ async function generateScheduleInternal(
   year: number,
   month: number,
   onlyCompanyId: string | null,
+  /**
+   * «أنا قاصد أفرّغ هالبكت».
+   *
+   * الحارس تحت بيرفض يحذف كروت شركة ما بينولّد إلها المحرّك شي — لأنّ هاد محو
+   * بلا بديل. بس «شيل آخر تجديد» بيعتمد على هالحذف بالذات: بيشيل الدورة وبيعيد
+   * التوليد **مشان** كروتها تنمحي. فبلا هالعلَم كان الحارس يمنع التنظيف المقصود.
+   *
+   * الفرق كله بالنيّة، فالنيّة صارت تنقال صراحةً بدل ما تنستنتج.
+   */
+  allowEmptyRebuild = false,
 ) {
   try {
     const state = await loadState(year, month);
@@ -413,7 +423,7 @@ async function generateScheduleInternal(
 
     // نفس الحارس عند التوليد المحصور على شركة وحدة: نطاقه «هالشركة» فبيسقط معه
     // الاستثناء فوق، والنتيجة محو كامل. بيفشل بصوت بدل ما يمحي بصمت.
-    if (onlyCompanyId && !producedIds.has(onlyCompanyId)) {
+    if (onlyCompanyId && !allowEmptyRebuild && !producedIds.has(onlyCompanyId)) {
       return {
         ok: false as const,
         error:
@@ -548,13 +558,19 @@ async function generateScheduleInternal(
  * other company's generated rows. The full schedule is still calculated first,
  * so shared workload/capacity decisions stay identical to a normal regeneration;
  * only the persistence scope is narrowed. */
-export async function generateCompanySchedule(companyId: string, year: number, month: number) {
+export async function generateCompanySchedule(
+  companyId: string,
+  year: number,
+  month: number,
+  /** شوف `allowEmptyRebuild` — بيستعملها «شيل آخر تجديد» وبس. */
+  allowEmptyRebuild = false,
+) {
   try {
     await assertAdmin();
   } catch {
     return { ok: false as const, error: "غير مصرّح" };
   }
-  return generateScheduleInternal(year, month, companyId);
+  return generateScheduleInternal(year, month, companyId, allowEmptyRebuild);
 }
 
 export async function generateSchedule(year: number, month: number) {
