@@ -52,6 +52,25 @@ const planUpdateSchema = z
         item: pieceRef,
       })
       .optional(),
+    // حالة قطعة بدليلها — «هاي القطعة انسلّمت/انتشرت يوم كذا، وهاد الدليل».
+    // بدونها كانت المطابقة تنتهي بنقرات يدوية على الكروت: بلا سطر دليل، وبلا
+    // ضمان كل-أو-لا-شي، وبلا أثر يرجعله حدا بعد شهر.
+    pieceStates: z
+      .array(
+        pieceRef.extend({
+          stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
+          status: z
+            .enum(["NOT_STARTED", "IN_PROGRESS", "AWAITING_APPROVAL", "READY", "PUBLISHED"])
+            .optional(),
+          /** يوم الشغل الفعلي/النشر الفعلي — سجلّ، مو خطة. */
+          date: isoDate.optional(),
+          /** إعادة تأريخ نشر قطعة لسا ما انتشرت (تأجيل بقرار القائدة). */
+          publishDate: isoDate.optional(),
+          evidence: z.string().trim().min(3).max(500),
+        }),
+      )
+      .max(200)
+      .optional(),
     closePreviousOpenTasks: z
       .object({
         decisionDate: isoDate,
@@ -71,9 +90,11 @@ const planUpdateSchema = z
   .refine((value) => Boolean(value.companyId || value.companyName), {
     message: "يلزم تحديد الشركة",
   })
-  .refine((value) => Boolean(value.items?.length || value.closePreviousOpenTasks), {
-    message: "الحمولة فاضية — لا خطة ولا إقفال",
-  });
+  .refine(
+    (value) =>
+      Boolean(value.items?.length || value.closePreviousOpenTasks || value.pieceStates?.length),
+    { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
+  );
 
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
 const stageKeyOf = (item: { type: string; pieceNo: number; stage: string }) =>
@@ -159,6 +180,33 @@ export async function applyCompanyPlanUpdate(input: unknown) {
         return {
           ok: false as const,
           error: `الخطة ناقصة؛ بلا وصف: ${undescribed.join("، ")}`,
+        };
+      }
+    }
+
+    const stateSpecs = data.pieceStates ?? [];
+    if (stateSpecs.length) {
+      const dup = stateSpecs.map(stageKeyOf);
+      if (new Set(dup).size !== dup.length)
+        return { ok: false as const, error: "الحمولة فيها حالة مكرّرة لنفس القطعة والمرحلة" };
+      const missingStates = [
+        ...new Set(
+          stateSpecs
+            .filter(
+              (spec) =>
+                !tasks.some(
+                  (task) =>
+                    task.stage === spec.stage &&
+                    keyOf({ type: task.type ?? "", pieceNo: task.pieceNo! }) === keyOf(spec),
+                ),
+            )
+            .map(stageKeyOf),
+        ),
+      ];
+      if (missingStates.length > 0) {
+        return {
+          ok: false as const,
+          error: `لا يوجد كرت لهذه الحالات في دورة ${company.name}: ${missingStates.join("، ")}`,
         };
       }
     }
@@ -385,6 +433,66 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       );
     }
 
+    // حالات القطع: كل كرت بينتحدّث لحاله مشان الدليل ينضاف لملاحظاته بدل ما
+    // يمحيها. الكرت المنجز موعده **تاريخ** لا خطة، فمنكتب يوم التسليم الفعلي
+    // على `workDate`/`readyDate` — والحفظ بيصونهم عبر إعادة التوليد.
+    const stateWriteStart = writes.length;
+    let stateTargets: { id: string; notes: string | null }[] = [];
+    if (stateSpecs.length) {
+      const targets = await prisma.task.findMany({
+        where: {
+          companyId,
+          year: data.year,
+          month: data.month,
+          isAuto: true,
+          status: { not: "CANCELED" },
+          OR: stateSpecs.map((spec) => ({
+            type: spec.type,
+            pieceNo: spec.pieceNo,
+            stage: spec.stage,
+          })),
+        },
+        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true },
+      });
+      stateTargets = targets.map((t) => ({ id: t.id, notes: t.notes }));
+      const specByKey = new Map(stateSpecs.map((spec) => [stageKeyOf(spec), spec]));
+      for (const task of targets) {
+        const spec = specByKey.get(
+          stageKeyOf({ type: task.type ?? "", pieceNo: task.pieceNo!, stage: task.stage ?? "" }),
+        );
+        if (!spec) continue;
+        const when = spec.date ? fromISODate(spec.date) : null;
+        const status = spec.status
+          ? normalizeStatusForStage(spec.status, spec.stage)
+          : null;
+        const done = status ? DONE_STATUSES.includes(status as never) : false;
+        const notes = [task.notes?.trim(), spec.evidence.trim()]
+          .filter((line): line is string => Boolean(line))
+          .join("\n");
+
+        const update: Record<string, unknown> = { notes };
+        if (status) update.status = status;
+        if (status) update.board = statusToBoard(status);
+        if (when && done) {
+          update.finishedAt = when;
+          update.completedAt = when;
+          if (!task.startedAt) update.startedAt = when;
+          if (spec.stage === "PUBLISH") update.publishDate = when;
+          else {
+            update.workDate = when;
+            update.readyDate = when;
+          }
+        }
+        // تأجيل/تثبيت موعد نشر لقطعة لسا ما انتشرت — قرار صريح، فبينثبّت مشان
+        // إعادة الجدولة ما تسحبه.
+        if (spec.publishDate) {
+          update.publishDate = fromISODate(spec.publishDate);
+          update.isPinned = true;
+        }
+        writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
+      }
+    }
+
     const results = await prisma.$transaction(writes);
     const closedPreviousTasks = previousOpenTasks.length
       ? results
@@ -401,6 +509,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       ok: true as const,
       company: company.name,
       describedPieces: items.length,
+      updatedStates: stateTargets.length,
       closedPreviousTasks,
       restoredTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),

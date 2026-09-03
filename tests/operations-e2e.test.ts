@@ -849,6 +849,106 @@ describe("contract renewal lifecycle", () => {
     expect((await prisma.task.findUnique({ where: { id: afterCutoff.id } })).board).toBe("TODO");
   });
 
+  /**
+   * تثبيت حالة قطعة بدليلها — الأداة يلي بتخلّي المطابقة تنطبّق بحمولة واحدة
+   * بدل نقرات يدوية بلا أثر. الكرت المنجز موعده تاريخ لا خطة، فيوم التسليم
+   * الفعلي بينكتب على الكرت، والدليل بينضاف لملاحظاته بلا ما يمحيها.
+   */
+  it("يثبّت حالات القطع بدليلها: منشور بتاريخه، ومسلَّم بيوم تسليمه، وتأجيل مثبَّت", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-piece-states`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 2,
+      stories: 1,
+      reels: 1,
+    });
+    await actions.generateSchedule(YEAR, 8);
+
+    const storyDesign = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "STORY", pieceNo: 1, stage: "DESIGN" },
+    });
+    await prisma.task.update({ where: { id: storyDesign.id }, data: { notes: "ملاحظة قديمة" } });
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      pieceStates: [
+        {
+          type: "POST", pieceNo: 2, stage: "PUBLISH", status: "PUBLISHED",
+          date: "2026-09-01", evidence: "منشور على إنستغرام 1/9 — /p/DcwFtAVs8nU/",
+        },
+        {
+          type: "STORY", pieceNo: 1, stage: "DESIGN", status: "READY",
+          date: "2026-08-31", evidence: "سلّمها أيمن على تلغرام 31/8 — STORY1-1.jpg",
+        },
+        {
+          type: "REEL", pieceNo: 1, stage: "PUBLISH",
+          publishDate: "2026-09-03", evidence: "تأجيل النشر للخميس بقرار القائدة 2/9",
+        },
+      ],
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.updatedStates).toBe(3);
+
+    const postPublish = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 2, stage: "PUBLISH" },
+    });
+    expect(postPublish.status).toBe("PUBLISHED");
+    expect(postPublish.board).toBe("DONE");
+    expect(toISODate(postPublish.publishDate)).toBe("2026-09-01");
+    expect(toISODate(postPublish.completedAt)).toBe("2026-09-01");
+    expect(postPublish.notes).toContain("إنستغرام");
+
+    const story = await prisma.task.findFirstOrThrow({ where: { id: storyDesign.id } });
+    expect(story.board).toBe("DONE");
+    // يوم التسليم الفعلي صار سجلّ الكرت — مو يوم الخطة.
+    expect(toISODate(story.workDate)).toBe("2026-08-31");
+    expect(toISODate(story.readyDate)).toBe("2026-08-31");
+    // الدليل انضاف للملاحظة القديمة، ما محاها.
+    expect(story.notes).toContain("ملاحظة قديمة");
+    expect(story.notes).toContain("أيمن");
+
+    const reelPublish = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "REEL", pieceNo: 1, stage: "PUBLISH" },
+    });
+    expect(toISODate(reelPublish.publishDate)).toBe("2026-09-03");
+    expect(reelPublish.isPinned).toBe(true);
+    // تأجيل بلا حالة ما بيسكّر الكرت.
+    expect(reelPublish.board).toBe("TODO");
+  });
+
+  it("يرفض حالة لقطعة أو مرحلة غير موجودة — بلا أي كتابة", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-piece-states-missing`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const before = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1, stage: "PUBLISH" },
+    });
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      pieceStates: [
+        { type: "POST", pieceNo: 1, stage: "PUBLISH", status: "PUBLISHED", date: "2026-09-01", evidence: "دليل صحيح" },
+        { type: "POST", pieceNo: 99, stage: "PUBLISH", status: "PUBLISHED", date: "2026-09-01", evidence: "قطعة غير موجودة" },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    const after = await prisma.task.findFirstOrThrow({ where: { id: before.id } });
+    expect(after.status).toBe(before.status);
+    expect(after.notes).toBe(before.notes);
+  });
+
   it("يرفض حمولة فاضية — لا خطة ولا إقفال", async () => {
     if (skip()) return;
     const co = await makeCompany({

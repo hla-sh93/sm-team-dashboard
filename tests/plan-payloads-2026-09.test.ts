@@ -14,6 +14,15 @@ type Payload = {
   year: number;
   month: number;
   items?: Array<{ type: string; pieceNo: number; brief: string }>;
+  pieceStates?: Array<{
+    type: string;
+    pieceNo: number;
+    stage: string;
+    status?: string;
+    date?: string;
+    publishDate?: string;
+    evidence: string;
+  }>;
   closePreviousOpenTasks: { decisionDate: string; beforeDate: string };
 };
 
@@ -70,5 +79,33 @@ describe("حمولات الإقفال بلا خطة", () => {
       // الحدّ حصري: كرت تاريخه ١/٩ أو بعده بيضل مفتوح.
       expect(payload.closePreviousOpenTasks.beforeDate).toBe("2026-09-01");
     }
+  });
+});
+
+describe("تصحيح حالات وصل — كل سطر معه دليله", () => {
+  const wasl = load("wasl-states-2026-09.json");
+
+  it("ما في حالة بلا دليل، ولا حالة مكرّرة لنفس القطعة والمرحلة", () => {
+    const states = wasl.pieceStates ?? [];
+    expect(states.length).toBeGreaterThan(0);
+    // الدليل هو يلي بيخلّي الإقفال قابل للمراجعة بعد شهر — بلاه الكرت مسكّر بلا سبب.
+    expect(states.every((s) => s.evidence.trim().length > 20)).toBe(true);
+    const keys = states.map((s) => `${s.type}|${s.pieceNo}|${s.stage}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("كل تاريخ داخل الدورة أو قبلها — ما في تسليم مؤرَّخ بالمستقبل", () => {
+    for (const s of wasl.pieceStates ?? []) {
+      if (!s.date) continue;
+      expect(s.date >= "2026-08-01").toBe(true);
+      expect(s.date <= "2026-09-30").toBe(true);
+    }
+  });
+
+  it("بوست ٢ منشور ١/٩ بدليل إنستغرام — وهو الوحيد المُقَرّ كمنشور", () => {
+    const published = (wasl.pieceStates ?? []).filter((s) => s.status === "PUBLISHED");
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ type: "POST", pieceNo: 2, date: "2026-09-01" });
+    expect(published[0].evidence).toContain("instagram.com");
   });
 });

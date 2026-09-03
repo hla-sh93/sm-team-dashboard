@@ -1,0 +1,52 @@
+{
+  "_": [
+    "تصحيح حالات وصل — دورة ١/٩ → ٣٠/٩. كل سطر معه دليله.",
+    "المصادر: تلغرام (تصدير 2026-09-02) · إنستغرام @wasl.fx · تأكيد القائدة (٢/٩).",
+    "ما فيه إلا المؤكَّد: تصوير ريل ١ وموعد نشره وتاريخ بوست ١ الجديد لسا أسئلة."
+  ],
+  "companyName": "وصل للتداول",
+  "year": 2026,
+  "month": 8,
+  "pieceStates": [
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-09-01",
+      "evidence": "منشور فعلاً على إنستغرام 1/9/2026 — instagram.com/wasl.fx/p/DcwFtAVs8nU/ «احمي رأس مالك». رقم القطعة مؤكَّد من القائدة 2/9."
+    },
+    {
+      "type": "STORY",
+      "pieceNo": 1,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY1-1.jpg و STORY1-2.jpg."
+    },
+    {
+      "type": "STORY",
+      "pieceNo": 2,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY2.jpg."
+    },
+    {
+      "type": "STORY",
+      "pieceNo": 3,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY3.jpg."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "EDIT",
+      "status": "READY",
+      "date": "2026-09-01",
+      "evidence": "سلّمتها أليسار على تلغرام 1/9/2026 الساعة 21:12 — wasl 1 -9.mp4."
+    }
+  ]
+}
