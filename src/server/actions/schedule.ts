@@ -388,17 +388,48 @@ async function generateScheduleInternal(
     // الحالة **والإدارة** — فشركة نشطة بس غير مُدارة كانت تنحذف كروتها بلا بديل.
     // اليوم كابرياني والمدارس بلا كروت مولّدة فما ظهر الأثر، بس الثغرة مفتوحة.
     const dormantIds = state.companies.filter((c) => !isPlanned(c)).map((c) => c.id);
+    const pipeToWrite = onlyCompanyId
+      ? pipe.filter((task) => task.companyId === onlyCompanyId)
+      : pipe;
+
+    // ═══ الحارس الثاني: ما منحذف إلا يلي منقدر نعيد بناءه ═══
+    //
+    // الحارس الأول (`dormantIds`) بيمسك الشركة الموقوفة أو المؤرشفة أو غير
+    // المُدارة. بس في حالة تانية بتوصل لنفس النتيجة وهي أخطر لأنها صامتة:
+    // شركة **نشطة ومُدارة** وما إلها دورة تغطّي هالبكت — فالمحرّك بيولّد إلها
+    // **صفر**، والحذف بيمرق عليها فتضيع كروتها بلا بديل.
+    //
+    // BW مثال حيّ (٣/٩): كروتها بخمس بكتات وتاريخ بدء نشرها فاضي لأنها بانتظار
+    // محتوى نوال — يعني ولا دورة. إعادة جدولة واحدة كانت بتمحي ٨٠+ كرت منجز.
+    // ونفس الشي على Phoenitech والمخبر والتدريب.
+    //
+    // القاعدة: أي شركة ما طلع إلها ولا كرت من المحرّك بهالبكت بتنستثنى من
+    // الحذف. «امحُ فقط ما تقدر تبنيه من جديد».
+    const producedIds = new Set(pipeToWrite.map((task) => task.companyId));
+    const unbuildableIds = state.companies
+      .filter((c) => !producedIds.has(c.id))
+      .map((c) => c.id);
+    const protectedIds = [...new Set([...dormantIds, ...unbuildableIds])];
+
+    // نفس الحارس عند التوليد المحصور على شركة وحدة: نطاقه «هالشركة» فبيسقط معه
+    // الاستثناء فوق، والنتيجة محو كامل. بيفشل بصوت بدل ما يمحي بصمت.
+    if (onlyCompanyId && !producedIds.has(onlyCompanyId)) {
+      return {
+        ok: false as const,
+        error:
+          "ما في دورة تغطّي هالشهر عند هالشركة، فالمحرّك ما بيولّد إلها ولا كرت — " +
+          "وإعادة بناء دورتها بتمحي كروتها بلا بديل. حطّي تاريخ بدء النشر أولاً.",
+      };
+    }
+
     const replaceScope = onlyCompanyId
       ? { isAuto: true, year, month, companyId: onlyCompanyId }
       : {
           isAuto: true,
           year,
           month,
-          ...(dormantIds.length ? { NOT: { companyId: { in: dormantIds } } } : {}),
+          ...(protectedIds.length ? { NOT: { companyId: { in: protectedIds } } } : {}),
         };
-    const pipeToWrite = onlyCompanyId
-      ? pipe.filter((task) => task.companyId === onlyCompanyId)
-      : pipe;
     const sessionsToWrite = onlyCompanyId
       ? result.sessions.filter((session) => session.companyId === onlyCompanyId)
       : result.sessions;

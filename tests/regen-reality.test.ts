@@ -227,7 +227,23 @@ describe("توليدان على نسخة الداتا الحقيقية — ال�
         const pubDay = day(t.publishDate);
         if (workDay > pubDay) workDay = pubDay;
       }
-      m.set(t.id, [t.status, t.board, t.assigneeId, t.pieceNo, t.isPinned,
+      // ═══ المفتاح: هوية القطعة، مو معرّف الصف ═══
+      //
+      // إعادة التوليد بتحذف الصفوف المولَّدة وبتبنيها من جديد، ومعرّف الصف
+      // مشتقّ من تاريخ النشر — فأول ما ينزاح موعد، بينتغيّر المعرّف والصف
+      // القديم بيبيّن «انمحى» رغم إنّ القطعة موجودة وحالتها وبريفها سليمين.
+      //
+      // صار فعلاً (٣/٩): بعد تثبيت تواريخ سارة لمانغو، الفحص بلّغ عن ١١٣ كرت
+      // «منمحي». والقياس المباشر بمفتاح المحتوى طلع: **٠ قطعة مفقودة و٠ حالة
+      // أو بريف تغيّر**. يعني كان إنذاراً كاذباً بيخبّي الإنذار الحقيقي.
+      //
+      // العقد المقصود هو «الواقع المسجَّل بيصمد» — والواقع قطعة بمرحلة، لا رقم
+      // صفّ. الكروت خارج الخطة (بلا رقم قطعة) ما بتنولّد فمعرّفها ثابت.
+      const key =
+        t.pieceNo != null && t.companyId
+          ? `${t.companyId}|${t.type}|${t.pieceNo}|${t.stage}|${t.year}-${t.month}`
+          : t.id;
+      m.set(key, [t.status, t.board, t.assigneeId, t.pieceNo, t.isPinned,
         t.brief?.length ?? 0, t.notes?.length ?? 0, day(t.finishedAt),
         workDay,
         t.board === "DONE" ? day(t.publishDate) : "~"].join("|"));
