@@ -12,6 +12,7 @@ import {
   renewContract,
   correctLatestRenewal,
   endContract,
+  removeLatestRenewal,
 } from "@/server/actions/companies";
 import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
@@ -136,6 +137,54 @@ export default function CompaniesClient({
           toast(`تم تصحيح آخر تجديد لـ ${c.name} وإعادة بناء دورته فقط`);
           router.refresh();
         } else toast(r.error, "error");
+      });
+    });
+  };
+
+  /** دورة انسجّلت وما بلّشت — بتنشال هي وكروتها. الدورات الأقدم ما بتنلمس.
+   *  الشغل المنجز محروس: لازم تأكيد بعدده حرفياً. */
+  const onRemoveLatestRenewal = (c: Company) => {
+    const cycles = parseRenewals(c);
+    const latest = cycles[cycles.length - 1];
+    if (!latest) return;
+    Swal.fire({
+      title: `شيل آخر تجديد — ${c.name}`,
+      html: `دورة <b>${formatDateShort(latest)}</b> رح تنشال هي وكل كروتها المولّدة.<br/>استعمليها لما تكون الدورة انسجّلت وما بلّشت فعلاً — الشغل يلي صار بيرجع للدورة يلي قبلها.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "شيل الدورة",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#c0392b",
+    }).then((res) => {
+      if (!res.isConfirmed) return;
+      start(async () => {
+        const r = await removeLatestRenewal(c.id);
+        if (r.ok) {
+          toast(`انشالت دورة ${formatDateShort(latest)} من ${c.name}`);
+          router.refresh();
+          return;
+        }
+        if (!("doneCards" in r) || !r.doneCards) {
+          toast(r.error, "error");
+          return;
+        }
+        const confirmed = await Swal.fire({
+          title: "الدورة فيها شغل منجز",
+          html: `${r.doneCards} كرت منجز رح يروح مع الدورة.<br/>إذا كانت فعلاً دورة ما بلّشت وشغلها بيتبع الدورة يلي قبلها، اكتبي العدد للتأكيد.`,
+          input: "text",
+          inputPlaceholder: String(r.doneCards),
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "أكّدي وشيلي",
+          cancelButtonText: "إلغاء",
+          confirmButtonColor: "#c0392b",
+        });
+        if (!confirmed.isConfirmed || Number(confirmed.value) !== r.doneCards) return;
+        const forced = await removeLatestRenewal(c.id, r.doneCards);
+        if (forced.ok) {
+          toast(`انشالت دورة ${formatDateShort(latest)} من ${c.name}`);
+          router.refresh();
+        } else toast(forced.error, "error");
       });
     });
   };
@@ -361,6 +410,14 @@ export default function CompaniesClient({
                     onClick={() => onCorrectLatestRenewal(c)}
                   >
                     صحّح آخر تجديد
+                  </button>
+                )}
+                {hasRenewals && (
+                  <button
+                    className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
+                    onClick={() => onRemoveLatestRenewal(c)}
+                  >
+                    شيل آخر تجديد
                   </button>
                 )}
               </div>

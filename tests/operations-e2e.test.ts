@@ -145,6 +145,7 @@ let actions: {
   renewContract: any;
   correctLatestRenewal: any;
   applyCompanyPlanUpdate: any;
+  removeLatestRenewal: any;
   endContract: any;
   generateSchedule: any;
   createTask: any;
@@ -174,6 +175,7 @@ beforeAll(async () => {
     renewContract: companies.renewContract,
     correctLatestRenewal: companies.correctLatestRenewal,
     applyCompanyPlanUpdate: plans.applyCompanyPlanUpdate,
+    removeLatestRenewal: companies.removeLatestRenewal,
     endContract: companies.endContract,
     generateSchedule: schedule.generateSchedule,
     createTask: tasks.createTask,
@@ -990,6 +992,66 @@ describe("contract renewal lifecycle", () => {
     const after = await prisma.task.findFirstOrThrow({ where: { id: before.id } });
     expect(after.status).toBe(before.status);
     expect(after.notes).toBe(before.notes);
+  });
+
+  /**
+   * دورة انسجّلت وما بلّشت — قرار القائدة عن المخبر (٣/٩): «ما عملنا دورة
+   * ١٥/٨–١٥/٩، هاد كله تأخير من الدورة يلي قبلها». إزالتها لازم تنظّف كروتها
+   * وما تلمس الدورات الأقدم.
+   */
+  it("يشيل آخر تجديد ويمحي كروت دورته وحدها", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-remove-renewal`,
+      contractStartDate: "2026-07-15",
+      publishStartDate: "2026-07-15",
+      posts: 1,
+      stories: 0,
+    });
+    expect((await actions.renewContract(co.id, "2026-08-15")).ok).toBe(true);
+    await actions.generateSchedule(YEAR, 6);
+    await actions.generateSchedule(YEAR, 7);
+    const before = { july: await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 6 } }),
+                     aug: await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 7 } }) };
+    expect(before.july).toBeGreaterThan(0);
+    expect(before.aug).toBeGreaterThan(0);
+
+    const res = await actions.removeLatestRenewal(co.id);
+    expect(res.ok, res.error).toBe(true);
+    expect(res.removed).toBe("2026-08-15");
+
+    const fresh = await prisma.company.findUnique({ where: { id: co.id } });
+    expect(contract.parseRenewals(fresh).map(toISODate)).toEqual([]);
+    // كروت الدورة المشالة راحت، والدورة الأقدم ما انلمست.
+    expect(await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 7, isAuto: true } })).toBe(0);
+    expect(await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 6 } })).toBe(before.july);
+  });
+
+  it("ما بيشيل دورة فيها شغل منجز إلا بتأكيد بعدده", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-remove-renewal-guard`,
+      contractStartDate: "2026-07-15",
+      publishStartDate: "2026-07-15",
+      posts: 1,
+      stories: 0,
+    });
+    expect((await actions.renewContract(co.id, "2026-08-15")).ok).toBe(true);
+    await actions.generateSchedule(YEAR, 7);
+    const card = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 7, stage: "DESIGN" },
+    });
+    await prisma.task.update({ where: { id: card.id }, data: { status: "READY", board: "DONE" } });
+
+    const refused = await actions.removeLatestRenewal(co.id);
+    expect(refused.ok).toBe(false);
+    expect(refused.doneCards).toBe(1);
+    // التجديد ضل مكانه والكروت ما انلمست.
+    const still = await prisma.company.findUnique({ where: { id: co.id } });
+    expect(contract.parseRenewals(still).map(toISODate)).toEqual(["2026-08-15"]);
+
+    const confirmed = await actions.removeLatestRenewal(co.id, 1);
+    expect(confirmed.ok, confirmed.error).toBe(true);
   });
 
   it("يرفض حمولة فاضية — لا خطة ولا إقفال", async () => {

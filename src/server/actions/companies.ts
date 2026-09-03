@@ -341,6 +341,79 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
 }
 
 /**
+ * شيل آخر تجديد — دورة انسجّلت وما بلّشت أصلاً.
+ *
+ * القائدة (٣/٩/٢٠٢٦) عن المخبر: «لا، المشكلة نحنا ما عملنا دورة ١٥/٨–١٥/٩.
+ * هاد كله تأخير من دورة ١٥/٧–١٥/٨». فالتطبيق كان فاتح دورة تالتة ما وُجدت،
+ * وكروتها بتشوّش على كل حساب: الخطة، والمتأخرات، والحمل.
+ *
+ * `correctLatestRenewal` بتستبدل التاريخ وما بتقدر تشيله — فهاي أختها.
+ *
+ * الحارس: الدورة يلي فيها شغل منجز ما بتنشال بالغلط. لازم المُنادي يمرّر عدد
+ * الكروت المنجزة يلي شافه (`confirmDoneCards`) — رقم مطابق تماماً، فما بتنشال
+ * دورة فيها شغل إلا بقرار واعٍ بعدده.
+ */
+export async function removeLatestRenewal(companyId: string, confirmDoneCards?: number) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+
+    const renewals = parseRenewals(co).sort((a, b) => a.getTime() - b.getTime());
+    if (renewals.length === 0) {
+      return { ok: false as const, error: "لا يوجد تجديد مسجّل لإزالته" };
+    }
+    const removed = renewals[renewals.length - 1];
+    const bucket = { year: removed.getFullYear(), month: removed.getMonth() };
+
+    const doneCards = await prisma.task.count({
+      where: {
+        companyId,
+        year: bucket.year,
+        month: bucket.month,
+        board: "DONE",
+        status: { not: "CANCELED" },
+      },
+    });
+    if (doneCards > 0 && confirmDoneCards !== doneCards) {
+      return {
+        ok: false as const,
+        error: `دورة ${formatDateShort(removed)} فيها ${doneCards} كرت منجز. إذا كانت فعلاً دورة ما بلّشت، أكّدي بالعدد نفسه.`,
+        doneCards,
+      };
+    }
+
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: { renewals: serializeRenewals(renewals.slice(0, -1)) },
+    });
+
+    // كروت الدورة المشالة بتروح بإعادة توليد دلوها: ما عاد إلها دورة فالمحرّك
+    // بيرجع فاضي، والحذف بيمسّ المولَّد تلقائياً بس — الكروت اليدوية بتضل.
+    const cleaned = await generateCompanySchedule(companyId, bucket.year, bucket.month);
+    if (!cleaned.ok) {
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { renewals: co.renewals },
+      });
+      return {
+        ok: false as const,
+        error: `لم تُزَل الدورة لأن تنظيف كروتها فشل: ${cleaned.error}`,
+      };
+    }
+
+    revalidateAll();
+    return { ok: true as const, data: updated, removed: toISODate(removed), doneCards };
+  } catch {
+    return { ok: false as const, error: "فشلت إزالة آخر تجديد" };
+  }
+}
+
+/**
  * CONTRACT NOT RENEWED — stop here. Sets a hard cutoff so no cycle can begin
  * on/after today and pauses the company (out of scheduling and finance). Fully
  * reversible: recording a renewal later clears the cutoff and reactivates it.
