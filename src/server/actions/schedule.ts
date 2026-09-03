@@ -18,7 +18,7 @@ import {
   forwardWorkday,
   parseWorkDays,
 } from "@/lib/dates";
-import { cycleForBucket } from "@/lib/contract";
+import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -245,6 +245,10 @@ async function generateScheduleInternal(
     const coName = (id: string) => state.companies.find((c) => c.id === id)?.name ?? "";
     const trainerSuppliedContent = (id: string) =>
       isTrainerSuppliedContentCompany(state.companies.find((c) => c.id === id));
+    // بلا تاريخ بدء نشر ما في كروت نشر — قاعدة القائدة (٣/٩). الإنتاج بيضل
+    // ينتولّد، فالفريق بيقدر يصمّم ويصوّر ويحضّر؛ يلي ما بينجدول هو النشر.
+    const notPublishingYet = (id: string) =>
+      !hasStartedPublishing(state.companies.find((c) => c.id === id));
     // Contract-cycle label for the writer's plan card (e.g. "دورة 20 حزيران – 19
     // تموز"). end is exclusive, so the last shown day is end − 1.
     const cycleLabel = (id: string) => {
@@ -297,6 +301,7 @@ async function generateScheduleInternal(
       writerWorkDays,
       idPrefix: `${year}_${month}_`, // namespace ids per month (avoid PK clashes)
       skipWritingForCompany: trainerSuppliedContent,
+      skipPublishForCompany: notPublishingYet,
       notBeforeISO,
       publisherWorkDays,
     });

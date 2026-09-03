@@ -414,3 +414,50 @@ describe("إعادة التوقيت ما بتخلط حالة القطع", () => 
     expect(one.brief, "النصّ لازم يتبع رقم القطعة مو التاريخ").toBe("نصّ قطعة 1");
   });
 });
+
+/**
+ * قاعدة القائدة (٣/٩): «جدارات — لما ما تشوف تاريخ بدء الدورة لا تولّد الكروت
+ * تبع النشر إلها. هيك بيتم الإعفاء من النشر، أو اعتبرها متوقفة مؤقتاً حتى
+ * إدخال تاريخ بدء الدورة».
+ *
+ * جدارات كانت تاخد ١٢ كرت نشر بمواعيد مخترعة وتظهر «متأخرة» والزبون هو
+ * المؤجّل. والإنتاج بيضل ينتولّد: منقدر نصمّم ونصوّر ونحضّر — يلي ما بينجدول
+ * هو النشر.
+ */
+describe("بلا تاريخ بدء نشر → بلا كروت نشر", () => {
+  const items = [
+    {
+      ...baseItem,
+      id: "c_paused|POST|2026-09-10|1",
+      companyId: "c_paused",
+      type: "POST" as const,
+      publishDate: "2026-09-10",
+      readyDate: "2026-09-08",
+      workDate: "2026-09-08",
+      week: 2,
+    },
+  ];
+  const opts = {
+    writerId: "e_writer",
+    publisherId: "e_pub",
+    year: 2026,
+    month: 8,
+    companyName: () => "جدارات",
+    writerWorkDays: [0, 1, 2, 3, 4],
+    publisherWorkDays: [0, 1, 2, 3, 4],
+  };
+
+  it("بيولّد التصميم وبيوقف عند النشر", () => {
+    const withPublish = expandPipeline(items as never, opts as never);
+    const without = expandPipeline(items as never, {
+      ...opts,
+      skipPublishForCompany: () => true,
+    } as never);
+
+    expect(withPublish.filter((t) => t.stage === "PUBLISH")).toHaveLength(1);
+    expect(without.filter((t) => t.stage === "PUBLISH")).toHaveLength(0);
+    // الإنتاج ما بينمسّ — التصميم والكتابة بيضلّوا.
+    expect(without.filter((t) => t.stage === "DESIGN")).toHaveLength(1);
+    expect(without.some((t) => t.stage === "WRITE")).toBe(true);
+  });
+});

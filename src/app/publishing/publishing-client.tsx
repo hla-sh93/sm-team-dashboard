@@ -15,13 +15,13 @@ import {
   type ContentType,
   type Status,
 } from "@/lib/constants";
-import { markPiecesPublished, updateTaskStatus } from "@/server/actions/tasks";
+import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import { buildReelNumbers } from "@/lib/cards";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task } from "@/types";
-import { AlertTriangle, CheckCircle2, CalendarClock, ListChecks } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 
 const PUBLISH_STATUSES: Status[] = ["NOT_STARTED", "IN_PROGRESS", "PUBLISHED"];
 
@@ -43,10 +43,6 @@ export default function PublishingClient({
   const [company, setCompany] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [, start] = useTransition();
-  /** «مطابقة النشر»: الشركة المفتوحة حالياً + القطع المؤشّرة عليها. */
-  const [reconciling, setReconciling] = useState<string | null>(null);
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
-
   const empName = (id: string | null) =>
     employees.find((e) => e.id === id)?.name ?? "—";
   const coName = (id: string | null) =>
@@ -100,32 +96,6 @@ export default function PublishingClient({
       ),
     [bucketPub, company, type],
   );
-
-  /**
-   * تسجيل المؤشَّر كمنشور. ما في قراءة من انستغرام (شوف `markPiecesPublished`):
-   * القائدة بتسكرول الصفحة بموبايلها وبتأشّر — والتاريخ الافتراضي هو **موعد
-   * النشر المخطّط** لكل قطعة، لأنّه أقرب للحقيقة من «اليوم» بقطعة موعدها فات.
-   */
-  const confirmTicked = () =>
-    start(async () => {
-      const ids = [...ticked];
-      const r = await markPiecesPublished(ids);
-      if (r.ok) {
-        toast(`تم تسجيل نشر ${r.count} قطعة`);
-        setTicked(new Set());
-        setReconciling(null);
-        router.refresh();
-      } else toast(r.error, "error");
-    });
-
-  /** القطع غير المنشورة لشركة — مرتّبة بالأقدم، مع نصّ خطتها للمطابقة البصرية. */
-  const unpublishedOf = (companyId: string) =>
-    pubTasks
-      .filter((t) => t.companyId === companyId && !isTaskDoneState(t))
-      .sort(
-        (a, b) =>
-          new Date(a.publishDate ?? 0).getTime() - new Date(b.publishDate ?? 0).getTime(),
-      );
 
   const seqOf = useMemo(() => buildReelNumbers(pubTasks), [pubTasks]);
   const seqLabel = (t: Task) => {
@@ -236,108 +206,6 @@ export default function PublishingClient({
         </div>
         <MonthBar year={year} month={month} />
       </header>
-
-      {/* ═══ مطابقة النشر ═══
-          القائدة (8/8): «سكرول عادي بالمتصفح بيطلعلك كل بوست وتاريخ نشره».
-          صح — بس السكرول الآلي من سيرفر هو اللي بيعرّض صفحات الزبائن للحظر،
-          وهي شريكة إدارة مو مالكة. فالتقسيم: هي بتسكرول بموبايلها (طبيعي)،
-          والشاشة بتعرضلها القطع يلي النظام معتبرها **مو منشورة** مع نصّها،
-          وبتأشّر بضغطة — والتاريخ بينتسجّل على موعد النشر المخطّط. */}
-      <div className="rounded-lg border border-info/40 bg-info/5 p-3">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <ListChecks className="w-4 h-4 text-info" />
-          <span className="text-sm font-semibold text-info">مطابقة النشر</span>
-          <span className="text-[11px] text-fg-muted">
-            افتحي صفحة الشركة على انستغرام، وأشّري القطع يلي نازلة فعلاً
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {managed.map((c) => {
-            const n = unpublishedOf(c.id).length;
-            if (!n) return null;
-            const active = reconciling === c.id;
-            return (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setReconciling(active ? null : c.id);
-                  setTicked(new Set());
-                }}
-                className={
-                  "text-[11px] rounded-md px-2 py-1 border transition " +
-                  (active
-                    ? "bg-info text-white border-info"
-                    : "bg-bg-elev border-border hover:border-info/50")
-                }
-              >
-                {c.name} · {n}
-              </button>
-            );
-          })}
-        </div>
-
-        {reconciling && (
-          <div className="mt-3 border-t border-info/20 pt-3">
-            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-              <span className="text-xs text-fg-dim">
-                أشّري المنشور — التاريخ بينتسجّل على موعد النشر المخطّط لكل قطعة
-              </span>
-              <button
-                disabled={!ticked.size}
-                onClick={confirmTicked}
-                className={
-                  "text-xs rounded-md px-3 py-1.5 font-semibold transition " +
-                  (ticked.size
-                    ? "bg-success text-white hover:opacity-90"
-                    : "bg-bg-elev2 text-fg-muted cursor-not-allowed")
-                }
-              >
-                سجّلي {ticked.size || ""} منشور
-              </button>
-            </div>
-            <div className="flex flex-col gap-1.5 max-h-[320px] overflow-y-auto pr-1">
-              {unpublishedOf(reconciling).map((t) => {
-                const on = ticked.has(t.id);
-                return (
-                  <label
-                    key={t.id}
-                    className={
-                      "flex items-start gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition " +
-                      (on ? "border-success bg-success/10" : "border-border bg-bg-elev hover:border-info/40")
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => {
-                        const next = new Set(ticked);
-                        if (on) next.delete(t.id);
-                        else next.add(t.id);
-                        setTicked(next);
-                      }}
-                      className="mt-0.5 shrink-0"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold">{seqLabel(t)}</span>
-                        <span className="text-[10px] text-fg-muted">
-                          موعدها {t.publishDate ? formatDateShort(new Date(t.publishDate)) : "—"}
-                        </span>
-                      </span>
-                      {/* نصّ الخطة هو أداة المطابقة: بتقارنيه بكابشن المنشور. */}
-                      {t.brief?.trim() && (
-                        <span className="block text-[11px] text-fg-dim mt-0.5 line-clamp-2">
-                          {t.brief.trim().slice(0, 160)}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* متأخر النشر — every open card past its publish date, INCLUDING pieces
           carried over from earlier cycles (their dates sit outside this month's

@@ -160,6 +160,17 @@ export function expandPipeline(
     writerWorkDays: number[];
     publisherWorkDays?: number[];
     skipWritingForCompany?: (companyId: string) => boolean;
+    /**
+     * الشركة يلي **ما إلها تاريخ بدء نشر** ما بتاخد كروت نشر أصلاً.
+     *
+     * قاعدة القائدة (٣/٩): «لما ما تشوف تاريخ بدء الدورة لا تولّد الكروت تبع
+     * النشر إلها… أو اعتبرها متوقفة مؤقتاً حتى إدخال تاريخ بدء الدورة».
+     *
+     * قبل هيك كانت جدارات تاخد ١٢ كرت نشر بمواعيد مخترعة، وتظهر «متأخرة»
+     * والزبون هو يلي مأجّل. والإنتاج بيضل ينتولّد عادي — منقدر نصمّم ونصوّر
+     * ونحضّر، بس ما منجدول نشراً ما إله تاريخ بداية.
+     */
+    skipPublishForCompany?: (companyId: string) => boolean;
     // Optional: floor date (YYYY-MM-DD) per company — the WRITE card's start is
     // clamped to it so writing never begins before the contract start date.
     notBeforeISO?: (companyId: string) => string | null;
@@ -315,6 +326,8 @@ export function expandPipeline(
         year,
       });
     }
+
+    if (opts.skipPublishForCompany?.(it.companyId)) continue;
 
     out.push({
       id: publishId,
