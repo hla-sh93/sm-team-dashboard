@@ -50,6 +50,8 @@ export type MatchCandidate = {
   brief?: string | null;
   /** عنوان الكرت — بيميّز كرت «سيناريو تصوير» عن «كتابة بوستات وستوريز». */
   title?: string | null;
+  /** مين مكلَّف بهالمرحلة — بيفصل مونتاج المونتيرة عن تصوير المصوّر. */
+  assigneeId?: string | null;
 };
 
 export type MatchResult = { taskId: string; by: "NAME" | "BRIEF" | "TYPE" } | null;
@@ -301,8 +303,23 @@ export function matchDelivery(
    * مونتاج ريل ٧ انحسب لريل ٨. الاستدعاء بيمرّر العرف المستنتج من الدفعة.
    */
   preferPieceFirst = false,
+  /**
+   * الموظّف يلي **بعت الملف فعلاً** (من `Employee.telegramUserId`).
+   *
+   * القطعة إلها كذا مرحلة بنفس تاريخ النشر، فترتيب «الأبكر موعداً» بيوقع
+   * تعادلاً بينهن وبيربح أول واحد بالصدفة: مونتاج أليسار «phoenijobs 1-9.mp4»
+   * سكّر كرت **التصوير** وضلّ كرت **المونتاج** مفتوح — والقائدة شافتها «الريل
+   * ما انلقط». مين بعت بيقول أي مرحلة خلصت: فيديو من المونتيرة = مونتاج،
+   * ولقطات من المصوّر = تصوير. بلا مرسِل معروف بيرجع الترتيب القديم.
+   */
+  senderEmployeeId: string | null = null,
 ): MatchResult {
   if (delivery.kind === "TEXT") return null;
+  const ownsStage = (t: MatchCandidate) =>
+    senderEmployeeId != null && t.assigneeId === senderEmployeeId;
+  /** مرحلة المرسِل أولاً، وبعدها الأبكر موعداً (الترتيب القديم). */
+  const byOwnerThenDeadline = (a: MatchCandidate, b: MatchCandidate) =>
+    (ownsStage(b) ? 1 : 0) - (ownsStage(a) ? 1 : 0) || deadlineOf(a) - deadlineOf(b);
   // Off-plan work (وصل's exchange-rate bulletins, client-supplied analysis) is
   // published on the same channels and lands in the same group, but it is not
   // part of what the contract counts — crediting it to a plan piece would
@@ -329,7 +346,7 @@ export function matchDelivery(
     const scoped = writing.filter((t) => isShootCard(t) === wantsShoot);
     const pool2 = scoped.length ? scoped : writing;
     return {
-      taskId: [...pool2].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id,
+      taskId: [...pool2].sort(byOwnerThenDeadline)[0].id,
       by: "NAME",
     };
   }
@@ -396,7 +413,7 @@ export function matchDelivery(
         m0 === activeBucket.month ||
         (t.publishDate != null && new Date(t.publishDate).getMonth() === m0));
     const earliest = (list: MatchCandidate[]) =>
-      [...list].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
+      [...list].sort(byOwnerThenDeadline)[0];
 
     for (const r of parsed.readings) {
       // (أ) تطابق مباشر: نفس الشهر ونفس الرقم.
@@ -474,8 +491,8 @@ export function matchDelivery(
       // ما كان يلاقي كرتو أبداً وبيضل الكرت متأخر رغم إنّ الشغل انبعت. لبس
       // حقيقي = رقم نفسه بدورتين مفتوحتين؛ وقتها منوقف متل قبل.
       if (new Set(sameNo.map((t) => t.month)).size > 1) continue;
-      // نفس القطعة بمراحل: الأبكر موعداً هي المرحلة الجارية (تصوير قبل مونتاج).
-      return { taskId: [...sameNo].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0].id, by: "NAME" };
+      // نفس القطعة بمراحل: مرحلة المرسِل أولاً، وبلاه الأبكر موعداً.
+      return { taskId: [...sameNo].sort(byOwnerThenDeadline)[0].id, by: "NAME" };
     }
     // The name states which piece this is. If that piece is not in the open set
     // it is already closed — by an earlier carousel slide, or by a first send
@@ -517,7 +534,7 @@ export function matchDelivery(
       // and then take the most urgent open piece.
       const ra = wanted.indexOf(a.type as ContentType);
       const rb = wanted.indexOf(b.type as ContentType);
-      return ra - rb || deadlineOf(a) - deadlineOf(b) || a.id.localeCompare(b.id);
+      return ra - rb || byOwnerThenDeadline(a, b) || a.id.localeCompare(b.id);
     })[0];
   return byType ? { taskId: byType.id, by: "TYPE" } : null;
 }

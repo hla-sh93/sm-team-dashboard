@@ -294,6 +294,37 @@ describe("العلاقة: ملف على تلغرام ← الكرت ← رقم �
     }
   });
 
+  /**
+   * القطعة إلها كذا مرحلة بنفس تاريخ النشر، فترتيب «الأبكر موعداً» بيقع بتعادل
+   * وبيربح أول كرت بالصدفة. صار فعلاً بالتوظيف (٣/٩): مونتاج أليسار
+   * «phoenijobs 1-9.mp4» سكّر كرت **التصوير** وضلّ كرت **المونتاج** مفتوح،
+   * والقائدة قرأتها «الريل ما انلقط». مين بعت بيحسم أي مرحلة خلصت.
+   */
+  it("مرحلة المرسِل بتربح التعادل: مونتاج المونتيرة بيسكّر المونتاج مو التصوير", () => {
+    const ELISSAR = "e_elissar";
+    const MAJED = "e_majed";
+    // نفس تاريخ النشر للمرحلتين — التعادل يلي كان بيوقع الغلط.
+    const sameDay = new Date(2026, 8, 5);
+    const sh = candidate({ id: "shoot1", stage: "SHOOT", publishDate: sameDay, assigneeId: MAJED });
+    const ed = candidate({ id: "edit1", stage: "EDIT", publishDate: sameDay, assigneeId: ELISSAR });
+    const file = `${assetName("Makhbar", 6, 1)}.mp4`;
+
+    // بلا مرسِل معروف: الترتيب القديم (التصوير أولاً) — ما بينكسر شي.
+    expect(matchDelivery(delivery(file, "VIDEO"), "Makhbar", [sh, ed], [], [], BUCKET)?.taskId).toBe("shoot1");
+    // من المونتيرة → المونتاج.
+    expect(
+      matchDelivery(delivery(file, "VIDEO"), "Makhbar", [sh, ed], [], [], BUCKET, undefined, ELISSAR)?.taskId,
+    ).toBe("edit1");
+    // من المصوّر → التصوير.
+    expect(
+      matchDelivery(delivery(file, "VIDEO"), "Makhbar", [sh, ed], [], [], BUCKET, undefined, MAJED)?.taskId,
+    ).toBe("shoot1");
+    // مرسِل ما إلو ولا مرحلة بهالقطعة → الترتيب القديم، بلا تخريب.
+    expect(
+      matchDelivery(delivery(file, "VIDEO"), "Makhbar", [sh, ed], [], [], BUCKET, undefined, "e_gharib")?.taskId,
+    ).toBe("shoot1");
+  });
+
   it("دورة حياة القطعة: تصوير ← مونتاج ← إعادة إرسال مرفوضة — وكل خطوة بتحرّك «منتَج»", () => {
     const name = `${assetName("Makhbar", 7, 1)}.mp4`;
     // ١: القطعة كلها مفتوحة → الملف بيسكّر التصوير.

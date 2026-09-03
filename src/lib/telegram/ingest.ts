@@ -375,6 +375,12 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
   if (!candidates.length) return null;
   const closed = all.filter((t) => !candidates.includes(t));
 
+  // مين بعت الملف — نفس المصدر يلي بينسند إله الكرت (`telegramUserId`).
+  // بيلزم **قبل** المطابقة كمان، لأنّه بيحدّد أي مرحلة من القطعة خلصت.
+  const sender = delivery.senderId
+    ? await prisma.employee.findFirst({ where: { telegramUserId: delivery.senderId } })
+    : null;
+
   return matchDelivery(
     delivery,
     companySlug(company),
@@ -384,6 +390,8 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
     // الدورة الشغّالة **وقت الإرسال** مو وقت القراءة: ملف انبعت آخر الدورة
     // وانقرا بعد ما بلّشت الجديدة لازم يضل تبع دورتو.
     currentCycleBucket(company, delivery.sentAt),
+    undefined,
+    sender?.id ?? null,
   );
 }
 
