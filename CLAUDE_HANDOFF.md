@@ -10,6 +10,35 @@ Production alias: <https://socialmediateam.vercel.app>
 
 Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
 
+## ٣/٩/٢٠٢٦ — تطبيق ثلاث حمولات على الإنتاج (Claude)
+
+**حالة: منفَّذ ومتحقَّق منه على الإنتاج الحيّ** (لقطة `prod-20260903-1924.json`).
+
+| الحمولة | النتيجة |
+| --- | --- |
+| `tawzeef-reel1-2026-09.json` | ✅ مونتاج ريل المسابقة (REEL #1 EDIT) صار READY/DONE بتاريخ ٣/٩ — أليسار |
+| `nour-adhoc-2026-09.json` | ✅ كرتا «بديل القيم الطبيعية»: SHOOT (ماجد) وEDIT (أليسار) صاروا READY/DONE بتاريخ ٣/٩ |
+| `agalya-close-2026-09.json` | ⏭️ **ما انطبّقت — ما إلها داعي**: أغاليا ٦٧ كرت وكلهن مقفولين أصلاً (٠ مفتوح) |
+
+**أول استعمال لـ`adhocStates` على الإنتاج** — الحقل الجديد اشتغل، فالشغل خارج
+الخطة صار ينسكّر بدليل بدل نقرة يدوية.
+
+### غلطتان لازم ينذكروا
+
+1. **الدليل انكتب مرتين على كرت مونتاج التوظيف.** طبّقت الحمولة مرتين لأني
+   تحقّقت من جدول المهام — وجدول المهام **بيعرض الكروت المنجزة كمان**، فقراءة
+   «لسا موجود» كانت غلط. التحقّق الصحيح من لقطة الإنتاج لا من الشاشة.
+   الملاحظة مكرّرة والحالة صحيحة؛ ونافذة «تعديل مهمة» ما فيها حقل ملاحظات
+   فما بينتصلّح من الواجهة.
+2. **كرت تصوير ريل التوظيف لسا مسجَّل باسم أليسار بدل ماجد** — أثر المطابقة
+   القديمة قبل الإصلاح. بينتصلّح من «تعديل» على الكرت (فيها حقل المسؤول)،
+   وينتظر قرار القائدة لأنه بيمسّ إنجاز شخصين.
+
+### توست الاستيراد بيضلّل
+
+بيقول «تم تطبيق **٠ وصفاً**» حتى لما الحمولة تنجح بالكامل — لأنه بيعدّ `items`
+وحدها، وما بيذكر `updatedStates` ولا `updatedAdhoc` ولا `closedPreviousTasks`.
+
 ## 1. How to read this handoff
 
 Use these evidence labels throughout the file:
