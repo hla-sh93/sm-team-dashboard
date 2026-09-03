@@ -71,6 +71,25 @@ const planUpdateSchema = z
       )
       .max(200)
       .optional(),
+    // حالة كرت **خارج الخطة** بدليله. `pieceStates` بتلزمها قطعة مرقّمة، وشغل
+    // كتير ما إله رقم أصلاً: إعادة تصوير ريل، ريل بديل بطلب الزبون، مهمة حدث.
+    // كانت هي الكروت تنقفل بنقرة يدوية بلا سطر دليل — وهي بالضبط الكروت يلي
+    // بتضل مفتوحة شهر لأن ما حدا تذكّر يقفلها. المطابقة بالعنوان، ولازم تطابق
+    // كرتاً **واحداً** بالضبط وإلا بتفشل الحمولة كلها.
+    adhocStates: z
+      .array(
+        z.object({
+          title: z.string().trim().min(3).max(200),
+          stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
+          status: z
+            .enum(["NOT_STARTED", "IN_PROGRESS", "AWAITING_APPROVAL", "READY", "PUBLISHED"])
+            .optional(),
+          date: isoDate.optional(),
+          evidence: z.string().trim().min(3).max(500),
+        }),
+      )
+      .max(50)
+      .optional(),
     closePreviousOpenTasks: z
       .object({
         decisionDate: isoDate,
@@ -92,7 +111,12 @@ const planUpdateSchema = z
   })
   .refine(
     (value) =>
-      Boolean(value.items?.length || value.closePreviousOpenTasks || value.pieceStates?.length),
+      Boolean(
+        value.items?.length ||
+          value.closePreviousOpenTasks ||
+          value.pieceStates?.length ||
+          value.adhocStates?.length,
+      ),
     { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
   );
 
@@ -109,6 +133,61 @@ function latestScheduledDate(task: {
     (value): value is Date => value instanceof Date,
   );
   return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null;
+}
+
+/**
+ * التحديث المشترك لأي كرت بينسكّر (أو بينفتح) بدليل — قطعة مرقّمة كانت أو شغل
+ * خارج الخطة. الدليل بينضاف لسطر جديد بالملاحظات بدل ما يمحيها، والكرت المنجز
+ * موعده **تاريخ فعلي** لا خطة فمنكتبه على `workDate`/`readyDate` (أو `publishDate`
+ * لمرحلة النشر) — والحفظ بيصونهم عبر إعادة التوليد.
+ */
+function stateUpdateFor(
+  spec: {
+    stage: string;
+    status?: string;
+    date?: string;
+    publishDate?: string;
+    evidence: string;
+  },
+  task: { notes: string | null; startedAt: Date | null },
+) {
+  const when = spec.date ? fromISODate(spec.date) : null;
+  const status = spec.status ? normalizeStatusForStage(spec.status, spec.stage) : null;
+  const done = status ? DONE_STATUSES.includes(status as never) : false;
+  const notes = [task.notes?.trim(), spec.evidence.trim()]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+
+  const update: Record<string, unknown> = { notes };
+  if (status) {
+    update.status = status;
+    update.board = statusToBoard(status);
+  }
+  if (when && done) {
+    update.finishedAt = when;
+    update.completedAt = when;
+    if (!task.startedAt) update.startedAt = when;
+    if (spec.stage === "PUBLISH") update.publishDate = when;
+    else {
+      update.workDate = when;
+      update.readyDate = when;
+    }
+  }
+  // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز بنفس
+  // الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما يبلّش».
+  // الحالة والطوابع لازم يتحرّكوا سوا.
+  if (status && !done) {
+    update.finishedAt = null;
+    update.completedAt = null;
+    if (status === "NOT_STARTED") update.startedAt = null;
+  }
+  // تأجيل/تثبيت موعد نشر لقطعة لسا ما انتشرت — قرار صريح، فبينثبّت مشان إعادة
+  // الجدولة ما تسحبه.
+  if (spec.publishDate) {
+    update.publishDate = fromISODate(spec.publishDate);
+    update.isPinned = true;
+  }
+  return update;
 }
 
 function managerDecisionEvidence(decisionDate: string) {
@@ -207,6 +286,55 @@ export async function applyCompanyPlanUpdate(input: unknown) {
         return {
           ok: false as const,
           error: `لا يوجد كرت لهذه الحالات في دورة ${company.name}: ${missingStates.join("، ")}`,
+        };
+      }
+    }
+
+    // الكروت خارج الخطة: بتنطابق بالعنوان لأنها ما إلها رقم قطعة. لازم كل سطر
+    // يطابق كرتاً واحداً بالضبط — ولا واحد يعني الحمولة غلط، وأكتر من واحد يعني
+    // العنوان مو مميّز كفاية والكتابة رح تصيب الكرت الخطأ.
+    const adhocSpecs = data.adhocStates ?? [];
+    const adhocResolved: {
+      spec: (typeof adhocSpecs)[number];
+      task: { id: string; stage: string | null; notes: string | null; startedAt: Date | null };
+    }[] = [];
+    if (adhocSpecs.length) {
+      const adhocCandidates = await prisma.task.findMany({
+        where: {
+          companyId,
+          year: data.year,
+          month: data.month,
+          pieceNo: null,
+          status: { not: "CANCELED" },
+        },
+        select: { id: true, title: true, stage: true, notes: true, startedAt: true },
+      });
+      const problems: string[] = [];
+      const claimed = new Set<string>();
+      for (const spec of adhocSpecs) {
+        const needle = spec.title.trim();
+        const hits = adhocCandidates.filter(
+          (task) => task.stage === spec.stage && (task.title ?? "").includes(needle),
+        );
+        if (hits.length === 0) {
+          problems.push(`«${needle}» (${spec.stage}): ما في كرت مطابق`);
+          continue;
+        }
+        if (hits.length > 1) {
+          problems.push(`«${needle}» (${spec.stage}): ${hits.length} كروت مطابقة — العنوان مو مميّز`);
+          continue;
+        }
+        if (claimed.has(hits[0].id)) {
+          problems.push(`«${needle}» (${spec.stage}): نفس الكرت مطلوب مرتين`);
+          continue;
+        }
+        claimed.add(hits[0].id);
+        adhocResolved.push({ spec, task: hits[0] });
+      }
+      if (problems.length > 0) {
+        return {
+          ok: false as const,
+          error: `كروت خارج الخطة في دورة ${company.name}: ${problems.join(" · ")}`,
         };
       }
     }
@@ -436,7 +564,6 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     // حالات القطع: كل كرت بينتحدّث لحاله مشان الدليل ينضاف لملاحظاته بدل ما
     // يمحيها. الكرت المنجز موعده **تاريخ** لا خطة، فمنكتب يوم التسليم الفعلي
     // على `workDate`/`readyDate` — والحفظ بيصونهم عبر إعادة التوليد.
-    const stateWriteStart = writes.length;
     let stateTargets: { id: string; notes: string | null }[] = [];
     if (stateSpecs.length) {
       const targets = await prisma.task.findMany({
@@ -461,44 +588,19 @@ export async function applyCompanyPlanUpdate(input: unknown) {
           stageKeyOf({ type: task.type ?? "", pieceNo: task.pieceNo!, stage: task.stage ?? "" }),
         );
         if (!spec) continue;
-        const when = spec.date ? fromISODate(spec.date) : null;
-        const status = spec.status
-          ? normalizeStatusForStage(spec.status, spec.stage)
-          : null;
-        const done = status ? DONE_STATUSES.includes(status as never) : false;
-        const notes = [task.notes?.trim(), spec.evidence.trim()]
-          .filter((line): line is string => Boolean(line))
-          .join("\n");
-
-        const update: Record<string, unknown> = { notes };
-        if (status) update.status = status;
-        if (status) update.board = statusToBoard(status);
-        if (when && done) {
-          update.finishedAt = when;
-          update.completedAt = when;
-          if (!task.startedAt) update.startedAt = when;
-          if (spec.stage === "PUBLISH") update.publishDate = when;
-          else {
-            update.workDate = when;
-            update.readyDate = when;
-          }
-        }
-        // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز
-        // بنفس الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما
-        // يبلّش». الحالة والطوابع لازم يتحرّكوا سوا.
-        if (status && !done) {
-          update.finishedAt = null;
-          update.completedAt = null;
-          if (status === "NOT_STARTED") update.startedAt = null;
-        }
-        // تأجيل/تثبيت موعد نشر لقطعة لسا ما انتشرت — قرار صريح، فبينثبّت مشان
-        // إعادة الجدولة ما تسحبه.
-        if (spec.publishDate) {
-          update.publishDate = fromISODate(spec.publishDate);
-          update.isPinned = true;
-        }
-        writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
+        writes.push(
+          prisma.task.updateMany({
+            where: { id: task.id },
+            data: stateUpdateFor(spec, task),
+          }),
+        );
       }
+    }
+
+    for (const { spec, task } of adhocResolved) {
+      writes.push(
+        prisma.task.updateMany({ where: { id: task.id }, data: stateUpdateFor(spec, task) }),
+      );
     }
 
     const results = await prisma.$transaction(writes);
@@ -518,6 +620,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       company: company.name,
       describedPieces: items.length,
       updatedStates: stateTargets.length,
+      updatedAdhoc: adhocResolved.length,
       closedPreviousTasks,
       restoredTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),

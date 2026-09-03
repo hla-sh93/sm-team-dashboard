@@ -48,3 +48,4 @@ scripts/_tmp-*.ts
 backups/pre-*.json
 backups/dev-*.db
 .tmp/
+scripts/tmp/

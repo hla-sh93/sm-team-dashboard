@@ -995,6 +995,112 @@ describe("contract renewal lifecycle", () => {
   });
 
   /**
+   * الشغل خارج الخطة ما إله رقم قطعة، فـ`pieceStates` ما بتوصله — وهي بالضبط
+   * الكروت يلي بتضل مفتوحة شهر (إعادة تصوير ريل، ريل بديل بطلب الزبون). لازم
+   * تنقفل بنفس الآلية: بالعنوان، بدليل، وبنفس ضمان كل-أو-لا-شي.
+   */
+  it("يسكّر كرتاً خارج الخطة بالعنوان مع دليله", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-adhoc-states`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const shoot = await prisma.task.create({
+      data: {
+        kind: "ADHOC",
+        stage: "SHOOT",
+        title: "تصوير ريل جديد: بديل «القيم الطبيعية» (طلب الدكتورة)",
+        companyId: co.id,
+        year: YEAR,
+        month: 8,
+        status: "NOT_STARTED",
+        board: "TODO",
+        notes: "ملاحظة سابقة",
+      },
+    });
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      adhocStates: [
+        {
+          title: "بديل «القيم الطبيعية»",
+          stage: "SHOOT",
+          status: "READY",
+          date: "2026-09-03",
+          evidence: "المونتاج وصل 3/9 فالتصوير سبقه بالضرورة.",
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+
+    const after = await prisma.task.findFirstOrThrow({ where: { id: shoot.id } });
+    expect(after.board).toBe("DONE");
+    expect(toISODate(after.completedAt)).toBe("2026-09-03");
+    expect(toISODate(after.workDate)).toBe("2026-09-03");
+    // الدليل بينضاف، والملاحظة القديمة بتضل.
+    expect(after.notes).toContain("ملاحظة سابقة");
+    expect(after.notes).toContain("المونتاج وصل 3/9");
+  });
+
+  it("يرفض عنوان كرت خارج الخطة إذا ما طابق كرتاً واحداً بالضبط — بلا أي كتابة", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-adhoc-ambiguous`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const base = {
+      kind: "ADHOC",
+      stage: "SHOOT",
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      status: "NOT_STARTED",
+      board: "TODO",
+    } as const;
+    const first = await prisma.task.create({
+      data: { ...base, title: "إعادة تصوير ريل: فيتامين د" },
+    });
+    await prisma.task.create({ data: { ...base, title: "إعادة تصوير ريل: فيتامين ب" } });
+
+    // عنوان بيطابق كرتين
+    const ambiguous = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      adhocStates: [
+        { title: "إعادة تصوير ريل", stage: "SHOOT", status: "READY", date: "2026-09-03", evidence: "دليل" },
+      ],
+    });
+    expect(ambiguous.ok).toBe(false);
+
+    // عنوان ما بيطابق ولا كرت — ومعه سطر صحيح، فالحمولة كلها لازم تفشل
+    const missing = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      adhocStates: [
+        { title: "فيتامين د", stage: "SHOOT", status: "READY", date: "2026-09-03", evidence: "دليل صحيح" },
+        { title: "ما في هيك كرت", stage: "SHOOT", status: "READY", date: "2026-09-03", evidence: "دليل" },
+      ],
+    });
+    expect(missing.ok).toBe(false);
+
+    const after = await prisma.task.findFirstOrThrow({ where: { id: first.id } });
+    expect(after.board).toBe("TODO");
+    expect(after.notes).toBeNull();
+  });
+
+  /**
    * دورة انسجّلت وما بلّشت — قرار القائدة عن المخبر (٣/٩): «ما عملنا دورة
    * ١٥/٨–١٥/٩، هاد كله تأخير من الدورة يلي قبلها». إزالتها لازم تنظّف كروتها
    * وما تلمس الدورات الأقدم.
