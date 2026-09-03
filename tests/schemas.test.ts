@@ -91,3 +91,47 @@ describe("reorderSchema", () => {
     expect(reorderSchema.safeParse({ orderedIds: ["a"] }).success).toBe(true);
   });
 });
+
+/**
+ * حقل تاريخ فُرِّغ من الشاشة بيوصل `""`. كان بيسقط على الـregex قبل ما
+ * `.nullable()` تشوفه، فالنموذج يرفض بصمت «تاريخ غير صالح» — يعني **تفريغ
+ * «تاريخ بدء النشر» كان مستحيلاً من الواجهة**، مع إنّ نصّ الحقل بيقول
+ * «فاضي = الزبون لسا ما بلّش → ولا تأخير علينا».
+ *
+ * انكشف وقت تنفيذ قرار القائدة (٣/٩) بجدارات: «لما ما تشوف تاريخ بدء الدورة لا
+ * تولّد الكروت تبع النشر إلها».
+ */
+describe("تفريغ حقول التاريخ بالنموذج", () => {
+  const base = {
+    name: "شركة اختبار",
+    managed: true,
+    posts: 6,
+    reels: 0,
+    stories: 0,
+    aiReels: 0,
+    priority: 5,
+    status: "active",
+  };
+
+  it("«تاريخ بدء النشر» الفاضي بينقرا null بدل ما ينرفض", () => {
+    const r = companySchema.safeParse({ ...base, publishStartDate: "" });
+    expect(r.success, r.success ? "" : JSON.stringify(r.error.issues)).toBe(true);
+    if (r.success) expect(r.data.publishStartDate).toBeNull();
+  });
+
+  it("«تاريخ توقيع العقد» الفاضي كمان", () => {
+    const r = companySchema.safeParse({ ...base, contractStartDate: "" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.contractStartDate).toBeNull();
+  });
+
+  it("وتاريخ غلط بيضل مرفوض", () => {
+    expect(companySchema.safeParse({ ...base, publishStartDate: "11/8/2026" }).success).toBe(false);
+  });
+
+  it("والتاريخ الصحيح بيمرق كما هو", () => {
+    const r = companySchema.safeParse({ ...base, publishStartDate: "2026-08-11" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.publishStartDate).toBe("2026-08-11");
+  });
+});

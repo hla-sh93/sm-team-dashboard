@@ -9,6 +9,16 @@ const weekdayArray = z
   .min(1, "اختر يوم عمل واحد على الأقل")
   .transform((v) => Array.from(new Set(v)));
 
+/**
+ * حقل تاريخ فُرِّغ من الشاشة بيوصل `""`، وهاد بيسقط على الـregex **قبل** ما
+ * `.nullable()` تشوفه — فالنموذج كان يرفض بصمت «تاريخ غير صالح».
+ *
+ * والنتيجة إنّ تفريغ «تاريخ بدء النشر» كان مستحيلاً من الواجهة، مع إنّ نصّ
+ * الحقل نفسه بيقول «فاضي = الزبون لسا ما بلّش → ولا تأخير علينا». صار الفراغ
+ * ينقرا null قبل التحقّق.
+ */
+const emptyToNull = (v: unknown) => (v === "" ? null : v);
+
 const emptyToUndef = (v: unknown) =>
   v === "" || v === null || (typeof v === "number" && Number.isNaN(v)) ? undefined : v;
 const rateNum = z.preprocess(emptyToUndef, z.coerce.number().min(0).max(100).optional());
@@ -61,20 +71,26 @@ export const companySchema = z.object({
   contractValue: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(10_000_000).optional()),
   // Contract signing date (YYYY-MM-DD). Drives the 30-day plan cycle; null =
   // distribute over the calendar month.
-  contractStartDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
-    .nullable()
-    .optional()
-    .transform((v) => (v ? v : null)),
+  contractStartDate: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+      .nullable()
+      .optional()
+      .transform((v) => (v ? v : null)),
+  ),
   // بدء النشر (YYYY-MM-DD) — **مرساة الدورة**. فاضي مع عقد موقّع = النشر لسا ما
   // بلّش عند الزبون: ولا دورة ولا تأخير علينا.
-  publishStartDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
-    .nullable()
-    .optional()
-    .transform((v) => (v ? v : null)),
+  publishStartDate: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+      .nullable()
+      .optional()
+      .transform((v) => (v ? v : null)),
+  ),
   // Cycle starts AFTER the first, as a JSON array of ISO dates. Owned by the
   // renew/end actions, NOT by this form. Left `undefined` when absent (never
   // coerced to null) so that saving the company form cannot wipe the contract's
