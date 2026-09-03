@@ -28,6 +28,10 @@ export type SnapshotCounts = {
   tasks: number;
   photoSessions: number;
   settings: number;
+  /** سجلّ التسليمات على تلغرام — هو دليل «مين سلّم شو وإيمتى». نسخة بلاه
+   *  بتخسر الدليل كله وتخلّي المطابقة تبلّش من الصفر. */
+  telegramChats: number;
+  telegramMessages: number;
 };
 
 export type Snapshot = {
@@ -42,6 +46,8 @@ export type Snapshot = {
   tasks: unknown[];
   photoSessions: unknown[];
   settings: unknown[];
+  telegramChats: unknown[];
+  telegramMessages: unknown[];
 };
 
 type SnapshotSource = {
@@ -50,17 +56,22 @@ type SnapshotSource = {
   task: { findMany: (args: unknown) => Promise<unknown[]> };
   photoSession: { findMany: (args: unknown) => Promise<unknown[]> };
   setting: { findMany: (args: unknown) => Promise<unknown[]> };
+  telegramChat: { findMany: (args: unknown) => Promise<unknown[]> };
+  telegramMessage: { findMany: (args: unknown) => Promise<unknown[]> };
 };
 
 /** يبني لقطة كاملة من أي عميل Prisma (الإنتاج أو المحلي). قراءة فقط. */
 export async function buildSnapshot(db: SnapshotSource, source: string): Promise<Snapshot> {
-  const [employees, companies, tasks, photoSessions, allSettings] = await Promise.all([
-    db.employee.findMany({ orderBy: { id: "asc" } }),
-    db.company.findMany({ orderBy: { id: "asc" } }),
-    db.task.findMany({ orderBy: { id: "asc" } }),
-    db.photoSession.findMany({ orderBy: { id: "asc" } }),
-    db.setting.findMany({ orderBy: { key: "asc" } }),
-  ]);
+  const [employees, companies, tasks, photoSessions, allSettings, telegramChats, telegramMessages] =
+    await Promise.all([
+      db.employee.findMany({ orderBy: { id: "asc" } }),
+      db.company.findMany({ orderBy: { id: "asc" } }),
+      db.task.findMany({ orderBy: { id: "asc" } }),
+      db.photoSession.findMany({ orderBy: { id: "asc" } }),
+      db.setting.findMany({ orderBy: { key: "asc" } }),
+      db.telegramChat.findMany({ orderBy: { id: "asc" } }),
+      db.telegramMessage.findMany({ orderBy: { id: "asc" } }),
+    ]);
   const settings = (allSettings as { key: string }[]).filter((s) => !AUTH_KEYS.has(s.key));
   return {
     meta: {
@@ -73,6 +84,8 @@ export async function buildSnapshot(db: SnapshotSource, source: string): Promise
         tasks: tasks.length,
         photoSessions: photoSessions.length,
         settings: settings.length,
+        telegramChats: telegramChats.length,
+        telegramMessages: telegramMessages.length,
       },
     },
     employees,
@@ -80,6 +93,8 @@ export async function buildSnapshot(db: SnapshotSource, source: string): Promise
     tasks,
     photoSessions,
     settings,
+    telegramChats,
+    telegramMessages,
   };
 }
 
@@ -91,6 +106,8 @@ export function actualCounts(snapshot: Snapshot): SnapshotCounts {
     tasks: snapshot.tasks?.length ?? 0,
     photoSessions: snapshot.photoSessions?.length ?? 0,
     settings: snapshot.settings?.length ?? 0,
+    telegramChats: snapshot.telegramChats?.length ?? 0,
+    telegramMessages: snapshot.telegramMessages?.length ?? 0,
   };
 }
 
@@ -114,7 +131,7 @@ export function acceptSnapshot(
   const counts = actualCounts(next);
   const declared = next.meta.counts;
   for (const key of Object.keys(counts) as (keyof SnapshotCounts)[]) {
-    if (declared && declared[key] !== counts[key])
+    if (declared && declared[key] !== undefined && declared[key] !== counts[key])
       return {
         ok: false,
         reason: `اللقطة مبتورة: ${key} مكتوب ${declared[key]} والموجود ${counts[key]}`,

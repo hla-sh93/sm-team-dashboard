@@ -26,6 +26,8 @@ const snap = (over: Partial<Snapshot> = {}, counts?: Partial<Snapshot["meta"]["c
   const tasks = over.tasks ?? [{ id: "t1" }, { id: "t2" }];
   const photoSessions = over.photoSessions ?? [];
   const settings = over.settings ?? [];
+  const telegramChats = over.telegramChats ?? [];
+  const telegramMessages = over.telegramMessages ?? [];
   return {
     meta: {
       exportedAt: "2026-09-02T09:00:00.000Z",
@@ -37,6 +39,8 @@ const snap = (over: Partial<Snapshot> = {}, counts?: Partial<Snapshot["meta"]["c
         tasks: tasks.length,
         photoSessions: photoSessions.length,
         settings: settings.length,
+        telegramChats: telegramChats.length,
+        telegramMessages: telegramMessages.length,
         ...counts,
       },
     },
@@ -45,6 +49,8 @@ const snap = (over: Partial<Snapshot> = {}, counts?: Partial<Snapshot["meta"]["c
     tasks,
     photoSessions,
     settings,
+    telegramChats,
+    telegramMessages,
   };
 };
 
@@ -55,6 +61,8 @@ describe("بناء اللقطة", () => {
       company: { findMany: async () => [{ id: "c1" }] },
       task: { findMany: async () => [{ id: "t1" }] },
       photoSession: { findMany: async () => [] },
+      telegramChat: { findMany: async () => [{ id: "c1#1" }] },
+      telegramMessage: { findMany: async () => [{ id: "1:2" }, { id: "1:3" }] },
       setting: {
         findMany: async () => [
           { key: "achievements:2026-8", value: "{}" },
@@ -67,6 +75,7 @@ describe("بناء اللقطة", () => {
     expect(s.meta.schema).toBe(SNAPSHOT_SCHEMA);
     expect(s.meta.counts).toEqual({
       employees: 2, companies: 1, tasks: 1, photoSessions: 0, settings: 1,
+      telegramChats: 1, telegramMessages: 2,
     });
     // مفاتيح الدخول ما بتنسخ: نسخة فيها هاش كلمة سرّ بيئة تانية بتقدر تستبدل
     // مالك الحساب لو انستوردت.

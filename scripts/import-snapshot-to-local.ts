@@ -31,6 +31,8 @@ const dateFields = {
   ],
   photoSessions: ["shootDate", "deliverBy", "createdAt", "updatedAt"],
   settings: ["updatedAt"],
+  telegramChats: ["lastSeenAt", "createdAt", "updatedAt"],
+  telegramMessages: ["sentAt", "createdAt"],
 } as const;
 
 function stamp(d = new Date()) {
@@ -87,11 +89,22 @@ async function main() {
     tasks: withDates(snapshot.tasks as Record<string, unknown>[], dateFields.tasks),
     photoSessions: withDates(snapshot.photoSessions as Record<string, unknown>[], dateFields.photoSessions),
     settings: withDates(snapshot.settings as Record<string, unknown>[], dateFields.settings),
+    // سجلّ تلغرام: اختياري بالنسخ القديمة يلي انسحبت قبل ما ينضاف.
+    telegramChats: withDates(
+      (snapshot.telegramChats ?? []) as Record<string, unknown>[],
+      dateFields.telegramChats,
+    ),
+    telegramMessages: withDates(
+      (snapshot.telegramMessages ?? []) as Record<string, unknown>[],
+      dateFields.telegramMessages,
+    ),
   };
 
   // كل شي أو لا شي: لو وقع بالنص، المحلي بيرجع لحالته وما بيضل نصّ مستورد.
   await prisma.$transaction(
     async (tx: any) => {
+      await tx.telegramMessage.deleteMany();
+      await tx.telegramChat.deleteMany();
       await tx.task.deleteMany();
       await tx.photoSession.deleteMany();
       await tx.company.deleteMany();
@@ -104,6 +117,8 @@ async function main() {
       await tx.task.createMany({ data: rows.tasks });
       await tx.photoSession.createMany({ data: rows.photoSessions });
       await tx.setting.createMany({ data: rows.settings });
+      await tx.telegramChat.createMany({ data: rows.telegramChats });
+      await tx.telegramMessage.createMany({ data: rows.telegramMessages });
     },
     { maxWait: 20000, timeout: 120000 },
   );
@@ -114,6 +129,7 @@ async function main() {
     companies: await prisma.company.count(),
     tasks: await prisma.task.count(),
     photoSessions: await prisma.photoSession.count(),
+    telegramMessages: await prisma.telegramMessage.count(),
   };
   const mismatch = (Object.keys(after) as (keyof typeof after)[]).filter(
     (k) => after[k] !== counts[k],
@@ -125,7 +141,7 @@ async function main() {
     );
   }
   console.log(
-    `✓ المحلي صار مطابق للقطة ${path.split(/[\\/]/).pop()} — موظفين ${after.employees} · شركات ${after.companies} · كروت ${after.tasks} · نزلات ${after.photoSessions}`,
+    `✓ المحلي صار مطابق للقطة ${path.split(/[\\/]/).pop()} — موظفين ${after.employees} · شركات ${after.companies} · كروت ${after.tasks} · نزلات ${after.photoSessions} · رسائل تلغرام ${after.telegramMessages}`,
   );
 }
 
