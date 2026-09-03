@@ -71,7 +71,8 @@ async function main() {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     log("❌ فشل: CRON_SECRET مو محطوط بالبيئة المحلية — حطّيه بـ.env.local");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   // سرّ فيه محارف تحكّم بيوقع الطلب برسالة غامضة (UND_ERR_INVALID_ARG) بدل ما
   // يقول السبب. صار بينمسك هون: غالباً السطر انكتب بترميز UTF-16 من PowerShell.
@@ -81,7 +82,8 @@ async function main() {
         "انكتب بترميز UTF-16. افتحي .env.local بمحرّر نصّي واكتبي السطر يدوياً، " +
         "أو استعملي: Add-Content .env.local 'CRON_SECRET=<القيمة>' -Encoding utf8",
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const base = (process.env.PROD_BASE_URL ?? "https://socialmediateam.vercel.app").replace(/\/$/, "");
   const url = `${base}/api/backup/export`;
@@ -91,8 +93,14 @@ async function main() {
     cache: "no-store",
   });
   if (!res.ok) {
-    log(`❌ فشل السحب: ${res.status} ${res.statusText} — ما انكتب ولا انحذف شي`);
-    process.exit(1);
+    log(
+      `❌ فشل السحب: ${res.status} ${res.statusText} — ما انكتب ولا انحذف شي.` +
+        (res.status === 401
+          ? " القيمة المحلية مو مطابقة لقيمة Vercel: تأكّدي إنّ النشر خلص (Ready) وإنّ المتغيّر محفوظ لبيئة Production."
+          : ""),
+    );
+    process.exitCode = 1;
+    return;
   }
   const body = await res.text();
   let snapshot: Snapshot;
@@ -100,14 +108,16 @@ async function main() {
     snapshot = JSON.parse(body);
   } catch {
     log("❌ الرد مو JSON صالح — ما انكتب شي");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const previous = latestExisting();
   const verdict = acceptSnapshot(snapshot, previous?.snapshot ?? null);
   if (!verdict.ok) {
     log(`❌ اللقطة مرفوضة: ${verdict.reason} — ما انكتب ولا انحذف شي`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const counts = actualCounts(snapshot);
@@ -121,7 +131,8 @@ async function main() {
   const onDisk = createHash("sha256").update(readFileSync(resolve(BACKUP_DIR, name), "utf8")).digest("hex");
   if (onDisk !== hash) {
     log(`❌ الملف المكتوب بصمته ما طابقت — ما انحذف شي`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   log(
@@ -139,5 +150,5 @@ async function main() {
 
 main().catch((e) => {
   log(`❌ خطأ غير متوقع: ${e instanceof Error ? e.message : String(e)}`);
-  process.exit(1);
+  process.exitCode = 1;
 });
