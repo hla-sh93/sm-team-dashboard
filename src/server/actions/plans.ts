@@ -483,6 +483,14 @@ export async function applyCompanyPlanUpdate(input: unknown) {
             update.readyDate = when;
           }
         }
+        // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز
+        // بنفس الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما
+        // يبلّش». الحالة والطوابع لازم يتحرّكوا سوا.
+        if (status && !done) {
+          update.finishedAt = null;
+          update.completedAt = null;
+          if (status === "NOT_STARTED") update.startedAt = null;
+        }
         // تأجيل/تثبيت موعد نشر لقطعة لسا ما انتشرت — قرار صريح، فبينثبّت مشان
         // إعادة الجدولة ما تسحبه.
         if (spec.publishDate) {

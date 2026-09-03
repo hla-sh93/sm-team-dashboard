@@ -920,6 +920,49 @@ describe("contract renewal lifecycle", () => {
     expect(reelPublish.board).toBe("TODO");
   });
 
+  it("إعادة فتح كرت بتمحي طوابع إنجازه — ما بيضل منجز ومفتوح بنفس الوقت", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-reopen`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const design = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1, stage: "DESIGN" },
+    });
+    await prisma.task.update({
+      where: { id: design.id },
+      data: {
+        status: "READY", board: "DONE",
+        startedAt: new Date(2026, 8, 1), finishedAt: new Date(2026, 8, 1), completedAt: new Date(2026, 8, 1),
+      },
+    });
+
+    const result = await actions.applyCompanyPlanUpdate({
+      companyId: co.id,
+      year: YEAR,
+      month: 8,
+      pieceStates: [
+        {
+          type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED",
+          evidence: "تأكيد القائدة: التصميم لسا ما انعمل — أُعيد فتحه.",
+        },
+      ],
+    });
+    expect(result.ok, result.error).toBe(true);
+
+    const after = await prisma.task.findFirstOrThrow({ where: { id: design.id } });
+    expect(after.status).toBe("NOT_STARTED");
+    expect(after.board).toBe("TODO");
+    expect(after.finishedAt).toBeNull();
+    expect(after.completedAt).toBeNull();
+    expect(after.startedAt).toBeNull();
+    expect(after.notes).toContain("أُعيد فتحه");
+  });
+
   it("يرفض حالة لقطعة أو مرحلة غير موجودة — بلا أي كتابة", async () => {
     if (skip()) return;
     const co = await makeCompany({
