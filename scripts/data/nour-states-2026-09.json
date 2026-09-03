@@ -1,0 +1,129 @@
+{
+  "_": [
+    "مخبر د.نور — الدورة الحالية ١٥/٨ → ١٥/٩ (٣/٩/٢٠٢٦).",
+    "المصادر: إنستغرام @dr.nourlab · سجلّ تلغرام الحيّ (مونتاجات أليسار).",
+    "",
+    "المطابقة بالعدد وبالترتيب الزمني: ٣ بوستات و٢ ريل منشورة، وثلاث مونتاجات",
+    "مسلَّمة (١٨/٨ · ٢١/٨ · ٢٥/٨) — اتنتان طلعتا للنشر والثالثة جاهزة.",
+    "",
+    "غير مشمول هنا وينتظر قرار القائدة: الدورة السابقة (١٥/٧ → ١٥/٨) مسجَّلة",
+    "١٢/١٢ منشورة بينما إنستغرام يُظهر ٧ فقط (٣ بوستات و٤ ريلات)."
+  ],
+  "companyName": "مخبر د.نور",
+  "year": 2026,
+  "month": 8,
+  "pieceStates": [
+    {
+      "type": "POST",
+      "pieceNo": 1,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-17",
+      "evidence": "القطعة منشورة فعلاً، فتصميمها منجز بالضرورة. كان التصميم مسجَّلاً غير منجز بينما كرت النشر مقفل — حالة مستحيلة."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 1,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-17",
+      "evidence": "منشور فعلاً 17/8/2026 09:31 UTC — instagram.com/dr.nourlab/p/DcIuKQlFnDQ/ «ليش الدكتور أحياناً بيطلب Ferritin مو بس تحليل حديد؟». (التطبيق كان يقول 15/8.)"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "SHOOT",
+      "status": "READY",
+      "date": "2026-08-18",
+      "evidence": "المونتاج سُلّم 18/8 فالتصوير سبقه بالضرورة — والقطعة منشورة 20/8."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "EDIT",
+      "status": "READY",
+      "date": "2026-08-18",
+      "evidence": "سلّمتها أليسار على تلغرام 18/8/2026 — mkhbar 3-8.mp4."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-20",
+      "evidence": "منشور فعلاً 20/8/2026 11:43 UTC — instagram.com/dr.nourlab/reel/DcQrlgbt-g7/ «وانت؟؟ لسا عم تاخد التشخيص من الـAi؟؟»."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-24",
+      "evidence": "القطعة منشورة فعلاً، فتصميمها منجز بالضرورة."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-24",
+      "evidence": "منشور فعلاً 24/8/2026 13:22 UTC — instagram.com/dr.nourlab/p/DcbKP3UiMUs/ «فنجان القهوة الصغير… ممكن يغيّر قراءة بعض التحاليل!»."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "stage": "SHOOT",
+      "status": "READY",
+      "date": "2026-08-21",
+      "evidence": "المونتاج سُلّم 21/8 فالتصوير سبقه — والقطعة منشورة 26/8."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "stage": "EDIT",
+      "status": "READY",
+      "date": "2026-08-21",
+      "evidence": "سلّمتها أليسار على تلغرام 21/8/2026 — mkhbar 4-8.mov."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-26",
+      "evidence": "منشور فعلاً 26/8/2026 13:24 UTC — instagram.com/dr.nourlab/reel/DcgT8ZKNHHY/ «حاسس حالك بلا طاقة طول الوقت؟»."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 3,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "القطعة منشورة فعلاً، فتصميمها منجز بالضرورة."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 3,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-31",
+      "evidence": "منشور فعلاً 31/8/2026 — instagram.com/dr.nourlab/p/DctQH9FCNiF/ «Vitamin D مو مجرد رقم…»."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 3,
+      "stage": "SHOOT",
+      "status": "READY",
+      "date": "2026-08-25",
+      "evidence": "المونتاج سُلّم 25/8 فالتصوير سبقه."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 3,
+      "stage": "EDIT",
+      "status": "READY",
+      "date": "2026-08-25",
+      "evidence": "سلّمتها أليسار على تلغرام 25/8/2026 — mkhbar 5-8.mp4. جاهزة ولم تُنشر بعد."
+    }
+  ]
+}
