@@ -10,6 +10,76 @@ Production alias: <https://socialmediateam.vercel.app>
 
 Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
 
+## ٣/٩/٢٠٢٦ — تشخيص «مهام اليوم» (Claude) · **مفحوص، وما انصلح بعد**
+
+القائدة رصدت أربع مشاكل. الفحص على الداتا الحيّة ردّهن لثلاثة أسباب جذرية.
+
+### أ. توزيع الشركات على المصمّمَين مايل بشدّة
+
+| | الشركات | قطع/شهر |
+| --- | --- | ---: |
+| أيمن | BW · Phoenitech · عبادة · وصل | **٥٨** |
+| سابين | Siizen · أغاليا · التوظيف · برو · جدارات · مانغو · نور · البلسم | **١٠١** |
+
+سابين حاملة **٧٤٪ أكتر**. وشركتان من أربعة عند أيمن (BW وPhoeniTech) ما إلهن
+دورة شغّالة، فما بيولّدوا شغل جديد — يعني طابوره بيفضى وطابورها بيفيض.
+**هاد سبب «أيمن بوست واحد».**
+
+### ب. معدّل سابين مخزَّن ٨ لا ٦
+
+`Employee.rates` عند سابين = `{"POST":8,"STORY":8}` وعند أيمن `6`. وقائمة اليوم
+بتعبّي بالضبط لحدّ المعدّل المخزَّن — فأعطتها ٨. الرقم صحيح حسب الداتا وغلط حسب
+قاعدة القائدة. **مصدر الحقيقة حقل `rates`**: تغييره لـ٦ بيصلّح كل الشاشات مرة
+وحدة.
+
+### ج. البوابات موجودة وشغّالة — بس لوائح «المتأخر» ما بتقراها
+
+سلسلة الحجز عند نور مبنية صح ١٠٠٪ (فحص على الإنتاج، دورة ١٥/٨):
+
+```
+POST|DESIGN   محجوز 6/6 بـ[WRITE]      REEL|SHOOT   محجوز 6/6 بـ[WRITE]
+POST|PUBLISH  محجوز 6/6 بـ[DESIGN]     REEL|EDIT    محجوز 6/6 بـ[SHOOT]
+                                        REEL|PUBLISH محجوز 6/6 بـ[EDIT]
+```
+
+يعني المحرّك **بيحترم** «لا مهام بلا خطة»: كرت «كتابة بوستات وستوريز» لسا
+`NOT_STARTED`، فكل قطع الدورة محجوزة وراه. و`selectDailyWorkTasks` بتصفّي
+المحجوز فعلاً.
+
+**بس** `isTaskLateState` ما بتعرف لا الحجز ولا إعفاء الشركة. فالشاشات يلي
+بتستعملها بتعدّ محجوزاً ومعفيّاً كأنه متأخر:
+`overview-client.tsx` · `reports/page.tsx` · `KanbanBoard.tsx` · `done-report.ts`.
+
+هاد بيفسّر:
+* **عمر «متأخرة ٤٧»** وفيها نشر جدارات (شركة موقوفة بطلب الزبون) ونشر نور
+  (محجوز وراء خطة ما انكتبت).
+* **رقم «١٣٧ متأخر»** بصفحة متابعة اليوم — منفوخ بشغل مستحيل يشتغل عليه حدا.
+
+### د. خطط BW وPhoeniTech ما إلها كرت كتابة
+
+التنتان بلا `publishStartDate` → ما في دورة → ما في كرت كتابة. والخطة **شرط
+سابق** لبدء النشر، بس المحرّك ما بيطلبها إلا بعد ما تبلّش الدورة. دورة مقفلة على
+حالها — ولهيك نوال شايفة خطة وحدة والمطلوب تلاتة.
+
+### الإصلاحات المقترحة (بانتظار قرار القائدة)
+
+1. معدّل سابين ٨ → ٦ (تعديل موظف، نقرة).
+2. إعادة توزيع الشركات بين أيمن وسابين.
+3. `isTaskLateState` تحترم الحجز وإعفاء الشركة — خمس مواضع.
+4. كرت كتابة خطة للشركة يلي عقدها موقّع والنشر ما بلّش.
+
+### شغل مطلوب جدولته (٣/٩) — لسا ما انضاف
+
+* **نوال — مستعجل:** كتابة سكريبت إيفنت المدرسة، التسليم **الأحد ٦/٩**.
+* **ماجد — تصوير:**
+
+| اليوم | الشغل |
+| --- | --- |
+| الأحد ٦/٩ | إيفنت الجامعة — تغطية المسابقة البرمجية |
+| الاثنين ٧/٩ | إيفنت المدرسة — تغطية تركيب الشاشة والورشة |
+| الثلاثاء ٨/٩ | تصوير **٦ ريلات** لوصل |
+| الأربعاء ٩/٩ | الباقي — عبادة أو Siizen أو البلسم |
+
 ## ٣/٩/٢٠٢٦ — تطبيق ثلاث حمولات على الإنتاج (Claude)
 
 **حالة: منفَّذ ومتحقَّق منه على الإنتاج الحيّ** (لقطة `prod-20260903-1924.json`).
