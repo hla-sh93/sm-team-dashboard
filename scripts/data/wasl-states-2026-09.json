@@ -1,7 +1,7 @@
 {
   "_": [
     "تصحيح حالات وصل — دورة ١/٩ → ٣٠/٩. كل سطر معه دليله.",
-    "المصادر: تلغرام (تصدير 2026-09-02) · إنستغرام @wasl.fx · تأكيدات القائدة (٢/٩).",
+    "المصادر: سجلّ تلغرام الحيّ (٢٥٠١ رسالة) · إنستغرام @wasl.fx · تأكيدات القائدة.",
     "التبديل: بوست ٢ أخد سلوت ١/٩ وانتشر، وبوست ١ أخد سلوت بوست ٢ الأصلي (٨/٩)."
   ],
   "companyName": "وصل للتداول",
@@ -10,11 +10,43 @@
   "pieceStates": [
     {
       "type": "POST",
+      "pieceNo": 1,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمه أيمن على تلغرام 31/8/2026 — POST1.jpg، وأعاد إرساله باسمه الصحيح 3/9 — wasl-post-1.jpg."
+    },
+    {
+      "type": "POST",
       "pieceNo": 2,
-      "stage": "PUBLISH",
-      "status": "PUBLISHED",
-      "date": "2026-09-01",
-      "evidence": "منشور فعلاً على إنستغرام 1/9/2026 — instagram.com/wasl.fx/p/DcwFtAVs8nU/ «احمي رأس مالك». رقم القطعة مؤكَّد من القائدة 2/9."
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمه أيمن على تلغرام 31/8/2026 — POST2.jpg، وأعاد إرساله باسمه الصحيح 3/9 — wasl-post-2.jpg."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 3,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-08-31",
+      "evidence": "سلّمه أيمن على تلغرام 31/8/2026 — POST3.jpg، وأعاد إرساله باسمه الصحيح 3/9 — wasl-post-3.jpg."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 4,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-09-03",
+      "evidence": "سلّمه أيمن على تلغرام 3/9/2026 الساعة 09:11 — wasl-post-4.jpg."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 5,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-09-03",
+      "evidence": "سلّمه أيمن على تلغرام 3/9/2026 الساعة 09:11 — wasl-post-5.jpg."
     },
     {
       "type": "STORY",
@@ -22,7 +54,7 @@
       "stage": "DESIGN",
       "status": "READY",
       "date": "2026-08-31",
-      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY1-1.jpg و STORY1-2.jpg."
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026، وأعاد إرسالها باسمها الصحيح 3/9 — wasl-story-1.jpg."
     },
     {
       "type": "STORY",
@@ -30,7 +62,7 @@
       "stage": "DESIGN",
       "status": "READY",
       "date": "2026-08-31",
-      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY2.jpg."
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026، وأعاد إرسالها باسمها الصحيح 3/9 — wasl-story-2.jpg."
     },
     {
       "type": "STORY",
@@ -38,7 +70,31 @@
       "stage": "DESIGN",
       "status": "READY",
       "date": "2026-08-31",
-      "evidence": "سلّمها أيمن على تلغرام 31/8/2026 — STORY3.jpg."
+      "evidence": "سلّمها أيمن على تلغرام 31/8/2026، وأعاد إرسالها باسمها الصحيح 3/9 — wasl-story-3.jpg."
+    },
+    {
+      "type": "STORY",
+      "pieceNo": 4,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-09-03",
+      "evidence": "سلّمها أيمن على تلغرام 3/9/2026 الساعة 09:41 — wasl-story-4.jpg."
+    },
+    {
+      "type": "STORY",
+      "pieceNo": 5,
+      "stage": "DESIGN",
+      "status": "READY",
+      "date": "2026-09-03",
+      "evidence": "سلّمها أيمن على تلغرام 3/9/2026 الساعة 09:41 — wasl-story-5.jpg."
+    },
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-09-01",
+      "evidence": "منشور فعلاً على إنستغرام 1/9/2026 — instagram.com/wasl.fx/p/DcwFtAVs8nU/ «احمي رأس مالك». رقم القطعة مؤكَّد من القائدة 2/9."
     },
     {
       "type": "REEL",
