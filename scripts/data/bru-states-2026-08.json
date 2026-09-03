@@ -1,0 +1,83 @@
+{
+  "_": [
+    "برو — مطابقة الدورة (٣/٩/٢٠٢٦). كل سطر معه رابطه على إنستغرام.",
+    "المصادر: إنستغرام @bru_cafe1 بجلسة القائدة · تأكيدها إنّ ريل «نهائي كأس",
+    "العالم» (٢٣/٧) هو أول نشر من الدورة، فهو مرساتها.",
+    "",
+    "⚠️ يسبقها تصحيح على سجلّ الشركة: آخر تجديد ١٨/٧ ← ٢٣/٧ عبر «صحّح آخر تجديد»",
+    "— لأنّ الدورة تبدأ من أول نشر فعلي لا من تاريخ التوقيع.",
+    "",
+    "معلَّق ولم يُلمس: بوست ٣ مسجَّل منشوراً ١٦/٨ بلا مقابل على إنستغرام (قرار",
+    "سابق للقائدة بإبقائه منجزاً)، وستوري ١ مسجَّلة منشورة ٢١/٧ أي قبل مرساة",
+    "الدورة — والستوري لا تُتحقَّق من إنستغرام."
+  ],
+  "companyName": "برو",
+  "year": 2026,
+  "month": 7,
+  "pieceStates": [
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-07-23",
+      "evidence": "منشور فعلاً 23/7/2026 — instagram.com/bru_cafe1/reel/DbJexZixJ6-/ «شو ما كان الحدث أجواء BRU… نهائي كأس العالم». القائدة أكّدت إنّه أول نشر من الدورة فهو مرساتها."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-02",
+      "evidence": "منشور فعلاً 2/8/2026 — instagram.com/bru_cafe1/reel/Dbi6DIYqDud/ «ولا مشروب وولا طعمة». (التطبيق كان يقول 25/7.)"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 3,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-05",
+      "evidence": "منشور فعلاً 5/8/2026 — instagram.com/bru_cafe1/reel/Dbqin4YKndB/ «المبدأ مبدأ». (التطبيق كان يقول 28/7.)"
+    },
+    {
+      "type": "POST",
+      "pieceNo": 1,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-11",
+      "evidence": "منشور فعلاً 11/8/2026 — instagram.com/bru_cafe1/p/Db50I5AEb1d/ «جرعة السعادة والانتعاش». (التطبيق كان يقول 26/7.)"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 4,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-16",
+      "evidence": "منشور فعلاً 16/8/2026 — instagram.com/bru_cafe1/reel/DcGrw79qkfl/ «برو شريككم بكل قعداتكم». (التطبيق كان يقول 30/7.)"
+    },
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-24",
+      "evidence": "منشور فعلاً 24/8/2026 17:43 UTC — instagram.com/bru_cafe1/p/DcboFEvChNM/ «المعنى الحرفي للقلب الطيب». (التطبيق كان يقول 5/8.)"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 5,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-28",
+      "evidence": "منشور فعلاً 28/8/2026 15:20 UTC — instagram.com/bru_cafe1/reel/DcjdEDhxd2Q/ «الزبون دايماً على حق». (التطبيق كان يقول 2/8.)"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 6,
+      "stage": "PUBLISH",
+      "status": "PUBLISHED",
+      "date": "2026-08-31",
+      "evidence": "منشور فعلاً 31/8/2026 17:30 UTC — instagram.com/bru_cafe1/reel/DctoG5_kefa/ «شغل سماعاتك، غمض عيونك، وعيش التجربة معنا». نشر جديد لم يكن في الجرد السابق؛ التطبيق يقول غير منشور بتاريخ 8/8."
+    }
+  ]
+}
