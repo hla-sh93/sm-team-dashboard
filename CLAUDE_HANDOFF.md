@@ -518,6 +518,33 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-02 — Claude — Wasl matched across all three sources; piece-state tool built
+
+- **[USER-CONFIRMED 2026-09-02]** **وصل has no daily/routine work any more** — no exchange-rate bulletins,
+  no economic calendar, no daily analysis. Only the monthly plan counts this cycle. The
+  «نشرات الصرف والمفكرة الاقتصادية» cards closed by the 1/9 cutoff stay closed, and nothing new is
+  generated for them. (Instagram still shows those daily items published through 1/9, which is what raised
+  the question.)
+- **[USER-CONFIRMED 2026-09-02]** The post published on 2026-09-01 is **plan post #2**, not post 1 — the
+  imported payload had pinned post 1 to that date. The **reel's publication was postponed to Thursday**;
+  which Thursday is not yet confirmed.
+- **[VERIFIED — TELEGRAM export 2026-09-02]** Wasl deliveries since 27/8: the plan PDF (حلا, 30/8);
+  `POST1.jpg`, `POST2.jpg`, `POST3.jpg` (أيمن, 31/8 13:33); `STORY1-1.jpg`, `STORY1-2.jpg`, `STORY2.jpg`,
+  `STORY3.jpg` (أيمن, 31/8 22:02–22:17); `wasl 1 -9.mp4` (**أليسار**, 1/9 21:12 — the reel montage).
+- **[VERIFIED — INSTAGRAM @wasl.fx, read-only]** 1/9: «احمي رأس مالك» (`/p/DcwFtAVs8nU/`) plus three daily
+  items and a reel; 31/8 and 28/8 are daily items only. So exactly **one plan piece** has been published
+  this cycle.
+- **[VERIFIED]** New capability `pieceStates` in `applyCompanyPlanUpdate`: per (piece, stage) a status, an
+  actual date, an optional postponed publish date, and a **mandatory evidence line** appended to the card's
+  notes. Validated all-or-nothing; a completed card's date is written as a record, not a plan. Tests cover
+  the happy path, note preservation, postponement without closing, and refusal on a missing piece.
+  `scripts/data/wasl-states-2026-09.json` holds Wasl's first correction set. 513/513 tests, typecheck.
+- **[PENDING — questions to the lead]** (a) when was reel 1 actually shot (the montage exists, so the shoot
+  happened, but no date is known and none will be invented); (b) which Thursday the reel publishes — 3/9 or
+  10/9; (c) post 1 is still pinned to 1/9 and unpublished, so it needs a new slot.
+- **[PENDING]** Nothing applied to production. The payload waits for the lead's go-ahead, and the local
+  database is still the stale 2026-08-26 snapshot until the first successful backup sync.
+
 ### 2026-09-02 — Claude — Daily backup built and live; Jobs plan settled at 10 posts
 
 - **[USER-CONFIRMED]** Go-ahead to build the backup first. Also: التوظيف is **10 posts** — the plan file's
