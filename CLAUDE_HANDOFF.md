@@ -518,6 +518,34 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-03 — Claude — First production backup pulled and synced; the mess is now measurable
+
+- **[LIVE/VERIFIED]** The daily backup works end to end. `npm run backup:pull` fetched
+  `backups/prod-20260903-1015.json` — **11 employees · 16 companies · 1220 tasks · 91 photo sessions ·
+  7 settings** — and `npm run backup:sync` replaced the local database with it after fingerprinting the old
+  one to `backups/dev.db.before-sync-20260903-1016`. Local now mirrors production; the stale 2026-08-26
+  snapshot is gone.
+- **[VERIFIED]** Two failures on the way, both fixed: the secret line had been written by PowerShell in
+  UTF-16 (every character followed by a NUL) so the reader never saw the key, and a value carrying control
+  characters made `fetch` fail with an opaque `UND_ERR_INVALID_ARG`. The loader now strips NULs/BOM, the
+  script validates that the secret is printable ASCII, and failures exit through `exitCode` instead of
+  crashing libuv.
+- **🔴 [SECURITY — needs the lead's action]** The `CRON_SECRET` now in use is the literal example string
+  the agent published in chat (verified by hash). It protects the full-database export route and the three
+  Telegram cron routes. It must be rotated to a private value in Vercel (Production) + redeploy + mirror
+  locally.
+- **[VERIFIED — PRODUCTION DATA]** With the real data local, the data-rule tests turn red and that redness
+  **is the audit's raw material**, not a code regression: **56 publish closures since July carry no
+  evidence line** (وصل 14 · التوظيف 10 · أغاليا 5 · برو 5 · البلسم 5 · Siizen 4 · عبادة 4 · فونيتيك 4 ·
+  مانغو 3 · نور 2); مخبر د.نور has a publication (11/6) outside its 15/6→15/7 cycle; Siizen has five
+  generated items in the 2026-7 bucket with no cycle at all; Wasl REEL 5 finished before it started; and
+  REEL#6 is published while its production cards are open.
+- **[LIVE/VERIFIED]** Wasl's real September state: plan 15/8/20, cycle `1/9 → 1/10`, 96 cards — 11 done
+  (POST DESIGN 1–5 · STORY DESIGN 1–5 · REEL 1 SHOOT), 85 open, **nothing published in the app** even
+  though post 2 went out on 1/9. Post 1 is still pinned to 1/9.
+- **[PENDING]** Telegram evidence covers only POST 1–3 and STORY 1–3; the board claims POST 4–5 and
+  STORY 4–5 are done as well. Ask the lead before treating those four as delivered.
+
 ### 2026-09-02 — Claude — Wasl matched across all three sources; piece-state tool built
 
 - **[USER-CONFIRMED 2026-09-02]** **وصل has no daily/routine work any more** — no exchange-rate bulletins,
