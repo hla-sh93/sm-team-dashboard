@@ -25,7 +25,11 @@ let db: typeof import("../src/lib/db");
 let report: typeof import("../src/lib/telegram/done-report");
 let realBefore = "";
 
-/** تحديث تلغرام كما بيوصل الويبهوك فعلاً — القناة الحقيقية بالحقول الحقيقية. */
+/** تحديث تلغرام كما بيوصل الويبهوك فعلاً — القناة الحقيقية بالحقول الحقيقية.
+ *
+ * ⚠️ أرقام الرسائل بمدى ٩٥٠٠٠٠+ عن قصد: النسخة صارت تحمل رسائل الإنتاج الحقيقية
+ * (٢٥٠٠+، وأرقامها بالآلاف)، والتخزين متكافئ بمفتاح «المحادثة:الرسالة» — فرقم
+ * صغير بيتصادم مع رسالة حقيقية ويرجع «مخزّنة سابقاً» فيفشل الفحص بلا سبب حقيقي. */
 const photoUpdate = (o: { caption?: string; msgId: number; thread: number; from: string }) => ({
   update_id: 900000 + o.msgId,
   message: {
@@ -58,7 +62,7 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
   it("١· الرسالة بتنخزّن وبتنربط بالشركة الصح من التوبيك", async () => {
     const out = await ingest.ingestUpdate(photoUpdate({
       caption: "Siizen 8-1",
-      msgId: 5001,
+      msgId: 950001,
       thread: 3584, // توبيك Siizen كما بالربط الحقيقي
       from: "أيمن ديزاينst",
     }) as never);
@@ -70,7 +74,7 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
 
   it("٢· الكابشن «Siizen 8-1» بيطابق بوست ١ وبيسكّر تصميمه", async () => {
     const msg = await db.prisma.telegramMessage.findFirst({
-      where: { messageId: 5001 },
+      where: { messageId: 950001 },
     });
     expect(msg?.taskId).not.toBeNull();
     const task = await db.prisma.task.findUnique({ where: { id: msg!.taskId! } });
@@ -114,14 +118,14 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
 
   it("٤· الصورة بلا كابشن بتنخزّن حرّة وبتبان «غير مطابق» — ما بتختفي", async () => {
     const out = await ingest.ingestUpdate(photoUpdate({
-      msgId: 5002,
+      msgId: 950002,
       thread: 3584,
       from: "أيمن ديزاينst",
     }) as never);
     expect(out?.stored).toBe(true);
     expect(out?.taskId ?? null).toBeNull(); // بلا اسم ولا كابشن: ما في شي يُطابَق عليه
 
-    const messages = await db.prisma.telegramMessage.findMany({ where: { messageId: { in: [5001, 5002] } } });
+    const messages = await db.prisma.telegramMessage.findMany({ where: { messageId: { in: [950001, 950002] } } });
     const companies = await db.prisma.company.findMany();
     const coName = new Map(companies.map((c) => [c.id, c.name]));
     const r = report.buildDailyDoneReport(
@@ -147,7 +151,7 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
     // تشترط اسماً لاتينياً فترفضه — وهاد سبب «غير مطابق» الحقيقي.
     const out = await ingest.ingestUpdate(photoUpdate({
       caption: "بوست 8-2",
-      msgId: 5004,
+      msgId: 950004,
       thread: 3584,
       from: "أيمن ديزاينst",
     }) as never);
@@ -161,18 +165,18 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
   it("٥· نفس الرسالة مرتين ما بتنخزّن مرتين (تلغرام بيعيد الإرسال)", async () => {
     const again = await ingest.ingestUpdate(photoUpdate({
       caption: "Siizen 8-1",
-      msgId: 5001,
+      msgId: 950001,
       thread: 3584,
       from: "أيمن ديزاينst",
     }) as never);
     expect(again?.stored).toBe(false);
-    expect(await db.prisma.telegramMessage.count({ where: { messageId: 5001 } })).toBe(1);
+    expect(await db.prisma.telegramMessage.count({ where: { messageId: 950001 } })).toBe(1);
   });
 
   it("٦· توبيك مجهول بينخزّن غير مربوط — وبيبان للقائدة بدل ما ينبلع", async () => {
     const out = await ingest.ingestUpdate(photoUpdate({
       caption: "شي جديد",
-      msgId: 5003,
+      msgId: 950003,
       thread: 999777, // توبيك ما منعرفه
       from: "حدا جديد",
     }) as never);

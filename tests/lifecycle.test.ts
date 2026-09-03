@@ -50,7 +50,10 @@ describe("الحارس الأول — داتا الشغل ما بتنلمس", ()
 
 describe("الربط والعلاقات", () => {
   it("كل شركة مُدارة إلها توبيك تلغرام", async () => {
-    const cos = await db.company.findMany({ where: { managed: true } });
+    // الشركة المؤرشفة خلصت خطتها وما جدّدت (المول الصيني) — ما بيلزمها توبيك.
+    const cos = await db.company.findMany({
+      where: { managed: true, status: { not: "archived" } },
+    });
     const chats = await db.telegramChat.findMany({ where: { companyId: { not: null } } });
     const linked = new Set(chats.map((c) => c.companyId));
     const missing = cos.filter((c) => !linked.has(c.id)).map((c) => c.name);
