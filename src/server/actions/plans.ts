@@ -80,11 +80,23 @@ const planUpdateSchema = z
       .array(
         z.object({
           title: z.string().trim().min(3).max(200),
-          stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
+          /**
+           * اختيارية: في كروت خارج الخطة بلا مرحلة أصلاً («بوست-6 · عبادة»
+           * مرحلته `null`). بلا هالاختيارية ما كان في طريق لمسّها.
+           */
+          stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]).optional(),
           status: z
             .enum(["NOT_STARTED", "IN_PROGRESS", "AWAITING_APPROVAL", "READY", "PUBLISHED"])
             .optional(),
           date: isoDate.optional(),
+          /**
+           * تقدير الجهد بالساعات. الكرت خارج الخطة بيشتري حصّة من يوم الشخص
+           * (`dailyTaskEffortDays`)، وكرت بيوصل ليوم كامل بيصير **حصرياً**
+           * فبياخد اليوم لحاله وبيخفي باقي شغل الشخص. صار فعلاً: «بوست-6 ·
+           * عبادة» عند أيمن كان ٨ ساعات لبوست واحد، فطلع يومه كرت واحد بدل ستة.
+           * ونافذة «تعديل مهمة» ما فيها حقل ساعات، فما كان في طريق لتصحيحه.
+           */
+          hours: z.number().min(0).max(80).optional(),
           evidence: z.string().trim().min(3).max(500),
         }),
       )
@@ -143,7 +155,7 @@ function latestScheduledDate(task: {
  */
 function stateUpdateFor(
   spec: {
-    stage: string;
+    stage?: string;
     status?: string;
     date?: string;
     publishDate?: string;
@@ -314,18 +326,20 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       for (const spec of adhocSpecs) {
         const needle = spec.title.trim();
         const hits = adhocCandidates.filter(
-          (task) => task.stage === spec.stage && (task.title ?? "").includes(needle),
+          (task) =>
+            (spec.stage == null || task.stage === spec.stage) &&
+            (task.title ?? "").includes(needle),
         );
         if (hits.length === 0) {
-          problems.push(`«${needle}» (${spec.stage}): ما في كرت مطابق`);
+          problems.push(`«${needle}» (${spec.stage ?? "بلا مرحلة"}): ما في كرت مطابق`);
           continue;
         }
         if (hits.length > 1) {
-          problems.push(`«${needle}» (${spec.stage}): ${hits.length} كروت مطابقة — العنوان مو مميّز`);
+          problems.push(`«${needle}» (${spec.stage ?? "بلا مرحلة"}): ${hits.length} كروت مطابقة — العنوان مو مميّز`);
           continue;
         }
         if (claimed.has(hits[0].id)) {
-          problems.push(`«${needle}» (${spec.stage}): نفس الكرت مطلوب مرتين`);
+          problems.push(`«${needle}» (${spec.stage ?? "بلا مرحلة"}): نفس الكرت مطلوب مرتين`);
           continue;
         }
         claimed.add(hits[0].id);
@@ -598,9 +612,9 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     }
 
     for (const { spec, task } of adhocResolved) {
-      writes.push(
-        prisma.task.updateMany({ where: { id: task.id }, data: stateUpdateFor(spec, task) }),
-      );
+      const update = stateUpdateFor(spec, task);
+      if (spec.hours != null) update.hours = spec.hours;
+      writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
     }
 
     const results = await prisma.$transaction(writes);
