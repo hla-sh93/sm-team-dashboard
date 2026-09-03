@@ -10,6 +10,28 @@ Production alias: <https://socialmediateam.vercel.app>
 
 Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
 
+## ٣/٩/٢٠٢٦ — شيل تجديد نور ١٥/٨ (Claude) · سجلّ ما قبل الحذف
+
+قرار القائدة: «شيل تجديد نور». الأساس قولها السابق: «ما عملنا دورة ١٥/٨–١٥/٩،
+هاد كلّه تأخير من دورة ١٥/٧–١٥/٨».
+
+**شو بينمحي:** ٣٢ كرت تلقائي ببكت `2026/m=7` — منها ٣٠ محجوزة وراء كرت كتابة
+ما انبدأ (دورة بلا خطة)، و**٤ منجزة**. مسجَّلة هون قبل الحذف حتى لا يضيع أثرها:
+
+| القطعة | الحالة | التاريخ | دليلها |
+| --- | --- | --- | --- |
+| POST #1 PUBLISH | منشور | ١٥/٨ (والواقع ١٧/٨ — ما انصحّح) | فيه |
+| REEL #1 EDIT | جاهز | ١٨/٨ | ما فيه |
+| REEL #1 PUBLISH | منشور | ١٨/٨ (والواقع ٢٠/٨) | فيه |
+| REEL #6 SHOOT | جاهز | ١٤/٩ | فيه |
+
+المنشوران الحقيقيان (١٧/٨ و٢٠/٨) بيضلّوا ممثَّلين بدورة ١٥/٧ (بكت `m=6`) يلي
+بتحمل ٦ بوستات و٦ ريلات — وهي الدورة يلي قالت القائدة إنّ كل هالنشر تأخير منها.
+
+**شو بيبقى:** الـ١٠ كروت اليدوية كلها — إعادات التصوير الثلاث (فيتامين د · B12 ·
+بديل «القيم الطبيعية») بتصويرها ومونتاجها، وغلافا الريل، وكرت السكريبت البديل،
+وكرت تثبيت موعد التصوير. يعني الشغل الفعلي المنجَز اليوم ما بينمسّ.
+
 ## ٣/٩/٢٠٢٦ — تشخيص «مهام اليوم» (Claude) · **مفحوص، وما انصلح بعد**
 
 القائدة رصدت أربع مشاكل. الفحص على الداتا الحيّة ردّهن لثلاثة أسباب جذرية.
