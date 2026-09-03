@@ -23,7 +23,13 @@ const PREFIX = "prod-";
 function loadEnvFile(path: string) {
   const full = resolve(path);
   if (!existsSync(full)) return;
-  for (const line of readFileSync(full, "utf8").split(/\r?\n/)) {
+  // تنظيف دفاعي: ملف كُتب بـPowerShell بيطلع UTF-16، فكل محرف وراه بايت
+  // صفري والمفتاح ما بينقرا — والنتيجة «السرّ ناقص» وهو موجود.
+  const NUL = String.fromCharCode(0);
+  const BOM = String.fromCharCode(0xff) + String.fromCharCode(0xfe);
+  const cleaned = readFileSync(full, "latin1").split(BOM).join("").split(NUL).join("");
+  const text = Buffer.from(cleaned, "latin1").toString("utf8");
+  for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
     const key = trimmed.slice(0, trimmed.indexOf("=")).trim();
@@ -65,6 +71,16 @@ async function main() {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     log("❌ فشل: CRON_SECRET مو محطوط بالبيئة المحلية — حطّيه بـ.env.local");
+    process.exit(1);
+  }
+  // سرّ فيه محارف تحكّم بيوقع الطلب برسالة غامضة (UND_ERR_INVALID_ARG) بدل ما
+  // يقول السبب. صار بينمسك هون: غالباً السطر انكتب بترميز UTF-16 من PowerShell.
+  if (!/^[!-~]+$/.test(secret)) {
+    log(
+      "❌ فشل: قيمة CRON_SECRET فيها محارف غير صالحة لترويسة HTTP — غالباً السطر " +
+        "انكتب بترميز UTF-16. افتحي .env.local بمحرّر نصّي واكتبي السطر يدوياً، " +
+        "أو استعملي: Add-Content .env.local 'CRON_SECRET=<القيمة>' -Encoding utf8",
+    );
     process.exit(1);
   }
   const base = (process.env.PROD_BASE_URL ?? "https://socialmediateam.vercel.app").replace(/\/$/, "");
