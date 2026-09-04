@@ -928,6 +928,38 @@ describe("contract renewal lifecycle", () => {
     expect(reelPublish.board).toBe("TODO");
   });
 
+  /**
+   * تاريخ الإنجاز الفعلي بيسبق أحياناً يوم البداية المخطَّط: قطعة انتشرت 22/8
+   * وكرتها مبني على بداية 29/8 (صار مع Siizen ٤/٩). لو ضلّت البداية مكانها
+   * بيصير الكرت «خلص قبل ما يبلّش» — حالة مستحيلة بتسقط عليها الفحوص.
+   */
+  it("الإنجاز قبل البداية المخطَّطة بيسحب البداية معه", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-backdate`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 1,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const publish = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1, stage: "PUBLISH" },
+    });
+    await prisma.task.update({ where: { id: publish.id }, data: { startedAt: new Date(2026, 8, 29) } });
+
+    const r = await actions.applyCompanyPlanUpdate({
+      companyId: co.id, year: YEAR, month: 8,
+      pieceStates: [{ type: "POST", pieceNo: 1, stage: "PUBLISH", status: "PUBLISHED", date: "2026-09-22", evidence: "منشور فعلاً 22/9" }],
+    });
+    expect(r.ok, r.error).toBe(true);
+
+    const after = await prisma.task.findUniqueOrThrow({ where: { id: publish.id } });
+    expect(toISODate(after.finishedAt!)).toBe("2026-09-22");
+    expect(toISODate(after.startedAt!)).toBe("2026-09-22"); // انسحبت معه
+    expect(after.startedAt!.getTime()).toBeLessThanOrEqual(after.finishedAt!.getTime());
+  });
+
   it("إعادة فتح كرت بتمحي طوابع إنجازه — ما بيضل منجز ومفتوح بنفس الوقت", async () => {
     if (skip()) return;
     const co = await makeCompany({
@@ -1151,6 +1183,37 @@ describe("contract renewal lifecycle", () => {
     expect(await prisma.task.count({ where: { id: orphan.id } })).toBe(0);
     expect(await prisma.task.count({ where: { id: manual.id } })).toBe(1); // اليدوي صمد
     expect(await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 8 } })).toBe(live);
+  });
+
+  /**
+   * ثغرة انكشفت وقت الاستعمال (٤/٩): الشركة بلا تاريخ بدء نشر ما إلها دورة بأي
+   * بكت، فبحرفية قاعدة «اليتيم» بتصير **كل** كروتها يتيمة. BW وPhoeniTech هيك —
+   * ١٠٥ و١١٤ كرت فيهن أرشيف شهور. الأداة لازم ترفض، لأنّ الحالة «تاريخ ناقص
+   * بالسجل» مو «شغل ما بينتمي».
+   */
+  it("بيرفض التنظيف لشركة بلا تاريخ بدء نشر — كل كروتها رح تنعدّ يتيمة", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-nodate`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 2,
+      stories: 0,
+      reels: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const before = await prisma.task.count({ where: { companyId: co.id } });
+    expect(before).toBeGreaterThan(0);
+
+    await prisma.company.update({ where: { id: co.id }, data: { publishStartDate: null } });
+
+    const probe = await actions.purgeOrphanCards(co.id);
+    expect(probe.ok).toBe(false);
+    expect(probe.error).toContain("تاريخ بدء نشر");
+    expect(probe.orphanCount).toBeUndefined(); // ما بيعطي عدداً يتأكّد فيه أصلاً
+    // ومحاولة التأكيد بأي عدد ما بتمرق كمان.
+    expect((await actions.purgeOrphanCards(co.id, before)).ok).toBe(false);
+    expect(await prisma.task.count({ where: { companyId: co.id } })).toBe(before);
   });
 
   /**

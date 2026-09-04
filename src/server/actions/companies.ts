@@ -610,6 +610,24 @@ export async function purgeOrphanCards(companyId: string, confirmCount?: number)
     const co = await prisma.company.findUnique({ where: { id: companyId } });
     if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
 
+    // ═══ حارس: «يتيم» بيعني شاذّ، مو «الشركة ما إلها دورة» ═══
+    //
+    // الشركة بلا تاريخ بدء نشر ما إلها دورة بأي بكت — فبحرفية القاعدة **كل**
+    // كروتها يتيمة. BW وPhoeniTech هيك: ١٠٥ و١١٤ كرت فيهن تاريخ نشر كامل،
+    // وتنظيفهن بهالمنطق بيمحي أرشيف شهور. والحالة الحقيقية إنّ التاريخ ناقص
+    // بالسجل، مو إنّ الشغل ما بينتمي.
+    //
+    // فالأداة بتشتغل بس لما يكون في دورة فعلاً وبعض البكتات برّاها — وهي
+    // الحالة يلي انبنت إلها (Siizen بعد ما انتقلت دورتها لبكت تاني).
+    if (!co.publishStartDate) {
+      return {
+        ok: false as const,
+        error:
+          "هالشركة ما إلها تاريخ بدء نشر، يعني ما إلها دورة بأي شهر — فكل كروتها " +
+          "رح تنعدّ يتيمة ويتمحي أرشيفها كله. حطّي تاريخ بدء النشر أولاً.",
+      };
+    }
+
     const buckets = await prisma.task.groupBy({
       by: ["year", "month"],
       where: { companyId, isAuto: true },

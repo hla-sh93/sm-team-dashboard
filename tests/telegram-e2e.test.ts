@@ -75,7 +75,7 @@ afterAll(async () => {
 describe("المسار الحي: صورة أيمن على Siizen", () => {
   it("١· الرسالة بتنخزّن وبتنربط بالشركة الصح من التوبيك", async () => {
     const out = await ingest.ingestUpdate(photoUpdate({
-      caption: "Siizen 8-1",
+      caption: "Siizen-post-8-1",
       msgId: 950001,
       thread: 3584, // توبيك Siizen كما بالربط الحقيقي
       from: "أيمن ديزاينst",
@@ -86,7 +86,7 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
     expect(out?.companyId).toBe(co!.id);
   });
 
-  it("٢· الكابشن «Siizen 8-1» بيطابق بوست ١ وبيسكّر تصميمه", async () => {
+  it("٢· الكابشن «Siizen-post-8-1» بيطابق بوست ١ وبيسكّر تصميمه", async () => {
     const msg = await db.prisma.telegramMessage.findFirst({
       where: { messageId: 950001 },
     });
@@ -96,6 +96,30 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
     expect(task?.pieceNo).toBe(1);
     expect(task?.stage).toBe("DESIGN");
     expect(task?.board).toBe("DONE"); // الإقفال صار، مو بس المطابقة
+  });
+
+  /**
+   * كلمة النوع مو زينة — هي يلي بتفكّ الالتباس.
+   *
+   * أرقام القطع بتبلّش من ١ **لكل نوع لحاله**، فبنفس الشهر في «بوست ١» و«ستوري
+   * ١». الاسم «Siizen 8-1» بيوصف التنين، والمطابقة بتختار الأقرب موعداً — يعني
+   * ممكن تسكّر ستوري محل بوست. ولهيك القالب بيعلّم
+   * `<Slug>-<النوع>-<الشهر>-<رقم القطعة>` وما بيكتفي بالرقم.
+   *
+   * انكشف ٤/٩ لما صار عند Siizen ١٠ ستوري بالخطة: نفس الكابشن يلي كان يسكّر
+   * بوست ١ صار يسكّر ستوري ١.
+   */
+  it("٢ب· كلمة النوع بتفكّ الالتباس: «story» بتسكّر الستوري مو البوست", async () => {
+    const out = await ingest.ingestUpdate(photoUpdate({
+      caption: "Siizen-story-8-1",
+      msgId: 950005,
+      thread: 3584,
+      from: "أيمن ديزاينst",
+    }) as never);
+    expect(out?.taskId).not.toBeNull();
+    const task = await db.prisma.task.findUnique({ where: { id: out!.taskId! } });
+    expect(task?.type).toBe("STORY");
+    expect(task?.pieceNo).toBe(1);
   });
 
   it("٣· وتقرير المنجَز بيشوفها: بحصيلة الفريق وبقسم التسليمات", async () => {

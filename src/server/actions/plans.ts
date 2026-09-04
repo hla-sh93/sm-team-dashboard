@@ -178,7 +178,13 @@ function stateUpdateFor(
   if (when && done) {
     update.finishedAt = when;
     update.completedAt = when;
-    if (!task.startedAt) update.startedAt = when;
+    // تاريخ الإنجاز الفعلي بيسبق أحياناً يوم البداية **المخطَّط** يلي حطّه
+    // التوليد — قطعة انتشرت 22/8 وكرتها مبني على بداية 29/8. تركه بيخلّي
+    // الكرت «خلص قبل ما يبلّش»، وهي حالة مستحيلة بتسقط عليها الفحوص وبتخرّب
+    // حساب مدة الشغل. البداية بترجع لتاريخ الإنجاز لما تكون بعده.
+    if (!task.startedAt || task.startedAt.getTime() > when.getTime()) {
+      update.startedAt = when;
+    }
     if (spec.stage === "PUBLISH") update.publishDate = when;
     else {
       update.workDate = when;
