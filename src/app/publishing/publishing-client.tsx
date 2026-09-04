@@ -21,6 +21,7 @@ import { buildReelNumbers } from "@/lib/cards";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task } from "@/types";
+import { assetNameForTask } from "@/lib/asset-name";
 import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 
 const PUBLISH_STATUSES: Status[] = ["NOT_STARTED", "IN_PROGRESS", "PUBLISHED"];
@@ -131,6 +132,8 @@ export default function PublishingClient({
     CONTENT_TYPE_COLORS[(t.type as ContentType) ?? "POST"] ?? "#C8A84E";
   const typeLabel = (t: Task) =>
     CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? t.type;
+  const assetLabel = (t: Task) =>
+    assetNameForTask(t.companyId ? companies.find((c) => c.id === t.companyId) : null, t, seqOf);
 
   const renderChip = (t: Task) => (
     <div
@@ -168,6 +171,14 @@ export default function PublishingClient({
           <span>أسبوع {t.week}</span>
           <span>· {empName(t.assigneeId)}</span>
         </div>
+        {/* اسم الملف — الناشر لازم يعرف أي ملف بينشر، مو بس «بوست-٣». نفس دالة
+            اللوح والقالب، فما بيفترقوا. كان موجوداً على /tasks و/today وناقصاً
+            هون بالضبط عند الشخص يلي بيرفع الملف. */}
+        {assetLabel(t) && (
+          <span dir="ltr" className="text-[10px] font-mono tracking-tight text-fg-dim truncate">
+            {assetLabel(t)}
+          </span>
+        )}
         <Select
           className="w-full h-7 text-[11px] py-0.5"
           value={t.status === "READY" ? "PUBLISHED" : t.status}
