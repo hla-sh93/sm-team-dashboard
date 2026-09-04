@@ -13,6 +13,8 @@ import {
   correctLatestRenewal,
   endContract,
   removeLatestRenewal,
+  pauseCompanyPublishing,
+  resumeCompanyPublishing,
 } from "@/server/actions/companies";
 import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
@@ -185,6 +187,64 @@ export default function CompaniesClient({
           toast(`انشالت دورة ${formatDateShort(latest)} من ${c.name}`);
           router.refresh();
         } else toast(forced.error, "error");
+      });
+    });
+  };
+
+  /**
+   * إيقاف نشر شركة — وتنظيف كروتها المعلّقة.
+   *
+   * القائدة (٤/٩): «بدي أقدر أوقف النشر من اللوحة وأنظّف كل الكروت، لحدّ ما
+   * أرجّعها». التنظيف بيطال المعلّق وحده — المنجَز والمنشور ما بينلمسوا، وإلا
+   * بتضيع أرقام الإنجاز وحصيلة كل شخص.
+   */
+  const onPausePublishing = (c: Company) => {
+    Swal.fire({
+      title: `أوقف النشر — ${c.name}`,
+      html:
+        "كل الكروت <b>المعلّقة</b> رح تنشال، وتاريخ بدء النشر بينفرّغ — فما في دورة وما في تأخير علينا." +
+        "<br/><b>الشغل المنجَز والمنشور بيضل كما هو.</b>" +
+        "<br/>لما ترجّعيها، بتحطّي تاريخ بدء نشر جديد والكروت بتنبني من أوله.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "أوقف النشر",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#c0392b",
+    }).then((res) => {
+      if (!res.isConfirmed) return;
+      start(async () => {
+        const r = await pauseCompanyPublishing(c.id);
+        if (r.ok) {
+          toast(`توقّف نشر ${c.name} · انشال ${r.removedTasks} كرت معلّق`);
+          router.refresh();
+        } else toast(r.error, "error");
+      });
+    });
+  };
+
+  /** إرجاع شركة موقوفة — التاريخ إلزامي لأنه مرساة الدورة كلها. */
+  const onResumePublishing = (c: Company) => {
+    Swal.fire({
+      title: `رجّع النشر — ${c.name}`,
+      html: "حطّي تاريخ بدء النشر الجديد. منه بتتحدّد الدورة، ومنه بيرتّب النظام التصميم والتصوير والمونتاج والنشر.",
+      input: "text",
+      inputPlaceholder: "YYYY-MM-DD",
+      inputAttributes: { dir: "ltr", spellcheck: "false" },
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "رجّع وابنِ الدورة",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#0a8fa3",
+      inputValidator: (v) =>
+        /^\d{4}-\d{2}-\d{2}$/.test((v ?? "").trim()) ? null : "التاريخ لازم يكون YYYY-MM-DD",
+    }).then((res) => {
+      if (!res.isConfirmed) return;
+      start(async () => {
+        const r = await resumeCompanyPublishing(c.id, String(res.value).trim());
+        if (r.ok) {
+          toast(`رجع نشر ${c.name} — الدورة من ${r.from}`);
+          router.refresh();
+        } else toast(r.error, "error");
       });
     });
   };
@@ -423,12 +483,31 @@ export default function CompaniesClient({
               </div>
             )}
             {c.managed && (
-              <button
-                className="mt-3 text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
-                onClick={() => onImportPlan(c)}
-              >
-                استيراد خطة JSON
-              </button>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
+                  onClick={() => onImportPlan(c)}
+                >
+                  استيراد خطة JSON
+                </button>
+                {/* إيقاف/إرجاع النشر — الزرّان بديل بعض حسب حالة الشركة، فما
+                    بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
+                {c.status === "paused" ? (
+                  <button
+                    className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"
+                    onClick={() => onResumePublishing(c)}
+                  >
+                    رجّع النشر
+                  </button>
+                ) : (
+                  <button
+                    className="text-[11px] px-2 py-1 rounded-md border border-danger/40 text-danger hover:bg-danger/10"
+                    onClick={() => onPausePublishing(c)}
+                  >
+                    أوقف النشر
+                  </button>
+                )}
+              </div>
             )}
           </Card>
           );

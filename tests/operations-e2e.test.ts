@@ -146,6 +146,8 @@ let actions: {
   correctLatestRenewal: any;
   applyCompanyPlanUpdate: any;
   removeLatestRenewal: any;
+  pauseCompanyPublishing: any;
+  resumeCompanyPublishing: any;
   endContract: any;
   generateSchedule: any;
   createTask: any;
@@ -176,6 +178,8 @@ beforeAll(async () => {
     correctLatestRenewal: companies.correctLatestRenewal,
     applyCompanyPlanUpdate: plans.applyCompanyPlanUpdate,
     removeLatestRenewal: companies.removeLatestRenewal,
+    pauseCompanyPublishing: companies.pauseCompanyPublishing,
+    resumeCompanyPublishing: companies.resumeCompanyPublishing,
     endContract: companies.endContract,
     generateSchedule: schedule.generateSchedule,
     createTask: tasks.createTask,
@@ -1098,6 +1102,67 @@ describe("contract renewal lifecycle", () => {
     const after = await prisma.task.findFirstOrThrow({ where: { id: first.id } });
     expect(after.board).toBe("TODO");
     expect(after.notes).toBeNull();
+  });
+
+  /**
+   * إيقاف/إرجاع نشر شركة — قرار القائدة (٤/٩): «بدي أقدر أوقف النشر من اللوحة
+   * وأنظّف كل الكروت، لحدّ ما أرجّعها بتاريخ بدء نشر جديد».
+   *
+   * الشرط يلي ما بينكسر: «نظّف الكروت» يعني شيل الشغل **المعلّق** عن الفريق، مو
+   * محو تاريخ إنتاج صار فعلاً. لو انمحى المنجَز بتضيع أرقام الإنجاز وحصيلة كل
+   * شخص — وهاد بالضبط يلي القائدة قالت عنه «ما بدي يضيع شغل الشركات النشطة».
+   */
+  it("الإيقاف بيشيل المعلّق وبيخلّي المنجَز، والإرجاع بيعيد بناء الدورة من التاريخ الجديد", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-pause`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 3,
+      stories: 0,
+      reels: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+
+    // قطعة واحدة منجزة — لازم تصمد بالإيقاف.
+    const done = await prisma.task.findFirstOrThrow({
+      where: { companyId: co.id, year: YEAR, month: 8, type: "POST", pieceNo: 1, stage: "DESIGN" },
+    });
+    await prisma.task.update({
+      where: { id: done.id },
+      data: { status: "READY", board: "DONE", finishedAt: new Date(2026, 8, 2) },
+    });
+    const before = await prisma.task.count({ where: { companyId: co.id } });
+    expect(before).toBeGreaterThan(1);
+
+    // ═══ إيقاف ═══
+    const paused = await actions.pauseCompanyPublishing(co.id);
+    expect(paused.ok, paused.error).toBe(true);
+
+    const after = await prisma.company.findUniqueOrThrow({ where: { id: co.id } });
+    expect(after.status).toBe("paused");
+    expect(after.publishStartDate).toBeNull(); // بلا تاريخ = بلا دورة = بلا تأخير علينا
+
+    const left = await prisma.task.findMany({ where: { companyId: co.id } });
+    expect(left.map((t: { id: string }) => t.id)).toContain(done.id); // المنجَز صمد
+    expect(left.every((t: { board: string }) => t.board === "DONE")).toBe(true); // ولا كرت معلّق
+
+    // ═══ إرجاع بلا تاريخ = مرفوض ═══
+    expect((await actions.resumeCompanyPublishing(co.id, "")).ok).toBe(false);
+
+    // ═══ إرجاع بتاريخ جديد ═══
+    const resumed = await actions.resumeCompanyPublishing(co.id, "2026-09-20");
+    expect(resumed.ok, resumed.error).toBe(true);
+    const back = await prisma.company.findUniqueOrThrow({ where: { id: co.id } });
+    expect(back.status).toBe("active");
+    expect(toISODate(back.publishStartDate!)).toBe("2026-09-20");
+
+    const rebuilt = await prisma.task.count({
+      where: { companyId: co.id, year: YEAR, month: 8, isAuto: true, board: { not: "DONE" } },
+    });
+    expect(rebuilt).toBeGreaterThan(0); // الكروت رجعت
+    // والمنجَز لسا موجود — ما انبنى فوقه ولا انمحى.
+    expect(await prisma.task.count({ where: { id: done.id } })).toBe(1);
   });
 
   /**

@@ -10,6 +10,7 @@ import {
   serializeRenewals,
 } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
+import { DONE_STATUSES } from "@/lib/constants";
 import { generateCompanySchedule, generateSchedule } from "./schedule";
 import { revalidatePath } from "next/cache";
 
@@ -474,5 +475,113 @@ export async function reorderCompanies(orderedIds: string[]) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل إعادة الترتيب" };
+  }
+}
+
+/**
+ * إيقاف نشر شركة مؤقتاً — وتنظيف كروتها المفتوحة.
+ *
+ * قرار القائدة (٤/٩): «بدي أقدر أوقف النشر من اللوحة وأنظّف كل الكروت، لحدّ ما
+ * أرجّعها. جدارات هلق، ويمكن فونيتيك وBW».
+ *
+ * شو بيصير:
+ *   • الحالة بتصير `paused` وتاريخ بدء النشر بينفرّغ — فما في دورة، وما في
+ *     تأخير بينحسب علينا، والمحرّك ما بيولّد إلها ولا كرت جديد.
+ *   • الكروت **غير المنجزة** بتنشال من كل بكتاتها.
+ *
+ * وشو **ما** بيصير: الشغل المنجَز أو المنشور **ما بينلمس**. «نظّف الكروت» يعني
+ * شيل الشغل المعلّق عن الفريق، مو محو تاريخ إنتاج صار فعلاً — وإلا بتضيع
+ * أرقام الإنجاز وحصيلة كل شخص. الكروت اليدوية كمان بتضل (مهام أحداث وإعادات).
+ */
+export async function pauseCompanyPublishing(companyId: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+    if (co.status === "paused") {
+      return { ok: false as const, error: "الشركة موقوفة أصلاً" };
+    }
+
+    const removed = await prisma.task.deleteMany({
+      where: {
+        companyId,
+        isAuto: true,
+        board: { not: "DONE" },
+        status: { notIn: [...DONE_STATUSES] },
+      },
+    });
+    const sessions = await prisma.photoSession.deleteMany({
+      where: { companyId, isAuto: true, status: "NOT_STARTED" },
+    });
+
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        status: "paused",
+        publishStartDate: null,
+        lateExemptReason: "النشر موقوف بقرار — بينتظر تاريخ بدء نشر جديد",
+      },
+    });
+    revalidateAll();
+    return {
+      ok: true as const,
+      data: updated,
+      removedTasks: removed.count,
+      removedSessions: sessions.count,
+    };
+  } catch {
+    return { ok: false as const, error: "فشل إيقاف نشر الشركة" };
+  }
+}
+
+/**
+ * إرجاع شركة موقوفة للعمل — بتاريخ بدء نشر **جديد**.
+ *
+ * التاريخ إلزامي وهو مرساة كل شي: منه بتتحدّد الدورة، ومنه بيرتّب المحرّك
+ * التصميم والتصوير والمونتاج والنشر. بلا تاريخ ما في دورة، فما في كروت — ولهيك
+ * ما منقبل إرجاعاً بلا تاريخ بدل ما نرجّعها لحالة نصّها معلّق.
+ */
+export async function resumeCompanyPublishing(companyId: string, startDateISO: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  const start = parseContractDate(startDateISO);
+  if (!start) return { ok: false as const, error: "تاريخ بدء النشر غير صالح" };
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        status: "active",
+        publishStartDate: start,
+        lateExemptReason: null,
+        // الدورة بتبلّش من جديد من هالتاريخ، فتاريخ التجديدات القديم ما عاد
+        // يوصف شي — تركه بيخلّي المحرّك يحسب دورات ما إلها وجود.
+        renewals: null,
+        contractEndedAt: null,
+      },
+    });
+
+    // بكت الدورة الجديدة = بكت شهر بدايتها.
+    const built = await generateCompanySchedule(companyId, start.getFullYear(), start.getMonth());
+    if (!built.ok) {
+      return {
+        ok: false as const,
+        resumed: true as const,
+        error: `رجعت الشركة للعمل، بس بناء دورتها فشل: ${built.error}`,
+      };
+    }
+    revalidateAll();
+    return { ok: true as const, data: updated, from: toISODate(start) };
+  } catch {
+    return { ok: false as const, error: "فشل إرجاع الشركة للعمل" };
   }
 }
