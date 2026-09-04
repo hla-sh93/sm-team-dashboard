@@ -490,6 +490,17 @@ export default function CompaniesClient({
                 >
                   استيراد خطة JSON
                 </button>
+                {/* تصدير Word — بينفتح بتبويب جديد فالمتصفح بينزّله لحاله.
+                    بيبيّن للشركة يلي إلها تاريخ بدء نشر بس: بلا تاريخ ما في
+                    دورة، والملف بلا دورة بيوهم إنّ في جدول وما في. */}
+                {c.publishStartDate && (
+                  <a
+                    href={`/api/plan-doc?companyId=${c.id}`}
+                    className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    تصدير الخطة Word
+                  </a>
+                )}
                 {/* إيقاف/إرجاع النشر — الزرّان بديل بعض حسب حالة الشركة، فما
                     بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
                 {c.status === "paused" ? (
