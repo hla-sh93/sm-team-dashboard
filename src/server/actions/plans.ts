@@ -86,8 +86,17 @@ const planUpdateSchema = z
            * الباقي.
            */
           pinned: z.boolean().optional(),
+          /**
+           * سطر دليل غلط ينشال — المقابل الوحيد لـ`evidence`.
+           *
+           * الدليل بينضاف وما بينمحى، فسطر انكتب غلط بيضل على الكرت للأبد
+           * وبيوهم اللي بيقراه بعد شهر. لازم يكون في طريق يشيله، بدليل، من نفس
+           * المسار المدقَّق — مو بتعديل يدوي على الداتا.
+           */
+          removeEvidence: z.string().trim().min(3).max(500).optional(),
           evidence: z.string().trim().min(3).max(500),
-        }),
+        })
+          .strict(),
       )
       .max(200)
       .optional(),
@@ -120,7 +129,8 @@ const planUpdateSchema = z
           /** متل `pieceStates.pinned` — تثبيت الصف كسلطة يدوية. */
           pinned: z.boolean().optional(),
           evidence: z.string().trim().min(3).max(500),
-        }),
+        })
+          .strict(),
       )
       .max(50)
       .optional(),
@@ -139,7 +149,16 @@ const planUpdateSchema = z
           .optional(),
       })
       .optional(),
+    /** تعليق الحمولة — شرح القرار ومصدره. بينقرا الإنسان، مو الكود. */
+    _: z.unknown().optional(),
   })
+  // حقل مو معروف بيرفض الحمولة كلها بدل ما ينشال بالصمت.
+  //
+  // بلا هيك: حمولة فيها `pinned` انبعتت على إنتاج لساته على الكود القديم، فالحقل
+  // انشال والجواب طلع «تمّ» — والتثبيت ما صار. الجواب كان صح والنتيجة غلط، وما
+  // في شي بيفرجيك الفرق غير ما ترجع تقرا الداتا. نافذة «تعديل كرت» صارمة أصلاً
+  // (`taskDetailsSchema`)، وهي أخطر منها.
+  .strict()
   .refine((value) => Boolean(value.companyId || value.companyName), {
     message: "يلزم تحديد الشركة",
   })
@@ -183,6 +202,7 @@ function stateUpdateFor(
     publishDate?: string;
     workDate?: string;
     pinned?: boolean;
+    removeEvidence?: string;
     evidence: string;
   },
   task: { notes: string | null; startedAt: Date | null },
@@ -194,8 +214,13 @@ function stateUpdateFor(
   // إعادة محاولة بعد فشل مضلّل، أو نسخة محلية ونسخة إنتاج — وبلا هالفحص كان
   // كل تكرار يضيف سطراً متطابقاً ويخلّي الكرت يقرا وكأنه انسكّر مرتين.
   const evidence = spec.evidence.trim();
-  const existing = task.notes?.trim();
-  const already = existing?.split(/\r?\n/).some((line) => line.trim() === evidence);
+  const drop = spec.removeEvidence?.trim();
+  const kept = (task.notes ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && line !== drop);
+  const existing = kept.join("\n");
+  const already = kept.includes(evidence);
   const notes = [existing, already ? null : evidence]
     .filter((line): line is string => Boolean(line))
     .join("\n");
