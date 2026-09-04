@@ -1,24 +1,68 @@
 /**
  * The "live set" of tasks for a month bucket — the exact rule every screen uses:
  *   bucket + open tails of adjacent cycles landing in this calendar month
- *   + ALL still-open work carried over from earlier buckets.
+ *   + ALL still-open work carried over from earlier buckets
+ *   + the FULL bucket of any cycle that is still running today.
  *
  * Extracted so the Telegram brief and the «اليوم» screen can never drift from
- * the board/overview (PROJECT.md §10). Done work stays archived.
+ * the board/overview (PROJECT.md §10). Done work of a FINISHED cycle stays
+ * archived under its own month.
  */
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
 import { monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
+import { currentCycleBucket } from "@/lib/contract";
 
-export async function loadLiveTasks(year: number, month: number) {
-  const [bucketTasks, continuationRaw, carryover] = await Promise.all([
+/**
+ * دلاء الدورات الشغّالة اليوم يلي مو نفس الدلو المعروض.
+ *
+ * دورة سايزن ١٩/٨ → ١٨/٩ يعني دلوها m=7 (آب)، واللوح بيفتح على الشهر التقويمي
+ * (أيلول، m=8). فشغلها المفتوح كان يوصل كـ«متأخر» ومنجزها لأ — والنتيجة عمود
+ * «منجز» فاضي وكأنّ ما صار شي. صار فعلاً بتلات شركات دورتها بنص الشهر:
+ * سايزن ١٥ كرت منجز، ومانغو ٢٩، وعبادة ٢٠ — كلهم مخفيين.
+ *
+ * قاعدة «المنجز بينأرشف بشهره» بتضل سارية على الدورة **المخلّصة**؛ أما الدورة
+ * يلي لساتها شغّالة فإنجازها جزء منها، مو أرشيف.
+ */
+async function runningCycleBuckets(year: number, month: number, at: Date) {
+  const companies = await prisma.company.findMany({
+    where: { managed: true, status: "active" },
+    select: {
+      id: true,
+      contractStartDate: true,
+      publishStartDate: true,
+      renewals: true,
+      contractEndedAt: true,
+    },
+  });
+  const pairs: { companyId: string; year: number; month: number }[] = [];
+  for (const company of companies) {
+    const bucket = currentCycleBucket(company as never, at);
+    if (!bucket) continue;
+    if (bucket.year === year && bucket.month === month) continue;
+    pairs.push({ companyId: company.id, year: bucket.year, month: bucket.month });
+  }
+  return pairs;
+}
+
+export async function loadLiveTasks(year: number, month: number, at: Date = new Date()) {
+  const running = await runningCycleBuckets(year, month, at);
+  const [bucketTasks, continuationRaw, carryover, runningTasks] = await Promise.all([
     prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
     prisma.task.findMany({ where: monthContinuationWhere(year, month) }),
     prisma.task.findMany({ where: openCarryoverWhere(year, month) }),
+    running.length
+      ? prisma.task.findMany({
+          where: {
+            status: { not: "CANCELED" },
+            OR: running.map((r) => ({ companyId: r.companyId, year: r.year, month: r.month })),
+          },
+        })
+      : Promise.resolve([]),
   ]);
   const continuation = continuationRaw.filter((t) => !isTaskDoneState(t));
   const seen = new Set(bucketTasks.map((t) => t.id));
-  const extras = [...continuation, ...carryover].filter((t) => {
+  const extras = [...continuation, ...carryover, ...runningTasks].filter((t) => {
     if (seen.has(t.id)) return false;
     seen.add(t.id);
     return true;
