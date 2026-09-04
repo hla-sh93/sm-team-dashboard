@@ -9,6 +9,7 @@ import {
   statusToBoard,
 } from "@/lib/constants";
 import { fromISODate, toISODate } from "@/lib/dates";
+import { completeProductionForPublishedTask } from "./tasks";
 import { revalidatePath } from "next/cache";
 
 const contentType = z.enum(["POST", "REEL", "AI_REEL", "STORY"]);
@@ -314,7 +315,10 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     const adhocSpecs = data.adhocStates ?? [];
     const adhocResolved: {
       spec: (typeof adhocSpecs)[number];
-      task: { id: string; stage: string | null; notes: string | null; startedAt: Date | null };
+      task: {
+        id: string; stage: string | null; notes: string | null; startedAt: Date | null;
+        kind: string; blockedById: string | null; pipelineKey: string | null;
+      };
     }[] = [];
     if (adhocSpecs.length) {
       const adhocCandidates = await prisma.task.findMany({
@@ -325,7 +329,7 @@ export async function applyCompanyPlanUpdate(input: unknown) {
           pieceNo: null,
           status: { not: "CANCELED" },
         },
-        select: { id: true, title: true, stage: true, notes: true, startedAt: true },
+        select: { id: true, title: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
       });
       const problems: string[] = [];
       const claimed = new Set<string>();
@@ -585,6 +589,10 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     // يمحيها. الكرت المنجز موعده **تاريخ** لا خطة، فمنكتب يوم التسليم الفعلي
     // على `workDate`/`readyDate` — والحفظ بيصونهم عبر إعادة التوليد.
     let stateTargets: { id: string; notes: string | null }[] = [];
+    let stateTargetsFull: {
+      id: string; type: string | null; pieceNo: number | null; stage: string | null;
+      kind: string; blockedById: string | null; pipelineKey: string | null;
+    }[] = [];
     if (stateSpecs.length) {
       const targets = await prisma.task.findMany({
         where: {
@@ -599,9 +607,10 @@ export async function applyCompanyPlanUpdate(input: unknown) {
             stage: spec.stage,
           })),
         },
-        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true },
+        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
       });
       stateTargets = targets.map((t) => ({ id: t.id, notes: t.notes }));
+      stateTargetsFull = targets;
       const specByKey = new Map(stateSpecs.map((spec) => [stageKeyOf(spec), spec]));
       for (const task of targets) {
         const spec = specByKey.get(
@@ -624,6 +633,31 @@ export async function applyCompanyPlanUpdate(input: unknown) {
     }
 
     const results = await prisma.$transaction(writes);
+
+    // قطعة انتشرت = كل مراحلها خلصت. الحمولة بتلمس الكرت المطلوب وحده، فبلا
+    // هالخطوة بيضل المونتاج أو التصميم مفتوحاً والقطعة منشورة — حالة مستحيلة
+    // صارت فعلاً مع ريل Siizen ١ وريل التوظيف ٦.
+    // بتنفّذ **بعد** المعاملة: القراءة بدها الحالة الجديدة، والإقفال بيتختم
+    // بيوم النشر لا بيوم اليوم.
+    for (const spec of [...stateSpecs, ...adhocSpecs]) {
+      if (spec.stage !== "PUBLISH" || spec.status !== "PUBLISHED") continue;
+      const target =
+        "pieceNo" in spec
+          ? stateTargetsFull.find(
+              (t) => t.type === spec.type && t.pieceNo === spec.pieceNo && t.stage === "PUBLISH",
+            )
+          : adhocResolved.find((a) => a.spec === spec)?.task;
+      if (!target) continue;
+      await completeProductionForPublishedTask(
+        {
+          kind: target.kind ?? "CONTENT",
+          stage: target.stage,
+          blockedById: target.blockedById ?? null,
+          pipelineKey: target.pipelineKey ?? null,
+        },
+        spec.date ? fromISODate(spec.date) : null,
+      );
+    }
     const closedPreviousTasks = previousOpenTasks.length
       ? results
           .slice(closureWriteStart, closureWriteStart + previousOpenTasks.length)

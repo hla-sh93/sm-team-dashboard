@@ -929,6 +929,48 @@ describe("contract renewal lifecycle", () => {
   });
 
   /**
+   * قاعدة القائدة: «أي كرت بتحطّه منشور بتعتبر السابق كله مقفل — أكيد حتى ينشر
+   * فيديو لازم يكون متصوَّر وممنتَج قبل ما يوصل للنشر».
+   *
+   * كانت شغّالة بالنقر على الكرت وبس. ومسار الحمولات بيلمس الكرت المطلوب وحده،
+   * فضلّ مونتاج ريل Siizen مفتوحاً والريل منشور من ١٩/٨ — حالة مستحيلة كانت
+   * إعادة التوليد تصلّحها لحالها وتسقّط فحص الصمود.
+   */
+  it("تعليم النشر بالحمولة بيقفل مراحل القطعة السابقة — بتاريخ النشر لا بتاريخ اليوم", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-cascade`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 0,
+      stories: 0,
+      reels: 1,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const where = { companyId: co.id, year: YEAR, month: 8, type: "REEL", pieceNo: 1 };
+    const before = await prisma.task.findMany({ where });
+    const production = before.filter((t: { stage: string }) => t.stage !== "PUBLISH");
+    expect(production.length).toBeGreaterThan(0);
+    expect(production.every((t: { board: string }) => t.board !== "DONE")).toBe(true);
+
+    const r = await actions.applyCompanyPlanUpdate({
+      companyId: co.id, year: YEAR, month: 8,
+      pieceStates: [{
+        type: "REEL", pieceNo: 1, stage: "PUBLISH", status: "PUBLISHED",
+        date: "2026-09-15", evidence: "منشور فعلاً 15/9 — رابط إنستغرام",
+      }],
+    });
+    expect(r.ok, r.error).toBe(true);
+
+    const after = await prisma.task.findMany({ where });
+    for (const t of after.filter((x: { stage: string }) => x.stage !== "PUBLISH")) {
+      expect(t.board, `${t.stage} ضلّ مفتوح`).toBe("DONE");
+      // الشغل صار **قبل** النشر، فختمه لازم يكون يوم النشر مو اليوم.
+      expect(toISODate(t.finishedAt!)).toBe("2026-09-15");
+    }
+  });
+
+  /**
    * تاريخ الإنجاز الفعلي بيسبق أحياناً يوم البداية المخطَّط: قطعة انتشرت 22/8
    * وكرتها مبني على بداية 29/8 (صار مع Siizen ٤/٩). لو ضلّت البداية مكانها
    * بيصير الكرت «خلص قبل ما يبلّش» — حالة مستحيلة بتسقط عليها الفحوص.

@@ -36,12 +36,28 @@ function taskIsFinished(t: {
   return isDone(t.status) || t.board === "DONE" || t.completedAt != null || t.finishedAt != null;
 }
 
-async function completeProductionForPublishedTask(task: {
-  kind: string;
-  stage: string | null;
-  blockedById: string | null;
-  pipelineKey: string | null;
-}) {
+/**
+ * قطعة انتشرت = كل مراحلها خلصت.
+ *
+ * قاعدة القائدة (ومكرّرة ٤/٩): «أي كرت بتحطّه منشور — وهي آخر حالة بمرحلة
+ * الكرت — بتعتبر السابق كله مقفل. أكيد حتى ينشر فيديو لازم يكون متصوَّر
+ * وممنتَج قبل ما يوصل للنشر».
+ *
+ * كانت شغّالة بالنقر على الكرت وبس، ومو بمسار الحمولات — ولهيك ضلّ مونتاج ريل
+ * Siizen مفتوحاً والريل منشور من ١٩/٨.
+ *
+ * `by`: يوم النشر. الشغل صار **قبله** لا اليوم، فختمه بتاريخ اليوم بيكذب على
+ * تقرير الإنجاز ويخلّي القطعة تبيّن «خلصت بعد ما انتشرت».
+ */
+export async function completeProductionForPublishedTask(
+  task: {
+    kind: string;
+    stage: string | null;
+    blockedById: string | null;
+    pipelineKey: string | null;
+  },
+  by?: Date | null,
+) {
   if (!(task.kind === "PUBLISH" || task.stage === "PUBLISH")) return;
 
   const links = [
@@ -52,7 +68,7 @@ async function completeProductionForPublishedTask(task: {
   ];
   if (links.length === 0) return;
 
-  const now = new Date();
+  const now = by ?? new Date();
   const predecessors = await prisma.task.findMany({
     where: {
       status: { not: "CANCELED" },
