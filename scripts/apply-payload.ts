@@ -20,19 +20,25 @@ async function main() {
     process.exit(1);
   }
   for (const file of files) {
-    const payload = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-    // `_` هو تعليق الحمولة — شرح القرار ومصدره، مو حقل بيتقرا.
-    delete payload._;
-    const result = (await applyPlanUpdatePayload(payload)) as Record<string, unknown>;
-    if (!result.ok) {
-      console.error(`✗ ${file}\n  ${String(result.error)}`);
-      process.exit(1);
+    const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    // ملف فيه `payloads` = دفعة حمولات بملف واحد (مثلاً حساب إنستغرام لكل شركة).
+    // بتنطبّق بالترتيب، وكل وحدة كل-أو-لا-شي لحالها.
+    const batch = Array.isArray(doc.payloads) ? (doc.payloads as Record<string, unknown>[]) : [doc];
+    for (const payload of batch) {
+      // `_` هو تعليق الحمولة — شرح القرار ومصدره، مو حقل بيتقرا.
+      delete payload._;
+      const result = (await applyPlanUpdatePayload(payload)) as Record<string, unknown>;
+      if (!result.ok) {
+        console.error(`✗ ${file} — ${String(payload.companyName ?? "")}\n  ${String(result.error)}`);
+        process.exit(1);
+      }
+      const counts = Object.entries(result)
+        .filter(([k, v]) => k !== "ok" && typeof v === "number" && v)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" · ");
+      const label = batch.length > 1 ? ` — ${String(payload.companyName ?? "")}` : "";
+      console.log(`✓ ${file}${label}${counts ? `  (${counts})` : ""}`);
     }
-    const counts = Object.entries(result)
-      .filter(([k, v]) => k !== "ok" && typeof v === "number")
-      .map(([k, v]) => `${k}=${v}`)
-      .join(" · ");
-    console.log(`✓ ${file}${counts ? `\n  ${counts}` : ""}`);
   }
 }
 

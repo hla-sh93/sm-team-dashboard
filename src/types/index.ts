@@ -50,6 +50,8 @@ export type Company = {
   preferredShootDay: number | null;
   /** Content plan supplied externally — writer plan cards skipped. */
   contentSupplied: boolean;
+  /** حساب إنستغرام بلا @ — منه بتنفتح صفحة الشركة وقت مطابقة النشر. */
+  instagramHandle: string | null;
   /** Set when the hold-up is the client's, not ours → never counted as late. */
   lateExemptReason?: string | null;
   /** Latin short name for the canonical asset name «Agalia 7-1» (§14). */

@@ -110,6 +110,25 @@ export const companySchema = z.object({
   ),
   // Content plan supplied externally (client/trainer) → writer cards skipped.
   contentSupplied: z.boolean().default(false),
+  /**
+   * حساب إنستغرام الشركة — بلا @ وبلا رابط، الاسم لحاله (`obadadental`).
+   *
+   * الحقل موجود بالقاعدة من زمان بس ما كان إله مكان بالواجهة ولا بالمخطَّط، يعني
+   * ما كان في **ولا طريق** يكتبه على الإنتاج: الحسابات ضلّت بملف بالمستودع
+   * (`scripts/data/instagram-handles.json`) وكل مطابقة نشر كانت تبلّش بالسؤال
+   * «شو حساب هالشركة؟». الشركة غير المُدارة بتضل بلا حساب عن قصد.
+   */
+  instagramHandle: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .trim()
+      .max(60)
+      .regex(/^[A-Za-z0-9._]+$/, "اسم الحساب: أحرف وأرقام و. و_ فقط، بلا @ وبلا رابط")
+      .nullable()
+      .optional()
+      .transform((v) => (v ? v : null)),
+  ),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "لون غير صالح")

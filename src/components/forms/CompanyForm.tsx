@@ -52,6 +52,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
           ? toISODate(new Date(company.contractStartDate))
           : "",
         contentSupplied: company.contentSupplied ?? false,
+        instagramHandle: company.instagramHandle ?? "",
         color: company.color ?? "#C8A84E",
         priority: company.priority,
         status: company.status as CompanyInput["status"],
@@ -72,6 +73,7 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
         contractStartDate: "",
         publishStartDate: "",
         contentSupplied: false,
+        instagramHandle: "",
         color: "#C8A84E",
         priority: 99,
         status: "active",
@@ -185,6 +187,13 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
                     علينا تأخير ولا بينولّد شغل. */}
                 <p className="text-[11px] text-fg-dim">
                   الخطة شهر من هالتاريخ. فاضي = الزبون لسا ما بلّش → ولا تأخير علينا
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>حساب إنستغرام</Label>
+                <Input dir="ltr" placeholder="obadadental" {...register("instagramHandle")} />
+                <p className="text-[11px] text-fg-dim">
+                  الاسم لحاله، بلا @ وبلا رابط. منه بتنفتح صفحة الشركة وقت مطابقة النشر.
                 </p>
               </div>
               <div className="space-y-1.5">

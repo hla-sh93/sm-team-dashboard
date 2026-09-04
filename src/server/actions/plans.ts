@@ -157,6 +157,19 @@ const planUpdateSchema = z
           .optional(),
       })
       .optional(),
+    /**
+     * حساب إنستغرام الشركة — بلا @ وبلا رابط.
+     *
+     * موجود هون كمان مو بس بنافذة الشركة: الحسابات الأربعتعش كانت بملف
+     * بالمستودع وما إلها طريق للإنتاج، وكل مطابقة نشر كانت تبلّش بالسؤال «شو
+     * حساب هالشركة؟».
+     */
+    instagramHandle: z
+      .string()
+      .trim()
+      .max(60)
+      .regex(/^[A-Za-z0-9._]+$/, "اسم الحساب: أحرف وأرقام و. و_ فقط، بلا @ وبلا رابط")
+      .optional(),
     /** تعليق الحمولة — شرح القرار ومصدره. بينقرا الإنسان، مو الكود. */
     _: z.unknown().optional(),
   })
@@ -176,7 +189,8 @@ const planUpdateSchema = z
         value.items?.length ||
           value.closePreviousOpenTasks ||
           value.pieceStates?.length ||
-          value.adhocStates?.length,
+          value.adhocStates?.length ||
+          value.instagramHandle,
       ),
     { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
   );
@@ -330,6 +344,12 @@ export async function applyPlanUpdatePayload(input: unknown) {
       : await prisma.company.findUnique({ where: { name: data.companyName! } });
     if (!company) return { ok: false as const, error: "الشركة غير موجودة" };
     const companyId = company.id;
+    if (data.instagramHandle && data.instagramHandle !== company.instagramHandle) {
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { instagramHandle: data.instagramHandle },
+      });
+    }
 
     const tasks = await prisma.task.findMany({
       where: {

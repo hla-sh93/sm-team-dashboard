@@ -1,0 +1,94 @@
+{
+  "_": [
+    "حسابات إنستغرام — من `instagram-handles.json` يلي ضلّ سنة بلا طريق للإنتاج.",
+    "الحقل موجود بالقاعدة من زمان بس ما كان إله لا مخطَّط ولا واجهة، فكل مطابقة نشر",
+    "كانت تبلّش بالسؤال «شو حساب هالشركة؟». صار إله حقل بنافذة الشركة وبالحمولة.",
+    "الشركات غير المُدارة (المدارس · كابرياني) بلا حساب عن قصد."
+  ],
+  "payloads": [
+    {
+      "companyName": "برو",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "bru_cafe1"
+    },
+    {
+      "companyName": "عبادة لتجهيزات الأسنان",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "obadadental"
+    },
+    {
+      "companyName": "مركز البلسم",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "albalsam_center.bc"
+    },
+    {
+      "companyName": "Phoenitech",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "phoenitech.sy"
+    },
+    {
+      "companyName": "التوظيف",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "phoenijobs.sy"
+    },
+    {
+      "companyName": "مانغو",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "mango.mangoo2026"
+    },
+    {
+      "companyName": "BW",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "bw.marketingservices"
+    },
+    {
+      "companyName": "وصل للتداول",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "wasl.fx"
+    },
+    {
+      "companyName": "أغاليا",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "agalya.beauty.clinic"
+    },
+    {
+      "companyName": "المول الصيني",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "chinese_center_mall_latakia"
+    },
+    {
+      "companyName": "مخبر د.نور",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "dr.nourlab"
+    },
+    {
+      "companyName": "جدارات",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "jadaratnet"
+    },
+    {
+      "companyName": "Siizen",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "siizen.clothing"
+    },
+    {
+      "companyName": "التدريب",
+      "year": 2026,
+      "month": 7,
+      "instagramHandle": "phoenitech.training"
+    }
+  ]
+}
