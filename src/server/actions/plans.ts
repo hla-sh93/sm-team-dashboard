@@ -67,6 +67,25 @@ const planUpdateSchema = z
           date: isoDate.optional(),
           /** إعادة تأريخ نشر قطعة لسا ما انتشرت (تأجيل بقرار القائدة). */
           publishDate: isoDate.optional(),
+          /**
+           * يوم الشغل المجدول — لتصحيح صف يومه غلط بلا لمس حالته ولا طوابعه.
+           *
+           * كروت نشر Siizen طلعت كلها بيوم تطبيق الترحيل (٢٦/٨) بدل يوم النشر،
+           * فطلع لعمر «انشر ستوري ١» بـ٢٦/٨ وهي بتنتشر ٦/٩ — وكرت منشور من ١٩/٨
+           * يومه ٢٦/٨، بعد ما انتشر بأسبوع. الصفوف مثبّتة فالتوليد ما بيصلّحها،
+           * وما كان في طريق بدليل لتصحيح اليوم لحاله.
+           */
+          workDate: isoDate.optional(),
+          /**
+           * تثبيت الصف كسلطة يدوية — التوليد ما بيمسّه.
+           *
+           * لزم لشغل انتشر **قبل** ما تبلّش دورة الشركة: بوست نور من خطة أيار
+           * انتشر 11/6 والدورة بتبلّش 15/6. الصف مو مثبّت يعني أول إعادة جدولة
+           * بتسحب تاريخه جوّا الدورة وبتمحي إنه انتشر يومها فعلاً. رفاقه
+           * بنفس الحالة كانوا مثبّتين أصلاً — وما كان في طريق بدليل لتثبيت
+           * الباقي.
+           */
+          pinned: z.boolean().optional(),
           evidence: z.string().trim().min(3).max(500),
         }),
       )
@@ -98,6 +117,8 @@ const planUpdateSchema = z
            * ونافذة «تعديل مهمة» ما فيها حقل ساعات، فما كان في طريق لتصحيحه.
            */
           hours: z.number().min(0).max(80).optional(),
+          /** متل `pieceStates.pinned` — تثبيت الصف كسلطة يدوية. */
+          pinned: z.boolean().optional(),
           evidence: z.string().trim().min(3).max(500),
         }),
       )
@@ -160,6 +181,8 @@ function stateUpdateFor(
     status?: string;
     date?: string;
     publishDate?: string;
+    workDate?: string;
+    pinned?: boolean;
     evidence: string;
   },
   task: { notes: string | null; startedAt: Date | null },
@@ -167,11 +190,18 @@ function stateUpdateFor(
   const when = spec.date ? fromISODate(spec.date) : null;
   const status = spec.status ? normalizeStatusForStage(spec.status, spec.stage) : null;
   const done = status ? DONE_STATUSES.includes(status as never) : false;
-  const notes = [task.notes?.trim(), spec.evidence.trim()]
+  // نفس سطر الدليل ما بينكتب مرتين. الحمولة بتنطبّق أكتر من مرة بالواقع —
+  // إعادة محاولة بعد فشل مضلّل، أو نسخة محلية ونسخة إنتاج — وبلا هالفحص كان
+  // كل تكرار يضيف سطراً متطابقاً ويخلّي الكرت يقرا وكأنه انسكّر مرتين.
+  const evidence = spec.evidence.trim();
+  const existing = task.notes?.trim();
+  const already = existing?.split(/\r?\n/).some((line) => line.trim() === evidence);
+  const notes = [existing, already ? null : evidence]
     .filter((line): line is string => Boolean(line))
     .join("\n");
 
   const update: Record<string, unknown> = { notes };
+  if (spec.pinned !== undefined) update.isPinned = spec.pinned;
   if (status) {
     update.status = status;
     update.board = statusToBoard(status);
@@ -192,6 +222,8 @@ function stateUpdateFor(
       update.readyDate = when;
     }
   }
+  // تصحيح صريح ليوم الشغل — بيجي بعد الاشتقاق من `date` مشان يغلبه.
+  if (spec.workDate) update.workDate = fromISODate(spec.workDate);
   // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز بنفس
   // الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما يبلّش».
   // الحالة والطوابع لازم يتحرّكوا سوا.
@@ -229,7 +261,19 @@ export async function applyCompanyPlanUpdate(input: unknown) {
   } catch {
     return { ok: false as const, error: "غير مصرّح" };
   }
+  return applyPlanUpdatePayload(input);
+}
 
+/**
+ * نفس المنطق بلا بوابة الأدمن — للسكربتات والفحوص.
+ *
+ * الحمولة بتنكتب مرّة وبتنطبّق مرّتين: محلياً للتأكد، وبعدين على الإنتاج من
+ * اللوحة. لما كانت البوابة ملزوقة بالمنطق، الطريق الوحيد للتجريب كان الإنتاج
+ * نفسه — يعني أول اكتشاف لغلطة بالحمولة بيصير بعد ما تنكتب على الداتا الحيّة.
+ *
+ * ما بتنستعمل من مسار HTTP: الراوت والزر التنين بينادوا `applyCompanyPlanUpdate`.
+ */
+export async function applyPlanUpdatePayload(input: unknown) {
   const parsed = planUpdateSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -668,7 +712,14 @@ export async function applyCompanyPlanUpdate(input: unknown) {
           .slice(restoreWriteStart, restoreWriteStart + tasksToRestore.length)
           .reduce((sum, result) => sum + result.count, 0)
       : 0;
-    revalidatePath("/", "layout");
+    // الكتابة خلصت وانحفظت. تفريغ الكاش خدمة إضافية، فما بيصحّ يقلبها فشلاً:
+    // كان أي نداء من برّا طلب Next (سكربت، فحص) يرمي هون بعد ما تنكتب الداتا،
+    // فيطلع الجواب «فشل» والداتا متغيّرة — أخطر جواب ممكن.
+    try {
+      revalidatePath("/", "layout");
+    } catch {
+      /* ما في طلب Next — ما في كاش نفرّغه */
+    }
     return {
       ok: true as const,
       company: company.name,
@@ -679,7 +730,10 @@ export async function applyCompanyPlanUpdate(input: unknown) {
       restoredTasks,
       affectedRows: results.reduce((sum, result) => sum + result.count, 0),
     };
-  } catch {
+  } catch (error) {
+    // الرسالة للقائدة بتضل عامّة، بس السبب لازم ينكتب مطرح ما بينقرا: بلا هالسطر
+    // كان أي فشل حمولة يطلع «فشل تطبيق خطة المحتوى» وبس — ولا بالسجلّ ولا محلياً.
+    console.error("applyPlanUpdatePayload", error);
     return { ok: false as const, error: "فشل تطبيق خطة المحتوى" };
   }
 }

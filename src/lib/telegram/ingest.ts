@@ -197,6 +197,23 @@ function mayConfirmPublish(emp: { role: string } | null): boolean {
   return /ناشر|publish/i.test(emp.role) || /ليدر|lead|قائد/i.test(emp.role);
 }
 
+/**
+ * بيلزق سطر دليل على الملاحظات — مرّة وحدة مهما تكرّر النداء.
+ *
+ * البوت بيقرا نفس الرسالة أكتر من مرّة (إعادة محاولة، استيراد تصدير قديم، ملف
+ * منبعوت مرّتين)، وكل مرّة كان بيضيف نفس السطر. طلع كرت تصوير التوظيف ٣ وعليه
+ * «موعد تصوير مثبّت…» مكرّرة ١٨ مرّة بسطر واحد — ملاحظة ما بتنقرا وما بتفيد.
+ */
+function appendNote(existing: string | null, line: string | null): string | undefined {
+  if (!line) return undefined;
+  const parts = (existing ?? "")
+    .split(/\r?\n| · /)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.includes(line.trim())) return undefined;
+  return [...parts, line.trim()].join(" · ");
+}
+
 /** إقفال كرت نشر واحد بوقت النشر الحقيقي + دليله. */
 async function markPublished(publishCard: { id: string; startedAt: Date | null; notes: string | null }, at: Date, why: string) {
   await prisma.task.update({
@@ -208,7 +225,10 @@ async function markPublished(publishCard: { id: string; startedAt: Date | null; 
       finishedAt: at,
       completedAt: at,
       isPinned: true,
-      notes: [publishCard.notes, `تأكيد نشر على تلغرام: ${why}`].filter(Boolean).join(" · "),
+      ...(() => {
+        const notes = appendNote(publishCard.notes, `تأكيد نشر على تلغرام: ${why}`);
+        return notes ? { notes } : {};
+      })(),
     },
   });
 }
@@ -452,7 +472,10 @@ async function closeProductionCard(
       startedAt: t.startedAt ?? at,
       finishedAt: at,
       completedAt: t.completedAt ?? at,
-      ...(note ? { notes: [t.notes, note].filter(Boolean).join(" · ") } : {}),
+      ...(() => {
+        const notes = appendNote(t.notes, note);
+        return notes ? { notes } : {};
+      })(),
       ...(credited ? { assigneeId: credited, isPinned: true } : {}),
     },
   });

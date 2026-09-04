@@ -150,6 +150,11 @@ export function snapPipelineWorkDatesToAssigneeWorkDays(
     // الشغل بينخطّط على أيام الدوام، بس الواقع بيصير وين ما صار: كرت منجز
     // موعده هو يوم الشغل الفعلي — تحريكه ليوم دوام «أنظف» تزوير للسجل.
     if (task.board === "DONE") continue;
+    // كرت النشر يومه **هو** يوم النشر، مو يوم دوام بينختار. والسبت مسموح للنشر
+    // بقاعدة القائدة (مو للإنتاج)، فالسحب لأيام الدوام كان بيرجّع نشر السبت
+    // 12/9 للخميس 10/9: طابور عمر بيصير مخالف لجدول النشر، والقطعة إمّا بتنزل
+    // قبل موعدها بيومين أو بتغيب عن يومها. الجمعة محروسة أصلاً بمولّد التواريخ.
+    if (task.stage === "PUBLISH") continue;
     if (!task.assigneeId || !task.workDate) continue;
     const workDays = workDaysByEmployee.get(task.assigneeId);
     if (!workDays) continue;
