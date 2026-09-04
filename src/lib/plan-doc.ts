@@ -12,6 +12,7 @@
  * جدول الريلات، والناشر بيقرا عمود النشر بكلهن. الجدول الواحد المختلط كان
  * بيخلّي كل واحد يفلتر بعينه.
  */
+import { assetName } from "@/lib/asset-name";
 import {
   AlignmentType,
   BorderStyle,
@@ -50,7 +51,6 @@ const TYPE_LABEL: Record<string, string> = {
   STORY: "الستوريز",
   AI_REEL: "ريلات AI",
 };
-const TYPE_PREFIX: Record<string, string> = { POST: "post", REEL: "reel", STORY: "story", AI_REEL: "ai" };
 const AR_DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
 export type PlanDocRow = {
@@ -129,7 +129,8 @@ function typeTable(type: string, rows: PlanDocRow[], slug: string, month: number
         children: [
           cell(String(r.pieceNo ?? "—"), { w: COLS[0], fill, bold: true, align: AlignmentType.CENTER }),
           cell(r.brief?.replace(/\s+/g, " ").trim() || "— بلا محتوى مكتوب بالخطة —", { w: COLS[1], fill }),
-          cell(r.pieceNo ? `${slug}-${TYPE_PREFIX[type] ?? "asset"}-${month}-${r.pieceNo}` : "—", {
+          // نفس دالة التطبيق حرفياً — فاسم القالب واسم الكرت ما بيفترقوا أبداً.
+          cell(r.pieceNo ? assetName(slug, month - 1, r.pieceNo, type) : "—", {
             w: COLS[2], fill, size: 16, align: AlignmentType.CENTER,
           }),
           cell(dm(r.readyDate), { w: COLS[3], fill, align: AlignmentType.CENTER }),
@@ -204,7 +205,7 @@ export function buildPlanDoc(input: PlanDocInput): Document {
     legend,
     new Paragraph({ text: "", spacing: { after: 160 } }),
     p(
-      `قاعدة التسمية:  ${slug}-<النوع>-${month}-<رقم القطعة>   ·   الكاروسيل:  ${slug}-carousel 01-${month}-2   ·   أي اسم تاني ما بينلقط أوتوماتيك.`,
+      `قاعدة التسمية:  ${assetName(slug, month - 1, 1, "POST")}  ·  ${assetName(slug, month - 1, 1, "REEL")}  ·  الكاروسيل:  ${slug}-carousel 01-${month}-2   ·   أي اسم تاني ما بينلقط أوتوماتيك.`,
       { size: 17 },
     ),
     rule(),

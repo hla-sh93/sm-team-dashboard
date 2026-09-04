@@ -20,6 +20,7 @@ import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
 import { cycleForBucket, cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
+import { assetNameForTask } from "@/lib/asset-name";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
@@ -140,6 +141,17 @@ export default function KanbanBoard({
   const reelNum = useMemo(() => buildReelNumbers(allTasks), [allTasks]);
   const isGroupable = isGroupableCard;
   const cardLabel = (t: Task, count: number) => cardLabelFor(t, count, reelNum, coName);
+  /**
+   * اسم الملف يلي لازم يحمله التسليم — إنكليزي وجاهز للنسخ.
+   *
+   * القائدة (٤/٩): «الأسماء دايماً سمّيها بالإنكليزي، بالقالب أو بالكرت، حتى
+   * الديزاينر/المونتير يرسله بالاسم الصح وتلقطه فوراً».
+   *
+   * قبل هيك الكرت كان بيعرض «بوست-٥ · Siizen» بس، فالمصمّم بيشتقّ الاسم من
+   * راسه — وهون بتصير الغلطة يلي بتخلّي التسليم ما ينلقط.
+   */
+  const assetLabel = (t: Task) =>
+    assetNameForTask(t.companyId ? coById.get(t.companyId) : null, t, reelNum);
   const durationLabel = (t: Task, quantity = t.quantity ?? 1) => {
     const days = cardDurationDays(emp(t.assigneeId), { ...t, quantity });
     if ((t.stage === "WRITE" || t.kind === "CONTENT_WRITING") && t.assigneeId && t.companyId) {
@@ -358,6 +370,26 @@ export default function KanbanBoard({
             </button>
           )}
         </div>
+        {/* اسم الملف — إنكليزي، منفصل عن العنوان العربي، وبنقرة بينتنسخ.
+            هو حرفياً يلي لازم يسمّي فيه المصمّم/المونتير ملفه. */}
+        {assetLabel(t) && (
+          <button
+            type="button"
+            dir="ltr"
+            title="اضغطي لنسخ اسم الملف"
+            onClick={() => {
+              const name = assetLabel(t);
+              if (!name) return;
+              navigator.clipboard?.writeText(name).then(
+                () => toast(`انتنسخ: ${name}`),
+                () => toast(name),
+              );
+            }}
+            className="mt-1 w-full text-start text-[10px] font-mono tracking-tight rounded px-1.5 py-0.5 bg-bg-elev2 text-fg-dim hover:text-accent hover:bg-accent/10 transition truncate"
+          >
+            {assetLabel(t)}
+          </button>
+        )}
 
         {/* وصف القطعة من نصّ الخطة — «الوصف مهم للتصميم والنشر والتصوير
             والمونتاج» (القائدة 2/8/2026). النصّ محطوط على كرت التصميم بس، فكرت

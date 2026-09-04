@@ -119,8 +119,14 @@ const delivery = (over: Partial<Delivery> = {}): Delivery => ({
 
 describe("asset name «Agalia 7-1»", () => {
   it("builds <slug> <month>-<piece> with a 1-based month", () => {
+    // كلمة النوع جزء من الاسم: أرقام القطع بتبلّش من ١ لكل نوع، فبلاها
+    // «Agalia 7-1» بيوصف البوست والستوري سوا.
+    expect(assetName("Agalia", 6, 1, "POST")).toBe("Agalia-post-7-1");
+    expect(assetName("Agalia", 6, 1, "STORY")).toBe("Agalia-story-7-1");
+    expect(assetName("Agalia", 6, 1, "REEL")).toBe("Agalia-reel-7-1");
+    // بلا نوع بيرجع الشكل القديم — لسا مقبول بالمطابقة للملفات القديمة.
     expect(assetName("Agalia", 6, 1)).toBe("Agalia 7-1");
-    expect(assetNameForTask(company(), task({ pieceNo: 3 }))).toBe("Agalia 7-3");
+    expect(assetNameForTask(company(), task({ pieceNo: 3 }))).toBe("Agalia-reel-7-3");
   });
 
   it("falls back to the known latin name when no slug is stored", () => {
@@ -338,7 +344,7 @@ describe("morning brief", () => {
     const brief = buildDailyBrief({ ...base, tasks: [publish] });
     expect(brief.companies).toHaveLength(1);
     expect(brief.companies[0].text).toContain("🚀 ينزل اليوم");
-    expect(brief.companies[0].text).toContain("Agalia 7-3");
+    expect(brief.companies[0].text).toContain("Agalia-reel-7-3");
     expect(brief.companies[0].text).toContain("ماجد");
   });
 
@@ -512,7 +518,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     expect(brief.schedule.text).not.toMatch(/\d+ يوم/);
     expect(brief.schedule.text).not.toMatch(/\d+\/\d+/);
     // …while the detailed wave still carries exactly that.
-    expect(brief.employees[0].text).toMatch(/Bru 7-\d/);
+    expect(brief.employees[0].text).toMatch(/Bru-reel-7-\d/);
     expect(brief.employees[0].text).toMatch(/متأخر \d+ يوم/);
   });
 

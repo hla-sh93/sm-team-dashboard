@@ -48,9 +48,35 @@ export function companySlug(co: Pick<Company, "name"> & { slug?: string | null }
   return ascii || co.name.trim();
 }
 
-/** `Agalia 7-1` — the name the delivered file must carry. */
-export function assetName(slug: string, month0: number, pieceNo: number): string {
-  return `${slug} ${month0 + 1}-${pieceNo}`;
+/** كلمة النوع بالاسم — إنكليزية عن قصد، لأنها جزء من اسم ملف. */
+export const TYPE_WORD: Record<string, string> = {
+  POST: "post",
+  STORY: "story",
+  REEL: "reel",
+  AI_REEL: "ai",
+};
+
+/**
+ * `Agalia-post-7-1` — الاسم يلي لازم يحمله الملف المسلَّم.
+ *
+ * كلمة النوع مو زينة: أرقام القطع بتبلّش من ١ **لكل نوع لحاله**، فبنفس الشهر في
+ * «بوست ١» و«ستوري ١». الاسم بلا نوع (`Siizen 8-1`) بيوصف التنين، والمطابقة
+ * بتختار الأقرب موعداً — يعني ممكن تسكّر ستوري محل بوست. صار فعلاً بـ٤/٩ أول ما
+ * دخلت ستوريز Siizen على الخطة.
+ *
+ * بلا `type` بيرجع الشكل القديم (`Agalia 7-1`) — لسا مقبول بالمطابقة للملفات
+ * القديمة، بس مو يلي منطلبه من الفريق.
+ */
+export function assetName(
+  slug: string,
+  month0: number,
+  pieceNo: number,
+  type?: string | null,
+): string {
+  const word = type ? TYPE_WORD[type] : null;
+  return word
+    ? `${slug}-${word}-${month0 + 1}-${pieceNo}`
+    : `${slug} ${month0 + 1}-${pieceNo}`;
 }
 
 /**
@@ -69,7 +95,7 @@ export function assetNameForTask(
     return null;
   const n = t.pieceNo ?? numbers?.get(t.id);
   if (!n) return null;
-  return assetName(companySlug(co), t.month, n);
+  return assetName(companySlug(co), t.month, n, t.type);
 }
 
 /** One possible reading of a file name's numbering. */
