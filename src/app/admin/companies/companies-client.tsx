@@ -15,6 +15,7 @@ import {
   removeLatestRenewal,
   pauseCompanyPublishing,
   resumeCompanyPublishing,
+  purgeOrphanCards,
 } from "@/server/actions/companies";
 import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
@@ -246,6 +247,48 @@ export default function CompaniesClient({
           router.refresh();
         } else toast(r.error, "error");
       });
+    });
+  };
+
+  /**
+   * تنظيف الكروت اليتيمة — المولَّدة ببكت ما إله دورة.
+   *
+   * بتصير لما تاريخ بدء النشر ينتغيّر فتنتقل الدورة لبكت تاني، أو لما تنولّد
+   * كروت بشهر تقويمي قبل ما يصير للشركة تاريخ نشر. الكرت هيك ما بينتمي لدورة،
+   * فما بينعاد بناؤه ولا بينحسب — بس بيضل يطلع بالأرقام كأنه شغل.
+   */
+  const onPurgeOrphans = (c: Company) => {
+    start(async () => {
+      const probe = await purgeOrphanCards(c.id);
+      if (probe.ok) {
+        toast(probe.removed ? `انشال ${probe.removed} كرت يتيم` : "ما في كروت يتيمة");
+        router.refresh();
+        return;
+      }
+      if (!("orphanCount" in probe) || !probe.orphanCount) {
+        toast(probe.error, "error");
+        return;
+      }
+      const res = await Swal.fire({
+        title: `كروت يتيمة — ${c.name}`,
+        html:
+          `<b>${probe.orphanCount}</b> كرت مولَّد ببكتات ما إلها دورة (${probe.buckets?.join(" · ")}).` +
+          "<br/>ما بينعاد بناؤها ولا بتنحسب بالإنجاز — بس بتضل تطلع بالأرقام والفحوص كأنها شغل." +
+          "<br/>الكروت اليدوية ما بتنلمس. اكتبي العدد للتأكيد.",
+        input: "text",
+        inputPlaceholder: String(probe.orphanCount),
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "نظّف",
+        cancelButtonText: "إلغاء",
+        confirmButtonColor: "#c0392b",
+      });
+      if (!res.isConfirmed || Number(res.value) !== probe.orphanCount) return;
+      const done = await purgeOrphanCards(c.id, probe.orphanCount);
+      if (done.ok) {
+        toast(`انشال ${done.removed} كرت يتيم من ${c.name}`);
+        router.refresh();
+      } else toast(done.error, "error");
     });
   };
 
@@ -503,6 +546,12 @@ export default function CompaniesClient({
                 )}
                 {/* إيقاف/إرجاع النشر — الزرّان بديل بعض حسب حالة الشركة، فما
                     بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
+                  onClick={() => onPurgeOrphans(c)}
+                >
+                  نظّف الكروت اليتيمة
+                </button>
                 {c.status === "paused" ? (
                   <button
                     className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"

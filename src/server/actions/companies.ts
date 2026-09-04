@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
 import {
+  cycleForBucket,
   cyclesOf,
   naturalCycleEnd,
   parseRenewals,
@@ -583,5 +584,68 @@ export async function resumeCompanyPublishing(companyId: string, startDateISO: s
     return { ok: true as const, data: updated, from: toISODate(start) };
   } catch {
     return { ok: false as const, error: "فشل إرجاع الشركة للعمل" };
+  }
+}
+
+/**
+ * تنظيف الكروت اليتيمة — المولَّدة ببكت ما إله دورة عند شركتها.
+ *
+ * الكرت المولَّد لازم يقع جوّا دورة شركته: الدورة هي يلي بتحدّد الخطة والمواعيد
+ * والحساب. الكرت ببكت بلا دورة ما بينتمي لشي — ما بينعاد بناؤه ولا بينحسب
+ * بالإنجاز، وبيضل يطلع بالفحوص وبالأرقام كأنه شغل حقيقي.
+ *
+ * بيصير بحالتين: تاريخ بدء النشر انتغيّر فانتقلت الدورة لبكت تاني (Siizen ٤/٩)،
+ * أو انولّدت كروت بشهر تقويمي قبل ما يصير للشركة تاريخ نشر أصلاً (التدريب).
+ *
+ * الحارس: بيرجّع العدد أول مرة بدل ما يحذف، ولازم تأكيد بنفس العدد. والكروت
+ * اليدوية ما بتنلمس أبداً — هي شغل حدا كتبه بإيده، مو توليد.
+ */
+export async function purgeOrphanCards(companyId: string, confirmCount?: number) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+
+    const buckets = await prisma.task.groupBy({
+      by: ["year", "month"],
+      where: { companyId, isAuto: true },
+      _count: true,
+    });
+    const orphanBuckets = buckets.filter((b) => cycleForBucket(co, b.year, b.month) == null);
+    if (orphanBuckets.length === 0) {
+      return { ok: true as const, removed: 0, buckets: [] as string[] };
+    }
+
+    const where = {
+      companyId,
+      isAuto: true,
+      OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })),
+    };
+    const count = await prisma.task.count({ where });
+    if (confirmCount !== count) {
+      return {
+        ok: false as const,
+        error: `في ${count} كرت مولَّد ببكتات ما إلها دورة. أكّدي بالعدد نفسه.`,
+        orphanCount: count,
+        buckets: orphanBuckets.map((b) => `${b.year}-${b.month + 1}`),
+      };
+    }
+
+    const removed = await prisma.task.deleteMany({ where });
+    await prisma.photoSession.deleteMany({
+      where: { companyId, isAuto: true, OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })) },
+    });
+    revalidateAll();
+    return {
+      ok: true as const,
+      removed: removed.count,
+      buckets: orphanBuckets.map((b) => `${b.year}-${b.month + 1}`),
+    };
+  } catch {
+    return { ok: false as const, error: "فشل تنظيف الكروت اليتيمة" };
   }
 }

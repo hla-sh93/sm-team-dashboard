@@ -148,6 +148,7 @@ let actions: {
   removeLatestRenewal: any;
   pauseCompanyPublishing: any;
   resumeCompanyPublishing: any;
+  purgeOrphanCards: any;
   endContract: any;
   generateSchedule: any;
   createTask: any;
@@ -180,6 +181,7 @@ beforeAll(async () => {
     removeLatestRenewal: companies.removeLatestRenewal,
     pauseCompanyPublishing: companies.pauseCompanyPublishing,
     resumeCompanyPublishing: companies.resumeCompanyPublishing,
+    purgeOrphanCards: companies.purgeOrphanCards,
     endContract: companies.endContract,
     generateSchedule: schedule.generateSchedule,
     createTask: tasks.createTask,
@@ -1102,6 +1104,53 @@ describe("contract renewal lifecycle", () => {
     const after = await prisma.task.findFirstOrThrow({ where: { id: first.id } });
     expect(after.board).toBe("TODO");
     expect(after.notes).toBeNull();
+  });
+
+  /**
+   * الكرت المولَّد لازم يقع جوّا دورة شركته. الكرت ببكت بلا دورة ما بينتمي لشي:
+   * ما بينعاد بناؤه ولا بينحسب بالإنجاز، بس بيضل يطلع بالأرقام كأنه شغل — وهاد
+   * يلي صار مع Siizen لما انتقلت دورتها لبكت تاني (٤/٩).
+   */
+  it("بينظّف الكروت اليتيمة بتأكيد بعددها — وما بيلمس اليدوية ولا كروت الدورة", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-orphans`,
+      contractStartDate: "2026-09-01",
+      publishStartDate: "2026-09-01",
+      posts: 2,
+      stories: 0,
+      reels: 0,
+    });
+    await actions.generateSchedule(YEAR, 8);
+    const live = await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 8 } });
+    expect(live).toBeGreaterThan(0);
+
+    // كرتان يتيمان ببكت بلا دورة: واحد مولَّد وواحد يدوي.
+    const orphan = await prisma.task.create({
+      data: { kind: "CONTENT", type: "POST", pieceNo: 9, stage: "DESIGN", isAuto: true,
+        companyId: co.id, year: YEAR, month: 3, status: "NOT_STARTED", board: "TODO" },
+    });
+    const manual = await prisma.task.create({
+      data: { kind: "ADHOC", stage: "DESIGN", title: "شغل يدوي", isAuto: false,
+        companyId: co.id, year: YEAR, month: 3, status: "NOT_STARTED", board: "TODO" },
+    });
+
+    // بلا تأكيد: بيرجّع العدد وما بيحذف.
+    const probe = await actions.purgeOrphanCards(co.id);
+    expect(probe.ok).toBe(false);
+    expect(probe.orphanCount).toBe(1); // المولَّد وحده
+    expect(await prisma.task.count({ where: { id: orphan.id } })).toBe(1);
+
+    // بعدد غلط: برضو ما بيحذف.
+    expect((await actions.purgeOrphanCards(co.id, 99)).ok).toBe(false);
+    expect(await prisma.task.count({ where: { id: orphan.id } })).toBe(1);
+
+    // بالعدد الصح: بينحذف المولَّد وحده.
+    const done = await actions.purgeOrphanCards(co.id, 1);
+    expect(done.ok, done.error).toBe(true);
+    expect(await prisma.task.count({ where: { id: orphan.id } })).toBe(0);
+    expect(await prisma.task.count({ where: { id: manual.id } })).toBe(1); // اليدوي صمد
+    expect(await prisma.task.count({ where: { companyId: co.id, year: YEAR, month: 8 } })).toBe(live);
   });
 
   /**
