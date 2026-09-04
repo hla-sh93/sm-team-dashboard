@@ -1,0 +1,305 @@
+{
+ "_": [
+  "Siizen — نقل الدورة لبكتها الصحيح وجدولة المتبقّي (٤/٩/٢٠٢٦).",
+  "الكروت القديمة كانت ببكت m=6 يلي ما إله دورة. انبنى بكت m=7 (دورة ١٩/٨ → ١٧/٩)",
+  "وهاد بيرجّع النصوص والحالات والتواريخ عليه. الكروت القديمة بتنحذف بعده."
+ ],
+ "companyName": "Siizen",
+ "year": 2026,
+ "month": 7,
+ "items": [
+  {
+   "type": "POST",
+   "pieceNo": 1,
+   "brief": "تشويق — كشف الهوية (Mystery Reveal)\nصورة واحدة بإضاءة خافتة تظهر بس ظل شخص لابس الهودي، بدون كشف أي تفاصيل. شعار Siizen صغير بزاوية الصورة.\nالكابشن: شي جديد عم يتحضّر — مو مجرد براند تياب، طريقة جديدة تلبس فيها راحتك. انطرونا. #Siizen #ComingSoon #StayTuned #newbrand"
+  },
+  {
+   "type": "POST",
+   "pieceNo": 2,
+   "brief": "تشويق — كواليس الصنع (Behind the Process)\nكاروسيل 3–4 صور: لقطات ماكرو للقماش والخياطة والليبل بالأبيض والأسود، بدون إظهار شكل القطعة كامل.\nالكابشن: كل تفصيل بيحكي قصة — من اختيار القماش لغاية آخر غرزة. عم نحضّرلكن شي مختلف. #Siizen #QualityMatters #ComingSoon #details"
+  },
+  {
+   "type": "POST",
+   "pieceNo": 3,
+   "brief": "تشويق — تفاعلي (Engagement / Guessing)\nتصميم بسيط: نص الخلفية أسود ونص أبيض، عليه سؤال تفاعلي بخط واضح.\nالكابشن: أبيض ولا أسود؟ شاركونا رأيكن بالكومنتات. #Siizen #ComingSoon #كريستال #new"
+  },
+  {
+   "type": "POST",
+   "pieceNo": 4,
+   "brief": "Product Reveal Post\nصورة فلات لاي احترافية للهوديز (الأسود والأبيض) تُظهر تفاصيل الخامة والقصة.\nالكابشن: وصلنا — Siizen كريستال ماليزي قصة أوفر سايز. اطلب هلق عبر الرسائل. #Siizen #Available #OversizedFit #OrderNow"
+  },
+  {
+   "type": "POST",
+   "pieceNo": 5,
+   "brief": "Styling / Lookbook Post\nكاروسيل ستايلينغ: كذا إطلالة مختلفة لنفس الهودي (كاجوال، رياضي، مسائي بسيط) لعرض تنوّع اللبس.\nالكابشن: قطعة وحدة… بكذا ستايل. شو رح تختارو تلبسو مع Siizen اليوم؟ #Siizen #StyleInspo #OversizedFit #اطلب_الآن"
+  },
+  {
+   "type": "POST",
+   "pieceNo": 6,
+   "brief": "إطلاق CTA مباشر (Direct Sales / Urgency)\nتصميم بسيط «متوفر الآن» مع تفاصيل الطلب والكمية المحدودة.\nالكابشن: الكمية الأولى وصلت… ومحدودة. Siizen كريستال بخيط ماليزي مستورد: قصة أوفر سايز بلونين أسود وأبيض. اطلب هلق قبل النفاد. #Siizen #new #OrderNow #OversizedFit"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 1,
+   "brief": "تشويق — هوية البراند (Concept Teaser)\nتصوير بدون كلام: تنين لابسين بلوزات Siizen عم يلعبوا شطرنج · زوم بطيء على تفاصيل القماشة وقصة الهودي الأوفر سايز · قطع مفاجئ لشاشة سودا بالأبيض والأسود «Siizen Coming Soon».\nالكابشن: Coming soon…. #Siizen #ComingSoon #Style #reels #soon"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 2,
+   "brief": "تشويق — جودة الخامة (Texture / Quality Teaser)\nتصوير بدون كلام: صندوق أسود أنيق عليه شعار بسيط · إيدين بتفتحه ببطء بإضاءة خافتة · لقطات ماكرو عالخياطة والليبل بدون كشف القطعة · الإضاءة تتحول تدريجياً · اللقطة الأخيرة إيد بتلمس القماش وتختفي بالعتمة ويظهر شعار Siizen.\nالكابشن: القماش ما بيكذب — لمسة وحدة كافية تحس الفرق. كريستال خيط ماليزي مستورد. #Siizen #comfort #ComingSoon #details"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 3,
+   "brief": "تشويق — Mirror / Contrast Concept\nسبليت سكرين: نص الشاشة خلفية سودا وموديل بالهودي الأسود بإضاءة ظلّية، والنص التاني خلفية بيضا والهودي الأبيض بإضاءة ساطعة · الاتنين عم يمشوا بنفس الحركة (مرآة) ويقتربوا · يلتقوا بنص الشاشة وتسود بالكامل · يطلع شعار Siizen ببطء.\nالكابشن: بس ألوان — مو الأبيض والأسود. هني بداية قصة Siizen. #Siizen #BlackAndWhite #ComingSoon #sport #new"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 4,
+   "brief": "Comfort / Lifestyle Reel\nفويس أوفر: «في لبس بيصير جزء منك» — Siizen مصمم من قطن ناعم 100% بقصة أوفر سايز مريحة لأي وقت باليوم: صحيت الصبح، طالع عالجيم، أو قاعد ببيتك. CTA أخير: اطلب هلق قبل ما ينفد الستوك الأول.\nالكابشن: الراحة يلي دايماً كنت تدوري عليها — كريستال مستورد بقصة أوفر سايز. الكمية الأولى محدودة. #Siizen #OversizedFit #اطلب_الآن"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 5,
+   "brief": "Transformation Reel\nفويس أوفر: مشهد 1 شخص بتياب عادية ستايل بلا شخصية · ترانزيشن سريع · مشهد 2 نفس الشخص لابس هودي Siizen بوقفة واثقة · لقطات إضافية: صديقين بالأبيض والأسود يمشوا بالشارع بضحك طبيعي.\nالكابشن: مو لازم تغيّر كل الخزانة… بس لازم تختار الصح. الفرق بالإحساس، الفرق بالراحة. #Siizen #BeforeAndAfter #OversizedStyle #OrderNow"
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 6,
+   "brief": "Credibility & Sizing Reel\nفويس أوفر: طاولة فيها الهوديز مطوية بالأبيض والأسود · ليش أوفر سايز؟ لأن الراحة مو رفاهية هي أساس · كريستال بخيط ماليزي عالي الجودة · المقاسات تبلّش من اللارج. CTA: اختار مقاسك واطلب هلق.\nالكابشن: الراحة الصح ما إلها مقاس واحد. Siizen بيبلش من اللارج لأنو الستايل المريح للكل. #Siizen #OversizedFit #OrderNow"
+  }
+ ],
+ "pieceStates": [
+  {
+   "type": "REEL",
+   "pieceNo": 1,
+   "stage": "PUBLISH",
+   "status": "PUBLISHED",
+   "date": "2026-08-19",
+   "evidence": "منشور فعلاً 19/8/2026 — instagram.com/siizen.clothing/reel/DcN0Yghs8Ez/. مطابقة بالعدد بقرار القائدة."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 1,
+   "stage": "PUBLISH",
+   "status": "PUBLISHED",
+   "date": "2026-08-22",
+   "evidence": "منشور فعلاً 22/8/2026 — instagram.com/siizen.clothing/p/DcVklgWlbM0/. مطابقة بالعدد بقرار القائدة."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 2,
+   "stage": "PUBLISH",
+   "status": "PUBLISHED",
+   "date": "2026-08-24",
+   "evidence": "منشور فعلاً 24/8/2026 — instagram.com/siizen.clothing/p/DcbBY-7DHk7/. مطابقة بالعدد بقرار القائدة."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 3,
+   "stage": "PUBLISH",
+   "status": "PUBLISHED",
+   "date": "2026-08-29",
+   "evidence": "منشور فعلاً 29/8/2026 — instagram.com/siizen.clothing/p/Dcnzuw4jHwY/. مطابقة بالعدد بقرار القائدة."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 4,
+   "stage": "PUBLISH",
+   "status": "PUBLISHED",
+   "date": "2026-09-02",
+   "evidence": "منشور فعلاً 02/9/2026 — instagram.com/siizen.clothing/p/Dcx5_7yjPPY/. مطابقة بالعدد بقرار القائدة."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 1,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-19",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 19/8 — siizen-post-8-1.jpg."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 2,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-19",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 19/8 — siizen-post-8-2.jpg."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 3,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-22",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 22/8 — siizen-post-8-3.jpg."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 4,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-22",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 22/8 — siizen-post-8-4.jpg."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 5,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-26",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 26/8 — siizen-post-8-5.jpg."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 6,
+   "stage": "DESIGN",
+   "status": "READY",
+   "date": "2026-08-26",
+   "evidence": "تصميم سابين مسلَّم على تلغرام 26/8 — siizen-post-8-6.jpg."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 1,
+   "stage": "SHOOT",
+   "status": "READY",
+   "date": "2026-08-18",
+   "evidence": "سلّمه ماجد على تلغرام 18/8/2026 — Siizen 8-1.mp4."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 2,
+   "stage": "SHOOT",
+   "status": "READY",
+   "date": "2026-08-26",
+   "evidence": "التصوير سبق المونتاج بالضرورة — المونتاج سُلّم 27/8."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 2,
+   "stage": "EDIT",
+   "status": "READY",
+   "date": "2026-08-27",
+   "evidence": "مونتاج أليسار siizen 2-8.mp4 وصل 27/8/2026. جاهز ولم يُنشر."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 5,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-06",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 2,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-07",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "POST",
+   "pieceNo": 6,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-09",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 3,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-12",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 4,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-14",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 5,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-16",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "REEL",
+   "pieceNo": 6,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-17",
+   "evidence": "موعد نشر بقرار القائدة (٣/٩): «ابدأ من الأحد وطالع لكل المتبقّي حتى نهاية الدورة»."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 1,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-06",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 2,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-07",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 3,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-08",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 4,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-09",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 5,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-10",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 6,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-12",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 7,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-13",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 8,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-14",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 9,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-15",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  },
+  {
+   "type": "STORY",
+   "pieceNo": 10,
+   "stage": "PUBLISH",
+   "publishDate": "2026-09-16",
+   "evidence": "ستوري من الخطة (١٠ ستوري أضافتهن القائدة ٤/٩) — ستوري باليوم من الأحد ٦/٩، والجمعة ١١/٩ عطلة."
+  }
+ ]
+}

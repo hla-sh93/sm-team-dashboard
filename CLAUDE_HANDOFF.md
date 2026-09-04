@@ -10,6 +10,43 @@ Production alias: <https://socialmediateam.vercel.app>
 
 Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
 
+## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
+
+**السبب:** كروت Siizen كانت ببكت `m=6` وهو **بلا دورة**، بينما دورتها الحقيقية
+(١٩/٨ → ١٧/٩) ببكت `m=7` وكان فاضي. وبلا هالنقل ما كان في مكان لكروت الستوريز
+العشرة يلي أضافتهن القائدة.
+
+**تاريخ بدء الدورة:** ١١/٨ ← **١٩/٨** — من ختم أول منشور نفسه
+(`reel/DcN0Yghs8Ez/` بـ19/8/2026 09:02 UTC، «Coming soon….»)، لا من تخمين.
+والحالة `paused` ← `active`: الشركة عم تنشر من ١٩/٨.
+
+**المنفَّذ (كله متحقَّق من لقطات إنتاج):**
+
+| الخطوة | النتيجة |
+| --- | --- |
+| توليد بكت آب | ٥٢ كرت: ٦ بوست · ٦ ريل (بمرحلة مونتاج) · ١٠ ستوري |
+| إرجاع نصوص الخطة | ١٢ وصف ← ٣٠ كرت |
+| الحالات والتواريخ | ٥ منشورة بتواريخها من إنستغرام · ٩ إنتاج منجز · ١٢ مجدولة مثبّتة |
+| حذف كروت البكت القديم | **١٨ من ٢٦** انوسموا CANCELED |
+
+**جدول النشر المثبَّت (٦/٩ → ١٧/٩، والجمعة ١١/٩ عطلة):**
+بوست ٥ ٦/٩ · ريل ٢ ٧/٩ · بوست ٦ ٩/٩ · ريل ٣ ١٢/٩ · ريل ٤ ١٤/٩ · ريل ٥ ١٦/٩ ·
+ريل ٦ ١٧/٩ · وستوري باليوم من ٦/٩ لـ١٦/٩.
+
+### ⚠️ ثمانية كروت بالبكت القديم ما انحذفوا
+
+| الكرت | الحالة |
+| --- | --- |
+| بوست ٣ و٤ تصميم · ريل ١ تصوير | منجزة |
+| بوست ٣ و٤ نشر · ريل ١ نشر | منشورة |
+| كرتا الكتابة (دورة ٢٠ تموز) | منجزة |
+
+صفحة جدول المهام ما بتعرضهن (بتخفي المنجَز بالشهور السابقة)، فما وصلتلهن بالحذف.
+**أثرها: ٣ قطع منشورة محسوبة مرتين** (بـm=6 وm=7). لازم تنحذف من اللوح أو بسكربت.
+
+**درس تقني:** حذف كرت مولَّد ما بيشيل الصف — بيوسمه `CANCELED` ومثبَّتاً حتى ما
+يرجّعه التوليد. فالعدّ بالصفوف بيضلّل؛ العدّ الصحيح بالحالة.
+
 ## ٣/٩/٢٠٢٦ — شيل تجديد نور ١٥/٨ (Claude) · سجلّ ما قبل الحذف
 
 قرار القائدة: «شيل تجديد نور». الأساس قولها السابق: «ما عملنا دورة ١٥/٨–١٥/٩،
