@@ -676,6 +676,49 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-04 — Claude — Suite green (536/536); seven data-loss/confusion bugs fixed; five payloads still to apply live
+
+- **[LIVE/VERIFIED]** All 52 evidence-less publish closures from July onward now carry an evidence line
+  (verified from `backups/prod-20260904-1557.json`: 52 → 0). Wasl Reel 3's SHOOT no longer finishes before
+  it starts; production now has **zero** cards in that impossible state.
+- **[VERIFIED]** `revalidatePath` was being called *inside* the write `try` in two paths — plan import and
+  schedule regeneration. It throws when called outside a Next request, so the data was written and the
+  answer still said "failed". A full regeneration wrote 292 cards and reported
+  «فشل توليد الجدول». Both now treat cache invalidation as best-effort.
+- **[VERIFIED]** Evidence lines were appended without a duplicate check on three paths: the payload
+  importer (a single retry duplicated the line on 5 Agalya cards) and the live Telegram ingest (one SHOOT
+  card carried the same note **18 times**). Appending is now idempotent everywhere; a one-off cleanup
+  removed 17,476 duplicated characters from 47 cards.
+- **[VERIFIED]** The payload schema silently dropped unknown fields. A payload carrying `pinned` was sent
+  to production while it still ran the old build: the field was stripped, the answer said "ok · 1 row", and
+  nothing was pinned. Proven deliberately — `pinned: "مو-بوليان"` was accepted. The schema is now
+  `.strict()` at both levels, matching `taskDetailsSchema`.
+- **[VERIFIED]** Work-day snapping pulled Saturday **publish** cards back to Thursday, contradicting the
+  lead's rule that Saturday is allowed for publishing but not production. Omar's queue disagreed with the
+  publishing schedule by two days. PUBLISH rows are no longer snapped.
+- **[VERIFIED]** Regeneration does **not** move published dates. An earlier reading that claimed 178 shifted
+  dates was an artifact of a diff script rendering UTC instead of local time. Measured on a throwaway copy,
+  a regeneration of bucket m=7 changes 22 rows and every one is a correction.
+- **[NEW PAYLOAD FIELDS]** `pieceStates` gained `pinned`, `workDate`, `readyDate`, and `removeEvidence`.
+  The last one is the only counterpart to `evidence`: before it, a wrongly written evidence line was
+  permanent. `applyPlanUpdatePayload` was split from the admin gate so `scripts/apply-payload.ts` can
+  prove a payload locally before it touches production.
+
+**[PENDING — apply on production, in order]** The browser extension disconnected before these landed.
+Paste each into «استيراد خطة JSON» on `/admin/companies`; all five validate and apply cleanly locally:
+
+1. `scripts/data/prod-01-noor-pin-cleanup.json` — removes the code-version probe line, pins the row.
+2. `scripts/data/prod-02-noor-dedupe.json` — collapses the pin line that got written twice.
+3. `scripts/data/prod-03-mango-pins.json` — pins the two rows published before the 17/8 cycle began.
+4. `scripts/data/prod-04-siizen-workdate.json` — 22 publish cards whose work day was the migration day.
+5. `scripts/data/prod-05-tawzeef-edit-after-shoot.json` — montage scheduled 19/8 before its shoot (22/8).
+
+After applying, re-run `npm run backup:pull` and confirm: 3 pinned rows, Siizen 22/22 publish cards whose
+work day equals their publish day, and Nour Post 1 carrying exactly one note line.
+
+**[NOTE]** The 12:00 scheduled backup ran mid-session and re-synced the local database from production,
+discarding local-only fixes that had not yet been applied live. Local-only state does not survive that task.
+
 ### 2026-09-03 — Claude — First production backup pulled and synced; the mess is now measurable
 
 - **[LIVE/VERIFIED]** The daily backup works end to end. `npm run backup:pull` fetched

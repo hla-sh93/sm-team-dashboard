@@ -77,6 +77,14 @@ const planUpdateSchema = z
            */
           workDate: isoDate.optional(),
           /**
+           * موعد الجهوزية — بيمشي مع `workDate` لما اليوم المجدول يكون غلط.
+           *
+           * مونتاج التوظيف ريل ٦ كان مجدولاً ١٩/٨ وتصويره خلص ٢٢/٨: الكرت
+           * مستحقّ قبل ما توجد مادته. تصحيح اليوم لحاله بيخلّي «الشغل بعد
+           * موعده» — التنين لازم يتحرّكوا سوا.
+           */
+          readyDate: isoDate.optional(),
+          /**
            * تثبيت الصف كسلطة يدوية — التوليد ما بيمسّه.
            *
            * لزم لشغل انتشر **قبل** ما تبلّش دورة الشركة: بوست نور من خطة أيار
@@ -201,6 +209,7 @@ function stateUpdateFor(
     date?: string;
     publishDate?: string;
     workDate?: string;
+    readyDate?: string;
     pinned?: boolean;
     removeEvidence?: string;
     evidence: string;
@@ -247,8 +256,9 @@ function stateUpdateFor(
       update.readyDate = when;
     }
   }
-  // تصحيح صريح ليوم الشغل — بيجي بعد الاشتقاق من `date` مشان يغلبه.
+  // تصحيح صريح للمواعيد — بيجي بعد الاشتقاق من `date` مشان يغلبه.
   if (spec.workDate) update.workDate = fromISODate(spec.workDate);
+  if (spec.readyDate) update.readyDate = fromISODate(spec.readyDate);
   // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز بنفس
   // الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما يبلّش».
   // الحالة والطوابع لازم يتحرّكوا سوا.
