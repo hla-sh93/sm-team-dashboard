@@ -6,6 +6,8 @@
  */
 import { prisma } from "@/lib/db";
 import { loadLiveTasks } from "@/lib/live-tasks";
+import { isTeamOffDay } from "@/lib/work-week";
+import { buildShootAppointments } from "@/lib/telegram/shoot-appointments";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
 import { buildWeeklyPublishDigest } from "./weekly";
@@ -62,7 +64,8 @@ export async function buildTodayBrief(today = new Date()): Promise<DailyBrief> {
 }
 
 export type SendBriefResult =
-  | { ok: true; sent: number; failed?: string[] }
+  /** `skipped` = انبعت ولا شي عن قصد (عطلة) — نجاح، مو فشل ولا رسالة فاضية. */
+  | { ok: true; sent: number; failed?: string[]; skipped?: string }
   | { ok: false; error: string };
 
 /**
@@ -125,6 +128,10 @@ export async function sendDailyDoneReport(today = new Date()): Promise<SendBrief
   if (!chatId) return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
 
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // بالعطلة ما في تقرير إنجاز كمان — ما في يوم شغل ينحاسب عليه.
+  const offTeam = await prisma.employee.findMany({ select: { workDays: true } });
+  if (isTeamOffDay(offTeam, today)) return { ok: true, sent: 0, skipped: "عطلة" };
+
   const [employees, companies, tasks, todayMessages] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
@@ -163,6 +170,35 @@ export async function sendDailyDoneReport(today = new Date()): Promise<SendBrief
   return { ok: true, sent, ...(failures.length ? { failed: failures } : {}) };
 }
 
+/**
+ * جرد مواعيد التصوير — بيروح **لخاصّ القائدة** بقرارها (٥/٩)، وهي بتوزّع على
+ * السيلز. مو للمجموعة: هي قائمة اتصالات بزباين، مو جدول متّفق عليه.
+ */
+export async function sendShootAppointments(today = new Date()): Promise<SendBriefResult> {
+  if (!isTelegramConfigured()) return { ok: false, error: "البوت غير مضبوط (TELEGRAM_BOT_TOKEN)" };
+  const chatId = await getLeadChatId();
+  if (!chatId) return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
+
+  const [employees, companies, tasks] = await Promise.all([
+    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    loadLiveTasks(today.getFullYear(), today.getMonth()),
+  ]);
+  if (isTeamOffDay(employees, today)) return { ok: true, sent: 0, skipped: "عطلة" };
+
+  const report = buildShootAppointments(today, companies as never, tasks as never, employees as never);
+  if (!report.text) return { ok: true, sent: 0, skipped: "ما في ريل بدّو تصوير" };
+
+  let sent = 0;
+  const failures: string[] = [];
+  for (const part of splitForTelegram(report.text, TG_CHUNK)) {
+    const res = await sendMessage(chatId, part);
+    if (res.ok) sent++;
+    else failures.push(res.error ?? "فشل");
+  }
+  return failures.length ? { ok: true, sent, failed: failures } : { ok: true, sent };
+}
+
 export async function sendDailyBrief(
   today = new Date(),
   wave: BriefWave = "all",
@@ -171,6 +207,12 @@ export async function sendDailyBrief(
   const chatId = await getLeadChatId();
   if (!chatId)
     return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
+
+  // بالعطلة ما في تقرير مهام — التيم معطّل، والشغل ما بينوزّع على حدا بعطلته.
+  // (وصل بريف «تفاصيل السبت ٥/٩» فيه شغل لسبع أشخاص كلهم بعطلة: الموجة العامة
+  // عندها فلتر أيام الدوام، وموجة التفاصيل ما كان عندها.)
+  const team = await prisma.employee.findMany({ select: { workDays: true } });
+  if (isTeamOffDay(team, today)) return { ok: true, sent: 0, skipped: "عطلة" };
 
   const brief = await buildTodayBrief(today);
   let sent = 0;

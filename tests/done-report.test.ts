@@ -85,9 +85,13 @@ describe("الجدولة والوجهة", () => {
 
   it("بيروح لخاصّ القائدة لا للمجموعة", () => {
     const src = readFileSync("src/lib/telegram/service.ts", "utf8");
-    const fn = src.slice(src.indexOf("export async function sendDailyDoneReport"));
-    expect(fn.slice(0, 900)).toContain("getLeadChatId");
-    expect(fn.slice(0, 900)).not.toContain("isTeam");
+    const start = src.indexOf("export async function sendDailyDoneReport");
+    const fn = src.slice(start, src.indexOf("\nexport async function", start + 1));
+    expect(fn).toContain("getLeadChatId");
+    // البحث عن **استعلام توبيك الفريق** بالذات، مو عن كلمة `isTeam` كنصّ:
+    // `isTeamOffDay` (حارس العطلة) فيها نفس الحروف وما إلها علاقة بوجهة الرسالة.
+    expect(fn).not.toMatch(/isTeam\s*:\s*true/);
+    expect(fn).not.toContain("telegramChat.findFirst");
   });
 });
 
