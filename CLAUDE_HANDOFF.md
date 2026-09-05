@@ -676,6 +676,40 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-05 — Claude — Obada reconciled against all three sources; shoot week booked; Instagram handles finally reachable
+
+- **[LIVE/VERIFIED]** Obada, three-source pass (Instagram `@obadadental` + Telegram + the plan). Instagram
+  published exactly four pieces in cycle 11/8→10/9: a post on 17/8, a **reel on 18/8**, a post on 26/8 and a
+  post on 3/9 (the Reels tab confirms only one reel is theirs; the other belongs to `dr_kareem_clinic`).
+  The app claimed four too — but different pieces on dates with no post behind them: POST#1 on 20/8,
+  POST#2 on 23/8, REEL#2 on 25/8. Those were my own count-based closures. Corrected to
+  POST#1=17/8 · POST#3=26/8 (lead's call) · POST#5=3/9 · REEL#2=18/8, and **POST#2 reopened** — it was
+  never published. REEL#2 is confirmed by content: its plan brief reads «مصدر موثوق يجهزلك عيادتك — جولة
+  المركز» and the 18/8 caption reads «شريكك الموثوق بتجهيز عيادتك».
+- **[LIVE/VERIFIED]** `instagramHandle` existed in the database but had **no schema entry, no form field and
+  no write path**, so all 14 handles sat in `scripts/data/instagram-handles.json` unreachable — and every
+  publish reconciliation began by asking which account a company even has. It now has a field in the company
+  dialog and in the payload; all 14 are stored.
+- **[LIVE/VERIFIED]** Shoot week. Majed's week was already committed (Sun 6/9 university event, Mon 7/9
+  schools event, Tue 8/9 Wasl's six reels), so publishing Obada's two unshot reels inside the cycle was
+  arithmetically impossible: publishing by 10/9 needed a shoot on 5–6/9. On the lead's decision — «خليهن
+  بتواريخهن، بس ما تفتح دورة جديدة — اعتبرهن تأخير» — Obada REEL#1 and REEL#3 plus Balsam REEL#4 are booked
+  for **Wed 9/9**, montage 13–14/9, publishing 15–17/9, all **pinned and kept in bucket m=7** so they read as
+  this cycle's late debt and no new cycle opens.
+- **[VERIFIED]** `deep-audit-snapshot.ts` — 22 checks over the whole production snapshot, read-only. All green
+  except two, both explained below.
+
+**[OPEN — needs the lead]** Majed's Wed 9/9 now carries **six shoots (2.00 days at his stored rate of 3/day)**
+plus an 8-hour ad-hoc card. The three she asked for are exactly 1.0 day; the overload is:
+- the ad-hoc card «تصوير — عبادة أو Siizen أو البلسم (تُحدّد بالأولوية)» (8h) is now **redundant** — the real
+  cards exist, so it double-books the day and should be closed;
+- **BW REEL#3 and REEL#4** also sit on 9/9 and were not part of her instruction.
+
+**[OPEN — self-correcting]** Three production cards land on a Saturday in the **October** bucket (Phoenitech
+REEL#1/#2 on 3/10, Tawzeef POST#3 on 10/10). Proven stale, not a live engine bug: regenerating that bucket on a
+throwaway copy fixes all three. The regenerate button only ever rebuilds the current calendar month's bucket,
+so October is reachable in October.
+
 ### 2026-09-04 — Claude — Suite green (536/536); seven data-loss/confusion bugs fixed; five payloads still to apply live
 
 - **[LIVE/VERIFIED]** All 52 evidence-less publish closures from July onward now carry an evidence line
