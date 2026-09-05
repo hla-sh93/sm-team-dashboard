@@ -114,12 +114,21 @@ async function main() {
   }
 
   const previous = latestExisting();
-  const verdict = acceptSnapshot(snapshot, previous?.snapshot ?? null);
+  // حارس الانكماش بيرفض أي لقطة نقصت أكتر من ٢٠٪ — لأنّ الجدول الفاضي فجأة خلل
+  // بالمصدر مو واقع جديد. بس النقص **المقصود** بيصير كمان: إيقاف شركة بيمحي
+  // كروتها ونزلاتها. صار فعلاً بإيقاف فونيتيك (النزلات ٧٣→٥٨ = ٢١٪)، فوقفت
+  // النسخة الاحتياطية كلها — والمهمة اليومية كانت رح تفشل كل يوم لحدّ ما يهبط
+  // الفرق. `--allow-shrink` بيرفع السقف **بنداء صريح من إنسان** وبس؛ المهمة
+  // المجدولة بتضل محروسة بالسقف الطبيعي.
+  const allowShrink = process.argv.includes("--allow-shrink");
+  const verdict = acceptSnapshot(snapshot, previous?.snapshot ?? null, allowShrink ? 1 : undefined);
   if (!verdict.ok) {
     log(`❌ اللقطة مرفوضة: ${verdict.reason} — ما انكتب ولا انحذف شي`);
+    log("   إذا النقص مقصود (إيقاف شركة مثلاً): npm run backup:pull -- --allow-shrink");
     process.exitCode = 1;
     return;
   }
+  if (allowShrink) log("⚠️  حارس الانكماش متجاوَز بنداء صريح (--allow-shrink)");
 
   const counts = actualCounts(snapshot);
   const hash = createHash("sha256").update(body).digest("hex");

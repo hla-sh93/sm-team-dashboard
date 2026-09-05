@@ -123,7 +123,7 @@ export type AcceptDecision = { ok: true } | { ok: false; reason: string };
 export function acceptSnapshot(
   next: Snapshot,
   previous: Snapshot | null,
-  shrinkTolerance = 0.2,
+  shrinkTolerance: number = 0.2,
 ): AcceptDecision {
   if (next.meta?.schema !== SNAPSHOT_SCHEMA)
     return { ok: false, reason: `شكل لقطة غير معروف: ${next.meta?.schema ?? "بلا"}` };
