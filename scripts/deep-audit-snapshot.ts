@@ -93,6 +93,31 @@ check(
     .map((t) => `${nm(t.companyId)} ${t.type}#${t.pieceNo} ${t.stage} ${L(t.workDate)}`),
 );
 check(
+  "كرت نشر يوم شغله عطلة صاحبه",
+  (() => {
+    // النشر مسموح يوم السبت (جدولة مسبقة — قرار القائدة ٥/٩)، بس **يوم شغل**
+    // الناشر لازم يكون يوم دوام: بيجدول القطعة قبلها. التاريخين مختلفين عن قصد.
+    const workDaysOf = (id: string | null) => {
+      const e = id ? em.get(id) : null;
+      try {
+        return JSON.parse(e?.workDays ?? "[0,1,2,3,4]") as number[];
+      } catch {
+        return [0, 1, 2, 3, 4];
+      }
+    };
+    return live
+      .filter(
+        (t) =>
+          t.stage === "PUBLISH" &&
+          !isDone(t) &&
+          t.workDate &&
+          t.assigneeId &&
+          !workDaysOf(t.assigneeId).includes(D(t.workDate)!.getDay()),
+      )
+      .map((t) => `${nm(t.companyId)} ${t.type}#${t.pieceNo} · شغل ${L(t.workDate)} · نشر ${L(t.publishDate)}`);
+  })(),
+);
+check(
   "إنتاج يومه بعد يوم النشر",
   content
     .filter((t) => t.stage && t.stage !== "PUBLISH" && !isDone(t) && t.workDate && t.publishDate && D(t.workDate)! > D(t.publishDate)!)
