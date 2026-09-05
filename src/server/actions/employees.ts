@@ -3,11 +3,8 @@
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { employeeSchema, type EmployeeInput } from "@/lib/schemas";
-import { revalidatePath } from "next/cache";
+import { revalidateAll } from "@/lib/revalidate";
 
-function revalidateAll() {
-  revalidatePath("/", "layout");
-}
 
 /** Build the rates JSON (items/day). planDays → PLAN rate = 1/planDays. */
 function buildRates(d: EmployeeInput): string | null {

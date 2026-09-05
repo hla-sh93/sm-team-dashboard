@@ -11,7 +11,7 @@
  * بيوقف عند أول حمولة بتفشل — الحمولة الوحدة كل-أو-لا-شي، بس التسلسل بينهن لأ.
  */
 import { readFileSync } from "node:fs";
-import { applyPlanUpdatePayload } from "@/server/actions/plans";
+import { applyPlanUpdatePayload } from "@/server/plan-update";
 
 async function main() {
   const files = process.argv.slice(2);

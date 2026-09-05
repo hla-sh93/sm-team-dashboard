@@ -19,22 +19,8 @@ import {
   parseWorkDays,
 } from "@/lib/dates";
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
-import { revalidatePath } from "next/cache";
+import { revalidateAll } from "@/lib/revalidate";
 
-/**
- * تفريغ الكاش — وفشله ما بيقلب التوليد فشلاً.
- *
- * `revalidatePath` بترمي إذا انندهت من برّا طلب Next. وهي بتنندى **بعد** ما
- * الجدول ينكتب، فرميتها كانت تطلع للقائدة «فشل توليد الجدول» بينما ٢٩٢ كرت
- * انكتبوا فعلاً — أخطر جواب ممكن: بتعيد الضغط على شي صار.
- */
-function revalidateAll() {
-  try {
-    revalidatePath("/", "layout");
-  } catch {
-    /* ما في طلب Next — ما في كاش نفرّغه */
-  }
-}
 
 const D = (s: string | null): Date | null => {
   if (!s) return null;

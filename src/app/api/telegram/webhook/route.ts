@@ -7,7 +7,7 @@
  * update for hours, and ingest is idempotent anyway.
  */
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { revalidateSafely } from "@/lib/revalidate";
 import { webhookSecret } from "@/lib/telegram/client";
 import { ingestUpdate } from "@/lib/telegram/ingest";
 import type { TelegramUpdate } from "@/lib/telegram/client";
@@ -35,9 +35,9 @@ export async function POST(req: Request) {
   try {
     const outcome = await ingestUpdate(update);
     if (outcome?.stored) {
-      revalidatePath("/today");
-      revalidatePath("/admin/today");
-      revalidatePath("/admin/telegram");
+      revalidateSafely("/today");
+      revalidateSafely("/admin/today");
+      revalidateSafely("/admin/telegram");
     }
   } catch (e) {
     // Swallow: a failed ingest must not make Telegram replay the update forever.

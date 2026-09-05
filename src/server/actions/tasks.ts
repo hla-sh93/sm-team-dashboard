@@ -17,13 +17,8 @@ import {
   type TaskInput,
 } from "@/lib/schemas";
 import { generateSchedule } from "./schedule";
-import { revalidatePath } from "next/cache";
+import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 
-function revalidateAll() {
-  // Revalidate the whole tree so both the employee (root) and admin (/admin)
-  // views refresh after a mutation.
-  revalidatePath("/", "layout");
-}
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
@@ -603,7 +598,7 @@ export async function updatePhotoSessionStatus(id: string, status: string) {
   if (!parsed.success) return { ok: false as const, error: "حالة غير صالحة" };
   try {
     await prisma.photoSession.update({ where: { id }, data: { status: parsed.data } });
-    revalidatePath("/", "layout");
+    revalidateSafely("/", "layout");
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "فشل تحديث الحالة" };

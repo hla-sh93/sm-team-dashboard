@@ -13,11 +13,8 @@ import {
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { DONE_STATUSES } from "@/lib/constants";
 import { generateCompanySchedule, generateSchedule } from "./schedule";
-import { revalidatePath } from "next/cache";
+import { revalidateAll } from "@/lib/revalidate";
 
-function revalidateAll() {
-  revalidatePath("/", "layout");
-}
 
 /** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */
 function parseContractDate(v: string | null | undefined): Date | null {

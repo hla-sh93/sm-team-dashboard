@@ -128,29 +128,68 @@ describe("حارس قبول اللقطة", () => {
   });
 });
 
-describe("تدوير النسخ", () => {
-  const files = [
+describe("تدوير النسخ — بالأيام مو بعدد الملفات", () => {
+  const daily = [
     "prod-20260830-1200.json",
     "prod-20260831-1200.json",
     "prod-20260901-1200.json",
     "prod-20260902-1200.json",
   ];
 
-  it("بيخلي آخر ٣ وبيحذف الأقدم بس", () => {
-    expect(snapshotsToDelete(files, 3)).toEqual(["prod-20260830-1200.json"]);
+  it("بيخلي آخر يومين كاملين وآخر لقطة من كل يوم أقدم", () => {
+    expect(snapshotsToDelete(daily, 14)).toEqual([]);
+    expect(snapshotsToDelete(daily, 3)).toEqual(["prod-20260830-1200.json"]);
   });
 
-  it("ما بيحذف شي لما تكون النسخ ٣ أو أقل", () => {
-    expect(snapshotsToDelete(files.slice(1), 3)).toEqual([]);
+  it("ما بيحذف شي لما تكون النسخ جوّا النافذة", () => {
+    expect(snapshotsToDelete(daily.slice(1), 3)).toEqual([]);
     expect(snapshotsToDelete([], 3)).toEqual([]);
   });
 
-  it("الترتيب بالاسم = ترتيب زمني (الاسم فيه التاريخ والساعة)", () => {
-    const shuffled = [files[2], files[0], files[3], files[1]];
-    expect(snapshotsToDelete(shuffled, 2)).toEqual([
-      "prod-20260830-1200.json",
-      "prod-20260831-1200.json",
+  /**
+   * الباغ يلي خلّى النسخة الاحتياطية بلا فايدة: ست سحبات بيوم واحد كانت تمحي
+   * تاريخ الأسبوع كله وتخلّي أقدم نسخة عمرها ساعات.
+   */
+  it("ست لقطات بيوم واحد ما بتمحي أيام قبلها", () => {
+    const files = [
+      "prod-20260825-1200.json",
+      "prod-20260826-1200.json",
+      "prod-20260827-1200.json",
+      "prod-20260904-1030.json",
+      "prod-20260904-1130.json",
+      "prod-20260904-1230.json",
+      "prod-20260904-1330.json",
+      "prod-20260904-1430.json",
+      "prod-20260905-0900.json",
+    ];
+    const gone = snapshotsToDelete(files, 14);
+    expect(gone).toEqual([]);
+    // والأيام القديمة بتضل موجودة مهما زادت سحبات اليوم
+    expect(gone).not.toContain("prod-20260825-1200.json");
+  });
+
+  it("اليوم القديم بيضل منه آخر لقطة وبس", () => {
+    const files = [
+      "prod-20260901-0900.json",
+      "prod-20260901-1500.json",
+      "prod-20260901-1800.json",
+      "prod-20260904-1200.json",
+      "prod-20260905-1200.json",
+    ];
+    expect(snapshotsToDelete(files, 14)).toEqual([
+      "prod-20260901-0900.json",
+      "prod-20260901-1500.json",
     ]);
+  });
+
+  it("برّا نافذة الأيام بينمحي اليوم كله", () => {
+    const files = [
+      "prod-20260101-1200.json",
+      "prod-20260903-1200.json",
+      "prod-20260904-1200.json",
+      "prod-20260905-1200.json",
+    ];
+    expect(snapshotsToDelete(files, 3)).toEqual(["prod-20260101-1200.json"]);
   });
 });
 

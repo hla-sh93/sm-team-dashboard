@@ -17,7 +17,8 @@ import { acceptSnapshot, actualCounts, snapshotsToDelete, type Snapshot } from "
 
 const BACKUP_DIR = resolve("backups");
 const LOG = resolve(BACKUP_DIR, "backup-log.txt");
-const KEEP = Number(process.env.BACKUP_KEEP ?? 3);
+/** كم **يوم** بيضل من اللقطات (مو كم ملف — شوف `snapshotsToDelete`). */
+const KEEP_DAYS = Number(process.env.BACKUP_KEEP_DAYS ?? 14);
 const PREFIX = "prod-";
 
 function loadEnvFile(path: string) {
@@ -141,10 +142,10 @@ async function main() {
 
   // التدوير بعد النجاح فقط — واللقطات وحدها، نسخ dev.db برّاه عن قصد.
   const jsons = readdirSync(BACKUP_DIR).filter((f) => f.startsWith(PREFIX) && f.endsWith(".json"));
-  for (const old of snapshotsToDelete(jsons, KEEP)) {
+  for (const old of snapshotsToDelete(jsons, KEEP_DAYS)) {
     rmSync(resolve(BACKUP_DIR, old), { force: true });
     rmSync(resolve(BACKUP_DIR, `${old}.sha256`), { force: true });
-    log(`  ↳ انحذفت النسخة القديمة ${old} (بنخلي آخر ${KEEP})`);
+    log(`  ↳ انحذفت النسخة القديمة ${old} (بنخلي آخر ${KEEP_DAYS} يوم)`);
   }
 }
 

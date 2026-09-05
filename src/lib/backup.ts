@@ -159,13 +159,40 @@ export function acceptSnapshot(
 }
 
 /**
- * أي ملفات تنحذف بعد نجاح النسخة الجديدة. بترجّع الأقدم فقط بعد ما تخلّي
- * `keep` نسخة — والترتيب بالاسم لأن الاسم فيه التاريخ والساعة.
+ * أي ملفات تنحذف بعد نجاح النسخة الجديدة.
+ *
+ * القاعدة **بالأيام مو بالعدد**. كانت «خلّي آخر ٣ ملفات»، وهي بتبدو معقولة
+ * لحدّ ما تسحب لقطات بنفس اليوم: يوم واحد فيه ٦ سحبات بيمحي تاريخ الأسبوع
+ * كلّه. صار فعلاً — بآخر جلسة ضاعت لقطة كنت عم قارنها فيها بعد ٤٥ دقيقة،
+ * وصار عمر أقدم نسخة أقلّ من يوم. نسخة احتياطية عمرها ساعات ما بتحمي من
+ * خطأ ما حدا لاحظه إلا بعد يومين.
+ *
+ * القاعدة الجديدة:
+ *   • كل لقطات آخر يومين بتضل — هي مرجع الشغل جوّا الجلسة.
+ *   • كل يوم أقدم بتضل منه **آخر لقطة** وبس.
+ *   • وبعد `keepDays` يوم بينمحي اليوم كله.
  *
  * ⚠️ ما بتلمس إلا اللقطات: نسخ `dev.db` الأمان برّا هالتدوير عن قصد، لأنها
  * الشبكة الأخيرة لو استيراد خرب المحلي.
  */
-export function snapshotsToDelete(files: string[], keep = 3): string[] {
+export function snapshotsToDelete(files: string[], keepDays = 14): string[] {
+  const dayOf = (name: string) => name.slice("prod-".length, "prod-".length + 8);
   const sorted = [...files].sort();
-  return sorted.slice(0, Math.max(0, sorted.length - keep));
+  const days = [...new Set(sorted.map(dayOf))].sort();
+  const kept = new Set<string>();
+  // اليومان الأحدث: كل شي.
+  const recentDays = new Set(days.slice(-2));
+  // الأيام يلي قبلهن وجوّا النافذة: آخر لقطة لكل يوم.
+  const windowDays = new Set(days.slice(-keepDays));
+  for (const name of sorted) {
+    const day = dayOf(name);
+    if (!windowDays.has(day)) continue;
+    if (recentDays.has(day)) kept.add(name);
+  }
+  for (const day of windowDays) {
+    if (recentDays.has(day)) continue;
+    const last = sorted.filter((n) => dayOf(n) === day).pop();
+    if (last) kept.add(last);
+  }
+  return sorted.filter((n) => !kept.has(n));
 }

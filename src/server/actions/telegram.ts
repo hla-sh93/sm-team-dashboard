@@ -7,16 +7,13 @@
  * companies/employees. The only outbound message any of these can produce goes
  * to the LEAD's private chat — never to a client group.
  */
-import { revalidatePath } from "next/cache";
+import { revalidateAll } from "@/lib/revalidate";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { getMe, getWebhookInfo, setWebhook, webhookSecret } from "@/lib/telegram/client";
 import { unmatchMessage } from "@/lib/telegram/ingest";
 import { sendDailyBrief, setLeadChatId } from "@/lib/telegram/service";
 
-function revalidateAll() {
-  revalidatePath("/", "layout");
-}
 
 async function guard(): Promise<{ ok: true } | { ok: false; error: string }> {
   try {

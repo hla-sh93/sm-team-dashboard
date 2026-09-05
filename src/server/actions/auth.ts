@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateSafely } from "@/lib/revalidate";
 import {
   assertAdmin,
   createSession,
@@ -88,7 +88,7 @@ export async function loginAction(
 /** Sign out of the admin area. */
 export async function logoutAction(): Promise<{ ok: true }> {
   await destroySession();
-  revalidatePath("/", "layout");
+  revalidateSafely("/", "layout");
   return { ok: true };
 }
 
