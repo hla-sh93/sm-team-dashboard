@@ -12,7 +12,10 @@ import {
 } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { DONE_STATUSES } from "@/lib/constants";
-import { generateCompanySchedule, generateSchedule } from "./schedule";
+import { generateCompanySchedule } from "./schedule";
+// أكشنات الشركات كلها بتحرس بـ`assertAdmin` أول سطر، فالصلاحية مثبتة قبل ما
+// نوصل هون — بننادي المحرّك مباشرةً بدل حراسة تانية بلا معنى.
+import { generateScheduleInternal } from "@/server/schedule-engine";
 import { revalidateAll } from "@/lib/revalidate";
 
 
@@ -235,7 +238,7 @@ export async function renewContract(companyId: string, startDateISO: string) {
     revalidateAll();
     // Build the new cycle's tasks right away so the renewal is visible without
     // a manual «إعادة الجدولة».
-    await generateSchedule(start.getFullYear(), start.getMonth());
+    await generateScheduleInternal(start.getFullYear(), start.getMonth(), null);
     return { ok: true as const, data: updated };
   } catch {
     return { ok: false as const, error: "فشل تسجيل التجديد" };

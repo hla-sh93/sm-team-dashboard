@@ -43,8 +43,6 @@ const INTENTIONALLY_PUBLIC = new Set([
   "updatePhotoSessionStatus",
   "markPiecesPublished",
   "completeProductionForPublishedTask",
-  // زرّ «إعادة الجدولة» بشاشة الأولويات (تحت /admin المحمي بكلمة مرور)
-  "generateSchedule",
 ]);
 
 function walk(dir: string): string[] {

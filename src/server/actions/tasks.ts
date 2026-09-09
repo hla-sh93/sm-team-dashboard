@@ -16,7 +16,10 @@ import {
   photoStatusSchema,
   type TaskInput,
 } from "@/lib/schemas";
-import { generateSchedule } from "./schedule";
+// المحرّك مباشرةً لا الأكشن المحروس: عمليات الكروت هون **عامّة بقرار موثّق**
+// (الموظف بيعدّل بلا جلسة إدارة)، وإعادة الجدولة بعدها جزء داخلي من العملية
+// مو استدعاء مستقل من المتصفح. حراستها كانت بتكسر شغل الفريق كلّه (B01).
+import { generateScheduleInternal } from "@/server/schedule-engine";
 import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 
 
@@ -133,7 +136,7 @@ export async function createTask(input: TaskInput) {
       },
     });
     // Re-schedule the month so the new task lands in the right slot.
-    await generateSchedule(d.year, d.month);
+    await generateScheduleInternal(d.year, d.month, null);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -261,7 +264,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       input.publishDate !== undefined ||
       input.days != null ||
       input.quantity != null;
-    if (reschedule) await generateSchedule(before.year, before.month);
+    if (reschedule) await generateScheduleInternal(before.year, before.month, null);
 
     revalidateAll();
     return { ok: true as const };
@@ -331,7 +334,7 @@ export async function deleteTasks(ids: string[]) {
       });
     }
 
-    if (first) await generateSchedule(first.year, first.month);
+    if (first) await generateScheduleInternal(first.year, first.month, null);
     revalidateAll();
     return { ok: true as const };
   } catch {
