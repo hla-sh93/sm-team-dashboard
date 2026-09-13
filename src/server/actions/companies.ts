@@ -496,6 +496,32 @@ export async function reorderCompanies(orderedIds: string[]) {
  * شيل الشغل المعلّق عن الفريق، مو محو تاريخ إنتاج صار فعلاً — وإلا بتضيع
  * أرقام الإنجاز وحصيلة كل شخص. الكروت اليدوية كمان بتضل (مهام أحداث وإعادات).
  */
+/**
+ * كرت انحذف؟ نظّف يلي بيشيروا إله.
+ *
+ * `blockedById` بيشير لكرت تاني. لما ينحذف الحاجز وبيضل المحجوز، بيصير المؤشّر
+ * ميّتاً: التقارير بتحاول تقرا كرتاً مو موجود، وفحوص السلامة بتصرخ.
+ *
+ * صار فعلاً بإيقاف فونيتيك: انمحى كرت الكتابة وضلّت أربع كروت تصميم **منجزة**
+ * بتشير إله. الكرت المنجز ما بيحتاج حاجز أصلاً — الحجز قاعدة «ما تبلّش قبل
+ * الخطة»، وهو خلص.
+ */
+async function clearDanglingBlocks(companyId: string): Promise<number> {
+  const rows = await prisma.task.findMany({
+    where: { companyId, blockedById: { not: null } },
+    select: { id: true, blockedById: true },
+  });
+  if (!rows.length) return 0;
+  const targets = [...new Set(rows.map((r) => r.blockedById!))];
+  const alive = new Set(
+    (await prisma.task.findMany({ where: { id: { in: targets } }, select: { id: true } })).map((t) => t.id),
+  );
+  const orphaned = rows.filter((r) => !alive.has(r.blockedById!)).map((r) => r.id);
+  if (!orphaned.length) return 0;
+  const res = await prisma.task.updateMany({ where: { id: { in: orphaned } }, data: { blockedById: null } });
+  return res.count;
+}
+
 export async function pauseCompanyPublishing(companyId: string) {
   try {
     await assertAdmin();
@@ -520,6 +546,8 @@ export async function pauseCompanyPublishing(companyId: string) {
     const sessions = await prisma.photoSession.deleteMany({
       where: { companyId, isAuto: true, status: "NOT_STARTED" },
     });
+    // الحذف فوق ممكن يشيل كرتاً غيره محجوز فيه — فالمؤشّر لازم ينتنظّف معه.
+    const unblocked = await clearDanglingBlocks(companyId);
 
     const updated = await prisma.company.update({
       where: { id: companyId },
@@ -535,6 +563,7 @@ export async function pauseCompanyPublishing(companyId: string) {
       data: updated,
       removedTasks: removed.count,
       removedSessions: sessions.count,
+      unblocked,
     };
   } catch {
     return { ok: false as const, error: "فشل إيقاف نشر الشركة" };
@@ -637,12 +666,25 @@ export async function purgeOrphanCards(companyId: string, confirmCount?: number)
     });
     const orphanBuckets = buckets.filter((b) => cycleForBucket(co, b.year, b.month) == null);
     if (orphanBuckets.length === 0) {
-      return { ok: true as const, removed: 0, buckets: [] as string[] };
+      // ولا دلو يتيم — بس المؤشّرات الميتة ممكن تكون موجودة من حذف سابق.
+      return { ok: true as const, removed: 0, unblocked: await clearDanglingBlocks(companyId), buckets: [] as string[] };
     }
 
+    // ═══ الشغل المنجَز ما بينمحي، ولو بكتُه بلا دورة ═══
+    //
+    // الدلو بلا دورة بيصير «يتيماً» لسببين مختلفين تماماً: كروت انولدت بالغلط
+    // (وهي المقصودة)، **وأرشيف** دورة قديمة صارت برّا الحساب لما اتغيّرت مرساة
+    // الشركة. التمييز بينهن بالإنجاز لا بالبكت.
+    //
+    // صار فعلاً بـ١٣/٩: أعطيت BW وفونيتيك تاريخ بدء نشر جديد، فدلاء حزيران
+    // وتموز وآب طلعت برّا دورتهن الجديدة — و**١١٥ كرت منجز** صاروا مرشَّحين
+    // للمحو بضغطة زر. حارس «لازم تاريخ بدء نشر» فوق ما كان بيمسك هالحالة:
+    // التاريخ موجود، والمشكلة إنّه تغيّر.
     const where = {
       companyId,
       isAuto: true,
+      board: { not: "DONE" },
+      status: { notIn: [...DONE_STATUSES] },
       OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })),
     };
     const count = await prisma.task.count({ where });
@@ -655,14 +697,28 @@ export async function purgeOrphanCards(companyId: string, confirmCount?: number)
       };
     }
 
+    const keptArchive = await prisma.task.count({
+      where: {
+        companyId,
+        isAuto: true,
+        OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })),
+        NOT: { board: { not: "DONE" }, status: { notIn: [...DONE_STATUSES] } },
+      },
+    });
     const removed = await prisma.task.deleteMany({ where });
     await prisma.photoSession.deleteMany({
-      where: { companyId, isAuto: true, OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })) },
+      // نزلة التصوير المنجَزة أرشيف كمان — بتنحمى بنفس القاعدة.
+      where: { companyId, isAuto: true, status: "NOT_STARTED", OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })) },
     });
+    // والمؤشّرات الميتة بتنشفى بنفس الزر: حذفٌ سابق ممكن يكون شال حاجزاً وترك
+    // يلي بيشير إله. (فونيتيك: أربع كروت تصميم منجزة بتشير لكرت كتابة انمحى.)
+    const unblocked = await clearDanglingBlocks(companyId);
     revalidateAll();
     return {
       ok: true as const,
       removed: removed.count,
+      keptArchive,
+      unblocked,
       buckets: orphanBuckets.map((b) => `${b.year}-${b.month + 1}`),
     };
   } catch {
