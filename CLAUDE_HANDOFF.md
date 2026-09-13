@@ -4,11 +4,11 @@
 
 Last updated: **2026-09-13**
 
-Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
+Workspace: `E:\Hla\Social\sm-team-dashboard` (the old `C:\Users\hla2-\Videos\Social\...` path is deleted; the daily-backup scheduled task was repointed on 13/9)
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Full application audit requested by the user; report completed locally at `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`. Current local HEAD `556c9db`; 555/555 tests pass. Six confirmed audit findings remain, including unguarded full regeneration, inconsistent overdue reporting, live Today hydration/timezone and Telegram-match display defects, eight dangling dependencies in the latest saved snapshot, and an audit exit-code defect. Latest saved snapshot is 2026-09-05 10:26 Baghdad (1,129 tasks); live browser inspected 2026-09-06. No audit fix, production mutation, deployment, or local database sync performed. Earlier company states and next actions below are historical and must be reconciled with newer dated entries before use.**
+Current phase: **Pending-work sweep executed on the lead's instruction («اعمل خطة لتحل كلشي معلق»). Local HEAD `47cb886`; 586/587 tests pass — the single failure is real production data drift, documented below (BW POST#3 of the August cycle has a DESIGN card but **no PUBLISH card**). Four code fixes shipped in this pass: orphan-purge no longer deletes completed archive (115 cards were at risk), publish work dates can no longer land after the publish day (28 production cards), a zero-candidate purge now succeeds and heals dangling dependencies instead of erroring, and off-plan cards are readable by title with two guards. Eleven evidence-based payloads (`prod-15-*`, `prod-16-*`, `prod-17-*`) are validated against the 13/9 production snapshot and applied to the LOCAL mirror only — they still need to be imported into production through the admin panel.**
 
 ## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
 
@@ -691,6 +691,45 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-13 (متأخر) — Claude — جرد المعلّق: أربعة إصلاحات كود وإحدى عشرة حمولة مدقّقة
+
+طلب القائدة: «اعمل خطة لتحل كلشي معلق, وبعدا امشي بالحل والاختبارات الدقيقة الشاملة على التوازي».
+
+**إصلاحات الكود**
+
+- **[CODE]** `purgeOrphanCards` ما عاد يمحي شغلاً منجَزاً. الدلو بلا دورة بيصير يتيماً لسببين: كروت انولدت بالغلط (المقصودة) وأرشيف دورة قديمة وقعت برّا الحساب لما اتغيّرت المرساة. بعد ما أخدت BW وفونيتيك تاريخ بدء نشر جديد صار الزرّ مسلَّحاً على **١١٥ كرت منجز** (BW ٥٤ · فونيتيك ٦١). الحارس القديم («لازم تاريخ بدء نشر») ما كان يمسكها: التاريخ موجود، والمشكلة إنّه **تغيّر**. نصف القطر بعد الإصلاح: صفر. و`clearDanglingBlocks` بتنظّف المؤشّرات الميتة عند الإيقاف وعند التنظيف.
+- **[CODE]** «ولا كرت مرشَّح» صار **نجاحاً** بيشفي المؤشّرات الميتة بدل رسالة «أكّدي بالعدد نفسه» — الحماية فوق خلّت فونيتيك تطلع ٠ للحذف مع ٤ دلاء يتيمة، والواجهة بتقرا `orphanCount: 0` كـfalsy فبتوقف.
+- **[CODE — جذر]** **يوم شغل النشر ما عاد يصير بعد يوم النشر.** ٢٨ كرت بالإنتاج بسبع شركات كانوا بحالة مستحيلة (وصل بوست ١٥: نشر ٢٠/٨ وشغل ٣٠/٩). المصدر مسار واحد: لما ينسكّر كرت نشر بدليل، `stateUpdateFor` بتكتب `publishDate` وبس، فبيضل `workDate` على يوم الخطة؛ و`retimeEditsAfterActualShoot` بتجبر الجهوزية = يوم النشر فيطلع «شغل بعد موعده». أثبتّه بتوليد فعلي على نسخة معزولة من `dev.db`: قبل ٤ مخالفات · بعد ٤ (المحرّك بيعيد إنتاجها كل مرة). بعد الإصلاح: ٠. الحارس بمحلّين (الحمولة والتوليد) وما بيستثني المثبّت — التثبيت سلطة على **يوم النشر**، ويوم النشر ما بينمسّ.
+- **[CODE]** الكرت خارج الخطة صار بينقرا **بعنوانه** (ما إله بريف)، مع حارسين: صورة ما بتسكّر كرت كتابة، والمسلَّم ما بينسلّم مرتين. ⚠️ وما فتحت المنافسة مع كروت الخطة: قستها بإعادة تشغيل المطابِق على **٧٨٦ ملف مخزَّن** فطلعت ١٠ مطابقات جديدة **كلهن غلط** («مسابقة.jpg» من ١/٩ سكّرت كرت خطة تشرين)، وبعد حارسين نزلت لأربعة وكمان كلهن غلط. القياس النهائي: **صفر تغيير** على الـ٧٨٦.
+
+**الحمولات (مدقّقة على `prod-20260913-0920.json` — مطبَّقة محلياً، وبعدها لازم تنستورد على الإنتاج)**
+
+| الملف | الشركة/الدورة | شو بيعمل |
+| --- | --- | --- |
+| `prod-15-a…h` (٨ ملفات) | المول · برو · BW · فونيتيك · وصل · عبادة · البلسم | ٢٨ كرت نشر: يوم الشغل بيرجع ليوم النشر |
+| `prod-16-a,b` | عبادة m=7 · البلسم m=7 | ٧ إقفالات نشر بلا دليل — توثيق أمين |
+| `prod-17` | وصل m=8 | ١٠ كروت: تسمية الملف وتاريخه من تلغرام |
+
+كل بند بكل حمولة بيطابق **صفاً واحداً بالضبط** على اللقطة.
+
+**ثلاث حقائق لازم تنعرف**
+
+1. **[USER-DECISION مطلوب] BW بوست ٣ من دورة آب ما إله كرت نشر.** كرت التصميم `2026_7_d_c_bw_POST_117` موجود ومنجز، وكرت النشر مفقود من لقطتَي ١٣/٩ الاتنتين — يعني مو شي صار اليوم. دلو آب صار برّا دورة BW الجديدة، فإعادة التوليد ما بتبنيه، والحمولة ما بتخلق كروتاً. السؤال: هل بوست ٣ انتشر فعلاً؟ ولو أي، بدها قرار كيف نعيد بناء الكرت. (هاد هو الفحص الفاشل الوحيد بالمجموعة.)
+2. **[HONEST] السبعة كروت بـ`prod-16` ما انتحقّق نشرهن من إنستغرام.** سطر الدليل بيقول الاتنين صراحةً: التسليم مثبَّت على كرت الإنتاج، والنشر لأ. لو تحقّقنا من إنستغرام بينتبدّل السطر بدليل حقيقي.
+3. **[CONTEXT] وصل: الملفات كلها موجودة.** أيمن بعت ٣١/٨ و٢/٩ بأسماء ما بيقراها المطابِق (POST1.jpg)، وأعاد ٣/٩، وأعاد ١٠/٩ بالاسم الكامل الصحيح `Wasl-<نوع>-9-<رقم>`. الكروت كانت مسكَّرة قبل أول إرسال، فما انربط ولا واحد. القائدة قررت (١٣/٩): ما في تذكير لأيمن — انعطت الخيارات أصلاً.
+
+**الفحوص**
+
+- `npx tsc --noEmit` → ٠ · `npx next lint` → ٠ · `npm run build` → نجح (ولا أثر لـ`/api/backup`).
+- `npx vitest run` → **٥٨٦ ناجح / ١ فاشل من ٥٨٧**. الفاشل الوحيد هو فجوة ترقيم BW فوق — انحراف داتا موثَّق، مو باغ كود.
+- إعادة تشغيل المطابِق على ٧٨٦ ملف: صفر تغيير.
+- توليد فعلي على نسخة معزولة من `dev.db` لإثبات جذر «الشغل بعد النشر» وإثبات إصلاحه.
+
+**حالة الداتا**
+
+- `prisma/dev.db` (المرآة المحلية) انطبّقت عليها الحمولات الإحدى عشرة + شفاء المؤشّرات الأربعة الميتة. نسخة ما قبل التطبيق محفوظة بمجلّد المؤقّت (`dev-before-15.db`).
+- **الإنتاج ما انلمس بهالجولة**: ولا كتابة. الكتابة بتمرّ من «استيراد خطة JSON» بلوحة الأدمن، وتنظيف فونيتيك بزرّ «نظّف الكروت اليتيمة» بعد النشر.
 
 ### 2026-09-13 — Claude — Telegram match rate diagnosed end-to-end; parser bug fixed; Phoenitech plan arrived while paused
 
