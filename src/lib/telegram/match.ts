@@ -133,7 +133,11 @@ export function rankByContent(
    */
   fullBrief = false,
 ): { taskId: string; score: number; shared: number; unique: number }[] {
-  const withBrief = candidates.filter((c) => c.brief && c.brief.trim());
+  // نصّ الهوية: البريف لما يكون موجود، وإلا **عنوان الكرت**. الشغل خارج الخطة
+  // ما إله بريف أصلاً — إله عنوان («صور معرض LTCPC»)، فكان بيوقع من الحساب
+  // كلّه ويضل مفتوحاً مهما كان اسم الملف واضحاً («معرض1.png»).
+  const identity = (c: MatchCandidate) => c.brief?.trim() || c.title?.trim() || "";
+  const withBrief = candidates.filter((c) => identity(c));
   if (!withBrief.length) return [];
   const want = new Set(tokens(`${delivery.fileName ?? ""} ${delivery.caption ?? ""}`));
   if (want.size === 0) return [];
@@ -142,7 +146,9 @@ export function rankByContent(
   // worth far more than one every row shares.
   const df = new Map<string, number>();
   const perCandidate = withBrief.map((c) => {
-    const t = new Set(tokens(fullBrief ? c.brief! : briefHead(c.brief!)));
+    // العنوان قصير أصلاً فبينقرا كامل؛ المطلع للبريف وبس.
+    const text = identity(c);
+    const t = new Set(tokens(c.brief?.trim() && !fullBrief ? briefHead(text) : text));
     for (const w of t) df.set(w, (df.get(w) ?? 0) + 1);
     return { c, t };
   });
@@ -508,8 +514,44 @@ export function matchDelivery(
   const typedForContent = candidates.filter(
     (t) => t.type != null && types.includes(t.type as ContentType),
   );
-  const byContent = matchByContent(delivery, typedForContent.length ? typedForContent : candidates);
-  if (byContent) return { taskId: byContent.taskId, by: "BRIEF" };
+  // الكرت خارج الخطة ما إله نوع، فترشيح «النوع المناسب» كان بيرميه دايماً لما
+  // يكون بالشركة ولو كرت قطعة واحد مفتوح. النتيجة: تسع كروت تصميم مفتوحة عند
+  // التوظيف وملفات فونيتيك العربية (`معرض1-7.png`) ما إلهن طريق للمطابقة
+  // أصلاً — لا بالاسم (ما في رقم قطعة) ولا بالنوع (الفلتر بيشيلهن).
+  //
+  //
+  // ⚠️ جرّبت أخلّي الكرت خارج الخطة **ينافس** كروت القطع على كل تسليم (مشان
+  // ملفات فونيتيك العربية وكروت التوظيف المفتوحة) — وقستها على ٧٨٦ ملف
+  // مخزَّن: عشر مطابقات، كلهن غلط. وبعد حارسين (لا كرت كتابة، ولا كرت شغله
+  // مسلَّم أصلاً) نزلت لأربعة — وكمان كلهن غلط: «٣٠ يوم من الانطلاق.jpg» راحت
+  // لكرت تقرير «٩٠ يوم»، و«PhoeniTech_Sales_Executive_Job_Post.jpg» لكرت
+  // «إطلاق ميزة Featured Job». خطة التوظيف مكتوبة بمفردات متشابهة بين
+  // الأسابيع، فالكلمة المشتركة ما بتميّز. القرار: ما منفتح المنافسة. الطريق
+  // الموثوق للشغل خارج الخطة هو الاسم (`معرض 9-1.png`) أو الإقفال من اللوحة.
+  //
+  // يلي ضل: الكرت خارج الخطة بينقرا بعنوانه لما يكون بالسلّة أصلاً (شركة بلا
+  // كروت قطع مفتوحة)، وما بيسكّر بصورة كرتَ كتابة، وما بينسلّم مرتين.
+  const untypedFallback = candidates.filter((t) => !(t.type == null && t.stage === "WRITE"));
+  const contentPool = typedForContent.length ? typedForContent : untypedFallback;
+  const byContent = matchByContent(delivery, contentPool);
+  if (byContent) {
+    // ═══ الحارس التاني: المسلَّم ما بينسلّم مرتين — نسخة خارج الخطة ═══
+    //
+    // الكرت خارج الخطة ما إله رقم قطعة، فقاعدة إعادة الإرسال بفرع الاسم ما
+    // بتطاله. بديلها هون: لو كرت **مسكَّر** بيوصف نفس الشغل بدرجة مساوية أو
+    // أعلى، فهاد إعادة إرسال لشغل خلص — مو تسليم لكرت تاني صدفةً بيشارك نفس
+    // الكلمة. هيك «مسابقة.jpg» بترجع لمسابقة أيلول المسكَّرة بدل ما تسكّر
+    // مسابقة تشرين.
+    const winner = contentPool.find((t) => t.id === byContent.taskId);
+    if (winner?.type == null) {
+      const prior = matchByContent(
+        delivery,
+        closed.filter((t) => t.type == null && t.stage !== "WRITE"),
+      );
+      if (prior && prior.score >= byContent.score) return null;
+    }
+    return { taskId: byContent.taskId, by: "BRIEF" };
+  }
 
   // Once the plan's text is in the system it is the authority: a delivery that
   // matches no plan row is simply not one of the planned pieces (وصل's client
