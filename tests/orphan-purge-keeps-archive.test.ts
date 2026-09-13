@@ -41,6 +41,17 @@ describe("تنظيف الكروت اليتيمة بيحمي الأرشيف", () 
     expect(sessions).toContain('status: "NOT_STARTED"');
   });
 
+  it("ولا كرت مرشَّح = نجاح وشفاء، مو رسالة «أكّدي بالعدد نفسه»", () => {
+    // الحماية خلّت شركة كاملة الأرشيف تطلع «٠ للحذف» وهي إلها دلاء يتيمة —
+    // والواجهة بتقرا `orphanCount: 0` كـfalsy فبتطلّع الخطأ وبتوقف. يعني
+    // المؤشّرات الميتة ما بتنشفى أبداً. لازم يمرق كنجاح.
+    const zero = purgeBody.indexOf("if (count === 0) {");
+    const confirm = purgeBody.indexOf("if (confirmCount !== count) {");
+    expect(zero).toBeGreaterThan(-1);
+    expect(zero).toBeLessThan(confirm);
+    expect(purgeBody.slice(zero, confirm)).toContain("clearDanglingBlocks(companyId)");
+  });
+
   it("على الداتا الحيّة: ولا كرت منجز داخل نطاق الحذف", async () => {
     const companies = await prisma.company.findMany({ where: { publishStartDate: { not: null } } });
     const atRisk: string[] = [];

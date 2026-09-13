@@ -688,6 +688,21 @@ export async function purgeOrphanCards(companyId: string, confirmCount?: number)
       OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })),
     };
     const count = await prisma.task.count({ where });
+    // ولا كرت مرشَّح — بس الدلو يتيم لأنّ كله أرشيف محمي. بلا هالفرع كان
+    // الزرّ يوقف عند «في ٠ كرت… أكّدي بالعدد نفسه»: رسالة خطأ بلا معنى، ولا
+    // شفاء للمؤشّرات الميتة. (فونيتيك بالضبط: ٤ دلاء يتيمة، ٦١ كرت منجز
+    // محمي، ٠ للحذف، و٤ مؤشّرات ميتة بدها تنشفى.)
+    if (count === 0) {
+      return {
+        ok: true as const,
+        removed: 0,
+        keptArchive: await prisma.task.count({
+          where: { companyId, isAuto: true, OR: orphanBuckets.map((b) => ({ year: b.year, month: b.month })) },
+        }),
+        unblocked: await clearDanglingBlocks(companyId),
+        buckets: orphanBuckets.map((b) => `${b.year}-${b.month + 1}`),
+      };
+    }
     if (confirmCount !== count) {
       return {
         ok: false as const,
