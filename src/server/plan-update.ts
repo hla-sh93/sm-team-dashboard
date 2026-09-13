@@ -235,7 +235,14 @@ function stateUpdateFor(
     removeEvidence?: string;
     evidence: string;
   },
-  task: { notes: string | null; startedAt: Date | null },
+  task: {
+    notes: string | null;
+    startedAt: Date | null;
+    // لحارس «الشغل ما بيصير بعد النشر» تحت — بيقرا الموجود لما الحمولة ما
+    // بتعطي بديلاً.
+    workDate?: Date | null;
+    publishDate?: Date | null;
+  },
 ) {
   const when = spec.date ? fromISODate(spec.date) : null;
   const status = spec.status ? normalizeStatusForStage(spec.status, spec.stage) : null;
@@ -293,6 +300,16 @@ function stateUpdateFor(
   if (spec.publishDate) {
     update.publishDate = fromISODate(spec.publishDate);
     update.isPinned = true;
+  }
+  // آخر شي: كرت النشر يوم شغله ما بيصير بعد يوم نشره. تصحيح يوم النشر لواقعه
+  // كان بيترك `workDate` على يوم الخطة — وهاد بالضبط مصدر الـ٢٨ كرت المكسورة
+  // بالإنتاج (`date`+`done` فوق بتكتب `publishDate` وبس لكروت النشر). الحارس
+  // آخر خطوة مشان يلحق التصحيح الصريح كمان؛ و`spec.workDate` بيضل مسموع لأنّ
+  // أي يوم شغل شرعي بيكون **قبل** النشر أو بيومه (الجدولة المسبقة للسبت).
+  if (spec.stage === "PUBLISH") {
+    const publish = (update.publishDate as Date | undefined) ?? task.publishDate;
+    const work = (update.workDate as Date | undefined) ?? task.workDate;
+    if (publish && work && work.getTime() > publish.getTime()) update.workDate = publish;
   }
   return update;
 }
@@ -695,7 +712,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
             stage: spec.stage,
           })),
         },
-        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
+        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true, workDate: true, publishDate: true },
       });
       stateTargets = targets.map((t) => ({ id: t.id, notes: t.notes }));
       stateTargetsFull = targets;
