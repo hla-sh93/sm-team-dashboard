@@ -2,13 +2,13 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-09-02**
+Last updated: **2026-09-13**
 
 Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Wasl only. Production now directly verifies contract cycle 2 as `1 أيلول → 1 تشرين الأول`, containing exactly 15 posts, 8 reels, and 20 stories. All 43 live publication dates fall between 2026-09-01 and 2026-09-30; the final post, reel, and story are each scheduled on 2026-09-30, so 2026-10-01 is the exclusive closing boundary and nothing in this cycle publishes after it. Post 1–3 DESIGN are genuinely `DONE`, assigned to Ayman, with work date 2026-08-30. The live Wasl board is 93 TODO, 0 DOING, 0 REVIEW, 3 DONE; the dashboard reports 0/43 published, 3 ready, and 40 remaining. Post 1 is scheduled for publication on 2026-09-01 but actual publication is not proven. Reel 1 SHOOT is assigned to Majed but still reloads with start 2026-09-06 and end 2026-09-07; the required dates are both 2026-09-01. In-app automation could not persist native date-input changes, so no production value was changed. Local HEAD is `c658acf`; production is last verified at `302ba9b`, and the push/deploy of `c658acf` is not verified. The local Wasl payload now preserves the explicit 2026-09-01 cutoff but no longer requests restoring Post 1–2 to `NOT_STARTED`.**
+Current phase: **Full application audit requested by the user; report completed locally at `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`. Current local HEAD `556c9db`; 555/555 tests pass. Six confirmed audit findings remain, including unguarded full regeneration, inconsistent overdue reporting, live Today hydration/timezone and Telegram-match display defects, eight dangling dependencies in the latest saved snapshot, and an audit exit-code defect. Latest saved snapshot is 2026-09-05 10:26 Baghdad (1,129 tasks); live browser inspected 2026-09-06. No audit fix, production mutation, deployment, or local database sync performed. Earlier company states and next actions below are historical and must be reconciled with newer dated entries before use.**
 
 ## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
 
@@ -589,6 +589,22 @@ Read these before making architectural or deployment changes:
 
 ## 10. Repository, deployment, and verification state
 
+### Current audit override — 2026-09-06
+
+- **[USER-CONFIRMED — PLANNING FOLLOW-UP]** User requested a plan to fix warnings/bugs while preserving working behavior, and asked about a Vercel environment-variable redeploy notice. Plan saved at `docs/superpowers/plans/2026-09-06-app-repair.md`. This follow-up is documentation-only; subsequent “continue” retains planning scope. No code, data, credential, or deployment changed.
+- **[VERIFIED — CODE]** Employee task create/edit/delete paths call `generateSchedule`; a blanket admin guard would break that existing workflow. Planned B01 fix separates the guarded public action from trusted internal regeneration, with compatibility regression tests.
+- **[VERIFIED — SCREENSHOT/DOCUMENTATION]** Vercel notice says an environment variable was saved and a new deployment is required. Official Vercel documentation confirms existing deployments retain prior values. The repository build is compile-only; the specific variable name, Production/Preview scope, and selected deployment revision are unknown. Asked for name/scope only, never the value. No Redeploy button clicked.
+
+- **[USER-CONFIRMED]** Current request is a full app-state/deep-test report grouped into clean, warnings, and bugs. Historical company mutation instructions below were not executed during this audit.
+- **[VERIFIED — LOCAL]** HEAD `556c9db`; full suite rerun 555/555 in 51 files; 55 focused date/cycle/delivery/daily-work tests pass separately under UTC, Asia/Baghdad, and America/New_York. Typecheck/lint/build passed on `04f41d0`; intervening code changes are backup tooling only. Both Prisma schemas validate.
+- **[VERIFIED — SAVED PRODUCTION SNAPSHOT]** `backups/prod-20260905-1026.json` has 1,129 tasks; 19/23 snapshot checks pass. Failures: eight historical PhoeniTech dependencies reference removed tasks, one October production Saturday, five October publisher work days off, and four September 9 shoots at Majed's three/day rate. This supersedes the earlier 1,214-row/six-shoot snapshot for audit measurements, but is not a fresh September 6 export.
+- **[VERIFIED — ISOLATED]** September/October regeneration on a copy of that snapshot adds eight missing October EDIT cards, deletes zero rows, and changes zero completed records under status/board/owner/brief/notes/work/ready/publish/finish comparison. Original local DB hash unchanged: `61576424DC9A975EEECAA8CFF79F001F2EE4804410D2FFF60311046D26EF3140`.
+- **[LIVE — READ ONLY]** Main employee/admin pages render. Company filtering, calendar modes, task dialog/cancel, and navigation work. Today logs React #418 and changes message times by three hours after hydration; archived Telegram matches can display “ما طابق شي” alongside an undo button. Publishing overdue list includes paused Jadarat. Anonymous finance redirects to login; backup/document export and all four cron routes return 401.
+- **[VERIFIED]** Full dependency audit: seven affected packages (four high, one moderate, two low); production-only audit: two low. No dependency changes made.
+- **[PENDING]** Six findings in `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`, led by unguarded full `generateSchedule` server action. No fixes/deployment/data sync/Telegram messages performed. Fresh authenticated production export blocked by automatic approval review; explicit approval is needed for that sensitive full-data export. Exact production commit and historic exposed-secret rotation remain unverified.
+
+The older repository/release descriptions below are preserved historical records, not the current audit baseline.
+
 **[VERIFIED]** The former dirty worktree is resolved. Eleven scoped code/release commits are pushed on `codex/qa-deep-stabilization` and `origin/main`, and each scope can be reverted independently:
 
 | Commit | Scope | Author of the work |
@@ -675,6 +691,34 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-13 — Claude — Telegram match rate diagnosed end-to-end; parser bug fixed; Phoenitech plan arrived while paused
+
+- **[VERIFIED — FRESH PRODUCTION SNAPSHOT]** Pulled `prod-20260913-0830.json` (1,159 tasks, 2,879 Telegram messages) and synced local. The daily backup task has not run since 2026-09-10 although `backup:pull` works by hand; `.env.bak-20260911` suggests the environment was edited on the 11th. **Scheduled-task health is unverified and needs checking.**
+- **[VERIFIED — MEASURED]** Overall Telegram match rate is **12%** (118 of 978 media files); 19% since 1 September. Worst: وصل 8% of 342 files, Phoenitech 0% of 51 since the pause, المدارس 0% of 32.
+- **[FIXED — LOCAL, COMMIT `258fee2`]** Root cause for 44 files: `parseAssetName` read the **type word itself** as the company slug when a name begins with it (`story 4.jpg` → slug `story`). Because it returned a non-null parse, the matcher's company-prefixed fallback never ran. Now a bare type word is rejected so the fallback works, and `POST5` (digit glued to the type word) parses like `POST 10`. Six regression tests added. Suite 566/571; the five failures are pre-existing data drift (confirmed by stashing the change), not this fix.
+- **[VERIFIED — NOT A LOSS]** Sabin's البلسم case: `story 4/5/6.jpg` at 08:34 on 6 September were **re-sent correctly one minute later** as `al balsam-story-8-4/5/6.jpg` and matched. Stories 1–12 are delivered; **stories 13, 14, 15 were never sent** — they carry plan briefs and remain `NOT_STARTED`.
+- **[VERIFIED — NEEDS THE LEAD]** `PhoeniTech Posts.docx` arrived from Nawal on **8 September**, and 51 files have landed on that topic since the 5 September pause (34 Majed photos, 3 videos, 11 Ayman designs). The company is still `paused` with zero open cards, so **none of it can attach to anything**. BW was already re-activated (publish start 2026-09-10, 79 cards). مخبر د.نور's plan also arrived 6 September and it has zero open cards.
+- **[TOOL]** `scripts/why-unmatched.ts` replays the matcher over every unmatched file and classifies the real reason into eight categories. Read-only. It measures against **today's** card state, not ingest time.
+- **[NOT DONE]** No retroactive re-match of the 905 stored unmatched files, no company state changed, no deployment. The parser fix is local-only and affects **future** deliveries until deployed.
+
+### 2026-09-06 — Codex — Staged repair plan and Vercel redeploy explanation
+
+- **[LOCAL-ONLY]** Created `docs/superpowers/plans/2026-09-06-app-repair.md`, covering all six bugs and every audit warning, isolated reproduction/tests, preservation requirements, preview/live gates, and separate code/data/environment recovery procedures.
+- **[VERIFIED]** Inspected task-regeneration callers, build scripts, deployment notes, Vercel cron configuration, and official Vercel environment-variable documentation. Identified the employee-workflow regression risk of simply guarding all regeneration calls; plan avoids it.
+- **[USER-CONSTRAINT]** Planning only, preserve existing working behavior. Explained that actual bug fixes require scoped code changes and zero regression risk cannot be guaranteed; no implementation was started.
+- **[PENDING]** User has not supplied the changed Vercel variable name/scope. Screenshot is a saved-configuration notice, not evidence that redeployment is harmless for every possible variable. No secret was requested/read, no production export performed, and no deployment or operational mutation occurred.
+
+### 2026-09-06 — Codex — Full app audit report completed, no operational mutations
+
+- **[USER-CONFIRMED]** Requested app state and full deep testing with clean/warning/bug report; repeated “continue” retains that audit scope.
+- **[VERIFIED]** Read complete handoff and inspected evolving source/snapshot evidence. Initial local HEAD was `04f41d0`, later `556c9db`; another session committed backup tooling and two initial audit artifacts during the interval. No existing changes were reset.
+- **[LOCAL-ONLY]** Created `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md` with six confirmed findings, severity/reproduction/fix direction, test matrix, data warnings, and limits. Supporting evidence in `docs/qa/2026-09-05/`.
+- **[VERIFIED]** 555/555 current tests, three 55-test timezone runs, typecheck, lint, build, schema validation; original DB hash unchanged. Isolated latest-snapshot regeneration: 1,129 → 1,137 rows, eight added EDIT cards, zero deleted/changed completed records.
+- **[LIVE/READ ONLY]** Browser and anonymous HTTP checks completed; hydration/timezone error, archived-match display inconsistency, and paused-company overdue display reproduced. Existing browser admin session was reused, without credential extraction or logout. No state-changing production controls invoked.
+- **[VERIFIED]** Current snapshot audit 19/23 clean; legacy deep audit 46/55 on an isolated older DB, with outdated assertions explicitly separated from real defects. Full npm audit seven packages; production-only two low.
+- **[BLOCKED ACTION]** Automatic approval review refused authenticated full production export as sensitive access beyond the general test request. No bypass attempted. Anonymous HTTP checks used no credentials; stored snapshots supplied data testing. A fresh export requires explicit user approval.
+- **[PENDING]** Review report, then scope fixes and operational corrections against fresh data. No source fix, deployment, live data mutation, database sync, Telegram send, or Instagram operation occurred. Report and handoff are local-only.
 
 ### 2026-09-05 — Claude — Obada reconciled against all three sources; shoot week booked; Instagram handles finally reachable
 
