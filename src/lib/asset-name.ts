@@ -141,6 +141,9 @@ function monthWordIn(text: string): number | null {
  * matcher pick the one that actually corresponds to a real open piece. That is
  * the only way to be right about both `Agalia 7-1` and `Agalya 3-7`.
  */
+/** كلمات النوع — ما بتصير اسم شركة ولا مرة. شوف `parseAssetName`. */
+const TYPE_WORDS = /^(?:carousel|slide|posts?|stor(?:y|ies)|reels?|ai|video|image|photo)$/i;
+
 export function parseAssetName(text: string | null | undefined): ParsedAssetName | null {
   if (!text) return null;
   // Drop a trailing file extension so `.mp4` never eats a number.
@@ -162,6 +165,18 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
   // A trailing lone letter is a piece marker, not part of the name:
   // «balsam r2 julyy» is balsam, not "balsam r".
   const slug = slugMatch[0].trim().replace(/\s+[A-Za-z]$/, "");
+  // كلمة النوع ما بتصير اسم شركة أبداً.
+  //
+  // «story 4.jpg» ما فيها اسم شركة: `beforeType` بتطلع فاضية فبيوقع الاحتياطي
+  // على أول كلمة لاتينية — وهي **story** نفسها. النتيجة سلَق="story" بيفشل
+  // بالمقارنة مع اسم الشركة، والأسوأ إنّه بيمنع المطابِق من إعادة القراءة
+  // باسم توبيك الشركة مسبوقاً (بيجرّبها بس لما ترجع null). الملف بينخزّن «غير
+  // مطابق» رغم إنّه مقروء تماماً.
+  //
+  // صار فعلاً: سابين بعتت `story 4/5/6.jpg` على توبيك البلسم، وأيمن `POST 10`
+  // و`STORY1-2` على وصل — ٤٤ ملف. القراءة الصح بترجع لما نرجّع null هون
+  // فيشتغل احتياطي «اسم الشركة + الاسم» يلي بالمطابِق.
+  if (TYPE_WORDS.test(slug)) return null;
 
   const readings: AssetReading[] = [];
   const push = (month1: number, piece: number) => {
@@ -195,7 +210,11 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
   // شهر» (month0 = -1)، والمطابق بيحصرها بدورة الشركة الشغّالة وقت الإرسال —
   // فما بتقدر تسكّر قطعة من دورة تانية.
   if (!readings.length) {
-    const bare = withoutSlide.match(/(?:^|[\s_-])(\d{1,3})\s*$/);
+    const bare =
+      withoutSlide.match(/(?:^|[\s_-])(\d{1,3})\s*$/) ??
+      // «POST5» — الرقم ملزوق بكلمة النوع بلا فاصل. نفس عائلة «POST 10»
+      // يلي بتنقرا أصلاً؛ الفاصل تفصيل مطبعي مو معلومة.
+      withoutSlide.match(/\b(?:carousel|post|story|reel|ai)\s*(\d{1,3})\s*$/i);
     if (bare) {
       const n = Number(bare[1]);
       if (n >= 1 && n <= 200) readings.push({ month0: -1, pieceNo: n });
