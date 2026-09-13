@@ -1,0 +1,74 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "ms": 1886,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/today",
+    "status": 200,
+    "ms": 1077,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/admin/finance",
+    "status": 307,
+    "ms": 175,
+    "location": "/login?from=%2Fadmin%2Ffinance",
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/backup/export",
+    "status": 401,
+    "ms": 1276,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/cron/daily-brief",
+    "status": 401,
+    "ms": 266,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/cron/done-report",
+    "status": 401,
+    "ms": 330,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/cron/weekly-digest",
+    "status": 401,
+    "ms": 280,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/cron/shoot-appointments",
+    "status": 401,
+    "ms": 271,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  },
+  {
+    "path": "/api/plan-doc",
+    "status": 401,
+    "ms": 332,
+    "location": null,
+    "frame": "DENY",
+    "nosniff": "nosniff"
+  }
+]

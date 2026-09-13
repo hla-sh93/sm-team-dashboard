@@ -1,0 +1,76 @@
+{
+  "snapshot": "2026-09-05T07:26:07.177Z",
+  "before": 1129,
+  "after": 1137,
+  "results": [
+    {
+      "month": 9,
+      "result": {
+        "ok": true,
+        "stages": {
+          "write": 4,
+          "design": 45,
+          "shoot": 16,
+          "publish": 61
+        },
+        "warnings": [
+          {
+            "level": "warning",
+            "message": "وصل للتداول: اللقطات بتوصل بعد 2026-09-03 — المونتاج ما بيلحق يجهز قبل النشر بيومين",
+            "companyId": "c_wasl"
+          }
+        ]
+      }
+    },
+    {
+      "month": 10,
+      "result": {
+        "ok": true,
+        "stages": {
+          "write": 2,
+          "design": 10,
+          "shoot": 8,
+          "publish": 18
+        },
+        "warnings": []
+      }
+    }
+  ],
+  "changedSettled": [],
+  "deleted": [],
+  "octoberMissingEdits": [],
+  "added": [
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_11",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_13",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_15",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_17",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_2",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_4",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_6",
+      "stage": "EDIT"
+    },
+    {
+      "id": "2026_9_e_c_tawzeef_REEL_8",
+      "stage": "EDIT"
+    }
+  ]
+}

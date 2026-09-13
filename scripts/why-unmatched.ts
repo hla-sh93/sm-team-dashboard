@@ -30,10 +30,15 @@ type Reason = { code: string; detail: string };
   const coById = new Map(companies.map((c) => [c.id, c]));
   const employees = await p.employee.findMany();
 
-  const msgs = await p.telegramMessage.findMany({
-    where: { kind: { in: ["PHOTO", "VIDEO", "DOCUMENT"] }, taskId: null },
-    orderBy: { sentAt: "desc" },
-  });
+  // القائدة (١٣/٩): «يلي بيهمّ مطابقته هو المرسَل من التصميم أو المونتاج —
+  // الباقي غالباً داتا داخلية». فالقياس بينحصر فيهن.
+  const PRODUCERS = new Set(["Ayman", "Sabine", "Elissar"]);
+  const msgs = (
+    await p.telegramMessage.findMany({
+      where: { kind: { in: ["PHOTO", "VIDEO", "DOCUMENT"] }, taskId: null },
+      orderBy: { sentAt: "desc" },
+    })
+  ).filter((m) => (process.env.ALL ? true : PRODUCERS.has(m.senderName ?? "")));
 
   const byReason = new Map<string, { n: number; rows: string[] }>();
   const push = (r: Reason, line: string) => {
@@ -138,6 +143,15 @@ type Reason = { code: string; detail: string };
         `${label}   (سلَق=${parsed.slug}${prefixed ? ` ← المفروض ${companySlug(co)} ق${prefixed.readings[0]?.pieceNo}` : ""})`,
       );
       continue;
+    }
+    if (m.mediaGroupId) {
+      const sib = await p.telegramMessage.findFirst({
+        where: { mediaGroupId: m.mediaGroupId, chatId: m.chatId, taskId: { not: null } },
+      });
+      if (sib) {
+        push({ code: "٩· شريحة تانية من كاروسيل انلقط أصلاً (سليم)", detail: "" }, label);
+        continue;
+      }
     }
     const readings = parsed.readings.map((r) => `ش${r.month0 + 1}/ق${r.pieceNo}`).join(" أو ");
     const closedHit = parsed.readings.some((r) =>
