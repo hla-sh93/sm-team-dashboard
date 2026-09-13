@@ -8,7 +8,7 @@ Workspace: `E:\Hla\Social\sm-team-dashboard` (the old `C:\Users\hla2-\Videos\Soc
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Pending-work sweep executed on the lead's instruction («اعمل خطة لتحل كلشي معلق»). Local HEAD `47cb886`; 586/587 tests pass — the single failure is real production data drift, documented below (BW POST#3 of the August cycle has a DESIGN card but **no PUBLISH card**). Four code fixes shipped in this pass: orphan-purge no longer deletes completed archive (115 cards were at risk), publish work dates can no longer land after the publish day (28 production cards), a zero-candidate purge now succeeds and heals dangling dependencies instead of erroring, and off-plan cards are readable by title with two guards. Eleven evidence-based payloads (`prod-15-*`, `prod-16-*`, `prod-17-*`) are validated against the 13/9 production snapshot and applied to the LOCAL mirror only — they still need to be imported into production through the admin panel.**
+Current phase: **Pending-work sweep executed on the lead's instruction («اعمل خطة لتحل كلشي معلق»). Local HEAD `6ba4a95`, deployed to Vercel production (`isgbz12y0`) and verified live. 586/587 tests pass — the single failure is real production data drift that needs the lead's answer: BW POST#3 of the August cycle has a DESIGN card but **no PUBLISH card**. Four code fixes shipped: orphan-purge no longer deletes completed archive (115 cards were at risk), publish work dates can no longer land after the publish day, a zero-candidate purge now succeeds and heals dangling dependencies instead of erroring, and off-plan cards are readable by title with two guards. Eleven evidence-based payloads were applied to PRODUCTION through the admin panel and verified against a fresh snapshot (`prod-20260913-1001.json`): publish-work-after-publish 28→0, dangling dependencies 4→0, evidence-less publish closures 7→0, task count unchanged at 1,172.**
 
 ## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
 
@@ -726,10 +726,29 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 - إعادة تشغيل المطابِق على ٧٨٦ ملف: صفر تغيير.
 - توليد فعلي على نسخة معزولة من `dev.db` لإثبات جذر «الشغل بعد النشر» وإثبات إصلاحه.
 
-**حالة الداتا**
+**النشر — [LIVE/VERIFIED]**
 
-- `prisma/dev.db` (المرآة المحلية) انطبّقت عليها الحمولات الإحدى عشرة + شفاء المؤشّرات الأربعة الميتة. نسخة ما قبل التطبيق محفوظة بمجلّد المؤقّت (`dev-before-15.db`).
-- **الإنتاج ما انلمس بهالجولة**: ولا كتابة. الكتابة بتمرّ من «استيراد خطة JSON» بلوحة الأدمن، وتنظيف فونيتيك بزرّ «نظّف الكروت اليتيمة» بعد النشر.
+- ١١ كوميت انرفعوا `600d3d1..6ba4a95`، والنسخة انبنت preview من الفرع ثم انرقّت للإنتاج (`isgbz12y0`, جاهزة بـ٤٣ ثانية). فحوص حيّة: `/login` ٢٠٠ · `/api/backup/export` ٤٠١ · `/api/cron/done-report` ٤٠١ · `/api/telegram/webhook` ٤٠١ · `/api/backup` **٤٠٤** (الراوت المكشوف مو موجود).
+
+**تطبيق الإنتاج — [LIVE/VERIFIED]**
+
+الحمولات الإحدى عشرة انستوردت من «استيراد خطة JSON» بلوحة الأدمن (متصفّح القائدة)، وزرّ «نظّف الكروت اليتيمة» انضغط على فونيتيك. التحقّق من لقطة جديدة `prod-20260913-1001.json` (١١٧٢ كرت) لا من الشاشة:
+
+| الفحص | قبل | بعد |
+| --- | --- | --- |
+| كرت نشر شغله بعد نشره | ٢٨ | **٠** |
+| شغل بعد الجهوزية (غير مثبّت) | ٤ | **٠** |
+| مؤشّرات حجز ميتة | ٤ | **٠** |
+| إقفال نشر بلا دليل (من تموز) | ٧ | **٠** |
+| فجوات ترقيم | ١ | **١** (BW بوست ٣ — بدها قرار) |
+
+وأرشيف الشركتين سليم: BW ٦١ كرت منجز · فونيتيك ٧٩. مجموع الكروت ما تغيّر (١١٧٢ قبل وبعد) — يعني ولا كرت انمحى.
+
+⚠️ ملاحظة تنفيذية: أول محاولة لحمولة برو m=6 طلعت «ok» بالواجهة بس ما انطبّقت (النافذة انفتحت قبل ما تخلص إعادة تحميل الصفحة من الحمولة السابقة). انمسكت بالتحقّق من اللقطة وانعادت. الدرس: **التحقّق من اللقطة لا من التوست** — حمولة وحدة بكل جولة تحميل.
+
+**حالة الداتا المحلية**
+
+- `prisma/dev.db` (المرآة) انطبّقت عليها نفس الحمولات + شفاء المؤشّرات الأربعة. نسخة ما قبل التطبيق محفوظة بمجلّد المؤقّت (`dev-before-15.db`).
 
 ### 2026-09-13 — Claude — Telegram match rate diagnosed end-to-end; parser bug fixed; Phoenitech plan arrived while paused
 
