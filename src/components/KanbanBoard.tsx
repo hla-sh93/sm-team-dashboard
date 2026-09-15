@@ -17,6 +17,7 @@ import {
   type Stage,
 } from "@/lib/constants";
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { cycleForBucket, cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import {
@@ -250,7 +251,7 @@ export default function KanbanBoard({
     // جاهزة والزبون لسا ما بلّش — القائدة (5/8): «مشان ما تحسبها تأخير، بس يبدأ
     // النشر بيبدأ عداد المهام». التأخير بيبلّش مع تفعيل الشركة وتاريخ نشرها.
     const co = t.companyId ? coById.get(t.companyId) : null;
-    if (co && co.status !== "active") return false;
+    if (co && isDormantCompany(co)) return false;
     // A still-open contract cycle (e.g. المول 20/6 → 20/7) is not stale
     // carry-over just because the bucket is حزيران. Plain waiting work stays
     // queued; in-progress work past delivery still shows as late.

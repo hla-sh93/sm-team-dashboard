@@ -16,6 +16,7 @@
 import type { Company, Employee, Task } from "@/types";
 import { isTaskDoneState, montageDay, shootWindow } from "@/lib/constants";
 import { ARABIC_DAYS, parseWorkDays } from "@/lib/dates";
+import { isDormantCompany } from "@/lib/company-visibility";
 
 /** الموعد بينطلب من الزبون قبل يومين عالأقل (قاعدة القائدة ١/٨/٢٠٢٦). */
 export const REQUEST_DAYS_BEFORE = 2;
@@ -59,7 +60,7 @@ export function buildShootAppointments(
 ): ShootAppointmentsReport {
   const today = midnight(at);
   const active = new Map(
-    companies.filter((c) => c.managed && c.status === "active").map((c) => [c.id, c]),
+    companies.filter((c) => c.managed && !isDormantCompany(c)).map((c) => [c.id, c]),
   );
   const editor = team.find((e) => e.role?.includes("مونتير") || e.name === "أليسار");
   const editorDays = editor ? parseWorkDays(editor.workDays) : undefined;

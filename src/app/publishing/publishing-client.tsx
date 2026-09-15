@@ -1,6 +1,7 @@
 "use client";
 
 import { cycleSpanLabel } from "@/lib/contract";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/input";
@@ -57,7 +58,7 @@ export default function PublishingClient({
     };
     return cycleSpanLabel(co, y, m);
   };
-  const managed = companies.filter((c) => c.managed && c.status === "active");
+  const managed = companies.filter((c) => c.managed && !isDormantCompany(c));
 
   // Publishing items = the actual PUBLISH pipeline cards. Updating these cards
   // is what advances company progress; production cards stay owned by designers.

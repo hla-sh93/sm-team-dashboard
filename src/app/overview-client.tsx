@@ -1,6 +1,7 @@
 "use client";
 
 import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,7 +80,7 @@ export default function OverviewClient({
   const pathname = usePathname();
   // The overview is shared at `/` and `/admin`; keep board links in the same area.
   const base = pathname.startsWith("/admin") ? "/admin" : "";
-  const managed = companies.filter((c) => c.managed && c.status === "active");
+  const managed = companies.filter((c) => c.managed && !isDormantCompany(c));
   const designers = employees.filter((e) => e.isScheduled && !e.isPhotographer);
   // KPI = THIS bucket's production cards only; carryover extras from other
   // cycles are live work but not part of this month's plan count.

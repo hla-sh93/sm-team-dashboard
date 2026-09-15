@@ -23,6 +23,9 @@ describe("الشركة الموقوفة/المؤرشفة", () => {
     expect(isDormantCompany({ status: "paused" })).toBe(true);
     expect(isDormantCompany({ status: "archived" })).toBe(true);
     expect(isDormantCompany({ status: "active" })).toBe(false);
+    // قرار «لم يُجدد» ساري = مركونة حتى لو الحالة المخزّنة لسا «نشطة».
+    expect(isDormantCompany({ status: "active", contractEndedAt: new Date(2026, 7, 21) }, new Date(2026, 8, 15))).toBe(true);
+    expect(isDormantCompany({ status: "active", contractEndedAt: new Date(2026, 8, 20) }, new Date(2026, 8, 15))).toBe(false);
     expect([...dormantCompanyIds(companies)].sort()).toEqual(["c_jadarat", "c_mall"]);
   });
 

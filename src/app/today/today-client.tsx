@@ -24,6 +24,7 @@ import {
   type ContentType,
 } from "@/lib/constants";
 import { ARABIC_DAYS, toISODate } from "@/lib/dates";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { assetNameForTask, companySlug } from "@/lib/asset-name";
 import { buildContentNumbers, comparePieceSequence } from "@/lib/cards";
 import type { Company, Employee, Task, TelegramMessage } from "@/types";
@@ -114,7 +115,7 @@ export default function TodayClient({
   // ---------------------------------------------------------------- per company
   const rows = useMemo(() => {
     return companies
-      .filter((c) => c.managed && c.status === "active")
+      .filter((c) => c.managed && !isDormantCompany(c))
       .map((co) => {
         // القطع بتسلسلها الرقمي جوّا كل قائمة (١٥/٩) — لا بترتيب الصفوف بالقاعدة.
         const mine = open.filter((t) => t.companyId === co.id).sort(comparePieceSequence);

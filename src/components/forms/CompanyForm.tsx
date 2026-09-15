@@ -329,9 +329,9 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
             <div className="space-y-1.5">
               <Label>الحالة</Label>
               <Select {...register("status")}>
-                <option value="active">نشط</option>
-                <option value="paused">متوقف</option>
-                <option value="archived">مؤرشف</option>
+                <option value="active">نشطة</option>
+                <option value="paused">موقوفة بطلب الزبون</option>
+                <option value="archived">مؤرشفة — لم تجدّد</option>
               </Select>
             </div>
           </div>

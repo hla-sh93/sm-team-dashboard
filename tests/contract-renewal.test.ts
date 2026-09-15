@@ -282,7 +282,11 @@ describe("scheduler — no work without a renewal", () => {
     const ended = co({ renewals: '["2026-07-19"]', contractEndedAt: new Date(2026, 6, 19) });
     expect(publishISOs(ended, 2026, 6)).toEqual([]); // the ended cycle never starts
     expect(publishISOs(ended, 2026, 7)).toEqual([]);
-    expect(publishISOs(ended, 2026, 5).length).toBeGreaterThan(0); // history intact
+    // لم تجدّد = مؤرشفة = المحرّك ما بيخطّط إلها بولا دلو، حتى دلو دورتها
+    // المخلّصة. تاريخها محفوظ بقاعدة الحفظ لا بإعادة التوليد: الشركة الراكدة
+    // ما بتنحذف كروتها ولا بتنبنى (`operations-e2e`: «a regeneration for other
+    // companies leaves a paused company's cards alone»).
+    expect(publishISOs(ended, 2026, 5)).toEqual([]);
   });
 
   it("a company with no contract date is ungated (calendar month, forever)", () => {

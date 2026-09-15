@@ -28,6 +28,7 @@ import {
   type ContentType,
 } from "@/lib/constants";
 import { ARABIC_DAYS, parseWorkDays, toISODate } from "@/lib/dates";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { assetNameForTask } from "@/lib/asset-name";
 import { hasStartedPublishing } from "@/lib/contract";
 import { buildContentNumbers } from "@/lib/cards";
@@ -178,7 +179,7 @@ export function buildDailyBrief({
   // started and المول الصيني did not renew. Their cards must not surface
   // ANYWHERE in the brief — «Siizen 7-3 ينزل اليوم» in a message the lead
   // forwards is simply wrong.
-  const dormant = new Set(companies.filter((c) => c.status !== "active").map((c) => c.id));
+  const dormant = new Set(companies.filter((c) => isDormantCompany(c)).map((c) => c.id));
   const open = tasks.filter(
     (t) =>
       !isTaskDoneState(t) &&
@@ -487,7 +488,7 @@ export function buildDailyBrief({
   // ---------------------------------------------------------------- companies
   const companyMessages: BriefMessage[] = [];
   for (const co of companies) {
-    if (!co.managed || co.status !== "active") continue;
+    if (!co.managed || isDormantCompany(co)) continue;
     const mine = open.filter((t) => t.companyId === co.id);
 
     // شركة معفاة (جدارات) ما بيصير يطلع لها «🚀 ينزل اليوم»: هي معفاة أصلاً لأنو

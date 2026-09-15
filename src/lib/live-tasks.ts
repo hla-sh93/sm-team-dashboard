@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
 import { monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { currentCycleBucket } from "@/lib/contract";
-import { dormantCompanyIds } from "@/lib/company-visibility";
+import { dormantCompanyIds, isDormantCompany } from "@/lib/company-visibility";
 
 /**
  * دلاء الدورات الشغّالة اليوم يلي مو نفس الدلو المعروض.
@@ -43,7 +43,7 @@ async function companyScopes(year: number, month: number, at: Date) {
   });
   const running: { companyId: string; year: number; month: number }[] = [];
   for (const company of companies) {
-    if (!company.managed || company.status !== "active") continue;
+    if (!company.managed || isDormantCompany(company)) continue;
     const bucket = currentCycleBucket(company as never, at);
     if (!bucket) continue;
     if (bucket.year === year && bucket.month === month) continue;

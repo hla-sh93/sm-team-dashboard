@@ -12,6 +12,8 @@ import {
 } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { DONE_STATUSES } from "@/lib/constants";
+import { companyLifecycle, contractHasEnded } from "@/lib/company-visibility";
+import { archiveCompanyContract } from "@/server/company-lifecycle";
 import { generateCompanySchedule } from "./schedule";
 // أكشنات الشركات كلها بتحرس بـ`assertAdmin` أول سطر، فالصلاحية مثبتة قبل ما
 // نوصل هون — بننادي المحرّك مباشرةً بدل حراسة تانية بلا معنى.
@@ -118,6 +120,19 @@ export async function updateCompany(id: string, input: CompanyInput) {
   }
   try {
     const d = parsed.data;
+    const before = await prisma.company.findUnique({
+      where: { id },
+      select: { status: true, contractEndedAt: true },
+    });
+    if (!before) return { ok: false as const, error: "الشركة غير موجودة" };
+    // شركة لم تجدّد ما بترجع نشطة من حقل الحالة: الرجوع بـ«جدّد» بتاريخ دورة
+    // جديدة، وإلا بتصير نشطة بلا دورة وبقرار انتهاء لسا مسجَّل.
+    if (d.status === "active" && contractHasEnded(before)) {
+      return {
+        ok: false as const,
+        error: "الشركة لم تجدّد عقدها — لإعادتها استعملي «جدّد» بتاريخ الدورة الجديدة",
+      };
+    }
     const c = await prisma.company.update({
       where: { id },
       data: {
@@ -154,6 +169,10 @@ export async function updateCompany(id: string, input: CompanyInput) {
         accountOwnerId: d.accountOwnerId,
       },
     });
+    // الأرشفة من النموذج = نفس الأرشفة من «لم يُجدد»: الكروت المفتوحة بتنقفل.
+    if (d.status === "archived" && before.status !== "archived") {
+      await archiveCompanyContract(id, new Date());
+    }
     revalidateAll();
     return { ok: true as const, data: c };
   } catch {
@@ -232,7 +251,7 @@ export async function renewContract(companyId: string, startDateISO: string) {
       data: {
         renewals: serializeRenewals(starts),
         contractEndedAt: null, // renewing revives a contract marked "not renewed"
-        status: co.status === "paused" ? "active" : co.status,
+        status: co.status === "paused" || co.status === "archived" ? "active" : co.status,
       },
     });
     revalidateAll();
@@ -306,7 +325,7 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
       data: {
         renewals: serializeRenewals(correctedRenewals),
         contractEndedAt: null,
-        status: co.status === "paused" ? "active" : co.status,
+        status: co.status === "paused" || co.status === "archived" ? "active" : co.status,
       },
     });
 
@@ -433,28 +452,27 @@ export async function endContract(companyId: string) {
   }
   try {
     const now = new Date();
-    await prisma.company.update({
-      where: { id: companyId },
-      data: {
-        contractEndedAt: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-        status: "paused",
-      },
-    });
+    // لم يُجدد = أرشيف، لا إيقاف: الشركة واقفة من حالها وكروتها المفتوحة بتنقفل
+    // تلقائياً (قرار القائدة ١٥/٩). الإيقاف للنشطة يلي طلب زبونها التوقّف.
+    const r = await archiveCompanyContract(
+      companyId,
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    );
     revalidateAll();
-    return { ok: true as const };
+    return { ok: true as const, closedTasks: r.closedTasks };
   } catch {
-    return { ok: false as const, error: "فشل إيقاف العقد" };
+    return { ok: false as const, error: "فشل إنهاء العقد" };
   }
 }
 
 /** Archive a company: keep all its history but remove it from scheduling,
- *  publishing and finance (managed companies are filtered by status='active'). */
+ *  publishing and finance. Open cards close automatically — same rule as «لم يُجدد». */
 export async function archiveCompany(id: string) {
   try {
     await assertAdmin();
-    await prisma.company.update({ where: { id }, data: { status: "archived" } });
+    const r = await archiveCompanyContract(id, new Date());
     revalidateAll();
-    return { ok: true as const };
+    return { ok: true as const, closedTasks: r.closedTasks };
   } catch {
     return { ok: false as const, error: "فشل أرشفة الشركة" };
   }
@@ -505,6 +523,11 @@ export async function pauseCompanyPublishing(companyId: string) {
   try {
     const co = await prisma.company.findUnique({ where: { id: companyId } });
     if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+    // الإيقاف للشركة النشطة يلي طلب زبونها التوقّف. المؤرشفة (لم تجدّد) واقفة
+    // من حالها — ما إلها إيقاف ولا إرجاع.
+    if (companyLifecycle(co) === "archived") {
+      return { ok: false as const, error: "الشركة مؤرشفة (لم تجدّد) — لا يُوقف نشرها؛ تعود بـ«جدّد»" };
+    }
     if (co.status === "paused") {
       return { ok: false as const, error: "الشركة موقوفة أصلاً" };
     }
@@ -559,6 +582,12 @@ export async function resumeCompanyPublishing(companyId: string, startDateISO: s
   try {
     const co = await prisma.company.findUnique({ where: { id: companyId } });
     if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+    if (companyLifecycle(co) === "archived") {
+      return { ok: false as const, error: "الشركة لم تجدّد عقدها — تعود بـ«جدّد» بتاريخ الدورة الجديدة" };
+    }
+    if (co.status !== "paused") {
+      return { ok: false as const, error: "الشركة ليست موقوفة" };
+    }
 
     const updated = await prisma.company.update({
       where: { id: companyId },

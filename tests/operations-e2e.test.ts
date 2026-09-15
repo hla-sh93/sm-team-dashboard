@@ -1422,14 +1422,20 @@ describe("contract renewal lifecycle", () => {
     ).toBe(0);
   });
 
-  it("«لم يُجدد» pauses the company and blocks every later cycle", async () => {
+  it("«لم يُجدد» archives the company, closes its open cards and blocks every later cycle", async () => {
     if (skip()) return;
     const co = await makeCompany({ name: `${uniq}-ended`, contractStartDate: "2026-07-01" });
     expect((await actions.endContract(co.id)).ok).toBe(true);
 
     const ended = await prisma.company.findUnique({ where: { id: co.id } });
-    expect(ended.status).toBe("paused");
+    expect(ended.status).toBe("archived");
     expect(ended.contractEndedAt).toBeTruthy();
+    // لم يُجدد = كل كرت مفتوح بينقفل (ملغى بدليل) — ولا كرت مفتوح بيضل.
+    expect(
+      await prisma.task.count({
+        where: { companyId: co.id, status: { notIn: ["READY", "PUBLISHED", "CANCELED"] } },
+      }),
+    ).toBe(0);
     expect(contract.contractStateOf(ended).state).toBe("ended");
     // The cycle that was RUNNING when the contract ended is truncated at the
     // cutoff, not erased — work already delivered this cycle keeps its history.

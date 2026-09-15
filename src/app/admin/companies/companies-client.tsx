@@ -21,6 +21,7 @@ import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
 import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
+import { companyLifecycle, groupCompaniesByLifecycle } from "@/lib/company-visibility";
 import type { Company, Employee } from "@/types";
 import { Plus, Pencil, Trash2, CalendarClock } from "lucide-react";
 
@@ -54,7 +55,7 @@ function contractChip(s: ContractState): { label: string; cls: string } | null {
       };
     case "ended":
       return {
-        label: `العقد موقوف — ${formatDateShort(s.endedAt)}`,
+        label: `لم تجدّد — منذ ${formatDateShort(s.endedAt)}`,
         cls: "bg-bg-elev2 text-fg-muted",
       };
   }
@@ -77,7 +78,7 @@ export default function CompaniesClient({
     start(async () => {
       const r = await archiveCompany(c.id);
       if (r.ok) {
-        toast(`تمت أرشفة ${c.name}`);
+        toast(r.closedTasks ? `تمت أرشفة ${c.name} وأُغلق ${r.closedTasks} كرت مفتوح` : `تمت أرشفة ${c.name}`);
         router.refresh();
       } else toast(r.error, "error");
     });
@@ -341,11 +342,12 @@ export default function CompaniesClient({
     });
   };
 
-  /** "Not renewed" — hard stop + pause. Reversible by renewing later. */
+  /** «لم يُجدد» — أرشيف لا إيقاف: الشركة تقف من نفسها وكروتها المفتوحة تُغلق
+   *  تلقائياً (قرار القائدة ١٥/٩). تعود بتسجيل تجديد لاحقاً. */
   const onEndContract = (c: Company) => {
     Swal.fire({
       title: `لم يُجدد عقد ${c.name}؟`,
-      text: "سيتوقف توليد أي عمل جديد وتصبح الشركة موقوفة. يمكن التراجع بتسجيل تجديد لاحقاً.",
+      text: "ستنتقل الشركة إلى قسم الأرشيف، وتُغلق كل كروتها المفتوحة تلقائياً (ملغاة، لا منجزة)، ولا يُولَّد لها عمل جديد ولا يُحتسب عليها تأخير. تعود بتسجيل تجديد لاحقاً.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "نعم، لم يُجدد",
@@ -356,7 +358,11 @@ export default function CompaniesClient({
       start(async () => {
         const r = await endContract(c.id);
         if (r.ok) {
-          toast(`تم إيقاف عقد ${c.name}`);
+          toast(
+            r.closedTasks
+              ? `انتقلت ${c.name} إلى الأرشيف وأُغلق ${r.closedTasks} كرت مفتوح`
+              : `انتقلت ${c.name} إلى الأرشيف — لا كروت مفتوحة`,
+          );
           router.refresh();
         } else toast(r.error, "error");
       });
@@ -400,6 +406,176 @@ export default function CompaniesClient({
     });
   };
 
+  // قسمان: النشطة (ومعها الموقوفة بطلب الزبون) فوق، والأرشيف — لم تجدّد — تحت.
+  const { active, archived } = groupCompaniesByLifecycle(companies);
+
+  const renderCard = (c: Company) => {
+    const lifecycle = companyLifecycle(c);
+    const state = contractStateOf(c);
+    const chip =
+      lifecycle === "archived" && state.state !== "ended"
+        ? { label: "مؤرشفة", cls: "bg-bg-elev2 text-fg-muted" }
+        : contractChip(state);
+    const hasRenewals = parseRenewals(c).length > 0;
+    // The renewal question only exists once a cycle is ending or over.
+    const needsAnswer =
+      state.state === "due_soon" ||
+      state.state === "awaiting_renewal" ||
+      state.state === "ended";
+    return (
+      <Card key={c.id} style={{ borderRight: `4px solid ${c.color ?? "#C8A84E"}` }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="display-font text-lg">{c.name}</h2>
+              <span
+                className={
+                  "text-[10px] px-2 py-0.5 rounded-full font-semibold " +
+                  (c.managed ? "bg-accent/15 text-accent" : "bg-info/15 text-info")
+                }
+              >
+                {c.managed ? "مُدارة" : "تصميم-فقط"}
+              </span>
+            </div>
+            {c.managed ? (
+              <p className="text-xs text-fg-dim mt-1">
+                {c.posts} بوست · {c.reels} ريل · {c.aiReels} ريل AI · {c.stories} ستوري
+              </p>
+            ) : (
+              <p className="text-xs text-fg-dim mt-1">المسؤول: {empName(c.defaultOwnerId)}</p>
+            )}
+          </div>
+          <div className="flex gap-1">
+            <button
+              className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
+              onClick={() => {
+                setEditing(c);
+                setOpen(true);
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              className="p-1.5 rounded-md hover:bg-danger/10 text-danger"
+              onClick={() => onDelete(c)}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {c.managed && (
+          <div className="flex gap-3 mt-3 text-[11px] text-fg-muted flex-wrap">
+            <span>بوست → {empName(c.postOwnerId)}</span>
+            <span>· ستوري → {empName(c.storyOwnerId)}</span>
+            {c.aiReels > 0 && <span>· ريل AI → {empName(c.aiReelOwnerId)}</span>}
+            {/* السيلز مو منتِج — بيتابع العقد والزبون ومواعيد التصوير بس */}
+            {c.accountOwnerId && (
+              <span className="text-info">· 🤝 مسؤول العقد: {empName(c.accountOwnerId)}</span>
+            )}
+          </div>
+        )}
+        {(chip || lifecycle === "paused") && (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {chip && (
+              <span
+                className={
+                  "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold " +
+                  chip.cls
+                }
+              >
+                <CalendarClock className="w-3 h-3" />
+                {chip.label}
+              </span>
+            )}
+            {/* الإيقاف حالة للشركة النشطة بطلب زبونها — لا تأخير ولا شغل بلا جدوى */}
+            {lifecycle === "paused" && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-warning/15 text-warning">
+                موقوفة بطلب الزبون
+              </span>
+            )}
+            {(needsAnswer || lifecycle === "archived") && (
+              <button
+                className="text-[11px] px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 font-semibold"
+                onClick={() => onRenew(c, state)}
+              >
+                جدّد
+              </button>
+            )}
+            {needsAnswer && lifecycle !== "archived" && state.state !== "ended" && (
+              <button
+                className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
+                onClick={() => onEndContract(c)}
+              >
+                لم يُجدد
+              </button>
+            )}
+            {hasRenewals && lifecycle !== "archived" && (
+              <button
+                className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-warning/10 hover:text-warning"
+                onClick={() => onCorrectLatestRenewal(c)}
+              >
+                صحّح آخر تجديد
+              </button>
+            )}
+            {hasRenewals && lifecycle !== "archived" && (
+              <button
+                className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
+                onClick={() => onRemoveLatestRenewal(c)}
+              >
+                شيل آخر تجديد
+              </button>
+            )}
+          </div>
+        )}
+        {/* المؤرشفة (لم تجدّد) واقفة من حالها: لا استيراد ولا إيقاف ولا إرجاع — «جدّد» فقط */}
+        {c.managed && lifecycle !== "archived" && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <button
+              className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
+              onClick={() => onImportPlan(c)}
+            >
+              استيراد خطة JSON
+            </button>
+            {/* تصدير Word — بينفتح بتبويب جديد فالمتصفح بينزّله لحاله.
+                بيبيّن للشركة يلي إلها تاريخ بدء نشر بس: بلا تاريخ ما في
+                دورة، والملف بلا دورة بيوهم إنّ في جدول وما في. */}
+            {c.publishStartDate && (
+              <a
+                href={`/api/plan-doc?companyId=${c.id}`}
+                className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
+              >
+                تصدير الخطة Word
+              </a>
+            )}
+            <button
+              className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
+              onClick={() => onPurgeOrphans(c)}
+            >
+              نظّف الكروت اليتيمة
+            </button>
+            {/* إيقاف/إرجاع النشر — للشركة النشطة وحدها، والزرّان بديل بعض حسب
+                حالتها، فما بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
+            {lifecycle === "paused" ? (
+              <button
+                className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"
+                onClick={() => onResumePublishing(c)}
+              >
+                رجّع النشر
+              </button>
+            ) : (
+              <button
+                className="text-[11px] px-2 py-1 rounded-md border border-danger/40 text-danger hover:bg-danger/10"
+                onClick={() => onPausePublishing(c)}
+              >
+                أوقف النشر
+              </button>
+            )}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between flex-wrap gap-3">
@@ -420,169 +596,23 @@ export default function CompaniesClient({
       </header>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {companies.map((c) => {
-          const state = contractStateOf(c);
-          const chip = contractChip(state);
-          const hasRenewals = parseRenewals(c).length > 0;
-          // The renewal question only exists once a cycle is ending or over.
-          const needsAnswer =
-            state.state === "due_soon" ||
-            state.state === "awaiting_renewal" ||
-            state.state === "ended";
-          return (
-          <Card key={c.id} style={{ borderRight: `4px solid ${c.color ?? "#C8A84E"}` }}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="display-font text-lg">{c.name}</h2>
-                  <span
-                    className={
-                      "text-[10px] px-2 py-0.5 rounded-full font-semibold " +
-                      (c.managed
-                        ? "bg-accent/15 text-accent"
-                        : "bg-info/15 text-info")
-                    }
-                  >
-                    {c.managed ? "مُدارة" : "تصميم-فقط"}
-                  </span>
-                </div>
-                {c.managed ? (
-                  <p className="text-xs text-fg-dim mt-1">
-                    {c.posts} بوست · {c.reels} ريل · {c.aiReels} ريل AI · {c.stories} ستوري
-                  </p>
-                ) : (
-                  <p className="text-xs text-fg-dim mt-1">
-                    المسؤول: {empName(c.defaultOwnerId)}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-1">
-                <button
-                  className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
-                  onClick={() => {
-                    setEditing(c);
-                    setOpen(true);
-                  }}
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                  className="p-1.5 rounded-md hover:bg-danger/10 text-danger"
-                  onClick={() => onDelete(c)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {c.managed && (
-              <div className="flex gap-3 mt-3 text-[11px] text-fg-muted flex-wrap">
-                <span>بوست → {empName(c.postOwnerId)}</span>
-                <span>· ستوري → {empName(c.storyOwnerId)}</span>
-                {c.aiReels > 0 && <span>· ريل AI → {empName(c.aiReelOwnerId)}</span>}
-                {/* السيلز مو منتِج — بيتابع العقد والزبون ومواعيد التصوير بس */}
-                {c.accountOwnerId && (
-                  <span className="text-info">· 🤝 مسؤول العقد: {empName(c.accountOwnerId)}</span>
-                )}
-              </div>
-            )}
-            {chip && (
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <span
-                  className={
-                    "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold " +
-                    chip.cls
-                  }
-                >
-                  <CalendarClock className="w-3 h-3" />
-                  {chip.label}
-                </span>
-                {needsAnswer && (
-                  <>
-                    <button
-                      className="text-[11px] px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 font-semibold"
-                      onClick={() => onRenew(c, state)}
-                    >
-                      جدّد
-                    </button>
-                    {state.state !== "ended" && (
-                      <button
-                        className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
-                        onClick={() => onEndContract(c)}
-                      >
-                        لم يُجدد
-                      </button>
-                    )}
-                  </>
-                )}
-                {hasRenewals && (
-                  <button
-                    className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-warning/10 hover:text-warning"
-                    onClick={() => onCorrectLatestRenewal(c)}
-                  >
-                    صحّح آخر تجديد
-                  </button>
-                )}
-                {hasRenewals && (
-                  <button
-                    className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
-                    onClick={() => onRemoveLatestRenewal(c)}
-                  >
-                    شيل آخر تجديد
-                  </button>
-                )}
-              </div>
-            )}
-            {c.managed && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                <button
-                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
-                  onClick={() => onImportPlan(c)}
-                >
-                  استيراد خطة JSON
-                </button>
-                {/* تصدير Word — بينفتح بتبويب جديد فالمتصفح بينزّله لحاله.
-                    بيبيّن للشركة يلي إلها تاريخ بدء نشر بس: بلا تاريخ ما في
-                    دورة، والملف بلا دورة بيوهم إنّ في جدول وما في. */}
-                {c.publishStartDate && (
-                  <a
-                    href={`/api/plan-doc?companyId=${c.id}`}
-                    className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
-                  >
-                    تصدير الخطة Word
-                  </a>
-                )}
-                {/* إيقاف/إرجاع النشر — الزرّان بديل بعض حسب حالة الشركة، فما
-                    بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
-                <button
-                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
-                  onClick={() => onPurgeOrphans(c)}
-                >
-                  نظّف الكروت اليتيمة
-                </button>
-                {c.status === "paused" ? (
-                  <button
-                    className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"
-                    onClick={() => onResumePublishing(c)}
-                  >
-                    رجّع النشر
-                  </button>
-                ) : (
-                  <button
-                    className="text-[11px] px-2 py-1 rounded-md border border-danger/40 text-danger hover:bg-danger/10"
-                    onClick={() => onPausePublishing(c)}
-                  >
-                    أوقف النشر
-                  </button>
-                )}
-              </div>
-            )}
-          </Card>
-          );
-        })}
-        {companies.length === 0 && (
-          <p className="text-sm text-fg-muted">لا توجد شركات بعد.</p>
+        {active.map(renderCard)}
+        {active.length === 0 && (
+          <p className="text-sm text-fg-muted">لا توجد شركات نشطة.</p>
         )}
       </div>
+
+      {archived.length > 0 && (
+        <section className="flex flex-col gap-3 pt-4 border-t border-border">
+          <div>
+            <h2 className="display-font text-lg text-fg-dim">الأرشيف — شركات لم تجدّد</h2>
+            <p className="text-xs text-fg-muted">
+              لا يُولَّد لها عمل ولا يُحتسب عليها تأخير، وكروتها المفتوحة أُغلقت تلقائياً. تعود بـ«جدّد» بتاريخ الدورة الجديدة.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4 opacity-80">{archived.map(renderCard)}</div>
+        </section>
+      )}
 
       <CompanyForm open={open} onOpenChange={setOpen} company={editing} employees={employees} />
     </div>

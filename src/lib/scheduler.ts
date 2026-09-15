@@ -12,6 +12,7 @@
  *   §5.4 pack each scheduled employee (URGENT=ASAP, ROUTINE=JIT, overflow)
  *   §5.6 edge cases (overflow flagged, holidays respected, month borders)
  */
+import { isDormantCompany } from "@/lib/company-visibility";
 import {
   type ContentType,
   type Priority,
@@ -240,7 +241,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // §5.2 — generate the publish schedule for every managed company.
   // -------------------------------------------------------------------------
   const managed = state.companies
-    .filter((c) => c.managed && (c.status ?? "active") === "active")
+    .filter((c) => c.managed && !isDormantCompany(c))
     .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
 
   // Photographers — reels route to the company's assigned photographer, falling

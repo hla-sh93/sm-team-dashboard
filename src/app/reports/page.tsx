@@ -19,7 +19,7 @@ import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import { currentCycleBucket, hasStartedPublishing } from "@/lib/contract";
-import { dormantCompanyIds } from "@/lib/company-visibility";
+import { dormantCompanyIds, isDormantCompany } from "@/lib/company-visibility";
 import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { workRoster } from "@/lib/team";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
@@ -121,7 +121,7 @@ export default async function ReportsPage({
     );
   }
   const companyPlan = companies
-    .filter((c) => c.managed && c.status === "active")
+    .filter((c) => c.managed && !isDormantCompany(c))
     .sort((a, b) => a.priority - b.priority)
     .map((co) => {
       const cycleTasks = cycleTaskCache.get(co.id) ?? [];

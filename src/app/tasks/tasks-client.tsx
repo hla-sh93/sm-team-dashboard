@@ -27,6 +27,7 @@ import {
   deleteTasks,
 } from "@/server/actions/tasks";
 import { formatDateShort } from "@/lib/dates";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task, PhotoSession } from "@/types";
 import {
@@ -225,7 +226,7 @@ export default function TasksClient({
   const isLate = (t: Task) => {
     // شركة موقوفة = شغل مركون بانتظار الزبون — ما بيتأخر (قرار القائدة 5/8).
     const co = t.companyId ? companies.find((c) => c.id === t.companyId) : null;
-    if (co && co.status !== "active") return false;
+    if (co && isDormantCompany(co)) return false;
     if (!t.readyDate) return false;
     const due = new Date(t.readyDate).getTime();
     if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;

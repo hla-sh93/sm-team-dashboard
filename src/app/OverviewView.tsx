@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { isTaskDoneState } from "@/lib/constants";
-import { hideDormantCompanyWork } from "@/lib/company-visibility";
+import { hideDormantCompanyWork, isDormantCompany } from "@/lib/company-visibility";
 import { currentCycle, currentCycleBucket } from "@/lib/contract";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
@@ -52,7 +52,7 @@ export default async function OverviewView({
   // while the team had produced 20+ pieces for several of them.
   const now = new Date();
   const tracked = companies.filter(
-    (c) => c.managed && c.status === "active" && c.posts + c.reels + c.stories + c.aiReels > 0,
+    (c) => c.managed && !isDormantCompany(c) && c.posts + c.reels + c.stories + c.aiReels > 0,
   );
   const cycleTasks = tracked.length
     ? await prisma.task.findMany({

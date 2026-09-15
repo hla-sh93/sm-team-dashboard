@@ -12,6 +12,7 @@
  * idle/overhead salary that no contract consumes, e.g. a team lead).
  */
 import type { Employee, Company } from "@/types";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { taskDays } from "./capacity";
 import { parseWorkDays, periodDays } from "./dates";
 import { isWriterRole, isPublisherRole } from "./workload";
@@ -80,7 +81,7 @@ export function computeFinance(
   year: number,
   month: number,
 ): FinanceResult {
-  const managed = companies.filter((c) => c.managed && c.status === "active");
+  const managed = companies.filter((c) => c.managed && !isDormantCompany(c));
   const period = periodDays(year, month);
   const empById = new Map(employees.map((e) => [e.id, e]));
   const firstPhotographerId = employees.find((e) => e.isPhotographer)?.id ?? null;

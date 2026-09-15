@@ -14,6 +14,7 @@
  * رفيعاً بيحرس أولاً. المنادي الداخلي الموثوق (كروت، شركات) بينادي المحرّك
  * مباشرةً بعد ما يمرّق تحقّقه وصلاحياته هو.
  */
+import { isDormantCompany } from "@/lib/company-visibility";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { isTaskDoneState } from "@/lib/constants";
@@ -224,8 +225,11 @@ export async function generateScheduleInternal(
     // الشركة يلي المحرّك بيخطّط إلها فعلاً — نفس شرط `scheduler.ts` حرفياً.
     // أي شركة برّا هالشرط ما بينولّد إلها ولا كرت، فحذف كروتها بلا ما ينبني
     // بديل = محو صامت.
-    const isPlanned = (c: { managed: boolean; status?: string | null }) =>
-      c.managed && (c.status ?? "active") === "active";
+    const isPlanned = (c: {
+      managed: boolean;
+      status?: string | null;
+      contractEndedAt?: Date | string | null;
+    }) => c.managed && !isDormantCompany(c);
 
     // التوليد المحصور على شركة وحدة بيستبدل نطاق الحذف بـ«هالشركة» — فبيسقط
     // معه استثناء الشركات الراكدة تحت. ولو مرقت شركة راكدة من هون: الحذف
