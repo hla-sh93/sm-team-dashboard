@@ -80,13 +80,31 @@ for (const file of files) {
       `   ✓ ${String(spec.type).padEnd(5)}#${String(spec.pieceNo).padEnd(3)} ${String(spec.stage).padEnd(7)} · ${bits.join(" · ")}`,
     );
   }
+  // نفس قاعدة الخادم (`plan-update.ts`): دلو الحمولة، بلا رقم قطعة، مو ملغى،
+  // المرحلة إن انذكرت، والعنوان **يحتوي** النصّ. كان الفحص بيقارن العنوان
+  // بالمساواة وبكل الدلاء، فرفض «سيناريو تصوير — BW» (عنوانه بيكمل «· دورة
+  // ١٠ أيلول…») رغم إنّ الخادم بيقبله — فحص أشدّ من الخادم بيوقف حمولة صحيحة.
   for (const spec of (payload.adhocStates ?? []) as Row[]) {
-    const hits = tasks.filter((t) => t.companyId === company.id && t.title === spec.title);
+    const needle = String(spec.title).trim();
+    const hits = tasks.filter(
+      (t) =>
+        t.companyId === company.id &&
+        t.year === payload.year &&
+        t.month === payload.month &&
+        t.pieceNo == null &&
+        t.status !== "CANCELED" &&
+        (spec.stage == null || t.stage === spec.stage) &&
+        String(t.title ?? "").includes(needle),
+    );
     if (hits.length !== 1) {
-      console.log(`   ✗ «${spec.title}»: طابق ${hits.length} كرت`);
+      console.log(`   ✗ «${needle}» (${spec.stage ?? "بلا مرحلة"}): طابق ${hits.length} كرت`);
       problems++;
     } else {
-      console.log(`   ✓ خارج الخطة «${spec.title}» · ${hits[0].id}`);
+      const t = hits[0];
+      const bits = [t.id, `«${t.title}»`, `${t.status}`];
+      if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
+      if (spec.hours != null) bits.push(`ساعات ${t.hours}→${spec.hours}`);
+      console.log(`   ✓ خارج الخطة · ${bits.join(" · ")}`);
     }
   }
 }

@@ -1,0 +1,101 @@
+{
+  "_": [
+    "BW — خطة رقم ٦ (أيلول) من الزبون، ملف «BW -Plan No.6- Sep.docx» (وصل على تلغرام، القائدة أرفقته ١٥/٩/٢٠٢٦).",
+    "قرار القائدة ١٥/٩: «سكر كروت BW الدورة السابقة، اعتبرها منجزة. أما كروت الدورة الحالية هي في الخطة المرسلة».",
+    "",
+    "١) الأوصاف: ٤ ريلات (سيناريو عربي + إنكليزي + كابشن) و٤ بوستات (جملة التصميم + كابشن) على دلو الدورة",
+    "   ١٠/٩ → ٩/١٠ (m=8). بوستات ١–٤ مصمَّمة أصلاً (أيمن سلّمها ١٠/٩: BW-post-9-1..4.jpg) وكانت بلا وصف.",
+    "٢) إقفال الدورة السابقة: بلقطة ١٥/٩ ١٠:٣٧ ما في ولا كرت BW مفتوح قبل ١٠/٩ (دورة آب كلها منجزة)،",
+    "   فالبند متوقَّع صفر صفوف — موجود لتوثيق القرار ولالتقاط أي كرت فات على اللقطة.",
+    "٣) كرتا نوال «سيناريو تصوير — BW» و«كتابة بوستات وستوريز — BW» (دورة ١٠/٩): الخطة وصلت مكتوبة من الزبون",
+    "   بسيناريوهات وكابشنات، فالكتابة منجزة من طرفه — بينقفلا بدليل. هما يلي كانا حاجزين تصوير ريل ١ و٢",
+    "   اليوم عن طابور ماجد (مسجَّل بالتسليم ١٥/٩ كبند معلَّق).",
+    "٤) تصوير ريل ١ و٢ اليوم الثلاثاء ١٥/٩ الساعة ١٢:٠٠ (مواعيد القائدة ١٥/٩) — تثبيت الصفَّين على يومهما.",
+    "   ريل ٣ و٤ (نافذة ٢٠–٢٣/٩) بلا موعد بعد؛ ما انلمسوا. المونتاج والنشر بلا تغيير."
+  ],
+  "companyName": "BW",
+  "year": 2026,
+  "month": 8,
+  "items": [
+    {
+      "type": "POST",
+      "pieceNo": 1,
+      "brief": "جملة التصميم:\nأغلب المشاريع التقنية ما تفشل بسبب الفكرة… تفشل بسبب قرار تقني غلط باليوم الأول.\n\nكابشن:\nأغلب اللي يفشلوا بمشروعهم التقني، ما فشلوا لأن الفكرة سيئة.\nفشلوا لأنهم بنوا على قرار تقني غلط من البداية.\nاستشارتنا التقنية تحدد لك المسار الصحيح قبل ما تصرف ريال، مو بعد ما تخسر أشهر.\n\nMost failed tech projects didn't fail because of a bad idea — they failed because of a wrong technical decision at the start.\nOur consulting maps the right path before you spend a dollar, not after you lose months.\n\n#استشارات_تقنية #تحول_رقمي #قرارات_ذكية #TechConsulting #BW"
+    },
+    {
+      "type": "POST",
+      "pieceNo": 2,
+      "brief": "جملة التصميم:\nموقعك يوقف دقيقة وحدة… وتخسر زباين ما ترجع.\n\nكابشن:\nموقعك واجهتك الأولى… وأي تعطل فيه يكلفك ثقة العميل.\nBW تتكفل بحجز نطاقك، استضافتك، وإدارة سيرفراتك بمراقبة مستمرة، عشان موقعك يضل شغال بسرعة وأمان طول الوقت.\nخلك مرتاح، إحنا نراقب البنية التحتية بدالك.\n\nYour website is your first impression — and every outage costs you trust.\nBW manages your domain, hosting, and servers with continuous monitoring, so your site stays fast, secure, and always online.\n\n#ادارة_الخوادم #حجز_نطاقات #استضافة_مواقع #ServerManagement #BW"
+    },
+    {
+      "type": "POST",
+      "pieceNo": 3,
+      "brief": "جملة التصميم:\nسلة مليانة… وعميل طلع من غير ما يدفع.\n\nكابشن:\nأكبر خسارة بالتجارة الإلكترونية مو قلة الزوار… هي سلة الشراء اللي تتهجر بلحظة الدفع.\nBW تدمج لك بوابات دفع إلكتروني آمنة وسريعة، تخلي عميلك يكمل عملية الشراء بثقة.\nكل خطوة دفع أسهل = مبيعات أكثر.\n\nThe biggest e-commerce loss isn't low traffic — it's carts abandoned right at checkout.\nBW integrates fast, secure payment gateways so your customers complete their purchase with confidence.\n\n#الدفع_الالكتروني #تجربة_الشراء #بوابات_دفع #EPayment #BW"
+    },
+    {
+      "type": "POST",
+      "pieceNo": 4,
+      "brief": "جملة التصميم:\nالزائر يقرر خلال أول ٣٠ ثانية إذا رح يكمل رحلته وياك… أو يدور بمكان تاني.\n\nكابشن:\nأول تفاعل رقمي للزائر مع وجهتك يحدد انطباعه كله.\nBW تصمم لك تطبيق سياحي يجمع الخرائط، الحجوزات، والأدلة بمكان وحد، بتجربة استخدام سلسة ومرتبة.\nخلي وجهتك السياحية أول اختيار، مو مجرد خيار.\n\nA visitor's first digital interaction with your destination shapes their entire impression.\nBW designs tourism apps that bring maps, bookings, and guides together in one smooth experience — making your destination the first choice, not just an option.\n\n#تطبيق_سياحي #تجربة_زوار #سياحة #TourismApp #BW"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "brief": "سيناريو الريل (عربي):\nعدد المتابعين مو المشكلة… المشكلة إنه أغلبهم ما بيشتروا.\nفي فرق كبير بين حساب ينشر… وحساب مبني على استراتيجية مدروسة.\nBW ما بتزيدلك بس عدد المنشورات، بتبني خطة محتوى هدفها تحويل المتابع لعميل.\nجاهز تشوف الفرق؟ احجز جلسة تقييم مجانية لحسابك مع BW.\n\nScript (EN):\nFollower count isn't the problem. Conversion is.\nThere's a real difference between an account that posts, and one built on strategy.\nBW doesn't just increase your post count — we build a content plan designed to turn followers into customers.\nBook a free audit of your account with BW\n\nكابشن:\nمتابعينك كثير… بس وين المبيعات؟\nفي وقت أغلب الحسابات تلاحق الأرقام، BW تلاحق النتائج.\nخطة محتوى مبنية على تحليل جمهورك الحقيقي، مو نسخ ولصق.\nاحجز جلسة تقييم مجانية لحسابك، وشوف وين الخلل بالضبط.\n\nFollower count isn't the problem — conversion is.\nWhile most accounts chase numbers, BW chases results with a content strategy built on real audience data.\nBook a free account audit and see exactly where the gap is.\n\n#سوشال_ميديا #استراتيجية_محتوى #نمو_رقمي #SocialMediaStrategy #BW"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "brief": "سيناريو الريل (عربي):\nأغلب أصحاب المشاريع بيفكروا إنه بناء تطبيق يعني أشهر طويلة وميزانية ضخمة.\nالحقيقة؟ مو لازم يكون هيك.\nBW بتبدأ معك بنسخة تجريبية شغالة خلال أسابيع، مو أشهر، وبتطورها معك خطوة خطوة.\nخلي فكرتك تصير منتج فعلي… بميزانية وجدول زمني واضحين من أول يوم.\n\nScript (EN):\nMost founders think an app means months and a huge budget. It doesn't have to.\nBW starts with a working prototype in weeks, not months, then builds it out with you step by step.\nTurn your idea into a real product — with a clear budget and timeline from day one.\nTalk to BW about your app, no commitment needed\n\nكابشن:\nتفكر تسوي تطبيق بس خايف من الوقت والتكلفة؟\nBW تشتغل بمنهجية مرحلية: نسخة تجريبية أول، تطوير تدريجي بعدها، عشان تشوف نتائج حقيقية بدري.\nأنت تحدد الميزانية والوقت، وإحنا نبني معك تطبيق يستاهل.\n\nWorried an app means months and a huge budget?\nBW works in phases — a working prototype first, then iterative development, so you see real progress early.\nYou set the budget and timeline, we build something worth it.\n\n#تطوير_تطبيقات #تطبيقات_مخصصة #ريادة_اعمال #AppDevelopment #BW"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 3,
+      "brief": "سيناريو الريل (عربي):\nكم رسالة وصلتك اليوم على الانستغرام ما قدرت ترد عليها بوقتها؟\nكل رسالة متأخرة… زبون ممكن يروح لمنافس أسرع.\nمتجرك الإلكتروني مع BW يستقبل الطلبات، يعالج الدفع، ويرتب المخزون… وانت نايم.\nخلي المبيعات تصير نظام، مو ملاحقة رسائل.\n\nScript (EN):\nHow many messages went unanswered today?\nEvery late reply is a customer who might buy from someone faster.\nYour online store with BW takes orders, handles payment, and manages stock — while you sleep.\nTurn selling into a system with BW\n\nكابشن:\nلين متى بتلاحق الطلبات برسائل متناثرة؟\nBW تبني لك متجر إلكتروني متكامل: عرض منتجات احترافي، دفع إلكتروني آمن، وتتبع طلبات تلقائي.\nنظام واحد يشتغل نيابة عنك، ٢٤ ساعة، ٧ أيام.\n\nHow long will you keep chasing orders through scattered messages?\nBW builds you a complete online store — professional listings, secure payments, and automatic order tracking.\nOne system working for you, 24/7.\n\n#متجر_الكتروني #تجارة_الكترونية #أتمتة_المبيعات #Ecommerce #BW"
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 4,
+      "brief": "سيناريو الريل (عربي):\nوصلات توصيل الطلبات بتاخذ منك لحد ٣٠٪ من كل فاتورة.\nيعني من كل ١٠٠ ألف مبيعات، ٣٠ ألف بتروح عمولات… مو أرباحك.\nمنيو رقمي وتطبيق طلبات خاص فيك بيخليك تستقبل الطلبات مباشرة، بدون ما حدا ياخذ نسبة من شغلك.\nاسترجع أرباحك… وابني علاقة مباشرة مع زبائنك.\n\nScript (EN):\nDelivery apps can take up to 30% of every order.\nThat's 30,000 out of every 100,000 in sales — gone before it reaches you.\nYour own digital menu and ordering app means orders come straight to you, commission-free.\nKeep your margin. Talk to BW\n\nكابشن:\nتوصيل الطلبات مريح… بس عمولته تاكل من أرباحك.\nBW تبني لك منيو رقمي وتطبيق طلبات خاص باسم مطعمك، عشان تستقبل الطلبات مباشرة وتحتفظ بكامل هامش ربحك.\nمطعمك يستاهل يربح من شغله، مو يشارك فيه حدا.\n\nDelivery apps are convenient — but their commission eats your margin.\nBW builds you a branded digital menu and ordering app so orders come straight to you, and you keep your full profit.\n\n#مطاعم #تطبيق_طلبات #ارباح_المطاعم #RestaurantTech #BW"
+    }
+  ],
+  "pieceStates": [
+    {
+      "type": "REEL",
+      "pieceNo": 1,
+      "stage": "SHOOT",
+      "workDate": "2026-09-15",
+      "readyDate": "2026-09-15",
+      "pinned": true,
+      "evidence": "موعد تصوير BW الثلاثاء ١٥/٩ الساعة ١٢:٠٠ (مواعيد القائدة ١٥/٩). السيناريو من خطة الزبون رقم ٦."
+    },
+    {
+      "type": "REEL",
+      "pieceNo": 2,
+      "stage": "SHOOT",
+      "workDate": "2026-09-15",
+      "readyDate": "2026-09-15",
+      "pinned": true,
+      "evidence": "موعد تصوير BW الثلاثاء ١٥/٩ الساعة ١٢:٠٠ (مواعيد القائدة ١٥/٩). السيناريو من خطة الزبون رقم ٦."
+    }
+  ],
+  "adhocStates": [
+    {
+      "title": "سيناريو تصوير — BW",
+      "stage": "WRITE",
+      "status": "READY",
+      "date": "2026-09-15",
+      "evidence": "الخطة رقم ٦ وصلت من الزبون بسيناريوهات الريلات الأربعة (ملف BW -Plan No.6- Sep.docx) — الكتابة منجزة من طرفه. قرار القائدة ١٥/٩: كروت الدورة الحالية هي الخطة المرسلة."
+    },
+    {
+      "title": "كتابة بوستات وستوريز — BW",
+      "stage": "WRITE",
+      "status": "READY",
+      "date": "2026-09-15",
+      "evidence": "الخطة رقم ٦ وصلت من الزبون بجُمل تصميم وكابشنات البوستات الأربعة (ملف BW -Plan No.6- Sep.docx) — الكتابة منجزة من طرفه. قرار القائدة ١٥/٩."
+    }
+  ],
+  "closePreviousOpenTasks": {
+    "decisionDate": "2026-09-15",
+    "beforeDate": "2026-09-10"
+  }
+}
