@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { resolvePublishMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { isTaskDoneState } from "@/lib/constants";
+import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import PublishingClient from "./publishing-client";
 
 export default async function PublishingPage({
@@ -32,13 +33,17 @@ export default async function PublishingPage({
     return true;
   });
 
+  // الشركة الموقوفة/المؤرشفة ما بيطلع من كروتها شي — ولا بقائمة «متأخر النشر»
+  // (قرار القائدة ١٥/٩: جدارات موقوفة وكانت ١٢ كرت نشر إلها بتطلع هون).
+  const tasks = hideDormantCompanyWork([...bucketTasks, ...extras], companies);
+
   return (
     <PublishingClient
       year={year}
       month={month}
       employees={employees}
       companies={companies}
-      tasks={[...bucketTasks, ...extras]}
+      tasks={tasks}
     />
   );
 }

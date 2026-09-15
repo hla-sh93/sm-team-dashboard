@@ -25,7 +25,7 @@ import {
 } from "@/lib/constants";
 import { ARABIC_DAYS, toISODate } from "@/lib/dates";
 import { assetNameForTask, companySlug } from "@/lib/asset-name";
-import { buildContentNumbers } from "@/lib/cards";
+import { buildContentNumbers, comparePieceSequence } from "@/lib/cards";
 import type { Company, Employee, Task, TelegramMessage } from "@/types";
 
 /** Publish dates within this many days count as "about to slip". */
@@ -116,7 +116,8 @@ export default function TodayClient({
     return companies
       .filter((c) => c.managed && c.status === "active")
       .map((co) => {
-        const mine = open.filter((t) => t.companyId === co.id);
+        // القطع بتسلسلها الرقمي جوّا كل قائمة (١٥/٩) — لا بترتيب الصفوف بالقاعدة.
+        const mine = open.filter((t) => t.companyId === co.id).sort(comparePieceSequence);
         const publishing = mine.filter((t) => t.stage === "PUBLISH" && iso(t.publishDate) === todayISO);
         const delivering = mine.filter((t) => t.stage !== "PUBLISH" && deadlineOf(t) === todayISO);
         const overdue = mine
@@ -124,7 +125,10 @@ export default function TodayClient({
             const d = deadlineOf(t);
             return d != null && d < todayISO;
           })
-          .sort((a, b) => daysLateOfState(b, today) - daysLateOfState(a, today));
+          .sort(
+            (a, b) =>
+              daysLateOfState(b, today) - daysLateOfState(a, today) || comparePieceSequence(a, b),
+          );
         const atRisk = mine.filter((t) => {
           if (t.stage !== "PUBLISH") return false;
           const pd = iso(t.publishDate);

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { isTaskDoneState } from "@/lib/constants";
+import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import { currentCycle, currentCycleBucket } from "@/lib/contract";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
@@ -37,13 +38,10 @@ export default async function OverviewView({
   // («لسا ما بلشنا», and it is late-exempt) and المول الصيني did not renew. Their
   // cards are KEPT in the database — regeneration must never delete them — but
   // the dashboard is «شو لازم يتعمل اليوم», and they were surfacing as أيمن's
-  // overdue work: 26 Siizen cards + 56 المول. The board at `/tasks` still shows
-  // everything, so nothing is hidden from the lead — only the daily panels and
-  // the per-person achievement stop counting dormant work.
-  const dormant = new Set(companies.filter((c) => c.status !== "active").map((c) => c.id));
-  const tasks = [...bucketTasks, ...extras].filter(
-    (t) => !(t.companyId && dormant.has(t.companyId)),
-  );
+  // overdue work: 26 Siizen cards + 56 المول. Since 15/9 the same rule applies
+  // to every live screen (board, today, publishing, brief) through
+  // `company-visibility.ts` — the lead's decision: a paused company shows nothing.
+  const tasks = hideDormantCompanyWork([...bucketTasks, ...extras], companies);
 
   // ---- إنجاز الشركات ------------------------------------------------------
   // Deliberately NOT computed from `tasks` above. That set is the live board:

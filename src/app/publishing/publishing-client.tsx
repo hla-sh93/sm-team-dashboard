@@ -17,7 +17,7 @@ import {
 } from "@/lib/constants";
 import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
-import { buildReelNumbers } from "@/lib/cards";
+import { buildReelNumbers, comparePieceSequence } from "@/lib/cards";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task } from "@/types";
@@ -83,6 +83,8 @@ export default function PublishingClient({
         .sort(
           (a, b) =>
             new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime() ||
+            // نفس اليوم: بالتسلسل الرقمي للقطع، مو بالمعرّف العشوائي (١٥/٩).
+            comparePieceSequence(a, b) ||
             a.id.localeCompare(b.id),
         ),
     [pubTasks, todayISO],

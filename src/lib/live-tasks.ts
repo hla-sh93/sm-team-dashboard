@@ -2,7 +2,8 @@
  * The "live set" of tasks for a month bucket — the exact rule every screen uses:
  *   bucket + open tails of adjacent cycles landing in this calendar month
  *   + ALL still-open work carried over from earlier buckets
- *   + the FULL bucket of any cycle that is still running today.
+ *   + the FULL bucket of any cycle that is still running today
+ *   − everything that belongs to a paused / archived company.
  *
  * Extracted so the Telegram brief and the «اليوم» screen can never drift from
  * the board/overview (PROJECT.md §10). Done work of a FINISHED cycle stays
@@ -12,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
 import { monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { currentCycleBucket } from "@/lib/contract";
+import { dormantCompanyIds } from "@/lib/company-visibility";
 
 /**
  * دلاء الدورات الشغّالة اليوم يلي مو نفس الدلو المعروض.
@@ -23,30 +25,35 @@ import { currentCycleBucket } from "@/lib/contract";
  *
  * قاعدة «المنجز بينأرشف بشهره» بتضل سارية على الدورة **المخلّصة**؛ أما الدورة
  * يلي لساتها شغّالة فإنجازها جزء منها، مو أرشيف.
+ *
+ * وبنفس القراءة بنعرف الشركات الموقوفة/المؤرشفة: كروتها محفوظة بالقاعدة بس ما
+ * بتطلع بولا شاشة حيّة (قرار القائدة ١٥/٩) — لا باللوح ولا اليوم ولا البريف.
  */
-async function runningCycleBuckets(year: number, month: number, at: Date) {
+async function companyScopes(year: number, month: number, at: Date) {
   const companies = await prisma.company.findMany({
-    where: { managed: true, status: "active" },
     select: {
       id: true,
+      status: true,
+      managed: true,
       contractStartDate: true,
       publishStartDate: true,
       renewals: true,
       contractEndedAt: true,
     },
   });
-  const pairs: { companyId: string; year: number; month: number }[] = [];
+  const running: { companyId: string; year: number; month: number }[] = [];
   for (const company of companies) {
+    if (!company.managed || company.status !== "active") continue;
     const bucket = currentCycleBucket(company as never, at);
     if (!bucket) continue;
     if (bucket.year === year && bucket.month === month) continue;
-    pairs.push({ companyId: company.id, year: bucket.year, month: bucket.month });
+    running.push({ companyId: company.id, year: bucket.year, month: bucket.month });
   }
-  return pairs;
+  return { running, dormant: dormantCompanyIds(companies) };
 }
 
 export async function loadLiveTasks(year: number, month: number, at: Date = new Date()) {
-  const running = await runningCycleBuckets(year, month, at);
+  const { running, dormant } = await companyScopes(year, month, at);
   const [bucketTasks, continuationRaw, carryover, runningTasks] = await Promise.all([
     prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
     prisma.task.findMany({ where: monthContinuationWhere(year, month) }),
@@ -67,5 +74,5 @@ export async function loadLiveTasks(year: number, month: number, at: Date = new 
     seen.add(t.id);
     return true;
   });
-  return [...bucketTasks, ...extras];
+  return [...bucketTasks, ...extras].filter((t) => !(t.companyId && dormant.has(t.companyId)));
 }

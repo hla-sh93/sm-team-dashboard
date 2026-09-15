@@ -19,7 +19,13 @@ import {
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
 import { cycleForBucket, cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
-import { buildReelNumbers, cardLabelFor, isGroupableCard } from "@/lib/cards";
+import {
+  buildReelNumbers,
+  cardLabelFor,
+  compareLabelsNaturally,
+  comparePieceSequence,
+  isGroupableCard,
+} from "@/lib/cards";
 import { assetNameForTask } from "@/lib/asset-name";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
@@ -272,12 +278,15 @@ export default function KanbanBoard({
 
   // Ordering the manager asked for: carry-over from PREVIOUS cycles first (the
   // overdue pieces from last month's cycles), THEN everything strictly oldest →
-  // newest by date. Stage/label only break exact-date ties.
+  // newest by date. On the same day the pieces run in their NUMERIC order
+  // (نوع ← رقم القطعة ← المرحلة): the label used to be compared as text, so
+  // «ستوري-11» sorted before «ستوري-9» — the lead's complaint of 15/9.
   const byTime = (a: KCard, b: KCard) =>
     Number(isPreviousCycle(b.repr)) - Number(isPreviousCycle(a.repr)) ||
     cardDateMs(a.repr) - cardDateMs(b.repr) ||
+    comparePieceSequence(a.repr, b.repr) ||
     (STAGE_RANK[a.repr.stage ?? ""] ?? 3) - (STAGE_RANK[b.repr.stage ?? ""] ?? 3) ||
-    a.label.localeCompare(b.label, "ar");
+    compareLabelsNaturally(a.label, b.label);
 
   const groupInfo = (c: KCard): { key: string; label: string; color?: string; sort: number } => {
     const t = c.repr;

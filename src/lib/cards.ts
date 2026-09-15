@@ -58,6 +58,40 @@ export function buildContentNumbers(allTasks: Task[]): Map<string, number> {
 /** Backwards-compatible alias (it now numbers ALL content, not just reels). */
 export const buildReelNumbers = buildContentNumbers;
 
+// ============================================================================
+// ترتيب القطع — كتسلسل مو كنص.
+//
+// القائدة (١٥/٩/٢٠٢٦): «الكروت يجب أن تظهر بالترتيب وتتجدول بالترتيب، منطقياً من
+// 1 لـ10 أو حسب العدد… كيف حاطط جدولة ستوري 11 قبل 9؟». السبب إنّ كسر التعادل
+// بنفس اليوم كان مقارنة نصّية للعنوان: «ستوري-11» أصغر من «ستوري-9» كحروف.
+// ============================================================================
+
+const PIECE_TYPE_RANK: Record<string, number> = { POST: 0, STORY: 1, AI_REEL: 2, REEL: 3 };
+const PIECE_STAGE_RANK: Record<string, number> = { WRITE: 0, DESIGN: 1, SHOOT: 1, EDIT: 2, PUBLISH: 3 };
+
+type PieceLike = Pick<Task, "type" | "pieceNo" | "stage">;
+
+/**
+ * نوع القطعة ← رقمها ← مرحلتها. صفر لما الاتنين نفس القطعة والمرحلة، فيكمّل
+ * المنادي بمعياره التالي (تاريخ، عنوان…). الكرت بلا رقم بيجي آخر نوعه.
+ */
+export function comparePieceSequence(a: PieceLike, b: PieceLike): number {
+  const typeRank =
+    (PIECE_TYPE_RANK[a.type ?? ""] ?? 9) - (PIECE_TYPE_RANK[b.type ?? ""] ?? 9);
+  if (typeRank !== 0) return typeRank;
+  const pieceRank =
+    (a.pieceNo ?? Number.MAX_SAFE_INTEGER) - (b.pieceNo ?? Number.MAX_SAFE_INTEGER);
+  if (pieceRank !== 0) return pieceRank;
+  return (PIECE_STAGE_RANK[a.stage ?? ""] ?? 9) - (PIECE_STAGE_RANK[b.stage ?? ""] ?? 9);
+}
+
+const naturalCollator = new Intl.Collator("ar", { numeric: true, sensitivity: "base" });
+
+/** مقارنة عناوين بالأرقام كأرقام: «بوست-9» قبل «بوست-10». */
+export function compareLabelsNaturally(a: string, b: string): number {
+  return naturalCollator.compare(a, b);
+}
+
 /** Label for one content card — identical wording in every view. Each piece is
  *  numbered; publish cards are prefixed (جدولة for feed, نشر for reels). */
 export function cardLabelFor(

@@ -18,7 +18,8 @@ import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
-import { currentCycleBucket } from "@/lib/contract";
+import { currentCycleBucket, hasStartedPublishing } from "@/lib/contract";
+import { dormantCompanyIds } from "@/lib/company-visibility";
 import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { workRoster } from "@/lib/team";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
@@ -33,11 +34,25 @@ export default async function ReportsPage({
   const { year, month } = await resolveActiveMonth(await searchParams);
   const label = monthLabel({ year, month });
 
-  const [employees, companies, tasks] = await Promise.all([
+  const [employees, companies, monthTasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany(),
     prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
   ]);
+
+  // الشركة الموقوفة/المؤرشفة ما بيطلع من كروتها **المفتوحة** شي (قرار القائدة
+  // ١٥/٩). المنجَز بيضل: هو شغل انعمل فعلاً وبينحسب لصاحبه.
+  const dormant = dormantCompanyIds(companies);
+  const tasks = monthTasks.filter(
+    (t) => isTaskDoneState(t) || !(t.companyId && dormant.has(t.companyId)),
+  );
+  // ولا «متأخر» لشركة ما بلّش نشرها أو معفاة بقرار — نفس قاعدة البريف الصباحي؛
+  // كانت صفحة التقارير بتعدّ كروت جدارات (موقوفة) ونور (بلا دورة) كتأخير.
+  const lateExempt = new Set(
+    companies
+      .filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim())
+      .map((c) => c.id),
+  );
 
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
 
@@ -156,7 +171,8 @@ export default async function ReportsPage({
     arr.push(t);
     allByAssignee.set(t.assigneeId, arr);
   }
-  const isLate = isTaskLateState;
+  const isLate = (t: (typeof tasks)[number]) =>
+    isTaskLateState(t) && !(t.companyId && lateExempt.has(t.companyId));
   // Start = when work began (else planned workDate); End = when finished (else the
   // deadline / publish date).
   const startOf = (t: (typeof tasks)[number]) => t.startedAt ?? t.workDate;
