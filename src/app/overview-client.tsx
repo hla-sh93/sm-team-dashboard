@@ -21,7 +21,14 @@ import {
   isTaskLateState,
   taskColor,
 } from "@/lib/constants";
-import { buildReelNumbers, cardLabelFor, groupTasksIntoCards, type GroupedCard } from "@/lib/cards";
+import {
+  buildReelNumbers,
+  cardLabelFor,
+  compareLabelsNaturally,
+  comparePieceSequence,
+  groupTasksIntoCards,
+  type GroupedCard,
+} from "@/lib/cards";
 import type { CompanyProgress } from "@/lib/progress";
 import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
 import { personDayState } from "@/lib/person-day-state";
@@ -279,10 +286,15 @@ export default function OverviewClient({
       const overdue = dl ? toISODate(dl) < todayISO : false;
       return { card, dl, overdue };
     })
+    // نفس الموعد = بالتسلسل الرقمي (نوع ← رقم ← مرحلة) لا بترتيب الوصول: كان
+    // «ريل-2 · BW» يطلع قبل «ريل-1 · BW» بنفس اليوم — قرار القائدة ١٥/٩:
+    // الكروت تظهر بالترتيب من ١ للعدد.
     .sort(
       (a, b) =>
         Number(b.overdue) - Number(a.overdue) ||
-        (a.dl?.getTime() ?? 0) - (b.dl?.getTime() ?? 0),
+        (a.dl?.getTime() ?? 0) - (b.dl?.getTime() ?? 0) ||
+        comparePieceSequence(a.card.repr, b.card.repr) ||
+        compareLabelsNaturally(a.card.repr.title ?? "", b.card.repr.title ?? ""),
     );
 
   // Group the critical cards by the person responsible so the home page reads as
