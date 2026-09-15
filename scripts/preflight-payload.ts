@@ -9,8 +9,11 @@
  *   npx tsx scripts/preflight-payload.ts backups/prod-<آخر لقطة>.json scripts/data/<file>.json ...
  */
 import { readFileSync } from "node:fs";
+import { parseWorkDays, toISODate } from "@/lib/dates";
+import { planCourseCards, type CourseItem, type CoursePoster } from "@/lib/course-cards";
 
 type Row = Record<string, unknown>;
+const WEEKDAY = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const L = (v: unknown) => {
   if (!v) return "—";
   const d = new Date(v as string);
@@ -105,6 +108,64 @@ for (const file of files) {
       if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
       if (spec.hours != null) bits.push(`ساعات ${t.hours}→${spec.hours}`);
       console.log(`   ✓ خارج الخطة · ${bits.join(" · ")}`);
+    }
+  }
+  // كروت الدورات: نفس الحساب يلي بيكتبه الخادم (`course-cards.ts`) — بيفرجيك
+  // لكل كرت هل رح ينخلق، أو ينعاد توقيته، أو يضل متل ما هو لأنه منجز/ملغى.
+  type LooseBlock = {
+    designer: string;
+    publisher: string;
+    publishDaysBefore?: number;
+    items: (Omit<CourseItem, "designHours"> & { designHours?: number })[];
+    poster?: Omit<CoursePoster, "hours"> & { hours?: number };
+  };
+  const block = payload.courses as LooseBlock | undefined;
+  if (block) {
+    const employees = snap.employees as Row[];
+    const person = (name: string) => employees.find((e) => e.name === name);
+    const designer = person(block.designer);
+    const publisher = person(block.publisher);
+    if (!designer || !publisher) {
+      console.log(`   ✗ الدورات: ${!designer ? `المصمّم «${block.designer}»` : `الناشر «${block.publisher}»`} مو موجود باللقطة`);
+      problems++;
+    } else {
+      const plan = planCourseCards(
+        {
+          publishDaysBefore: block.publishDaysBefore ?? 10,
+          items: block.items.map((item) => ({ ...item, designHours: item.designHours ?? 2 })),
+          poster: block.poster ? { ...block.poster, hours: block.poster.hours ?? 3 } : undefined,
+        },
+        { id: String(designer.id), name: String(designer.name), workDays: parseWorkDays(designer.workDays as string) },
+        { id: String(publisher.id), name: String(publisher.name), workDays: parseWorkDays(publisher.workDays as string) },
+      );
+      if (!plan.ok) {
+        console.log(`   ✗ ${plan.error}`);
+        problems++;
+      } else {
+        for (const card of plan.cards) {
+          const t = tasks.find((row) => row.id === card.id);
+          const settled =
+            t &&
+            (t.status === "CANCELED" ||
+              t.board === "DONE" ||
+              t.finishedAt != null ||
+              ["READY", "PUBLISHED"].includes(String(t.status)));
+          const day = card.stage === "PUBLISH" ? card.publishDate! : card.readyDate;
+          const when = `${toISODate(day)} ${WEEKDAY[day.getDay()]}`;
+          const who = card.stage === "PUBLISH" ? publisher.name : designer.name;
+          const verdict = !t
+            ? "جديد"
+            : settled
+              ? `منجز/ملغى (${t.status}) — ما بينلمس`
+              : t.companyId !== company.id
+                ? "✗ تبع شركة تانية"
+                : `مفتوح — يعاد توقيته ${L(card.stage === "PUBLISH" ? t.publishDate : t.readyDate)}→${toISODate(day)}`;
+          if (verdict.startsWith("✗")) problems++;
+          console.log(
+            `   ${verdict.startsWith("✗") ? "✗" : "✓"} ${card.stage === "PUBLISH" ? "🚀" : "🎨"} ${when} · ${who} · ${card.hours}س${card.priority === "URGENT" ? " · مستعجل" : ""} · ${card.title} — ${verdict}`,
+          );
+        }
+      }
     }
   }
 }

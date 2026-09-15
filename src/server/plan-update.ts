@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import {
@@ -15,7 +16,8 @@ import {
   normalizeStatusForStage,
   statusToBoard,
 } from "@/lib/constants";
-import { fromISODate, toISODate } from "@/lib/dates";
+import { fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
+import { COURSE_SLUG, courseCardBucket, planCourseCards } from "@/lib/course-cards";
 import { completeProductionForPublishedTask } from "@/server/actions/tasks";
 import { revalidateAll } from "@/lib/revalidate";
 
@@ -177,6 +179,61 @@ const planUpdateSchema = z
       .max(60)
       .regex(/^[A-Za-z0-9._]+$/, "اسم الحساب: أحرف وأرقام و. و_ فقط، بلا @ وبلا رابط")
       .optional(),
+    /**
+     * دورات التدريب — إنشاء كروت الدورات من الحمولة.
+     *
+     * شغل التدريب مدفوع بمواعيد الدورات لا بخطة شهرية: لكل دورة كرت **تصميم**
+     * إعلان وكرت **نشر** قبل بدايتها بعدد أيام محدَّد. كانت الكروت تنخلق بسكربت
+     * على قاعدة البيانات مباشرة (`schedule-training-courses.ts`) ثم بخطوة البناء —
+     * والبناء ما عاد يلمس الداتا (`28b7ec9`)، فما ضلّ طريق مدقَّق يوصّل جدول شهر
+     * جديد للإنتاج. هون بيمرّ من نفس المسار كل-أو-لا-شي وبدليل. الحساب نفسه
+     * بـ`course-cards.ts` مشان فحص ما قبل التطبيق يقول بالضبط شو رح ينكتب.
+     *
+     * المعرّفات ثابتة (`course_<slug>_design` / `course_<slug>_publish`) فإعادة
+     * التطبيق ما بتكرّر: الكرت المنجز أو الملغى ما بينلمس، والمفتوح بينسحب لمواعيد
+     * الحمولة وبياخد سطر الدليل.
+     */
+    courses: z
+      .object({
+        /** المصمّم والناشر بالاسم — صاحب الشركة الافتراضي مو بالضرورة يلي بيصمّم فعلاً. */
+        designer: z.string().trim().min(1).max(60),
+        publisher: z.string().trim().min(1).max(60),
+        /** النشر قبل بداية الدورة بهالعدد من الأيام (بينزلق لأقرب يوم دوام قبله). */
+        publishDaysBefore: z.number().int().min(0).max(60).default(10),
+        items: z
+          .array(
+            z
+              .object({
+                slug: z.string().regex(COURSE_SLUG, "معرّف الدورة: أحرف لاتينية صغيرة وأرقام و- فقط"),
+                title: z.string().trim().min(3).max(200),
+                start: isoDate,
+                end: isoDate.optional(),
+                /** ساعات · مدرّب · رسوم — بينكتب بوصف الكرتين. */
+                details: z.string().trim().max(1000).optional(),
+                /** يوم التصميم — قرار القائدة، لا حساب آلي. */
+                designOn: isoDate,
+                designHours: z.number().min(0.25).max(8).default(2),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(20),
+        /** تصميم جدول برامج الشهر (بوستر) — كرت تصميم بلا كرت نشر. */
+        poster: z
+          .object({
+            slug: z.string().regex(COURSE_SLUG, "معرّف البوستر: أحرف لاتينية صغيرة وأرقام و- فقط"),
+            title: z.string().trim().min(3).max(200),
+            designOn: isoDate,
+            hours: z.number().min(0.25).max(8).default(3),
+            details: z.string().trim().max(1000).optional(),
+          })
+          .strict()
+          .optional(),
+        /** مصدر الجدول وقرار القائدة — بينكتب على كل كرت. */
+        evidence: z.string().trim().min(3).max(500),
+      })
+      .strict()
+      .optional(),
     /** تعليق الحمولة — شرح القرار ومصدره. بينقرا الإنسان، مو الكود. */
     _: z.unknown().optional(),
   })
@@ -197,10 +254,27 @@ const planUpdateSchema = z
           value.closePreviousOpenTasks ||
           value.pieceStates?.length ||
           value.adhocStates?.length ||
+          value.courses ||
           value.instagramHandle,
       ),
     { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
   );
+
+/** للفحوص وسكربت ما قبل التطبيق — نفس المخطّط يلي بيقرأه الخادم. */
+export function parsePlanUpdatePayload(input: unknown) {
+  return planUpdateSchema.safeParse(input);
+}
+
+/** سطر دليل بينضاف لملاحظات الكرت مرة وحدة — نفس قاعدة `stateUpdateFor`. */
+function withEvidenceLine(notes: string | null | undefined, evidence: string) {
+  const line = evidence.trim();
+  const kept = (notes ?? "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!kept.includes(line)) kept.push(line);
+  return kept.join("\n");
+}
 
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
 const stageKeyOf = (item: { type: string; pieceNo: number; stage: string }) =>
@@ -448,6 +522,89 @@ export async function applyPlanUpdatePayload(input: unknown) {
           ok: false as const,
           error: `كروت خارج الخطة في دورة ${company.name}: ${problems.join(" · ")}`,
         };
+      }
+    }
+
+    // كروت الدورات: بتنحسب وتنفحص كلها قبل أي كتابة — مصمّم أو ناشر مو موجود،
+    // أو يوم تصميم بعطلة، أو تصميم بعد النشر = الحمولة كلها بترجع بلا كتابة.
+    const courseOps: Prisma.PrismaPromise<unknown>[] = [];
+    let createdCourseCards = 0;
+    let updatedCourseCards = 0;
+    let unchangedCourseCards = 0;
+    if (data.courses) {
+      const block = data.courses;
+      const [designer, publisher] = await Promise.all([
+        prisma.employee.findFirst({ where: { name: block.designer } }),
+        prisma.employee.findFirst({ where: { name: block.publisher } }),
+      ]);
+      if (!designer) return { ok: false as const, error: `المصمّم «${block.designer}» غير موجود` };
+      if (!publisher) return { ok: false as const, error: `الناشر «${block.publisher}» غير موجود` };
+      const plan = planCourseCards(
+        block,
+        { id: designer.id, name: designer.name, workDays: parseWorkDays(designer.workDays) },
+        { id: publisher.id, name: publisher.name, workDays: parseWorkDays(publisher.workDays) },
+      );
+      if (!plan.ok) return { ok: false as const, error: plan.error };
+      const existing = await prisma.task.findMany({
+        where: { id: { in: plan.cards.map((card) => card.id) } },
+        select: { id: true, companyId: true, status: true, board: true, finishedAt: true, notes: true },
+      });
+      const byId = new Map(existing.map((task) => [task.id, task]));
+      for (const card of plan.cards) {
+        const found = byId.get(card.id);
+        if (found && found.companyId !== companyId) {
+          return { ok: false as const, error: `الكرت ${card.id} يخصّ شركة أخرى` };
+        }
+        const settled =
+          found &&
+          (found.status === "CANCELED" ||
+            found.board === "DONE" ||
+            found.finishedAt != null ||
+            DONE_STATUSES.includes(found.status as never));
+        if (settled) {
+          // المنجز تاريخه صار تاريخاً، والملغى قرار — التنين ما بينلمسوا.
+          unchangedCourseCards++;
+          continue;
+        }
+        const fields = {
+          title: card.title,
+          hours: card.hours,
+          priority: card.priority,
+          stage: card.stage,
+          workDate: card.workDate,
+          readyDate: card.readyDate,
+          publishDate: card.publishDate,
+          assigneeId: card.assigneeId,
+          brief: card.brief,
+          notes: withEvidenceLine(found?.notes, block.evidence),
+          isPinned: true,
+          ...courseCardBucket(card),
+        };
+        if (found) {
+          updatedCourseCards++;
+          courseOps.push(
+            prisma.task.updateMany({
+              where: { id: card.id, status: { notIn: [...DONE_STATUSES, "CANCELED"] } },
+              data: fields,
+            }),
+          );
+        } else {
+          createdCourseCards++;
+          courseOps.push(
+            prisma.task.create({
+              data: {
+                id: card.id,
+                kind: "ADHOC",
+                quantity: 1,
+                status: "NOT_STARTED",
+                board: "TODO",
+                isAuto: false,
+                companyId,
+                ...fields,
+              },
+            }),
+          );
+        }
       }
     }
 
@@ -720,7 +877,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
       writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
     }
 
-    const results = await prisma.$transaction(writes);
+    // كروت الدورات آخر المعاملة — الشرائح المحسوبة فوق (الإقفال والاستعادة)
+    // بتعتمد على مواضع الكتابات السابقة.
+    const results = (await prisma.$transaction([...writes, ...courseOps])) as { count?: number }[];
 
     // قطعة انتشرت = كل مراحلها خلصت. الحمولة بتلمس الكرت المطلوب وحده، فبلا
     // هالخطوة بيضل المونتاج أو التصميم مفتوحاً والقطعة منشورة — حالة مستحيلة
@@ -749,12 +908,12 @@ export async function applyPlanUpdatePayload(input: unknown) {
     const closedPreviousTasks = previousOpenTasks.length
       ? results
           .slice(closureWriteStart, closureWriteStart + previousOpenTasks.length)
-          .reduce((sum, result) => sum + result.count, 0)
+          .reduce((sum, result) => sum + (result.count ?? 0), 0)
       : 0;
     const restoredTasks = tasksToRestore.length
       ? results
           .slice(restoreWriteStart, restoreWriteStart + tasksToRestore.length)
-          .reduce((sum, result) => sum + result.count, 0)
+          .reduce((sum, result) => sum + (result.count ?? 0), 0)
       : 0;
     revalidateAll();
     return {
@@ -765,7 +924,11 @@ export async function applyPlanUpdatePayload(input: unknown) {
       updatedAdhoc: adhocResolved.length,
       closedPreviousTasks,
       restoredTasks,
-      affectedRows: results.reduce((sum, result) => sum + result.count, 0),
+      createdCourseCards,
+      updatedCourseCards,
+      unchangedCourseCards,
+      // الإنشاء بيرجع الصف لا عدّاداً — بينحسب صفاً واحداً.
+      affectedRows: results.reduce((sum, result) => sum + (result.count ?? 1), 0),
     };
   } catch (error) {
     // الرسالة للقائدة بتضل عامّة، بس السبب لازم ينكتب مطرح ما بينقرا: بلا هالسطر

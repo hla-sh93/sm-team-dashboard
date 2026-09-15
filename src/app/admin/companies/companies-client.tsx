@@ -319,14 +319,21 @@ export default function CompaniesClient({
       start(async () => {
         const result = await applyCompanyPlanUpdate(payload);
         if (result.ok) {
-          const closed = result.closedPreviousTasks
-            ? ` وإغلاق ${result.closedPreviousTasks} مهمة سابقة`
-            : "";
-          const restored = result.restoredTasks
-            ? ` واستعادة ${result.restoredTasks} مهمة من الإغلاق الخاطئ`
-            : "";
+          // الرسالة بتعدّ كل ما تغيّر — كانت تعدّ الأوصاف وحدها فتقول «٠ وصفاً»
+          // لحمولة نجحت بالكامل (حالات، كروت خارج الخطة، كروت دورات).
+          const parts = [
+            result.describedPieces ? `${result.describedPieces} وصفاً` : "",
+            result.updatedStates ? `${result.updatedStates} حالة قطعة` : "",
+            result.updatedAdhoc ? `${result.updatedAdhoc} كرتاً خارج الخطة` : "",
+            result.createdCourseCards ? `${result.createdCourseCards} كرت دورة جديداً` : "",
+            result.updatedCourseCards ? `${result.updatedCourseCards} كرت دورة معاد توقيته` : "",
+            result.closedPreviousTasks ? `إغلاق ${result.closedPreviousTasks} مهمة سابقة` : "",
+            result.restoredTasks ? `استعادة ${result.restoredTasks} مهمة من الإغلاق الخاطئ` : "",
+          ].filter(Boolean);
           toast(
-            `تم تطبيق ${result.describedPieces} وصفاً على خطة ${c.name}${closed}${restored}`,
+            parts.length
+              ? `تم تطبيق الحمولة على ${c.name}: ${parts.join(" · ")}`
+              : `تم قبول الحمولة على ${c.name} دون أي تغيير`,
           );
           router.refresh();
         } else toast(result.error, "error");
