@@ -2,13 +2,13 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-09-13**
+Last updated: **2026-09-15**
 
-Workspace: `C:\Users\hla2-\Videos\Social\sm-team-dashboard`
+Workspace: `C:\Users\hla2-\Videos\Social\socialmediateam-live` (fresh clone of `origin/main` at `ffcd0bc`, 2026-09-15). **⚠️ The former workspace `C:\Users\hla2-\Videos\Social\sm-team-dashboard` no longer holds this repository**: on 2026-09-14 its contents were replaced by the May-2026 zip extraction (`sm-team-dashboard.zip`, Apr-30 code, no `.git`, no handoff). A full day of test/report work was done there on 2026-09-15 against that stale copy before the mismatch was noticed; nothing from it applies to production. The lead's own working folder appears to be `E:\Hla\Social\sm-team-dashboard` (drive not mounted here). Uncommitted local work that may exist there is not in this clone.
 
 Production alias: <https://socialmediateam.vercel.app>
 
-Current phase: **Full application audit requested by the user; report completed locally at `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`. Current local HEAD `556c9db`; 555/555 tests pass. Six confirmed audit findings remain, including unguarded full regeneration, inconsistent overdue reporting, live Today hydration/timezone and Telegram-match display defects, eight dangling dependencies in the latest saved snapshot, and an audit exit-code defect. Latest saved snapshot is 2026-09-05 10:26 Baghdad (1,129 tasks); live browser inspected 2026-09-06. No audit fix, production mutation, deployment, or local database sync performed. Earlier company states and next actions below are historical and must be reconciled with newer dated entries before use.**
+Current phase: **2026-09-15 — two live issues from the lead (designer day shows one card; shoot-week re-dating for ماجد/أليسار). Diagnosis and three draft payloads are in the 2026-09-15 log entry; nothing applied, preflight blocked on a production snapshot. Earlier phase text follows.** Full application audit requested by the user; report completed locally at `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`. Current local HEAD `556c9db`; 555/555 tests pass. Six confirmed audit findings remain, including unguarded full regeneration, inconsistent overdue reporting, live Today hydration/timezone and Telegram-match display defects, eight dangling dependencies in the latest saved snapshot, and an audit exit-code defect. Latest saved snapshot is 2026-09-05 10:26 Baghdad (1,129 tasks); live browser inspected 2026-09-06. No audit fix, production mutation, deployment, or local database sync performed. Earlier company states and next actions below are historical and must be reconciled with newer dated entries before use.**
 
 ## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
 
@@ -691,6 +691,46 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-09-15 (later) — Claude — Paused companies hidden everywhere; numeric piece order in every list
+
+Lane: code, local. **Not pushed, not deployed.** No production data touched.
+
+- **[USER-CONFIRMED 2026-09-15]** The lead: جدارات's publishing is paused, yet its cards appear in the publishing screen — "we agreed nothing of a company's cards shows when publishing is paused and no publish-start date is set". And: cards must appear and be scheduled in numeric order (1 → N); she saw «جدولة ستوري 11» listed before «ستوري 9».
+- **[VERIFIED — CODE]** The dormant rule (`status !== "active"` → cards hidden) existed only in `OverviewView.tsx` and `telegram/brief.ts`. `loadLiveTasks` (tasks board, today, service), `publishing/page.tsx` and `reports/page.tsx` read cards directly, so جدارات's 12 open publish cards (bucket m=7, cycle 11/8 → 10/9) surfaced in «متأخر النشر» and in the reports' late diagnosis. **[LIVE — read-only]** Confirmed on production: publishing overdue strip lists جدارات ريل AI-1…6 and بوست-1…6.
+- **[VERIFIED — LIVE]** جدارات still carries `publishStartDate` 11/8 (its cards show the cycle label), i.e. it was paused through the company form's status field, not through «إيقاف النشر» (`pauseCompanyPublishing`, which nulls the date and deletes open auto cards). The new rule hides the cards either way; the stored date is left as is — the lead decides whether to clear it.
+- **[VERIFIED — CODE]** Ordering: `KanbanBoard.byTime` broke same-day ties with `label.localeCompare` — a text comparison, so «ستوري-11» sorted before «ستوري-9». Piece numbers themselves are assigned by publish date per company/type (`pipeline.ts`), so scheduling order is numeric; only the display tie-breaks were textual or by random id.
+- **[LOCAL-ONLY — IMPLEMENTED]**
+  - `src/lib/company-visibility.ts` (new): `isDormantCompany`, `dormantCompanyIds`, `hideDormantCompanyWork` — one place for the rule.
+  - `src/lib/live-tasks.ts`: reads all companies once, keeps running-cycle logic for active ones, drops every card of a paused/archived company from the live set (board, today, brief service).
+  - `src/app/publishing/page.tsx`: same filter → جدارات disappears from the calendar and «متأخر النشر».
+  - `src/app/OverviewView.tsx`: uses the shared helper (behaviour unchanged).
+  - `src/app/reports/page.tsx`: open cards of dormant companies dropped (done work kept for the person's achievement); the late diagnosis also skips companies that have not started publishing or carry `lateExemptReason` — same rule as the brief (3/9 diagnosis item ج).
+  - `src/lib/cards.ts`: `comparePieceSequence` (type → pieceNo numeric → stage) and `compareLabelsNaturally` (numeric collator). Used by the board tie-break, the publishing overdue strip (was `id` order) and the today page company lists.
+  - Tests: `tests/company-visibility.test.ts`, `tests/piece-order.test.ts`.
+- **[VERIFIED — LOCAL GATES]** `tsc --noEmit` clean, ESLint clean on changed files, focused suites green (see next entry for the full run).
+- **[PENDING]** Push to `main` (Vercel auto-deploys) after the lead's go-ahead; then read-only live check: `/publishing` without جدارات, `/tasks` same-day cards in numeric order.
+- **[SECURITY — flag]** `.env.bak-20260911` is a tracked file in the repository. Not opened; if it holds real values they are in Git history and must be rotated and the file removed from tracking.
+
+### 2026-09-15 — Claude — Shoot-week re-dating drafted; Ayman's one-card day diagnosed; workspace mismatch recorded
+
+Lane: read-only inspection of production + local payload drafting. **No production mutation, no deployment, no push, no Telegram/Instagram action.** Nothing here is applied.
+
+- **[USER-CONFIRMED 2026-09-15]** The lead reported two issues on the live site: (1) the home «مهام اليوم» does not fill a designer's capacity — should be 6 designs; (2) new shoot appointments: **Tue 15/9 عبادة 02:00 + BW 12:00 · Wed 16/9 التوظيف 11:00 + فونيتيك 01:00 · Thu 17/9 وصل 2:00** — reorder ماجد's and أليسار's cards **only** (no new cards), publishing may move if needed. She also stated that all work is on the live Vercel copy, not local.
+- **[VERIFIED — LIVE, read-only]** Home «مهام اليوم» for أيمن shows **one** card, «تصميم بوست-2 · Phoenitech». The «تعديل مهام اليوم» checklist on production labels it **«يوم كامل · 100%»** and locks the rest of the list. Root cause is the same defect fixed for عبادة بوست-6 on 3/9: the four ad-hoc cards «تصميم بوست-1..4 · Phoenitech» (all IN_PROGRESS, work 14/9) are estimated at 8 hours each, so the first one is exclusive and the queue stops after it. Data, not code. Draft fix: `scripts/data/prod-15-phoenitech-adhoc-hours-2026-09.json` (hours → 1.33, evidence line, nothing else changes). Expected effect: Ayman's day fills to his rate from the available cards (4 Phoenitech posts, وصل ستوري-9, عبادة ستوري-9/10).
+- **[VERIFIED — LIVE, read-only]** Reel cards relevant to the shoot week, read from `/tasks`, `/reports`, `/publishing` on 2026-09-15:
+  - **BW**: REEL#1/#2 SHOOT already on **15/9** (blocked by نوال's «سيناريو تصوير — BW» due 15/9). EDIT 16/9 & 17/9, publish 17/9 & 20/9 — montage is the day after the shoot (below the 2-day rule); left untouched, flagged.
+  - **Phoenitech**: REEL#1/#2 SHOOT already on **16/9** (blocked by «سيناريو تصوير — Phoenitech» due 16/9). EDIT 17/9 (next day) & 24/9, publish 20/9 & 27/9; left untouched, flagged.
+  - **التوظيف**: REEL#3 SHOOT late (window 31/8–2/9, publish 14/9 passed); REEL#4/#5/#6 SHOOT window 14–16/9; REEL#7/#8 window 21–23/9.
+  - **وصل**: REEL#3 SHOOT 6/9 not done (publish 12/9 passed); REEL#4/#5/#6 window 10–13/9 passed with no shoot (REEL#4 publish 17/9 = the new shoot day); REEL#7/#8 window 17–20/9.
+  - **عبادة**: **no open SHOOT card exists** (REEL#1/#3 booked 9/9 under `prod-11`, only «نشر ريل-3 ← 17/9» remains open; REEL#2 published 18/8). The Tuesday 02:00 Obada appointment therefore has nothing to reorder — **[PENDING — ask the lead]** which piece it is; creating a card is outside her instruction.
+  - **Not in the lead's week and still late**: مركز البلسم REEL#4 SHOOT (9/9), Siizen REEL#3–#6 SHOOT (8–13/9). Majed's Wed (4+2) and Thu (6) are full at his 6/day rate; Tue has room (BW 2 reels).
+- **[LOCAL-ONLY — DRAFT, not preflighted]** Payloads written from the engine rules (`LEAD.REEL` 2, montage 2–3 days after the shoot on the editor's Sun–Thu week, أليسار 3/day, Saturday publishable), numeric publish order kept inside each cycle:
+  - `scripts/data/prod-16-tawzeef-shoot-2026-09-16.json` — REEL#3/#4/#5/#6 SHOOT → 16/9; EDIT #3/#4/#5 → Sun 20/9; publish #3 22/9 (was 14/9), #4 23/9 (was 19/9), #5 24/9 (was 22/9); #6 montage 24/9 / publish 26/9 unchanged. Alternative noted in the file: leave #5 and put #3 → 23/9, #4 → 24/9.
+  - `scripts/data/prod-17-wasl-shoot-2026-09-17.json` — REEL#3–#8 SHOOT → 17/9 (six reels = Majed's full day); EDIT #3/#4/#5 → Sun 20/9, #6/#7 → Mon 21/9, #8 stays 28/9; publish #3 22/9 (was 12/9), #4 23/9 (was 17/9), #5 24/9 (was 19/9), #6 Sat 26/9 (was 23/9), #7 27/9 (was 24/9), #8 30/9 unchanged. Posts/stories untouched; everything stays inside 1/9→30/9.
+  - Appointment **times** go into the evidence lines (no time field exists — same as المخبر 3:00).
+- **[BLOCKED — needs the lead]** (a) No production snapshot is reachable from this machine: `backups/prod-*.json` are untracked and lived in the old workspace, and `CRON_SECRET` is not available to any agent. `preflight-payload.ts` and a local dry run need `npm run backup:pull` with a `.env.local` holding the secret in this clone. (b) Applying is through «استيراد خطة JSON» on `/admin/companies` with the lead's session. Order after approval: prod-15 (Phoenitech hours) → prod-16 (التوظيف) → prod-17 (وصل); then `backup:pull` and confirm on the live board.
+- **[INFERENCE]** The stale-copy incident suggests the previous day's «daily sync» request was executed against the wrong folder; the scheduled 12:00 `backup:daily` task had already not run since 2026-09-10 (see 13/9 entry). Both need the lead's confirmation of where her real working tree is.
 
 ### 2026-09-13 — Claude — Telegram match rate diagnosed end-to-end; parser bug fixed; Phoenitech plan arrived while paused
 
