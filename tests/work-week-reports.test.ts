@@ -138,8 +138,8 @@ describe("جدول الكرونات", () => {
     expect(at("/api/cron/shoot-appointments")?.split(" ")[4]).toBe("0");
   });
 
-  it("تقرير المساء ٥ المسا بتوقيتنا (UTC+3)", () => {
+  it("تقرير المساء ٨ المسا بتوقيتنا (UTC+3) — القائدة ١٦/٩", () => {
     const [, hour] = at("/api/cron/done-report")!.split(" ");
-    expect((Number(hour) + 3) % 24).toBe(17);
+    expect((Number(hour) + 3) % 24).toBe(20);
   });
 });

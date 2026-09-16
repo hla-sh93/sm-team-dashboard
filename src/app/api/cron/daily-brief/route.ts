@@ -21,9 +21,9 @@ export async function GET(req: Request) {
   if (auth !== `Bearer ${secret}`)
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  // Two scheduled calls a day (see vercel.json): ?wave=general at 07:45 and
-  // ?wave=detail at 08:00. An unrecognised value sends everything, so a
-  // mis-typed cron entry can never silently drop a wave.
+  // One scheduled call a day (see vercel.json): ?wave=general at 07:45 — توزيع
+  // المهام. ?wave=detail is on demand only (١٦/٩). An unrecognised value sends
+  // everything, so a mis-typed cron entry can never silently drop a wave.
   const raw = new URL(req.url).searchParams.get("wave");
   const wave: BriefWave = raw === "general" || raw === "detail" ? raw : "all";
 

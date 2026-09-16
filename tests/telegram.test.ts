@@ -438,7 +438,8 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     // علامة RTL بأول السطر مقصودة: منشن لاتيني (Nawal، @Omar_ORR) كان بيقلب
     // اتجاه السطر بعرض تلغرام فيطلع «خطة مانغو Nawal» والاسم بالآخر.
     expect(line.startsWith("‏")).toBe(true);
-    expect(line.replace(/‏/g, "")).toBe("أيمن أغاليا: بوست-1");
+    // (١٦/٩) الشركة والعدد والنوع — بلا ترقيم كل بوست.
+    expect(line.replace(/‏/g, "")).toBe("أيمن أغاليا 1 بوست");
   });
 
   it("كل سطر بيبلّش بعلامة RTL حتى يضل الاسم أول شي", () => {
@@ -461,7 +462,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     const withHandle = employee({ ...designer, telegramUsername: "Ayman_D" } as Partial<Employee>);
     const design = task({ id: "d", stage: "DESIGN", type: "POST", readyDate: workday, assigneeId: "d1" });
     const brief = buildDailyBrief({ ...base, employees: [withHandle], tasks: [design] });
-    expect(brief.schedule.text).toContain("@Ayman_D أغاليا: بوست-1");
+    expect(brief.schedule.text).toContain("@Ayman_D أغاليا 1 بوست");
   });
 
   // ماجد shoots THREE reels a day, so with more overdue reels than that, the
@@ -500,10 +501,10 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
       employees: [photographer],
       tasks: overloadedDay(),
     });
-    // اليوم قطع وصل الثلاثة، والمتأخر قطعة برو — كلها بالاسم لا بأسماء شركات فقط.
+    // اليوم ٣ ريلات وصل، والمتأخر ريل برو — بالشركة والعدد لا بأرقام القطع (١٦/٩).
     const line = brief.schedule.text.split(String.fromCharCode(10)).find((l) => l.includes("ماجد"))!;
-    expect(line).toContain("وصل: ريل-1");
-    expect(line).toContain("ومتأخر — برو: ريل-1");
+    expect(line).toContain("وصل 3 ريل");
+    expect(line).toContain("ومتأخر: برو 1 ريل");
   });
 
   // تغيّرت القاعدة (5/8): أسماء القطع مطلوبة بالموجة الأولى — الممنوع هو
@@ -517,6 +518,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     });
     expect(brief.schedule.text).not.toMatch(/\d+ يوم/);
     expect(brief.schedule.text).not.toMatch(/\d+\/\d+/);
+    expect(brief.schedule.text).not.toMatch(/ريل-\d/);
     // …while the detailed wave still carries exactly that.
     expect(brief.employees[0].text).toMatch(/Bru-reel-7-\d/);
     expect(brief.employees[0].text).toMatch(/متأخر \d+ يوم/);
@@ -538,7 +540,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     });
     const line = brief.schedule.text.split("\n").find((l) => l.includes("ماجد"))!;
     // ٣ شركات متأخرة بقطعة لكل وحدة: كلها بتنعرض (السقف ٣)، والسطر بيضل مقروء.
-    expect(line).toContain("ومتأخر —");
+    expect(line).toContain("ومتأخر:");
     expect(line.length).toBeLessThan(150);
   });
 
@@ -563,8 +565,8 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     });
     // Still real work that still has to be shot — it just never counts as late,
     // so it stays out of the chase clause and out of her overdue list.
-    expect(brief.schedule.text).toContain("جدارات: ريل-1");
-    expect(brief.schedule.text).not.toMatch(/المتأخر[^\n]*جدارات/);
+    expect(brief.schedule.text).toMatch(/جدارات \d+ ريل/);
+    expect(brief.schedule.text).not.toMatch(/متأخر[^\n]*جدارات/);
     // Both reels are past due, but only وصل's is counted — جدارات's is the
     // client's hold-up, so it is absent from her overdue list entirely.
     expect(brief.lead.text).toContain("متأخرات (1)");
@@ -580,12 +582,20 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     expect(brief.lead.text).toContain("فاضي اليوم: أيمن");
   });
 
-  it("gives the publisher his standing line without a piece count", () => {
+  // (١٦/٩) «خلي النشر باسم الشركة ونوع المحتوى فقط».
+  it("gives the publisher company + content type only, no counts and no piece names", () => {
     const publisher = employee({ id: "p1", name: "عمر", role: "publisher", isPhotographer: false, telegramUsername: "Omar_ORR" } as Partial<Employee>);
-    const publish = task({ id: "pub", stage: "PUBLISH", publishDate: workday, assigneeId: "p1" });
-    const brief = buildDailyBrief({ ...base, employees: [publisher], tasks: [publish] });
+    const publish = task({ id: "pub", stage: "PUBLISH", kind: "PUBLISH", publishDate: workday, assigneeId: "p1" });
+    const story = task({ id: "pub2", stage: "PUBLISH", kind: "PUBLISH", type: "STORY", pieceNo: 2, publishDate: workday, assigneeId: "p1", pipelineKey: "co1|STORY|x" });
+    const brief = buildDailyBrief({ ...base, employees: [publisher], tasks: [publish, story] });
+    expect(brief.schedule.text).toContain("@Omar_ORR نشر: أغاليا (ريل، ستوري)");
+    expect(brief.schedule.text).not.toMatch(/ريل-\d|\d+ ريل/);
+  });
+
+  it("gives the publisher his standing line when nothing publishes today", () => {
+    const publisher = employee({ id: "p1", name: "عمر", role: "publisher", isPhotographer: false, telegramUsername: "Omar_ORR" } as Partial<Employee>);
+    const brief = buildDailyBrief({ ...base, employees: [publisher], tasks: [] });
     expect(brief.schedule.text).toContain("@Omar_ORR متابعة الصفحات والنشر");
-    expect(brief.schedule.text).not.toMatch(/\d+ قطعة/);
   });
 });
 
@@ -599,8 +609,9 @@ describe("brief waves", () => {
     dateLabel: "",
   };
 
-  it("sends the forwardable message and her private report at 07:45", () => {
-    expect(briefMessagesFor(brief, "general").map((m) => m.key)).toEqual(["schedule", "lead"]);
+  // (١٦/٩) «بدي الصبح بس توزيع المهام» — رسالة وحدة، وتقرير القائد للمعاينة فقط.
+  it("sends ONLY the distribution message at 07:45", () => {
+    expect(briefMessagesFor(brief, "general").map((m) => m.key)).toEqual(["schedule"]);
   });
 
   // موجة ٨:٠٠ كانت تبعت أوراق الشركات والأشخاص كمان — ١٩ رسالة كل صباح. حكم
@@ -613,7 +624,7 @@ describe("brief waves", () => {
 
   it("«ابعتيلي البريف هلق» sends both waves, each message exactly once", () => {
     const keys = briefMessagesFor(brief, "all").map((m) => m.key);
-    expect(keys).toEqual(["schedule", "lead", "detail"]);
+    expect(keys).toEqual(["schedule", "detail"]);
     expect(new Set(keys).size).toBe(keys.length);
   });
 });

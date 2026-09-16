@@ -11,7 +11,7 @@ import { buildShootAppointments } from "@/lib/telegram/shoot-appointments";
 import type { Company, Employee, Task } from "@/types";
 import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } from "./brief";
 import { buildWeeklyPublishDigest } from "./weekly";
-import { buildDailyDoneReport, DONE_REPORT_PEOPLE, type DeliveryLine } from "./done-report";
+import { buildDailyDoneReport } from "./done-report";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
@@ -114,10 +114,10 @@ export async function sendWeeklyPublishDigest(
 }
 
 /**
- * تقرير المنجَز اليومي — ٥ مساءً بتوقيت دمشق، لخاصّ القائدة.
+ * تقرير الإنجاز اليومي — ٨ مساءً بتوقيت دمشق، لخاصّ القائدة.
  *
- * القائدة (10/8): «بدي منك تخلي البوت يبعتلي الساعة 5 تماما بتوقيت سورية:
- * ارسال تقرير العمل المنجز اليومي لكل من عمر وحلا».
+ * القائدة (١٦/٩): «المسا الساعة 8 تقرير الإنجاز، باختصار وبساطة» — لكل فريق
+ * الإنتاج، سطر بالشركة والعدد. (كان ٥ مساءً لعمر وحلا بقرار 10/8.)
  *
  * لخاصّها لا للمجموعة: التقرير بيقيس شغل شخصين بالاسم، وهاد حديث قائد مع
  * حاله. الوحيد يلي بينزل بالمجموعة هو جدول النشر الأسبوعي.
@@ -127,36 +127,16 @@ export async function sendDailyDoneReport(today = new Date()): Promise<SendBrief
   const chatId = await getLeadChatId();
   if (!chatId) return { ok: false, error: "ما في محادثة مستلمة — حدّد chat id من صفحة تلغرام" };
 
-  const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   // بالعطلة ما في تقرير إنجاز كمان — ما في يوم شغل ينحاسب عليه.
   const offTeam = await prisma.employee.findMany({ select: { workDays: true } });
   if (isTeamOffDay(offTeam, today)) return { ok: true, sent: 0, skipped: "عطلة" };
 
-  const [employees, companies, tasks, todayMessages] = await Promise.all([
+  const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     loadLiveTasks(today.getFullYear(), today.getMonth()),
-    // تسليمات اليوم من جدول الرسائل مباشرة — مو من الكروت. الملف يلي ما
-    // طابق كرتاً بيظهر «غير مطابق» بدل ما يختفي (سؤال القائدة 11/8 عن
-    // صورة أيمن على Siizen يلي التقرير ما ذكرها).
-    prisma.telegramMessage.findMany({ where: { sentAt: { gte: dayStart } } }),
   ]);
-  const coName = new Map(companies.map((c) => [c.id, c.name]));
-  const deliveries: DeliveryLine[] = todayMessages.map((m) => ({
-    senderName: m.senderName,
-    companyName: m.companyId ? (coName.get(m.companyId) ?? null) : null,
-    kind: m.kind,
-    fileName: m.fileName,
-    matched: m.taskId != null,
-  }));
-  const report = buildDailyDoneReport(
-    today,
-    employees as never,
-    companies as never,
-    tasks as never,
-    DONE_REPORT_PEOPLE,
-    deliveries,
-  );
+  const report = buildDailyDoneReport(today, employees as never, companies as never, tasks as never);
   if (!report.text) return { ok: true, sent: 0 };
 
   let sent = 0;

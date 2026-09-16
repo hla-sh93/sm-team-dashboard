@@ -6,6 +6,11 @@
  * she can forward the ones she wants. Nothing here sends anything — this module
  * is pure text assembly and is unit-tested as such.
  *
+ * (١٦/٩/٢٠٢٦) القائدة: «بدي الصبح بس توزيع المهام» — الموجة العامة صارت الرسالة
+ * الوحيدة يلي بتنبعت كل صباح: سطر لكل شخص بالشركة والعدد والنوع بلا أرقام قطع،
+ * والنشر بالشركة ونوع المحتوى فقط. موجة التفاصيل وتقرير القائد (المعرّض
+ * للتأخير + المتأخرات) بقيا للمعاينة والإرسال عند الطلب، وما بينبعتوا آلياً.
+ *
  * Sent in TWO WAVES (§14), because that is how the lead actually works:
  *   07:45 — «العام»: صباح الخير + ONE line per person, written the way she
  *           writes it by hand — «أيمن ريلات جدارات». No bullets, no emoji, no
@@ -33,6 +38,7 @@ import { assetNameForTask } from "@/lib/asset-name";
 import { hasStartedPublishing } from "@/lib/contract";
 import { buildContentNumbers } from "@/lib/cards";
 import { makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
+import { countByCompany, typesByCompany } from "./summary";
 
 export type BriefMessage = {
   /** Stable key — "schedule" / "detail" / companyId / "lead". */
@@ -73,9 +79,10 @@ export type DeliveryStats = { matched: number; unmatched: number };
 export type BriefWave = "general" | "detail" | "all";
 
 export function briefMessagesFor(brief: DailyBrief, wave: BriefWave): BriefMessage[] {
-  if (wave === "general") return [brief.schedule, brief.lead];
+  // الصبح رسالة وحدة: توزيع المهام. تقرير القائد ما عاد ينبعت آلياً (١٦/٩).
+  if (wave === "general") return [brief.schedule];
   if (wave === "detail") return [brief.detail];
-  return [brief.schedule, brief.lead, brief.detail];
+  return [brief.schedule, brief.detail];
 }
 
 /** Publish dates within this many days count as "about to slip". */
@@ -218,103 +225,12 @@ export function buildDailyBrief({
   const mention = (e: Employee) =>
     e.telegramUsername?.trim() ? `@${e.telegramUsername.trim().replace(/^@/, "")}` : e.name;
 
-  /**
-   * «ريلات جدارات · تصاميم وصل» — kinds of work grouped by company, no pieces.
-   * Capped at `max` companies (busiest first): a line naming nine companies is
-   * the wall of text she asked us to stop sending. The rest is «وغيرها».
-   */
-  const groupByCompany = (list: Task[], max = 2): string => {
-    // A bare «تصاميم» tells her nothing — every entry must name WHO it is for.
-    // A company card names its company; an ad-hoc card has no company, so its
-    // own title is the name (and already says what the work is).
-    const named = new Map<string, { kinds: Set<string>; n: number }>();
-    for (const t of list) {
-      const co = t.companyId ? coById.get(t.companyId)?.name : null;
-      const label = co ?? t.title?.trim() ?? "";
-      if (!label || label === "—") continue; // unnameable → better silent than bare
-      const entry = named.get(label) ?? { kinds: new Set<string>(), n: 0 };
-      entry.n++;
-      // A kind word only when the card actually says what the work IS — the
-      // stage does (تصوير/كتابة), and so does a CONTENT card's type. An ad-hoc
-      // card with neither is not production: «استلام حسابات التواصل» on سارة
-      // (the account owner) came out as «سارة تصاميم مانغو» — telling a
-      // salesperson to design. Bare «سارة مانغو» is true and it is her own style.
-      const kindWord =
-        t.stage === "SHOOT"
-          ? "تصوير"
-          : t.stage === "EDIT"
-            ? "مونتاج"
-            : t.stage === "WRITE"
-              ? "كتابة"
-              : t.kind !== "CONTENT"
-                ? null
-                : t.type === "REEL" || t.type === "AI_REEL"
-                  ? "ريلات"
-                  : "تصاميم";
-      if (co && kindWord) entry.kinds.add(kindWord);
-      named.set(label, entry);
-    }
-    const ordered = [...named.entries()].sort((a, b) => b[1].n - a[1].n);
-    const top = ordered.slice(0, max);
-    const kindOf = ([, { kinds }]: (typeof top)[number]) => [...kinds].join(" و");
-    // «تصاميم برو · تصاميم أغاليا» repeats the word she never repeats. When the
-    // work is the same kind across companies, say it once: «تصاميم برو وأغاليا».
-    const sameKind = top.length > 1 && top.every((e) => kindOf(e) === kindOf(top[0]));
-    if (sameKind && kindOf(top[0])) {
-      const names = top.map(([label]) => label).join(" و");
-      return `${kindOf(top[0])} ${names}${ordered.length > max ? " وغيرها" : ""}`;
-    }
-    const shown = top.map(([label, { kinds }]) =>
-      [[...kinds].join(" و"), label].filter(Boolean).join(" "),
-    );
-    if (ordered.length > max) shown.push("وغيرها");
-    return shown.join(" · ");
-  };
-
-  /**
-   * قطع اليوم كما تُطلب: «بوست-3 · برو، ستوري-4 · أغاليا». اسم القطعة أولاً
-   * لأنّه المطلوب، والشركة بعده لأنها الوجهة. القائمة بتنقص لأربعة وبينضاف
-   * «و…غيرها» — السطر بيتقرا بلمحة، والباقي بتقرير الثمانية.
-   */
-  const todayPieces = (list: Task[], max = 4): string => {
-    if (!list.length) return "";
-    // مجمّعة بالشركة: «برو: ستوري-1 وستوري-2 · أغاليا: ستوري-9». تكرار اسم
-    // الشركة مع كل قطعة بيطوّل السطر بلا فايدة، والتجميع بيخلّيه ينقرا بلمحة.
-    const byCo = new Map<string, Task[]>();
-    for (const t of list) {
-      const name = coName(t);
-      const arr = byCo.get(name) ?? [];
-      arr.push(t);
-      byCo.set(name, arr);
-    }
-    let left = max;
-    const parts: string[] = [];
-    for (const [name, rows] of byCo) {
-      if (left <= 0) break;
-      const take = rows.slice(0, left);
-      left -= take.length;
-      // «Bru 7-1 · ستوري» جوّا مجموعة برو بيصير «ستوري-1» — الشركة فوقه أصلاً.
-      // والكرت اليدوي عنوانه بيتقصّ من اسم الشركة وشرطة الدورة: «كتابة بوستات
-      // وستوريز — مانغو · دورة 1 آب» بتصير «كتابة بوستات وستوريز».
-      const labels = take.map((t) => {
-        const n = t.pieceNo ?? numbers.get(t.id);
-        if (n && t.type) return `${typeLabel(t)}-${n}`;
-        const title = (t.title?.trim() || typeLabel(t)).split(" · ")[0].split(" — ")[0].trim();
-        return title;
-      });
-      // نفس العنوان بيتكرر (نشرات الصرف اليومية ٣ مرات) — مرة وعدد.
-      const counts = new Map<string, number>();
-      for (const l of labels) counts.set(l, (counts.get(l) ?? 0) + 1);
-      const uniq = [...counts.entries()].map(([l, n]) => (n > 1 ? `${l} (${n})` : l));
-      parts.push(name === "—" ? uniq.join(" و") : `${name}: ${uniq.join(" و")}`);
-    }
-    const rest = list.length - (max - Math.max(0, left));
-    if (rest > 0) parts.push(`و${rest} غيرها`);
-    return parts.join(" · ");
-  };
-
   const scheduleLines: string[] = ["صباح الخير", ""];
   const idleToday: string[] = [];
+  // كرت نشر بيدخل سطر عمر لما يكون قطعة خطة لشركة بتنشر فعلاً — الكرت اليدوي
+  // (Outreach) بينعدّ «مهام متابعة»، والمعفاة (جدارات) ما بتنشر أصلاً.
+  const publishPiece = (t: Task) =>
+    t.stage === "PUBLISH" && t.kind !== "ADHOC" && !(t.companyId && lateExempt.has(t.companyId));
   for (const emp of employees) {
     const mineLate = late.filter((t) => t.assigneeId === emp.id);
     // Off today → not on today's list at all. A freelancer has no standing
@@ -328,35 +244,25 @@ export function buildDailyBrief({
       companies,
       today,
     });
-
-    // What they owe, as a bare noun phrase — «ريلات أغاليا المتأخرة». Never a
-    // day count: she chases people, she doesn't invoice them.
     const owed = mineLate.filter((t) => !todays.some((x) => x.id === t.id));
 
-    // The chase names COMPANIES only — what kind of work it is, is obvious from
-    // whose line it is. «المتأخر التوظيف ووصل وغيرها». A company already named
-    // in today's part is dropped: repeating it reads like a stutter.
-    const todayCompanies = new Set(todays.map(coName));
-    const owedCompanies = [
-      ...new Set(owed.map((t) => (t.companyId ? coName(t) : (t.title?.trim() || "—")))),
-    ].filter((c) => c && c !== "—" && !todayCompanies.has(c));
     let headline: string;
-    // المتأخر كمان بالقطعة: «ومتأخر: مخبر: ريل-5». نفس القاعدة — الشخص لازم
-    // يعرف شو يعمل، مو أي زبون منزعج.
-    let chase = owed.length ? `ومتأخر — ${todayPieces(owed, 3)}` : "";
     if (isPublisher(emp)) {
-      // The publisher's day is always the same shape — the count is noise, and
-      // his "late" list is the standing publish backlog, not a daily chase.
-      headline = "متابعة الصفحات والنشر";
-      chase = "";
+      // النشر بالشركة ونوع المحتوى فقط (القائدة ١٦/٩): «نشر: وصل (بوست، ستوري)
+      // · التوظيف (بوست)، متراكم: عبادة (ستوري)» — بلا أعداد ولا أسماء قطع.
+      const pubToday = todays.filter(publishPiece);
+      const pubLate = owed.filter(publishPiece);
+      const followUps = todays.filter((t) => t.kind === "ADHOC").length;
+      headline = pubToday.length ? `نشر: ${typesByCompany(pubToday, coName)}` : "متابعة الصفحات والنشر";
+      if (pubLate.length) headline += `، متراكم: ${typesByCompany(pubLate, coName)}`;
+      if (followUps) headline += followUps === 1 ? " ومهمة متابعة" : ` و${followUps} مهام متابعة`;
     } else {
-      // المطلوب منه اليوم = القطع نفسها، مو أسماء الشركات. القائدة (5/8):
-      // «ما فيك تقول سابين لازم تصمم البلسم وبرو وأغاليا — المهمة لازم تكون
-      // حسب المطلوب». «تصاميم برو وأغاليا» ما بتقول شو ينعمل؛ «بوست-3 برو ·
-      // ستوري-4 أغاليا» بتقول. الشركة بتضل ملتصقة بالقطعة فما بتضيع الوجهة.
-      headline = todayPieces(todays);
+      // المهام بالشركة والعدد والنوع، بلا ترقيم كل بوست (القائدة ١٦/٩):
+      // «التوظيف 3 بوست · التدريب 2 تصميم، ومتأخر: البلسم 3 ستوري».
+      headline = countByCompany(todays, coName);
+      const chase = owed.length ? `ومتأخر: ${countByCompany(owed, coName, 3)}` : "";
+      if (chase) headline = headline ? `${headline}، ${chase}` : chase.replace(/^و/, "");
     }
-    if (chase) headline = headline ? `${headline}، ${chase}` : chase.replace(/^و/, "");
     // Nothing today and nothing owed → not worth a line. Idle capacity is real
     // information though, so it goes to her private report instead.
     if (!headline) {

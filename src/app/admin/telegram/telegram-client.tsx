@@ -45,8 +45,8 @@ export default function TelegramClient({
     );
   };
 
-  // Mirrors the two send waves (§14): ٧:٤٥ is the message she forwards to the
-  // team group + her private report; ٨:٠٠ is everything with the detail in it.
+  // الصبح بتنبعت رسالة التوزيع وحدها (١٦/٩)؛ تقرير القائد والتفاصيل هون
+  // للمعاينة والإرسال عند الطلب فقط.
   const messages =
     tab === "main"
       ? [brief.schedule, brief.lead]
@@ -89,7 +89,7 @@ export default function TelegramClient({
         </h2>
         <p className="text-[11px] text-fg-muted">
           ابعتي «/start» للبوت من حسابك، وبعدها رح تلاقي محادثتك بجدول المجموعات تحت — انسخي
-          الـchat id وحطّيه هون. بيوصلك كل صباح ٨:٠٠.
+          الـchat id وحطّيه هون. بيوصلك توزيع المهام كل صباح ٧:٤٥ وتقرير الإنجاز كل مساء ٨:٠٠.
         </p>
         <div className="flex gap-2 flex-wrap">
           <Input

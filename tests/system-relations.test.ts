@@ -465,16 +465,18 @@ describe("العلاقة: حالة النظام ← رسائل البريف (ا�
       deliveries: { matched: 0, unmatched: 0 },
     } as never);
 
-  it("موجة ٧:٤٥ = رسالتان بس: سطر-لكل-شخص + تقرير القائدة", () => {
+  it("موجة ٧:٤٥ = رسالة وحدة: توزيع المهام (القائدة ١٦/٩)", () => {
     const msgs = briefMessagesFor(brief(), "general");
-    expect(msgs.map((m) => m.key)).toEqual(["schedule", "lead"]);
+    expect(msgs.map((m) => m.key)).toEqual(["schedule"]);
   });
 
   it("قاعدة الموجتين: رسالة ٧:٤٥ بلا ولا اسم قطعة ولا تاريخ — التفاصيل موجة تانية", () => {
     // feedback_brief_two_waves: «أي اسم قطعة أو تاريخ أو عدد أيام بينتمي لموجة ٨:٠٠».
     const schedule = brief().schedule.text;
+    // (١٦/٩) الشركة والعدد والنوع مسموحة («وصل 3 ستوري»)؛ الممنوع أرقام القطع
+    // والتواريخ وعدد أيام التأخير.
     expect(schedule).not.toMatch(/\d+\s*-\s*\d+/); // «Wasl 7-2»
-    expect(schedule).not.toMatch(/متأخر|تسليم \d|بوست|ستوري \d|ريل \d/);
+    expect(schedule).not.toMatch(/بوست-\d|ستوري-\d|ريل-\d|تسليم \d|\d+ يوم/);
   });
 
   it("موجة ٨:٠٠ = التقرير المفصّل الواحد، مو رشقة رسائل لكل شركة وشخص", () => {
@@ -486,11 +488,7 @@ describe("العلاقة: حالة النظام ← رسائل البريف (ا�
     expect(msgs[0].text).toContain("🎨 للتصميم");
   });
 
-  it("«الكل» = الموجتان ورا بعض وبس — ٣ رسائل", () => {
-    expect(briefMessagesFor(brief(), "all").map((m) => m.key)).toEqual([
-      "schedule",
-      "lead",
-      "detail",
-    ]);
+  it("«الكل» = التوزيع ثم التفاصيل — رسالتان، وتقرير القائد للمعاينة فقط", () => {
+    expect(briefMessagesFor(brief(), "all").map((m) => m.key)).toEqual(["schedule", "detail"]);
   });
 });
