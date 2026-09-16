@@ -18,7 +18,7 @@ import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
-import { currentCycleBucket, hasStartedPublishing } from "@/lib/contract";
+import { achievementSpanLabel, hasStartedPublishing, latestCycleBucket } from "@/lib/contract";
 import { dormantCompanyIds, isDormantCompany } from "@/lib/company-visibility";
 import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { workRoster } from "@/lib/team";
@@ -110,7 +110,9 @@ export default async function ReportsPage({
   // آب كانت بتعطي «0/15 بوست» لشركة نصّ دورتها خالص.
   const cycleTaskCache = new Map<string, typeof tasks>();
   for (const co of companies) {
-    const b = currentCycleBucket(co, new Date());
+    // آخر دورة بدأت، لا الدورة الشغّالة اليوم — شركة خلصت دورتها وبانتظار
+    // التجديد بتضل تعرض إنجاز دورتها (القائدة ١٦/٩).
+    const b = latestCycleBucket(co, new Date());
     cycleTaskCache.set(
       co.id,
       b.year === year && b.month === month
@@ -136,7 +138,7 @@ export default async function ReportsPage({
       const totalPlan = rows.reduce((a, r) => a + r.plan, 0);
       const totalDone = rows.reduce((a, r) => a + Math.min(r.done, r.plan), 0);
       const pct = totalPlan > 0 ? Math.round((totalDone / totalPlan) * 100) : 0;
-      return { co, rows, pct, totalPlan, totalDone };
+      return { co, rows, pct, totalPlan, totalDone, cycleLabel: achievementSpanLabel(co) };
     })
     .filter((x) => x.rows.length > 0);
 
@@ -313,15 +315,16 @@ export default async function ReportsPage({
             و«منتَج» = خالص عنا وواقف على النشر.
           </p>
           <div className="grid md:grid-cols-2 gap-4">
-            {companyPlan.map(({ co, rows, pct }) => (
+            {companyPlan.map(({ co, rows, pct, cycleLabel }) => (
               <div key={co.id} className="border border-border-soft rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className="w-3 h-3 rounded-full"
+                      className="w-3 h-3 rounded-full shrink-0"
                       style={{ background: co.color ?? "#C8A84E" }}
                     />
-                    <span className="font-semibold">{co.name}</span>
+                    <span className="font-semibold truncate">{co.name}</span>
+                    <span className="text-[10px] text-fg-muted tabular-nums shrink-0">{cycleLabel}</span>
                   </div>
                   <span
                     className={

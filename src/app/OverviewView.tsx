@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { isTaskDoneState } from "@/lib/constants";
 import { hideDormantCompanyWork, isDormantCompany } from "@/lib/company-visibility";
-import { currentCycle, currentCycleBucket } from "@/lib/contract";
+import { achievementSpanLabel, latestCycleBucket } from "@/lib/contract";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
 import OverviewClient from "./overview-client";
@@ -58,23 +58,20 @@ export default async function OverviewView({
     ? await prisma.task.findMany({
         where: {
           status: { not: "CANCELED" },
-          OR: tracked.map((co) => ({ companyId: co.id, ...currentCycleBucket(co, now) })),
+          OR: tracked.map((co) => ({ companyId: co.id, ...latestCycleBucket(co, now) })),
         },
       })
     : [];
-  const dm = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
-  const companyProgress: CompanyProgress[] = tracked.map((co) => {
-    const cycle = currentCycle(co, now);
-    return {
-      companyId: co.id,
-      plan: co.posts + co.reels + co.stories + co.aiReels,
-      published: completedCompanyPlanCount(cycleTasks, co.id),
-      produced: producedCompanyPlanCount(cycleTasks, co.id),
-      cycleLabel: cycle
-        ? `${dm(cycle.start)} → ${dm(new Date(cycle.end.getTime() - 86_400_000))}`
-        : null,
-    };
-  });
+  // الإنجاز على **آخر دورة** لا على الدورة الشغّالة اليوم: شركة خلصت دورتها
+  // وبانتظار التجديد بتضل تعرض إنجاز دورتها لا صفراً (القائدة ١٦/٩)؛ وتاريخ
+  // الدورة بيطلع جنب كل شركة — والشركة على شهر التقويم بتعرض شهرها.
+  const companyProgress: CompanyProgress[] = tracked.map((co) => ({
+    companyId: co.id,
+    plan: co.posts + co.reels + co.stories + co.aiReels,
+    published: completedCompanyPlanCount(cycleTasks, co.id),
+    produced: producedCompanyPlanCount(cycleTasks, co.id),
+    cycleLabel: achievementSpanLabel(co, now),
+  }));
 
   return (
     <OverviewClient

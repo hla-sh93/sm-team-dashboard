@@ -262,6 +262,39 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
 }
 
 /**
+ * دورة الإنجاز — الحالية، وإلا آخر دورة بدأت قبل اليوم.
+ *
+ * القائدة (١٦/٩/٢٠٢٦): «إنجاز الشركات يحسب بالدورة وليس من أول الشهر». شركة
+ * خلصت دورتها وبانتظار قرار التجديد (عبادة ١١/٨ → ١٠/٩) كانت تطلع ٠٪ لأنّ
+ * الحساب بيرجع لشهر التقويم لما ما في دورة شغّالة اليوم. الإنجاز بيضل على آخر
+ * دورة لحدّ ما تبلّش الجاية.
+ */
+export function latestCycle(co: ContractCompany, today: Date = new Date()): Cycle | null {
+  const t = midnight(today).getTime();
+  const started = cyclesOf(co).filter((c) => c.start.getTime() <= t);
+  return started.length ? started[started.length - 1] : null;
+}
+
+/** دلو دورة الإنجاز — شهر بداية آخر دورة، أو شهر التقويم لشركة بلا دورات. */
+export function latestCycleBucket(
+  co: ContractCompany,
+  today: Date = new Date(),
+): { year: number; month: number } {
+  const cycle = latestCycle(co, today);
+  const d = cycle ? cycle.start : midnight(today);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+/** «11/8 → 10/9» لدورة، أو «1/9 → 30/9» لشركة على شهر التقويم — للعرض جنب الاسم. */
+export function achievementSpanLabel(co: ContractCompany, today: Date = new Date()): string {
+  const dm = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
+  const cycle = latestCycle(co, today);
+  if (cycle) return `${dm(cycle.start)} → ${dm(new Date(cycle.end.getTime() - 86_400_000))}`;
+  const t = midnight(today);
+  return `${dm(new Date(t.getFullYear(), t.getMonth(), 1))} → ${dm(new Date(t.getFullYear(), t.getMonth() + 1, 0))}`;
+}
+
+/**
  * «13/7 → 12/8» — the cycle a bucket actually covers, for any badge that used to
  * print a bare month name.
  *

@@ -441,7 +441,8 @@ export default function TasksClient({
             onChange={(e) => setCompany(e.target.value)}
           >
             <option value="all">كل الشركات</option>
-            {companies.map((c) => (
+            {/* النشطة بس — الموقوفة والمؤرشفة ما إلها كروت حيّة أصلاً (القائدة ١٦/٩) */}
+            {companies.filter((c) => !isDormantCompany(c)).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
