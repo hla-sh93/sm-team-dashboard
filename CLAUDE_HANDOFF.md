@@ -692,6 +692,11 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-09-16 (21:55) — Claude — عبادة's publish anchor corrected to 16/8 on the lead's word
+
+- **[USER-CONFIRMED 2026-09-16]** «صححها، عبادة من 16/8 حتى 16/9».
+- **[LIVE/VERIFIED — snapshot `prod-20260916-2151.json`]** `publishStartDate` 2026-08-11 → **2026-08-16** through the company form in the lead's Chrome session (JS-driven, see the 19:35 tooling note). No renewals, so this is the original anchor; the cycle is now **16/8 → 15/9** (exclusive end 16/9, same convention as every other span) and the achievement panel labels it «16/8 → 15/9». All 44 cards stay in bucket m=7; none is published before 16/8. The bucket was regenerated after the save: 43 rows changed **only in `createdAt`** — no status, date, owner or brief moved (diffed field by field). REEL#1 (22/9) and REEL#3 (17/9) remain late inside the cycle as before. Local mirror synced to 2151.
+
 ### 2026-09-16 (19:35) — Claude — التوظيف back to the September plan only; ماجد's Wednesday = فونيتيك; achievement per latest cycle; task filter active-only
 
 Lane: code (pushed `a92c19f`, Vercel Ready) + three production payloads (`prod-23/24/25`) and two UI actions, all applied through the lead's Chrome session and **verified with `prod-20260916-1933.json`**.
