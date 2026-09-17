@@ -214,7 +214,44 @@ export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean 
   };
 }
 
-export function selectDailyWorkTasks({
+/**
+ * «خلّص مهامه اليوم» — الكرت انقفل بنفس اليوم.
+ *
+ * ختم الإقفال (`finishedAt`/`completedAt`) هو الدليل؛ والكرت يلي القائدة بدّلته
+ * على اليوم («بدّل» = `manualDay`) ثم انقفل بينعدّ من اليوم كمان ولو انختم
+ * بتاريخ تاني. `isPinned`+`workDate` ما بيكفي: كتير كروت مقفولة من زمان مثبّتة
+ * على يوم شغلها.
+ */
+export function isFinishedOnDay(
+  task: Pick<Task, "status" | "board" | "completedAt" | "finishedAt" | "manualDay">,
+  dayISO: string,
+): boolean {
+  if (!isTaskDoneState(task)) return false;
+  const finished = dateISO(task.finishedAt) ?? dateISO(task.completedAt);
+  if (finished === dayISO) return true;
+  return manualDayISO(task) === dayISO;
+}
+
+export type DailyWork = {
+  /** الكروت المطلوبة لباقي اليوم. */
+  queue: Task[];
+  /** الكروت يلي انقفلت اليوم — إنجاز اليوم. */
+  doneToday: Task[];
+  /** حمل الكروت المنجزة اليوم بأيام عمل (٠ → ١). */
+  doneLoad: number;
+  /** اليوم ممتلئ بالمنجز — ما عاد في مجال لكرت إنتاج جديد. */
+  dayFull: boolean;
+};
+
+/**
+ * «الإنجاز اليومي بينتهي» — المهام يلي خلّصها الشخص اليوم بتضل محسوبة من يومه.
+ *
+ * كانت القائمة تنعاد حسابها من المفتوح بس: كل كرت بينقفل بيطلع منها وبيدخل
+ * مكانه الكرت اللي بعده، فما كان الشخص يوصل أبداً لـ«أنجزت مهام اليوم» —
+ * كان يشوف مهام إضافية من الأيام الجاية بلا نهاية. هون المنجَز اليوم بياخد
+ * حصّته من سعة اليوم أولاً، والقائمة بتعبّي الباقي وبس، وبتفضى لما يمتلئ.
+ */
+export function selectDailyWork({
   employee,
   tasks,
   allTasks = tasks,
@@ -226,14 +263,27 @@ export function selectDailyWorkTasks({
   allTasks?: Task[];
   companies: Company[];
   today?: Date;
-}): Task[] {
+}): DailyWork {
   const todayISO = toISODate(today);
+  const scopeCounts = writeScopeCounts(allTasks);
+  const doneToday = allTasks.filter(
+    (task) => task.assigneeId === employee.id && isFinishedOnDay(task, todayISO),
+  );
+  let doneLoad = 0;
+  let doneExclusive = false;
+  for (const task of doneToday) {
+    const effortDays = dailyTaskEffortDays(employee, task, scopeCounts);
+    doneLoad += effortDays;
+    if (effortDays > EPS && isExclusiveDayTask(task, effortDays)) doneExclusive = true;
+  }
+  const dayFull = doneExclusive || doneLoad >= 1 - EPS;
+  const base = { doneToday, doneLoad: Math.min(1, doneLoad), dayFull };
+
   if (!parseWorkDays(employee.workDays).includes(today.getDay())) {
-    return [];
+    return { ...base, queue: [] };
   }
 
   const companyPriority = new Map(companies.map((company) => [company.id, company.priority]));
-  const scopeCounts = writeScopeCounts(allTasks);
   const isBlocked = makeBlockedPredicate(allTasks);
   const open = tasks
     .filter((task) => {
@@ -248,11 +298,15 @@ export function selectDailyWorkTasks({
     .sort((a, b) => compareDailyWorkTasks(a, b, { todayISO, companyPriority }));
 
   const selected: Task[] = [];
-  let usedDays = 0;
+  // المنجَز اليوم بياخد حصّته أولاً؛ ومن لحظة ما يكون في شي منجز، اليوم «بدأ»:
+  // ما في كرت أول بيتجاوز السعة، ولا كرت يوم كامل بينضاف فوق شغل مخلَّص.
+  let usedDays = doneLoad;
+  let dayStarted = doneToday.length > 0;
 
   for (const task of open) {
     const effortDays = dailyTaskEffortDays(employee, task, scopeCounts);
 
+    // النشر بلا سعة (كل المستحق اليوم لازم ينزل)، فبيطلع حتى لو اليوم ممتلئ.
     if (effortDays <= EPS) {
       if (isActive(task) || (primaryDateISO(task) ?? "9999-12-31") <= todayISO) {
         selected.push(task);
@@ -260,19 +314,28 @@ export function selectDailyWorkTasks({
       continue;
     }
 
+    if (dayFull) continue;
+
     const exclusive = isExclusiveDayTask(task, effortDays);
-    if (selected.length > 0 && exclusive) continue;
-    if (selected.length > 0 && usedDays + effortDays > 1 + EPS) continue;
+    if (dayStarted && exclusive) continue;
+    if (dayStarted && usedDays + effortDays > 1 + EPS) continue;
 
     selected.push(task);
     usedDays += effortDays;
+    dayStarted = true;
     if (exclusive || usedDays >= 1 - EPS) break;
   }
 
-  if (selected.length > 0 || open.length === 0) return selected;
+  if (selected.length > 0 || open.length === 0 || doneToday.length > 0) {
+    return { ...base, queue: selected };
+  }
 
   const firstDate = primaryDateISO(open[0]);
-  if (!firstDate) return [open[0]];
+  if (!firstDate) return { ...base, queue: [open[0]] };
 
-  return open.filter((task) => primaryDateISO(task) === firstDate);
+  return { ...base, queue: open.filter((task) => primaryDateISO(task) === firstDate) };
+}
+
+export function selectDailyWorkTasks(args: Parameters<typeof selectDailyWork>[0]): Task[] {
+  return selectDailyWork(args).queue;
 }

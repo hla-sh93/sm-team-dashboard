@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
+import {
+  dailyTaskEffortDays,
+  isFinishedOnDay,
+  makeBlockedPredicate,
+  selectDailyWork,
+  selectDailyWorkTasks,
+} from "@/lib/daily-work";
 
 const employee = (overrides: Record<string, unknown> = {}) =>
   ({
@@ -450,5 +456,127 @@ describe("makeBlockedPredicate", () => {
   it("الكرت بلا حاجز مو محجوز", () => {
     const t = task({ id: "solo" });
     expect(makeBlockedPredicate([t])(t)).toBe(false);
+  });
+});
+
+/**
+ * «الإنجاز اليومي بينتهي» — الفريق (١٧/٩/٢٠٢٦): لما الشخص يخلّص مهام اليوم ما
+ * كان يطلعله «تم إنجاز مهامك اليوم»، بيضل يعرضله مهام إضافية من الأيام الجاية.
+ * السبب: القائمة كانت تنعاد من المفتوح بس، فكل كرت بينقفل بيدخل مكانه غيره.
+ */
+describe("finished-today work closes the day", () => {
+  const today = new Date(2026, 8, 17, 14, 0); // Thursday 17/9 — inside the Sun→Thu week used below
+  const workingToday = () => employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6 }) });
+  const co = company({ id: "company", priority: 1 });
+  const doneAt = (d: Date) =>
+    ({ status: "READY", board: "DONE", finishedAt: d, completedAt: d }) as const;
+
+  it("counts the cards finished today against the rate and shows only the remainder", () => {
+    const finished = Array.from({ length: 4 }, (_, i) =>
+      task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 11, 0)) }),
+    );
+    const open = Array.from({ length: 10 }, (_, i) => task({ id: `open_${i}` }));
+    const work = selectDailyWork({
+      employee: workingToday(),
+      tasks: open,
+      allTasks: [...finished, ...open],
+      companies: [co],
+      today,
+    });
+    expect(work.doneToday.map((t) => t.id)).toEqual(finished.map((t) => t.id));
+    expect(work.doneLoad).toBeCloseTo(4 / 6);
+    expect(work.dayFull).toBe(false);
+    expect(work.queue).toHaveLength(2);
+  });
+
+  it("empties the queue once the day's rate is met, even with open work for later days", () => {
+    const finished = Array.from({ length: 6 }, (_, i) =>
+      task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 16, 30)) }),
+    );
+    const open = Array.from({ length: 10 }, (_, i) => task({ id: `open_${i}` }));
+    const work = selectDailyWork({
+      employee: workingToday(),
+      tasks: open,
+      allTasks: [...finished, ...open],
+      companies: [co],
+      today,
+    });
+    expect(work.dayFull).toBe(true);
+    expect(work.queue).toEqual([]);
+    expect(work.doneToday).toHaveLength(6);
+    // the legacy wrapper agrees
+    expect(
+      selectDailyWorkTasks({ employee: workingToday(), tasks: open, allTasks: [...finished, ...open], companies: [co], today }),
+    ).toEqual([]);
+  });
+
+  it("does not let a partially used day fall back to the whole-first-date dump", () => {
+    // 5 of 6 done; the only open cards are full-day reels that cannot fit.
+    const finished = Array.from({ length: 5 }, (_, i) =>
+      task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 12, 0)) }),
+    );
+    const emp = employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6, AI_REEL: 1 }) });
+    const reels = [task({ id: "reel_a", type: "AI_REEL" }), task({ id: "reel_b", type: "AI_REEL" })];
+    const work = selectDailyWork({ employee: emp, tasks: reels, allTasks: [...finished, ...reels], companies: [co], today });
+    expect(work.queue).toEqual([]);
+    expect(work.dayFull).toBe(false);
+  });
+
+  it("a full-day card finished today closes the day on its own", () => {
+    const emp = employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6, AI_REEL: 1 }) });
+    const reel = task({ id: "reel", type: "AI_REEL", ...doneAt(new Date(2026, 8, 17, 9, 0)) });
+    const posts = Array.from({ length: 3 }, (_, i) => task({ id: `post_${i}` }));
+    const work = selectDailyWork({ employee: emp, tasks: posts, allTasks: [reel, ...posts], companies: [co], today });
+    expect(work.dayFull).toBe(true);
+    expect(work.queue).toEqual([]);
+  });
+
+  it("ignores work finished on another day", () => {
+    const yesterday = Array.from({ length: 6 }, (_, i) =>
+      task({ id: `y_${i}`, ...doneAt(new Date(2026, 8, 16, 17, 0)) }),
+    );
+    const open = Array.from({ length: 10 }, (_, i) => task({ id: `open_${i}` }));
+    const work = selectDailyWork({ employee: workingToday(), tasks: open, allTasks: [...yesterday, ...open], companies: [co], today });
+    expect(work.doneToday).toEqual([]);
+    expect(work.queue).toHaveLength(6);
+  });
+
+  it("counts a card the lead pinned to today as today's achievement even when stamped on another date", () => {
+    const pinned = task({
+      id: "pinned",
+      manualDay: new Date(2026, 8, 17),
+      ...doneAt(new Date(2026, 8, 15, 10, 0)),
+    });
+    expect(isFinishedOnDay(pinned, "2026-09-17")).toBe(true);
+    expect(isFinishedOnDay(task({ id: "open" }), "2026-09-17")).toBe(false);
+  });
+
+  it("still lists every publish card due today after some were published (publishing has no rate)", () => {
+    const publisher = employee({ id: "publisher", role: "publisher", rates: null, workDays: JSON.stringify([0, 1, 2, 3, 4]) });
+    const pub = (id: string, extra: Record<string, unknown> = {}) =>
+      task({
+        id,
+        kind: "PUBLISH",
+        stage: "PUBLISH",
+        assigneeId: "publisher",
+        publishDate: new Date(2026, 8, 17),
+        readyDate: new Date(2026, 8, 17),
+        workDate: new Date(2026, 8, 17),
+        ...extra,
+      });
+    const published = pub("p1", { status: "PUBLISHED", board: "DONE", finishedAt: new Date(2026, 8, 17, 10, 0) });
+    const due = pub("p2");
+    const later = pub("p3", { publishDate: new Date(2026, 8, 20), readyDate: new Date(2026, 8, 20), workDate: new Date(2026, 8, 20) });
+    const work = selectDailyWork({ employee: publisher, tasks: [due, later], allTasks: [published, due, later], companies: [co], today });
+    expect(work.queue.map((t) => t.id)).toEqual(["p2"]);
+    expect(work.doneToday.map((t) => t.id)).toEqual(["p1"]);
+  });
+
+  it("reports the day's achievement on a day off without queuing anything", () => {
+    const finished = [task({ id: "d", ...doneAt(new Date(2026, 8, 18, 10, 0)) })];
+    const friday = new Date(2026, 8, 18, 12, 0);
+    const work = selectDailyWork({ employee: workingToday(), tasks: [task({ id: "o" })], allTasks: [...finished, task({ id: "o" })], companies: [co], today: friday });
+    expect(work.queue).toEqual([]);
+    expect(work.doneToday).toHaveLength(1);
   });
 });

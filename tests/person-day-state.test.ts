@@ -41,4 +41,37 @@ describe("personDayState", () => {
       }),
     ).toBe("FREE");
   });
+
+  it("reports a finished day when nothing is queued but work was closed today", () => {
+    expect(
+      personDayState({
+        dayCardCount: 0,
+        openCardCount: 5,
+        isOff: false,
+        doneTodayCount: 6,
+      }),
+    ).toBe("DONE");
+  });
+
+  it("keeps showing the queue while cards remain, even after some were finished today", () => {
+    expect(
+      personDayState({
+        dayCardCount: 2,
+        openCardCount: 5,
+        isOff: false,
+        doneTodayCount: 4,
+      }),
+    ).toBe("TASKS");
+  });
+
+  it("an off day stays an off day regardless of what was finished", () => {
+    expect(
+      personDayState({
+        dayCardCount: 0,
+        openCardCount: 0,
+        isOff: true,
+        doneTodayCount: 1,
+      }),
+    ).toBe("OFF");
+  });
 });

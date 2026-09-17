@@ -31,7 +31,7 @@ import {
   type GroupedCard,
 } from "@/lib/cards";
 import type { CompanyProgress } from "@/lib/progress";
-import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
+import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWork } from "@/lib/daily-work";
 import { personDayState } from "@/lib/person-day-state";
 import {
   toISODate,
@@ -50,6 +50,7 @@ import {
   ArrowLeftRight,
   Building2,
   CalendarClock,
+  CheckCircle2,
   Send,
   Users,
   Zap,
@@ -189,20 +190,25 @@ export default function OverviewClient({
     employees,
     new Set(employees.filter((e) => (openByPerson.get(e.id)?.length ?? 0) > 0).map((e) => e.id)),
   );
-  const dayByPerson = rosterToday.map((e) => ({
-    emp: e,
-    isOff: !parseWorkDays(e.workDays).includes(refDayObj.getDay()),
-    cards: groupTasksIntoCards(
-      selectDailyWorkTasks({
-        employee: e,
-        tasks,
-        allTasks: tasks,
-        companies,
-        today,
-      }),
-    ),
-    openCards: openByPerson.get(e.id) ?? [],
-  }));
+  // المنجَز اليوم جزء من اليوم: بياخد حصّته من السعة، فالقائمة بتفضى لما يخلّص
+  // الشخص حمله، وبتطلع «تم إنجاز مهام اليوم» بدل ما تتابع لكروت الأيام الجاية.
+  const dayByPerson = rosterToday.map((e) => {
+    const work = selectDailyWork({
+      employee: e,
+      tasks,
+      allTasks: tasks,
+      companies,
+      today,
+    });
+    return {
+      emp: e,
+      isOff: !parseWorkDays(e.workDays).includes(refDayObj.getDay()),
+      cards: groupTasksIntoCards(work.queue),
+      doneCards: groupTasksIntoCards(work.doneToday),
+      doneLoad: work.doneLoad,
+      openCards: openByPerson.get(e.id) ?? [],
+    };
+  });
   // Default tab: first person with reference-day work, then open backlog, else
   // the first person.
   const defaultId =
@@ -508,24 +514,28 @@ export default function OverviewClient({
             <>
               {/* a tab for EVERY employee, always */}
               <div className="flex gap-1 flex-wrap border-b border-border-soft mb-3">
-                {dayByPerson.map(({ emp, isOff, cards, openCards }) => {
+                {dayByPerson.map(({ emp, isOff, cards, doneCards, openCards }) => {
                   const active = emp.id === activeId;
-                  // Tasks take precedence, then any unfinished backlog. A
-                  // person is "متفرّغ" only when they have no open cards at all.
+                  // Tasks take precedence, then a finished day, then any
+                  // unfinished backlog. A person is "متفرّغ" only when they
+                  // have no open cards at all.
                   const state = personDayState({
                     dayCardCount: cards.length,
                     openCardCount: openCards.length,
                     isOff,
+                    doneTodayCount: doneCards.length,
                   });
                   const resting = state === "OFF";
                   const badge =
                     state === "TASKS"
                       ? String(cards.length)
-                      : state === "BACKLOG"
-                        ? `متبقّي ${openCards.length}`
-                        : state === "OFF"
-                          ? "عطلة"
-                          : "متفرّغ";
+                      : state === "DONE"
+                        ? "منجز"
+                        : state === "BACKLOG"
+                          ? `متبقّي ${openCards.length}`
+                          : state === "OFF"
+                            ? "عطلة"
+                            : "متفرّغ";
                   const badgeCls =
                     state === "TASKS"
                       ? active
@@ -563,6 +573,32 @@ export default function OverviewClient({
                     dayCardCount: activeGroup.cards.length,
                     openCardCount: activeGroup.openCards.length,
                     isOff: activeGroup.isOff,
+                    doneTodayCount: activeGroup.doneCards.length,
+                  }) === "DONE" ? (
+                    <div className="py-4 text-sm">
+                      <p className="text-center text-success font-medium">
+                        تم إنجاز مهام اليوم — {activeGroup.doneCards.length} بطاقة.
+                      </p>
+                      <div className="flex flex-col gap-1.5 mt-3">
+                        {activeGroup.doneCards.map((card) => (
+                          <div
+                            key={card.key}
+                            className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft opacity-70"
+                            style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                            <span className="text-xs truncate flex-1 line-through">
+                              {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : personDayState({
+                    dayCardCount: activeGroup.cards.length,
+                    openCardCount: activeGroup.openCards.length,
+                    isOff: activeGroup.isOff,
+                    doneTodayCount: activeGroup.doneCards.length,
                   }) === "BACKLOG" ? (
                     <div className="text-center py-8 text-sm text-warning">
                       لدى {activeGroup.emp.name} {activeGroup.openCards.length} مهمة غير منجزة.
@@ -583,26 +619,33 @@ export default function OverviewClient({
                     </div>
                   )
                 ) : (
-                  activeGroup?.cards.map((card) => (
-                    <div
-                      key={card.key}
-                      className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft"
-                      style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
-                    >
-                      {card.repr.overflow && (
-                        <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
-                      )}
-                      <span className="text-xs truncate flex-1">
-                        {cardLabelFor(card.repr, card.count, reelNum, coName)}
-                      </span>
-                      {(card.repr.year !== year || card.repr.month !== month) && (
-                        <CyclePill
-                          cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
-                          late={isTaskLateState(card.repr)}
-                        />
-                      )}
-                    </div>
-                  ))
+                  <>
+                    {activeGroup?.cards.map((card) => (
+                      <div
+                        key={card.key}
+                        className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft"
+                        style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
+                      >
+                        {card.repr.overflow && (
+                          <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+                        )}
+                        <span className="text-xs truncate flex-1">
+                          {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                        </span>
+                        {(card.repr.year !== year || card.repr.month !== month) && (
+                          <CyclePill
+                            cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
+                            late={isTaskLateState(card.repr)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                    {activeGroup && activeGroup.doneCards.length > 0 && (
+                      <p className="text-[11px] text-success mt-1">
+                        أُنجز اليوم: {activeGroup.doneCards.length} بطاقة.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -716,9 +759,10 @@ export default function OverviewClient({
               const hasExclusiveSel = selectedCards.some(isExclusive);
               // Publish cards cost 0 (unlimited); a day is full at ≥1 work-day of
               // production, or the moment a full-day card is picked.
+              // ما انقفل اليوم بياخد حصّته من السعة قبل أي اختيار — ما بينفك.
               const usedDays = hasExclusiveSel
                 ? 1
-                : selectedCards.reduce((s, c) => s + loadOf(c, emp), 0);
+                : editGroup.doneLoad + selectedCards.reduce((s, c) => s + loadOf(c, emp), 0);
               const remaining = Math.max(0, 1 - usedDays);
               const pct = Math.round(Math.min(1, usedDays) * 100);
               // A backlog card is addable if it still fits the remaining day (a
