@@ -110,6 +110,42 @@ for (const file of files) {
       console.log(`   ✓ خارج الخطة · ${bits.join(" · ")}`);
     }
   }
+  // كروت خارج الخطة الجديدة: المعرّف ثابت، فالفحص بيقول جديد أو تحديث أو
+  // «منجز ما بينلمس»، وبيفرجي حصّة الكرت من يوم الشخص — الرقم يلي بيقرّر إذا
+  // الكرت رح يبلع الطابور.
+  for (const card of (payload.adhocCards ?? []) as Row[]) {
+    const id = `adhoc_${String(card.slug)}`;
+    const person = (snap.employees as Row[]).find((e) => e.name === card.assignee);
+    const found = tasks.find((t) => t.id === id);
+    if (!person) {
+      console.log(`   ✗ «${String(card.title)}»: المسؤول «${String(card.assignee)}» مو موجود باللقطة`);
+      problems++;
+      continue;
+    }
+    if (found && found.companyId !== company.id) {
+      console.log(`   ✗ «${String(card.title)}»: المعرّف ${id} تبع شركة تانية`);
+      problems++;
+      continue;
+    }
+    const settled =
+      found &&
+      (found.status === "CANCELED" ||
+        found.board === "DONE" ||
+        found.finishedAt != null ||
+        ["READY", "PUBLISHED"].includes(String(found.status)));
+    const verdict = !found ? "جديد" : settled ? `منجز/ملغى (${found.status}) — ما بينلمس` : `تحديث (${found.status})`;
+    const hours = Number(card.hours);
+    const share = Math.round((hours / 8) * 100);
+    const work = new Date(String(card.workDate));
+    const rates = person.rates ? (JSON.parse(String(person.rates)) as Record<string, number>) : {};
+    const rateNote = Object.entries(rates)
+      .map(([type, n]) => `${type} ${n}/يوم = ${(8 / n).toFixed(2)}س`)
+      .join(" · ");
+    console.log(
+      `   ✓ خارج الخطة · ${id} · ${String(card.assignee)} · ${String(card.workDate)} ${WEEKDAY[work.getDay()]} → ${String(card.readyDate)} · ${hours}س (${share}٪ من اليوم${share >= 100 ? " — يوم كامل، مثبّت" : ""}) · ${String(card.status ?? "NOT_STARTED")} — ${verdict}`,
+    );
+    if (rateNote) console.log(`      معدّله: ${rateNote}`);
+  }
   // كروت الدورات: نفس الحساب يلي بيكتبه الخادم (`course-cards.ts`) — بيفرجيك
   // لكل كرت هل رح ينخلق، أو ينعاد توقيته، أو يضل متل ما هو لأنه منجز/ملغى.
   type LooseBlock = {

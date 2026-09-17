@@ -14,6 +14,7 @@ import { assertAdmin } from "@/lib/auth";
 import {
   DONE_STATUSES,
   normalizeStatusForStage,
+  PRIORITIES,
   statusToBoard,
 } from "@/lib/constants";
 import { fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
@@ -151,6 +152,59 @@ const planUpdateSchema = z
       )
       .max(50)
       .optional(),
+    /**
+     * كروت **خارج الخطة** — إنشاؤها من الحمولة.
+     *
+     * `adhocStates` بتحدّث كرتاً موجوداً، و`courses` بتخلق كروت دورات التدريب
+     * وبس. الشغل الإضافي اليومي (كاتالوغ، بوستات مسابقة، كتابة محتوى لحدث) ما
+     * كان إله طريق مدقَّق: بينخلق بنافذة «مهمة جديدة» — بلا فحص ما قبل التطبيق،
+     * بلا سطر دليل، وبساعات مسقوفة بـ٤ ساعات (`createTask`) يعني نص يوم لأي كرت
+     * مهما كان صغيراً. بوستان لسابين (معدّلها ٦ باليوم = ١.٣٣ ساعة للبوست)
+     * كانوا بيوخدوا نص يومها.
+     *
+     * المعرّف ثابت (`adhoc_<slug>`) فإعادة التطبيق بتحدّث نفس الكرت: المنجز أو
+     * الملغى ما بينلمس، والمفتوح بياخد قيم الحمولة. الكروت مثبّتة لأنّ مواعيدها
+     * قرار القائدة لا حساب المحرّك — وهاد كمان شرط فحص «كرت خارج الخطة ما
+     * بيبلع يوم الشخص» لأي كرت بيوصل ليوم كامل.
+     */
+    adhocCards: z
+      .array(
+        z
+          .object({
+            /** معرّف ثابت بالإنجليزي — هو مفتاح إعادة التطبيق. */
+            slug: z.string().regex(/^[a-z0-9-]{3,60}$/, "معرّف الكرت: أحرف لاتينية صغيرة وأرقام و- فقط"),
+            title: z.string().trim().min(3).max(200),
+            /** المسؤول بالاسم متل ما هو مخزَّن. */
+            assignee: z.string().trim().min(1).max(60),
+            stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]).optional(),
+            /**
+             * الجهد بالساعات — إلزامي وصريح.
+             *
+             * الكرت خارج الخطة بيشتري حصّة من يوم الشخص (`dailyTaskEffortDays`)،
+             * فالتقدير المسكوت عنه بيخرّب الطابور. الحساب: عدد القطع ÷ معدّل
+             * الشخص × ٨.
+             */
+            hours: z.number().min(0.25).max(80),
+            /** يوم الشغل ويوم التسليم — قرار القائدة. */
+            workDate: isoDate,
+            readyDate: isoDate,
+            status: z
+              .enum(["NOT_STARTED", "IN_PROGRESS", "AWAITING_APPROVAL", "READY", "PUBLISHED"])
+              .optional(),
+            priority: z.enum(PRIORITIES).optional(),
+            /** يوم الإنجاز الفعلي لكرت بينخلق منجزاً — سجلّ، مو خطة. */
+            doneOn: isoDate.optional(),
+            /** شو لازم ينعمل بالضبط — بيظهر على الكرت وبالبريف. */
+            brief: z.string().trim().max(4000).optional(),
+            evidence: z.string().trim().min(3).max(500),
+          })
+          .strict()
+          .refine((card) => card.workDate <= card.readyDate, {
+            message: "يوم الشغل بعد يوم التسليم",
+          }),
+      )
+      .max(30)
+      .optional(),
     closePreviousOpenTasks: z
       .object({
         decisionDate: isoDate,
@@ -254,6 +308,7 @@ const planUpdateSchema = z
           value.closePreviousOpenTasks ||
           value.pieceStates?.length ||
           value.adhocStates?.length ||
+          value.adhocCards?.length ||
           value.courses ||
           value.instagramHandle,
       ),
@@ -522,6 +577,101 @@ export async function applyPlanUpdatePayload(input: unknown) {
           ok: false as const,
           error: `كروت خارج الخطة في دورة ${company.name}: ${problems.join(" · ")}`,
         };
+      }
+    }
+
+    // كروت خارج الخطة الجديدة: كلها بتنفحص قبل أي كتابة — مسؤول مو موجود أو
+    // معرّف مكرّر = الحمولة كلها بترجع بلا كتابة.
+    const adhocCardOps: Prisma.PrismaPromise<unknown>[] = [];
+    let createdAdhocCards = 0;
+    let updatedAdhocCards = 0;
+    let unchangedAdhocCards = 0;
+    const newAdhocSpecs = data.adhocCards ?? [];
+    if (newAdhocSpecs.length) {
+      const slugs = newAdhocSpecs.map((card) => card.slug);
+      const duplicate = slugs.find((slug, index) => slugs.indexOf(slug) !== index);
+      if (duplicate) {
+        return { ok: false as const, error: `معرّف الكرت «${duplicate}» مكرّر بالحمولة` };
+      }
+      const names = [...new Set(newAdhocSpecs.map((card) => card.assignee))];
+      const people = await prisma.employee.findMany({ where: { name: { in: names } }, select: { id: true, name: true } });
+      const personByName = new Map(people.map((person) => [person.name, person.id]));
+      const missingPerson = names.find((name) => !personByName.has(name));
+      if (missingPerson) {
+        return { ok: false as const, error: `المسؤول «${missingPerson}» غير موجود` };
+      }
+      const ids = newAdhocSpecs.map((card) => `adhoc_${card.slug}`);
+      const existing = await prisma.task.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, companyId: true, status: true, board: true, notes: true, finishedAt: true, startedAt: true },
+      });
+      const existingById = new Map(existing.map((task) => [task.id, task]));
+      const foreign = existing.find((task) => task.companyId !== companyId);
+      if (foreign) {
+        return { ok: false as const, error: `الكرت «${foreign.id}» تبع شركة تانية — غيّر المعرّف` };
+      }
+      for (const card of newAdhocSpecs) {
+        const id = `adhoc_${card.slug}`;
+        const found = existingById.get(id);
+        const settled =
+          found &&
+          (found.status === "CANCELED" ||
+            found.board === "DONE" ||
+            found.finishedAt != null ||
+            DONE_STATUSES.includes(found.status as never));
+        if (settled) {
+          // المنجز تاريخه صار تاريخاً، والملغى قرار — التنين ما بينلمسوا.
+          unchangedAdhocCards++;
+          continue;
+        }
+        const status = normalizeStatusForStage(card.status ?? "NOT_STARTED", card.stage);
+        const done = DONE_STATUSES.includes(status as never);
+        const workDate = fromISODate(card.workDate);
+        const doneAt = done ? fromISODate(card.doneOn ?? card.readyDate) : null;
+        const fields = {
+          title: card.title,
+          stage: card.stage ?? null,
+          hours: card.hours,
+          priority: card.priority ?? "NORMAL",
+          status,
+          board: statusToBoard(status),
+          workDate,
+          readyDate: fromISODate(card.readyDate),
+          assigneeId: personByName.get(card.assignee)!,
+          brief: card.brief ?? null,
+          notes: withEvidenceLine(found?.notes, card.evidence),
+          // اليوم قرار القائدة لا حساب المحرّك — والتثبيت هو مراجعة الساعات
+          // كمان (فحص «كرت خارج الخطة ما بيبلع يوم الشخص»).
+          isPinned: true,
+          startedAt: status === "NOT_STARTED" ? null : (found?.startedAt ?? doneAt ?? workDate),
+          finishedAt: doneAt,
+          completedAt: doneAt,
+        };
+        if (found) {
+          updatedAdhocCards++;
+          adhocCardOps.push(
+            prisma.task.updateMany({
+              where: { id, status: { notIn: [...DONE_STATUSES, "CANCELED"] } },
+              data: fields,
+            }),
+          );
+        } else {
+          createdAdhocCards++;
+          adhocCardOps.push(
+            prisma.task.create({
+              data: {
+                id,
+                kind: "ADHOC",
+                quantity: 1,
+                isAuto: false,
+                companyId,
+                year: data.year,
+                month: data.month,
+                ...fields,
+              },
+            }),
+          );
+        }
       }
     }
 
@@ -879,7 +1029,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
 
     // كروت الدورات آخر المعاملة — الشرائح المحسوبة فوق (الإقفال والاستعادة)
     // بتعتمد على مواضع الكتابات السابقة.
-    const results = (await prisma.$transaction([...writes, ...courseOps])) as { count?: number }[];
+    const results = (await prisma.$transaction([...writes, ...adhocCardOps, ...courseOps])) as { count?: number }[];
 
     // قطعة انتشرت = كل مراحلها خلصت. الحمولة بتلمس الكرت المطلوب وحده، فبلا
     // هالخطوة بيضل المونتاج أو التصميم مفتوحاً والقطعة منشورة — حالة مستحيلة
@@ -922,6 +1072,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
       describedPieces: items.length,
       updatedStates: stateTargets.length,
       updatedAdhoc: adhocResolved.length,
+      createdAdhocCards,
+      updatedAdhocCards,
+      unchangedAdhocCards,
       closedPreviousTasks,
       restoredTasks,
       createdCourseCards,
