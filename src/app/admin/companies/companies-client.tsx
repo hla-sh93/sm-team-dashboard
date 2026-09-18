@@ -451,6 +451,8 @@ export default function CompaniesClient({
           <div className="flex gap-1">
             <button
               className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
+              title="تعديل الشركة: عدد القطع والمالكون والتواريخ"
+              aria-label="تعديل الشركة"
               onClick={() => {
                 setEditing(c);
                 setOpen(true);
@@ -460,6 +462,8 @@ export default function CompaniesClient({
             </button>
             <button
               className="p-1.5 rounded-md hover:bg-danger/10 text-danger"
+              title="حذف الشركة وكل كروتها نهائياً"
+              aria-label="حذف الشركة"
               onClick={() => onDelete(c)}
             >
               <Trash2 className="w-4 h-4" />
@@ -533,8 +537,20 @@ export default function CompaniesClient({
         {/* المؤرشفة (لم تجدّد) واقفة من حالها: لا استيراد ولا إيقاف ولا إرجاع — «جدّد» فقط */}
         {c.managed && lifecycle !== "archived" && (
           <div className="mt-3 flex flex-wrap gap-1.5">
+            {/* قالب الشهر الفاضي — بينبنى لحظة الطلب من عقد الشركة ودورتها،
+                فما بيتقادم متل الملف المحفوظ. هاد يلي بتعبّيه نوال. */}
+            {c.publishStartDate && (
+              <a
+                href={`/api/plan-template?companyId=${c.id}`}
+                title="ملف Word فارغ بجداول الشهر — لتعبئته وإعادة رفعه"
+                className="text-[11px] px-2 py-1 rounded-md border border-accent/40 text-accent hover:bg-accent/10"
+              >
+                حمّل قالب الخطة
+              </a>
+            )}
             <button
               className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
+              title="لصق حمولة JSON — للعمليات: إقفال قطع بدليل، كروت خارج الخطة، دورات التدريب"
               onClick={() => onImportPlan(c)}
             >
               استيراد خطة JSON
@@ -545,6 +561,7 @@ export default function CompaniesClient({
             {c.publishStartDate && (
               <a
                 href={`/api/plan-doc?companyId=${c.id}`}
+                title="خطة الدورة الحالية بتواريخ النشر والمسؤولين والحالة"
                 className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
               >
                 تصدير الخطة Word
@@ -552,6 +569,7 @@ export default function CompaniesClient({
             )}
             <button
               className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
+              title="حذف كروت لا تنتمي لأي دورة صالحة"
               onClick={() => onPurgeOrphans(c)}
             >
               نظّف الكروت اليتيمة
