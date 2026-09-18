@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
-import { extractDocxTables, parsePlanTables, PIECE_TYPE_LABEL, summarisePieces } from "@/lib/plan-docx";
+import { extractDocxBlocks, parsePlanDocument, PIECE_TYPE_LABEL, summarisePieces } from "@/lib/plan-docx";
 
 async function main() {
   const [file, ...flags] = process.argv.slice(2);
@@ -22,9 +22,12 @@ async function main() {
     console.error("✗ مو ملف Word صالح (ما في word/document.xml)");
     process.exit(1);
   }
-  const tables = extractDocxTables(await entry.async("string"));
-  console.log(`— ${file}\n  جداول: ${tables.length}${tables.length ? ` (صفوف: ${tables.map((t) => t.length).join("، ")})` : ""}`);
-  const result = parsePlanTables(tables);
+  const blocks = extractDocxBlocks(await entry.async("string"));
+  const rowCounts = blocks.flatMap((block) => (block.kind === "table" ? [block.rows.length] : []));
+  console.log(
+    `— ${file}\n  جداول: ${rowCounts.length}${rowCounts.length ? ` (صفوف: ${rowCounts.join("، ")})` : ""}`,
+  );
+  const result = parsePlanDocument(blocks);
   if (!result.ok) {
     console.log(`  ✗ ${result.error}`);
     process.exit(1);
@@ -34,7 +37,7 @@ async function main() {
     "  ✓ " +
       Object.entries(counts)
         .filter(([, n]) => n)
-        .map(([type, n]) => `${n} ${PIECE_TYPE_LABEL[type as keyof typeof PIECE_TYPE_LABEL]}`)
+        .map(([type, n]) => `${String(n)} ${PIECE_TYPE_LABEL[type as keyof typeof PIECE_TYPE_LABEL]}`)
         .join(" · "),
   );
   for (const warning of result.warnings) console.log(`  ⚠ ${warning}`);

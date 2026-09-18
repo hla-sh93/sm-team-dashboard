@@ -3,20 +3,22 @@
  *
  * القائدة (١٨/٩): «حتى نوال ما تخطئ بالكتابة، اعمل قوالب الوورد لكل خطة كيف
  * بتقدر تقرأهن بشكل صحيح، ونوال فقط بتعبي المحتوى». وفضّلت شكل خطة فوني جوبس.
+ * وبعد أول نسخة: «جدول لكل نوع، ما تخلط كلشي بنفس الجدول» — وهي نفس قاعدتها
+ * بملف التصدير (٤/٩): «جدول لكل نوع محتوى».
  *
- * فالقالب **هو هو شكل فوني جوبس** (سكريبت · كابشن · نوع) مع فرق واحد: الرقم
- * والنوع صاروا عمودين بدل خانة وحدة. بالملفات الحالية العمود الأخير بيجمع
- * التنين والملاحظة بلا فاصل — «3Reelوظيفة الاسبوع ك اسبوع منختار وظيفة…»
- * و«8 Reel» و«4post» — وهاد المصدر الوحيد للالتباس بالقراءة. فصلهن بيخلّي كل
- * خانة شي واحد، وبيوفّر على نوال تنسيق الرقم أصلاً.
+ * فالشكل: صفحة **أفقية** وجدول لكل نوع. الأفقي مو تفصيل شكلي — الجدول بالطولي
+ * أعرض من مساحة الكتابة فبيطلع مزاحاً عن الهامش، وهاد يلي صار بأول نسخة.
+ * وعرض الأعمدة مثبَّت بـ`columnWidths` وإلا Word بيوزّعهن على مزاجه.
  *
- * والهاشتاغات والملاحظة عمودان اختياريان: موجودان بخطة البلسم وبيضيعوا بغيرها.
+ * ونوع القطعة بيجي من **عنوان الجدول** («جدول الريلات»)، فما ضل عمود «النوع»
+ * تعبّيه نوال. عمود واحد أقلّ، والالتباس القديم («3Reelوظيفة الاسبوع…») انتهى.
  */
 import {
   AlignmentType,
   BorderStyle,
   Document,
   HeadingLevel,
+  PageOrientation,
   Paragraph,
   ShadingType,
   Table,
@@ -32,26 +34,87 @@ const NAVY = "1F4E5F";
 const SOFT = "EAF1F3";
 const MUTED = "7A7A7A";
 
-/** عناوين الأعمدة — **القارئ بيطابق عليها**، فتغييرها بيكسر الاستيراد. */
-export const TEMPLATE_HEADERS = [
-  "رقم",
-  "النوع",
-  "السكريبت / نص التصميم",
-  "الكابشن",
-  "الهاشتاغات",
-  "ملاحظة",
-] as const;
+/** عرض مساحة الكتابة بصفحة أفقية بهوامش ٧٠٠ — نفس ملف التصدير. */
+const TABLE_W = 15350;
 
-const COL_WIDTHS = [700, 1200, 4800, 4200, 1900, 1700];
-const TABLE_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
+export type TemplateSection = {
+  type: "REEL" | "POST" | "STORY" | "AI_REEL";
+  /** عنوان الجدول — **القارئ بيقرا النوع منه**، فتغييره بيكسر الاستيراد. */
+  heading: string;
+  headers: string[];
+  widths: number[];
+  example: string[];
+  hint: string;
+};
+
+const pad = (widths: number[]) => {
+  const sum = widths.reduce((a, b) => a + b, 0);
+  return widths.map((w, i) => (i === widths.length - 1 ? w + (TABLE_W - sum) : w));
+};
+
+/** جدول لكل نوع: الأعمدة يلي بتلزم هالنوع وبس. */
+export const TEMPLATE_SECTIONS: TemplateSection[] = [
+  {
+    type: "REEL",
+    heading: "جدول الريلات",
+    headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
+    widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
+    example: [
+      "1",
+      "الجملة الأولى يلي بتوقّف المتابع.",
+      "السكريبت كامل، سطر لكل مشهد أو جملة.\nكل سطر بينزل متل ما هو على كرت المصوّر والمونتير.",
+      "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
+      "#العلامة #الخدمة",
+      "تصوير",
+    ],
+    hint: "الترقيم من ١ لعدد الريلات. «ملاحظة» للتصوير أو أي توضيح إنتاجي.",
+  },
+  {
+    type: "POST",
+    heading: "جدول البوستات",
+    headers: ["رقم", "نص التصميم", "الكابشن", "الهاشتاغات", "ملاحظة"],
+    widths: pad([800, 6200, 5200, 1700, 1450]),
+    example: [
+      "1",
+      "النصّ يلي بينكتب جوّا التصميم، سطر لكل سطر بالتصميم.",
+      "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
+      "#العلامة #الخدمة",
+      "كاروسيل ٣ شرائح",
+    ],
+    hint: "الكاروسيل بوست واحد — اذكري عدد الشرائح بعمود «ملاحظة».",
+  },
+  {
+    type: "STORY",
+    heading: "جدول الستوريز",
+    headers: ["رقم", "المحتوى", "ملاحظة"],
+    widths: pad([800, 10000, 4550]),
+    example: ["1", "نصّ الستوري أو وصف اللقطة.", "تصويت / عدّاد / إعادة نشر"],
+    hint: "شكل الستوري (تصويت، سؤال، عدّاد) بعمود «ملاحظة» لا بعمود الرقم.",
+  },
+  {
+    type: "AI_REEL",
+    heading: "جدول ريلات AI",
+    headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
+    widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
+    example: [
+      "1",
+      "الجملة الأولى يلي بتوقّف المتابع.",
+      "السكريبت كامل، سطر لكل مشهد.",
+      "نصّ الكابشن.",
+      "#العلامة",
+      "",
+    ],
+    hint: "ريل مولّد بالذكاء الاصطناعي — بلا تصوير.",
+  },
+];
 
 const p = (
   text: string,
-  o: { size?: number; bold?: boolean; color?: string; after?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {},
+  o: { size?: number; bold?: boolean; color?: string; after?: number } = {},
 ) =>
   new Paragraph({
     bidirectional: true,
-    alignment: o.align ?? AlignmentType.RIGHT,
+    alignment: AlignmentType.RIGHT,
     spacing: { after: o.after ?? 60, line: 252 },
     children: [
       new TextRun({ text, rightToLeft: true, font: FONT, size: o.size ?? 18, bold: !!o.bold, color: o.color }),
@@ -64,44 +127,82 @@ const cell = (text: string, o: { head?: boolean; width: number; muted?: boolean 
     verticalAlign: VerticalAlign.CENTER,
     shading: o.head ? { type: ShadingType.CLEAR, fill: SOFT, color: "auto" } : undefined,
     margins: { top: 60, bottom: 60, left: 90, right: 90 },
-    children: [p(text, { bold: o.head, size: o.head ? 18 : 17, color: o.muted ? MUTED : undefined })],
+    children: text
+      .split("\n")
+      .map((line, i, all) =>
+        p(line, { bold: o.head, size: o.head ? 18 : 17, color: o.muted ? MUTED : undefined, after: i === all.length - 1 ? 0 : 40 }),
+      ),
   });
 
-const row = (cells: string[], o: { head?: boolean; muted?: boolean } = {}) =>
+const row = (cells: string[], widths: number[], o: { head?: boolean; muted?: boolean } = {}) =>
   new TableRow({
     tableHeader: o.head,
-    children: cells.map((text, i) => cell(text, { head: o.head, muted: o.muted, width: COL_WIDTHS[i] })),
+    children: cells.map((text, i) => cell(text, { head: o.head, muted: o.muted, width: widths[i] })),
   });
+
+const BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
+  bottom: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
+  left: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
+  right: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
+  insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
+  insideVertical: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
+};
 
 export type PlanTemplateInput = {
   company: string;
   /** نصّ الدورة متل ما بيعرضه التطبيق، مثال «١٣ أيلول ← ١٢ تشرين الأول». */
   cycleLabel?: string | null;
-  /** عدد القطع بالعقد — بينكتب بالتعليمات حتى ما تنقص ولا تزيد. */
+  /** عدد القطع بالعقد — بيحدّد أي جدول بينحط وكم صف فاضي فيه. */
   plan?: { posts: number; reels: number; stories: number; aiReels: number } | null;
-  /** صفوف فاضية جاهزة للتعبئة (بالإضافة لصف المثال). */
-  blankRows?: number;
+  /** أقلّ عدد صفوف فاضية بكل جدول. */
+  minRows?: number;
 };
 
-const EXAMPLE = [
-  "1",
-  "ريل",
-  "الهوك بالسطر الأول، وبعده السكريبت كامل.\nكل سطر جديد بينزل متل ما هو على الكرت.",
-  "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
-  "#العلامة #الخدمة",
-  "تصوير",
-];
+function sectionBlocks(section: TemplateSection, blanks: number) {
+  return [
+    new Paragraph({
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 200, after: 60 },
+      children: [
+        new TextRun({ text: section.heading, rightToLeft: true, font: FONT, size: 24, bold: true, color: NAVY }),
+      ],
+    }),
+    p(section.hint, { color: MUTED, size: 16, after: 100 }),
+    new Table({
+      width: { size: TABLE_W, type: WidthType.DXA },
+      columnWidths: section.widths,
+      visuallyRightToLeft: true,
+      borders: BORDERS,
+      rows: [
+        row(section.headers, section.widths, { head: true }),
+        row(section.example, section.widths, { muted: true }),
+        ...Array.from({ length: blanks }, () => row(section.headers.map(() => ""), section.widths)),
+      ],
+    }),
+    p("", { after: 120 }),
+  ];
+}
 
 /**
- * القالب: تعليمات قصيرة + جدول واحد لكل القطع (بوست · ريل · ستوري · ريل AI).
+ * القالب: تعليمات قصيرة، وجدول لكل نوع بعنوانه.
  *
- * جدول واحد لا جدول لكل نوع: الملفات يلي فيها جدولان (جدارات، البلسم، أغاليا)
- * ضاع منها الترقيم بين الجدولين، وصار في ترويسة ثانية لازم تنقرا. والنوع عمود
- * أصلاً، فالفرز بيصير بالتطبيق لا بالملف.
+ * الجداول بتنحط حسب عقد الشركة: شركة بلا ستوريز ما بدها جدول ستوريز فاضي
+ * يغري بالتعبئة، وشركة بلا ريلات AI ما بتشوف الجدول أصلاً.
  */
 export function buildPlanTemplate(input: PlanTemplateInput): Document {
-  const blanks = Math.max(0, input.blankRows ?? 12);
   const counts = input.plan;
+  const minRows = Math.max(2, input.minRows ?? 4);
+  const quota: Record<TemplateSection["type"], number> = {
+    REEL: counts?.reels ?? 0,
+    POST: counts?.posts ?? 0,
+    STORY: counts?.stories ?? 0,
+    AI_REEL: counts?.aiReels ?? 0,
+  };
+  // بلا عقد معروف: كل الجداول بعدد صفوف افتراضي.
+  const sections = TEMPLATE_SECTIONS.filter((s) => !counts || quota[s.type] > 0);
   const planLine = counts
     ? `العدد المتعاقد عليه: ${counts.posts} بوست · ${counts.reels} ريل · ${counts.stories} ستوري${counts.aiReels ? ` · ${counts.aiReels} ريل AI` : ""}.`
     : null;
@@ -110,7 +211,12 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
     styles: { default: { document: { run: { font: FONT, size: 18 } } } },
     sections: [
       {
-        properties: {},
+        properties: {
+          page: {
+            size: { orientation: PageOrientation.LANDSCAPE },
+            margin: { top: 700, bottom: 700, left: 700, right: 700 },
+          },
+        },
         children: [
           new Paragraph({
             bidirectional: true,
@@ -125,33 +231,15 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
           ...(planLine ? [p(planLine, { color: MUTED, after: 140 })] : [p("", { after: 100 })]),
 
           p("التعليمات", { bold: true, size: 20, color: NAVY, after: 60 }),
-          p("• صفّ واحد لكل قطعة. لا تدمجي قطعتين بصفّ واحد.", { after: 40 }),
-          p("• «النوع»: بوست · ريل · ستوري · ريل AI. الكاروسيل بوست.", { after: 40 }),
-          p("• «رقم»: الترقيم يبدأ من ١ ويكمل لكل نوع على حدة — ريل ١..٦ وبوست ١..٨.", { after: 40 }),
-          p("• لا تغيّري عناوين الأعمدة ولا ترتيبها ولا تحذفي عموداً: التطبيق يقرأ عليها.", { after: 40 }),
-          p("• «الهاشتاغات» و«ملاحظة» اختياريان. اتركيهما فارغين إذا لا يوجد.", { after: 40 }),
-          p("• احذفي الصفوف الفارغة الزائدة قبل الإرسال، واحذفي صفّ المثال.", { after: 160 }),
+          p("• جدول لكل نوع. اكتبي كل قطعة بصفّ واحد داخل جدولها.", { after: 40 }),
+          p("• «رقم»: الترقيم يبدأ من ١ ويكمل داخل كل جدول على حدة.", { after: 40 }),
+          p("• لا تغيّري عنوان أي جدول ولا عناوين أعمدته ولا ترتيبها: التطبيق يقرأ عليها.", { after: 40 }),
+          p("• الأعمدة الفارغة مسموحة، وحذف عمود غير مسموح.", { after: 40 }),
+          p("• احذفي صفّ المثال الرمادي والصفوف الفارغة الزائدة قبل الإرسال.", { after: 60 }),
 
-          new Table({
-            width: { size: TABLE_W, type: WidthType.DXA },
-            visuallyRightToLeft: true,
-            borders: {
-              top: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-              bottom: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-              left: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-              right: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-              insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
-              insideVertical: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
-            },
-            rows: [
-              row([...TEMPLATE_HEADERS], { head: true }),
-              row(EXAMPLE, { muted: true }),
-              ...Array.from({ length: blanks }, () => row(["", "", "", "", "", ""])),
-            ],
-          }),
-
-          p("", { after: 120 }),
-          p("صفّ المثال رمادي — احذفيه قبل الإرسال.", { color: MUTED, size: 16 }),
+          ...sections.flatMap((section) =>
+            sectionBlocks(section, Math.max(minRows, (quota[section.type] || 0) + 1)),
+          ),
         ],
       },
     ],

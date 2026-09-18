@@ -13,9 +13,10 @@
  * («3Reelوظيفة الاسبوع…»، «8 Reel»، «4post»). قراءة كل هالأشكال بالتخمين
  * بتنزّل سكريبت على القطعة الغلط بصمت — وهاد أسوأ من رفض الملف.
  *
- * فالقارئ بيشتغل على **القالب** وحده: بيلزمه ترويسة فيها «رقم» و«النوع»،
- * وبيرفض الملف كله إذا ما لقيها. `scripts/make-plan-template.ts` بيولّد القالب،
- * و`scripts/parse-plan-docx.ts` بيفرجي شو قرا قبل أي كتابة.
+ * فالقارئ بيشتغل على **القالب** وحده. والقالب جدول لكل نوع (قاعدة القائدة،
+ * نفس قاعدة ملف التصدير): فنوع القطعة بيجي من **عنوان الجدول** — سطر بيبدأ
+ * بكلمة «جدول» قبله مباشرة — أو من عمود «النوع» إذا وُجد. وبلا واحد منهن
+ * بينرفض الملف كله.
  */
 
 /** أنواع المحتوى متل ما بيخزّنها التطبيق. */
@@ -34,13 +35,16 @@ export type PlanDocxResult =
   | { ok: true; pieces: PlanDocxPiece[]; warnings: string[] }
   | { ok: false; error: string };
 
-/** صفوف جدول Word: جدول ← صف ← خانة. */
+/** صفوف جدول Word: صف ← خانة. */
 export type DocxTable = string[][];
+/** المستند بترتيبه: فقرة أو جدول — العنوان قبل الجدول هو يلي بيعطي النوع. */
+export type DocxBlock = { kind: "p"; text: string } | { kind: "table"; rows: DocxTable };
 
 const T_TAG = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
-const TBL = /<w:tbl>[\s\S]*?<\/w:tbl>/g;
+const TBL_G = /<w:tbl>[\s\S]*?<\/w:tbl>/g;
 const TR = /<w:tr[\s>][\s\S]*?<\/w:tr>/g;
 const TC = /<w:tc[\s>][\s\S]*?<\/w:tc>/g;
+const P_G = /<w:p[\s>][\s\S]*?<\/w:p>/g;
 /** الفقرة داخل الخانة = سطر. بلا هيك بيلتصق «الهوك» بالسكريبت بكلمة وحدة. */
 const P_END = /<\/w:p>/g;
 
@@ -54,32 +58,56 @@ function unescapeXml(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
-function cellText(cellXml: string): string {
-  // كل `</w:p>` بيصير سطر جديد، وبعدين بنقرا النصوص بينهن.
-  const lines = cellXml
-    .split(P_END)
-    .map((part) => {
-      let out = "";
-      for (const match of part.matchAll(T_TAG)) out += match[1];
-      return unescapeXml(out).replace(/[ \t ]+/g, " ").trim();
-    })
-    .filter(Boolean);
-  return lines.join("\n");
+function runsText(xml: string): string {
+  let out = "";
+  for (const match of xml.matchAll(T_TAG)) out += match[1];
+  return unescapeXml(out).replace(/[ \t ]+/g, " ").trim();
 }
 
-/** جداول المستند كنصّ — نقية، بلا فكّ ضغط (الضغط مسؤولية المنادي). */
-export function extractDocxTables(documentXml: string): DocxTable[] {
-  const tables: DocxTable[] = [];
-  for (const tableMatch of documentXml.match(TBL) ?? []) {
-    const rows: string[][] = [];
-    for (const rowMatch of tableMatch.match(TR) ?? []) {
-      const cells = (rowMatch.match(TC) ?? []).map(cellText);
-      if (cells.some(Boolean)) rows.push(cells);
-    }
-    if (rows.length) tables.push(rows);
-  }
-  return tables;
+function cellText(cellXml: string): string {
+  return cellXml.split(P_END).map(runsText).filter(Boolean).join("\n");
 }
+
+function tableRows(tableXml: string): DocxTable {
+  const rows: string[][] = [];
+  for (const rowMatch of tableXml.match(TR) ?? []) {
+    const cells = (rowMatch.match(TC) ?? []).map(cellText);
+    if (cells.some(Boolean)) rows.push(cells);
+  }
+  return rows;
+}
+
+/**
+ * المستند ككتل بترتيبها. الفقرات جوّا الجداول ما بتنعدّ فقرات — وإلا صار كل
+ * نصّ بخانة «عنوان جدول» محتمل.
+ */
+export function extractDocxBlocks(documentXml: string): DocxBlock[] {
+  const blocks: DocxBlock[] = [];
+  const pushParagraphs = (segment: string) => {
+    for (const match of segment.match(P_G) ?? []) {
+      const text = runsText(match);
+      if (text) blocks.push({ kind: "p", text });
+    }
+  };
+  let cursor = 0;
+  for (const match of documentXml.matchAll(TBL_G)) {
+    pushParagraphs(documentXml.slice(cursor, match.index));
+    const rows = tableRows(match[0]);
+    if (rows.length) blocks.push({ kind: "table", rows });
+    cursor = match.index + match[0].length;
+  }
+  pushParagraphs(documentXml.slice(cursor));
+  return blocks;
+}
+
+/** جداول المستند وحدها — للفحوص والاستعمال البسيط. */
+export function extractDocxTables(documentXml: string): DocxTable[] {
+  return extractDocxBlocks(documentXml)
+    .filter((block): block is { kind: "table"; rows: DocxTable } => block.kind === "table")
+    .map((block) => block.rows);
+}
+
+type ColumnKey = "no" | "type" | "hook" | "script" | "caption" | "tags" | "note";
 
 /** أعمدة القالب. المطابقة بالكلمة المفتاحية مشان تصغير/تكبير وفراغ ما يكسروا. */
 const COLUMN_PATTERNS: { key: ColumnKey; test: RegExp }[] = [
@@ -91,8 +119,6 @@ const COLUMN_PATTERNS: { key: ColumnKey; test: RegExp }[] = [
   { key: "tags", test: /هاشتا|hashtag/i },
   { key: "note", test: /ملاحظ|تفاصيل/ },
 ];
-
-type ColumnKey = "no" | "type" | "hook" | "script" | "caption" | "tags" | "note";
 
 function mapHeader(row: string[]): Partial<Record<ColumnKey, number>> | null {
   const map: Partial<Record<ColumnKey, number>> = {};
@@ -106,23 +132,40 @@ function mapHeader(row: string[]): Partial<Record<ColumnKey, number>> | null {
       }
     }
   });
-  // الترويسة لازم تعرّف الرقم والنوع — هنّ الهوية. بلاهن الصف مجرد نصّ.
-  return map.no !== undefined && map.type !== undefined ? map : null;
+  // «رقم» هو هوية القطعة. بلاه الصف مجرد نصّ.
+  return map.no !== undefined ? map : null;
 }
 
+const REEL_WORD = /reel|ريل|فيديو/i;
+/** `\bai\b` بيمسك «AI» لحالها وما بيمسكها جوّا كلمة متل «main». */
+const AI_WORD = /\bai\b|ذكاء/i;
+
 const TYPE_WORDS: { type: PieceType; test: RegExp }[] = [
-  // «ريل AI» قبل «ريل» — وإلا بيصير ريلاً عادياً.
-  { type: "AI_REEL", test: /(ai|ذكاء)\s*[-_]?\s*(reel|ريل)|(reel|ريل)\s*[-_]?\s*(ai|ذكاء)/i },
   { type: "STORY", test: /story|ستور/i },
-  { type: "REEL", test: /reel|ريل|فيديو/i },
+  { type: "REEL", test: REEL_WORD },
   { type: "POST", test: /post|بوست|منشور|كاروس|carousel/i },
 ];
 
 export function parsePieceType(value: string): PieceType | null {
   const text = value.trim();
   if (!text) return null;
+  // «ريلات AI» قبل «ريل»، وإلا بيصير ريلاً عادياً. الفحص بوجود الكلمتين مو
+  // بنظمهن: `(reel|ريل)\w*` ما بيعبر «ات» لأنّ `\w` لاتيني بس.
+  if (AI_WORD.test(text) && REEL_WORD.test(text)) return "AI_REEL";
   for (const { type, test } of TYPE_WORDS) if (test.test(text)) return type;
   return null;
+}
+
+/**
+ * عنوان الجدول: سطر بيبدأ بكلمة «جدول» وفيه اسم النوع — «جدول الريلات».
+ *
+ * الشرط إنّو يبدأ بـ«جدول» مقصود: فقرة التعليمات بتذكر كل الأنواع بسطر واحد
+ * («النوع: بوست · ريل · ستوري»)، فلو قبلنا أي سطر فيه كلمة نوع لصار عنواناً.
+ */
+export function tableHeadingType(text: string): PieceType | null {
+  // `\b` بيشتغل على [A-Za-z0-9_] وبس، فما بيلقى حدّاً بين حرف عربي ومسافة —
+  // و`/^\s*جدول\b/` كان بيفشل على «جدول الريلات» نفسها.
+  return /^\s*جدول(?:\s|:|$)/.test(text) ? parsePieceType(text) : null;
 }
 
 const TYPE_LABEL: Record<PieceType, string> = {
@@ -140,11 +183,12 @@ function buildBrief(parts: { label: string; value: string }[]): string {
 }
 
 /**
- * يقرأ جداول المستند ويرجّع القطع. بيرفض الملف كله عند أول صفّ ملتبس: قطعة بلا
- * رقم، أو نوع مو معروف، أو رقم مكرّر. القارئ يلي «بيتسامح» بينزّل النصّ الغلط
- * على القطعة الغلط، وما حدا بيلاحظ إلا بعد النشر.
+ * يقرأ المستند ويرجّع القطع. بيرفض الملف كله عند أول صفّ ملتبس: قطعة بلا رقم،
+ * أو نوع مو معروف، أو رقم مكرّر. القارئ يلي «بيتسامح» بينزّل النصّ الغلط على
+ * القطعة الغلط، وما حدا بيلاحظ إلا بعد النشر.
  */
-export function parsePlanTables(tables: DocxTable[]): PlanDocxResult {
+export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
+  const tables = blocks.filter((block) => block.kind === "table");
   if (!tables.length) return { ok: false, error: "ما في جدول بالملف — استعملي قالب الخطة." };
 
   const pieces: PlanDocxPiece[] = [];
@@ -152,24 +196,44 @@ export function parsePlanTables(tables: DocxTable[]): PlanDocxResult {
   const problems: string[] = [];
   const seen = new Set<string>();
   let recognised = 0;
+  let heading: { type: PieceType; text: string } | null = null;
+  let tableNo = 0;
 
-  for (const [tableIndex, rows] of tables.entries()) {
+  for (const block of blocks) {
+    if (block.kind === "p") {
+      const type = tableHeadingType(block.text);
+      if (type) heading = { type, text: block.text.trim() };
+      continue;
+    }
+    tableNo++;
+    const rows = block.rows;
     const map = mapHeader(rows[0]);
-    if (!map) continue; // جدول مو جدول قطع (غلاف، ملخّص…)
+    if (!map) {
+      heading = null;
+      continue; // جدول مو جدول قطع (غلاف، ملخّص…)
+    }
+    const headingType = heading?.type ?? null;
+    const label = heading ? `«${heading.text}»` : `جدول ${tableNo}`;
+    if (map.type === undefined && !headingType) {
+      problems.push(`${label}: ما في عمود «النوع» ولا عنوان جدول يحدّد النوع`);
+      heading = null;
+      continue;
+    }
     recognised++;
     for (const [rowIndex, row] of rows.slice(1).entries()) {
-      const at = `جدول ${tableIndex + 1} صف ${rowIndex + 2}`;
+      const at = `${label} صف ${rowIndex + 2}`;
       const cell = (key: ColumnKey) => (map[key] !== undefined ? (row[map[key]!] ?? "").trim() : "");
       const rawNo = cell("no");
       const rawType = cell("type");
-      if (!rawNo && !rawType && !cell("script") && !cell("caption")) continue; // صف فاضي
+      const content = [cell("hook"), cell("script"), cell("caption"), cell("tags")].join("");
+      if (!rawNo && !rawType && !content) continue; // صف فاضي من القالب
 
       const noMatch = rawNo.match(/\d+/);
       if (!noMatch) {
         problems.push(`${at}: ما في رقم للقطعة`);
         continue;
       }
-      const type = parsePieceType(rawType);
+      const type = rawType ? parsePieceType(rawType) : headingType;
       if (!type) {
         problems.push(`${at}: نوع غير معروف «${rawType.slice(0, 30)}»`);
         continue;
@@ -196,18 +260,19 @@ export function parsePlanTables(tables: DocxTable[]): PlanDocxResult {
       }
       pieces.push({ type, pieceNo, brief, note });
     }
+    heading = null;
   }
 
-  if (!recognised) {
+  if (!recognised && !problems.length) {
     return {
       ok: false,
-      error: "ما في جدول فيه عمودا «رقم» و«النوع» — استعملي قالب الخطة بلا تغيير عناوين الأعمدة.",
+      error: "ما في جدول فيه عمود «رقم» — استعملي قالب الخطة بلا تغيير عناوين الأعمدة.",
     };
   }
   if (problems.length) {
     return { ok: false, error: `الملف ما انقرا: ${problems.slice(0, 6).join(" · ")}` };
   }
-  if (!pieces.length) return { ok: false, error: "الجدول فاضي — ما في ولا قطعة." };
+  if (!pieces.length) return { ok: false, error: "الجداول فاضية — ما في ولا قطعة." };
 
   // فجوة بالترقيم = قطعة ناقصة غالباً. تحذير لا رفض: ممكن تكون خطة جزئية.
   const byType = new Map<PieceType, number[]>();
@@ -225,6 +290,11 @@ export function parsePlanTables(tables: DocxTable[]): PlanDocxResult {
 
   pieces.sort((a, b) => a.type.localeCompare(b.type) || a.pieceNo - b.pieceNo);
   return { ok: true, pieces, warnings };
+}
+
+/** نفس القراءة لجداول بلا عناوين — لازم كل جدول يحمل عمود «النوع». */
+export function parsePlanTables(tables: DocxTable[]): PlanDocxResult {
+  return parsePlanDocument(tables.map((rows) => ({ kind: "table" as const, rows })));
 }
 
 /** القطع ← بنود حمولة «استيراد خطة» — نفس الشكل المدقَّق الموجود. */

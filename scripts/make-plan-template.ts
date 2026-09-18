@@ -25,7 +25,8 @@ async function main() {
     console.error("ما في شركة مطابقة.");
     process.exit(1);
   }
-  const dir = "tmp/plan-templates";
+  // مجلّد بديل لما يكون قالب مفتوح بـWord (الملف بيصير مقفولاً عن الكتابة).
+  const dir = process.env.PLAN_TEMPLATE_DIR ?? "tmp/plan-templates";
   mkdirSync(dir, { recursive: true });
   for (const company of companies) {
     const bucket = currentCycleBucket(company, new Date());
@@ -37,7 +38,7 @@ async function main() {
       company: company.name,
       cycleLabel,
       plan: { posts: company.posts, reels: company.reels, stories: company.stories, aiReels: company.aiReels },
-      blankRows: Math.max(8, company.posts + company.reels + company.stories + company.aiReels),
+      minRows: 4,
     });
     const file = `${dir}/${companySlug(company)}-plan-template.docx`;
     writeFileSync(file, await Packer.toBuffer(doc));

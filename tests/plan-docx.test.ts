@@ -8,16 +8,21 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  extractDocxBlocks,
   extractDocxTables,
   parsePieceType,
+  parsePlanDocument,
   parsePlanTables,
   piecesToPayloadItems,
   summarisePieces,
+  tableHeadingType,
+  type DocxBlock,
   type DocxTable,
 } from "@/lib/plan-docx";
-import { TEMPLATE_HEADERS } from "@/lib/plan-template";
+import { TEMPLATE_SECTIONS } from "@/lib/plan-template";
 
-const HEAD = [...TEMPLATE_HEADERS];
+/** الشكل القديم: عمود «النوع» بكل صف (لسا مدعوم). */
+const HEAD = ["رقم", "النوع", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"];
 const table = (...rows: string[][]): DocxTable[] => [[HEAD, ...rows]];
 const piece = (no: string, type: string, script = "نصّ", caption = "كابشن", tags = "", note = "") => [
   no,
@@ -26,6 +31,12 @@ const piece = (no: string, type: string, script = "نصّ", caption = "كابش�
   caption,
   tags,
   note,
+];
+
+/** شكل القالب: عنوان جدول + جدول بلا عمود نوع. */
+const section = (heading: string, headers: string[], ...rows: string[][]): DocxBlock[] => [
+  { kind: "p", text: heading },
+  { kind: "table", rows: [headers, ...rows] },
 ];
 
 describe("قراءة جداول Word", () => {
@@ -109,6 +120,76 @@ describe("قراءة خطة من القالب", () => {
     if (!result.ok) throw new Error(result.error);
     expect(piecesToPayloadItems(result.pieces)).toEqual([
       { type: "POST", pieceNo: 1, brief: expect.stringContaining("نصّ") },
+    ]);
+  });
+});
+
+describe("القالب: جدول لكل نوع، والنوع من عنوان الجدول", () => {
+  it("بتقرا كل جدول بنوعه بلا عمود «النوع»", () => {
+    const result = parsePlanDocument([
+      ...section("جدول الريلات", ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
+        ["1", "هوك", "سكريبت", "كابشن", "#وسم", "تصوير"],
+        ["2", "هوك ٢", "سكريبت ٢", "كابشن ٢", "", ""]),
+      ...section("جدول البوستات", ["رقم", "نص التصميم", "الكابشن", "الهاشتاغات", "ملاحظة"],
+        ["1", "نصّ التصميم", "كابشن البوست", "", ""]),
+      ...section("جدول الستوريز", ["رقم", "المحتوى", "ملاحظة"],
+        ["1", "نصّ الستوري", "تصويت"]),
+    ]);
+    expect(result.ok, result.ok ? "" : result.error).toBe(true);
+    if (!result.ok) return;
+    expect(summarisePieces(result.pieces)).toEqual({ POST: 1, REEL: 2, STORY: 1, AI_REEL: 0 });
+    const reel = result.pieces.find((x) => x.type === "REEL" && x.pieceNo === 1)!;
+    expect(reel.brief).toContain("الهوك:\nهوك");
+    expect(reel.note).toBe("تصوير");
+  });
+
+  it("«جدول ريلات AI» بينقرا AI_REEL مو ريل", () => {
+    const result = parsePlanDocument(
+      section("جدول ريلات AI", ["رقم", "السكريبت"], ["1", "سكريبت"]),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.pieces[0].type).toBe("AI_REEL");
+  });
+
+  it("عنوان الجدول لازم يبدأ بكلمة «جدول» — سطر التعليمات ما بيصير عنواناً", () => {
+    expect(tableHeadingType("جدول الريلات")).toBe("REEL");
+    expect(tableHeadingType("«النوع»: بوست · ريل · ستوري")).toBeNull();
+    const result = parsePlanDocument([
+      { kind: "p", text: "«النوع»: بوست · ريل · ستوري" },
+      { kind: "table", rows: [["رقم", "السكريبت"], ["1", "نصّ"]] },
+    ]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("عنوان جدول");
+  });
+
+  it("عنوان الجدول ما بينسحب على الجدول اللي بعده", () => {
+    const result = parsePlanDocument([
+      ...section("جدول الريلات", ["رقم", "السكريبت"], ["1", "سكريبت"]),
+      { kind: "table", rows: [["رقم", "السكريبت"], ["1", "نصّ بلا عنوان"]] },
+    ]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("عنوان جدول");
+  });
+
+  it("كل قوالب الأنواع بتنقرا متل ما بينتجها مولّد القالب", () => {
+    for (const s of TEMPLATE_SECTIONS) {
+      const result = parsePlanDocument(section(s.heading, s.headers, s.example));
+      expect(result.ok, `${s.heading}: ${result.ok ? "" : result.error}`).toBe(true);
+      if (!result.ok) continue;
+      expect(result.pieces).toHaveLength(1);
+      expect(result.pieces[0].type).toBe(s.type);
+      expect(result.pieces[0].pieceNo).toBe(1);
+    }
+  });
+
+  it("الفقرات جوّا الجداول ما بتنعدّ عناوين", () => {
+    const xml = `<w:p><w:r><w:t>جدول الريلات</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>جدول البوستات</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`;
+    const blocks = extractDocxBlocks(xml);
+    expect(blocks.filter((b) => b.kind === "p").map((b) => (b.kind === "p" ? b.text : ""))).toEqual([
+      "جدول الريلات",
     ]);
   });
 });
