@@ -16,7 +16,11 @@ import {
  */
 
 // Sensitive admin-only segments that must NEVER appear in the employee area.
-const ADMIN_ONLY_SEGMENTS = ["finance", "team", "companies", "workload", "priorities"];
+// «companies» انشالت من هالقائمة بقرار القائدة (١٨/٩): «خلي الشركات تظهر
+// للموظفين حتى يقدرو يشوفو الخطط ويعاينو الملفات». الصفحتان مستقلّتان —
+// `/companies` قراءة وملفات خطة، و`/admin/companies` عقود وتجديد وحذف وإيقاف
+// نشر — والفحص تحت بيثبّت إنّ الموظّف ما بيشوف ولا رابط أدمن.
+const ADMIN_ONLY_SEGMENTS = ["finance", "team", "workload", "priorities"];
 
 const flat = (nav: typeof employeeNav) => nav.flatMap((s) => s.items.map((i) => i.href));
 
@@ -24,7 +28,7 @@ describe("access control — employee area must not expose the admin dashboard",
   const employeeHrefs = flat(employeeNav);
 
   it("employee nav contains ONLY the daily-work root routes", () => {
-    expect(employeeHrefs).toEqual(["/", "/today", "/tasks", "/publishing", "/reports"]);
+    expect(employeeHrefs).toEqual(["/", "/today", "/tasks", "/publishing", "/reports", "/companies"]);
   });
 
   it("no employee href points at the admin base or any /admin route", () => {
@@ -43,6 +47,12 @@ describe("access control — employee area must not expose the admin dashboard",
     }
   });
 
+  it("صفحة شركات الموظفين مستقلّة عن صفحة الإدارة", () => {
+    expect(employeeHrefs).toContain("/companies");
+    expect(employeeHrefs).not.toContain(`${ADMIN_BASE}/companies`);
+    expect(flat(adminNav)).toContain(`${ADMIN_BASE}/companies`);
+  });
+
   it("the area-switch link is hidden for employees and present for admins", () => {
     expect(areaSwitchHref(false)).toBeNull(); // employees: no link to /admin
     expect(areaSwitchHref(true)).toBe("/"); // admins: link back to team view
@@ -51,7 +61,7 @@ describe("access control — employee area must not expose the admin dashboard",
   it("the FULL employee sidebar (nav + area switch) has zero /admin hrefs", () => {
     const all = sidebarHrefs(false);
     expect(all.some((h) => h.startsWith("/admin"))).toBe(false);
-    expect(all).toEqual(["/", "/today", "/tasks", "/publishing", "/reports"]);
+    expect(all).toEqual(["/", "/today", "/tasks", "/publishing", "/reports", "/companies"]);
   });
 });
 

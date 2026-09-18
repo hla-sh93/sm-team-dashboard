@@ -10,7 +10,6 @@
 import { NextResponse } from "next/server";
 import { Packer } from "docx";
 import { prisma } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
 import { companySlug } from "@/lib/asset-name";
 import { currentCycleBucket, cycleForBucket } from "@/lib/contract";
 import { formatDateShort } from "@/lib/dates";
@@ -20,9 +19,11 @@ import { withArabicDefaults } from "@/lib/docx-rtl";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
-  }
+  // بلا بوابة أدمن **عن قصد**: منطقة الموظفين مفتوحة بلا تسجيل دخول بقرار
+  // التصميم («منطقة الموظفين لا تتطلب دخولاً — هذه الحماية للوحة الإدارة
+  // فقط»)، وكل محتوى هالملف — السكريبت والكابشن والمواعيد — معروض أصلاً
+  // بصفحة المهام المفتوحة. حجب الملف وحده كان بيمنع نوال من شغلها بلا ما
+  // يخفي شي.
   const companyId = new URL(request.url).searchParams.get("companyId");
   if (!companyId) return NextResponse.json({ error: "الشركة مطلوبة" }, { status: 400 });
 

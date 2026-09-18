@@ -43,6 +43,9 @@ export const employeeNav: NavSection[] = [
       { href: "/tasks", label: "جدول المهام", icon: CheckSquare },
       { href: "/publishing", label: "جدول النشر", icon: Send },
       { href: "/reports", label: "تقرير الإنجاز", icon: FileBarChart },
+      // الشركات للموظفين: قراءة + ملفات الخطة (قرار القائدة ١٨/٩). صفحة
+      // مستقلة عن `/admin/companies` — بلا تعديل ولا عقود ولا إيقاف نشر.
+      { href: "/companies", label: "الشركات", icon: Building2 },
     ],
   },
 ];

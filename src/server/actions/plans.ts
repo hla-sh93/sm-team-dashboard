@@ -7,7 +7,7 @@
  * مصدَّرة من ملف `"use server"` بتصير نقطة نهاية عامة، فلازم يضل هون تصدير
  * **واحد** وهو يلي بيتحقّق من الأدمن.
  */
-import { assertAdmin, isAuthenticated } from "@/lib/auth";
+import { assertAdmin } from "@/lib/auth";
 import { applyPlanUpdatePayload } from "@/server/plan-update";
 import { applyPlanDocx, previewPlanDocx } from "@/server/plan-docx-import";
 import { revalidateAll } from "@/lib/revalidate";
@@ -22,13 +22,13 @@ export async function applyCompanyPlanUpdate(input: unknown) {
 }
 
 /**
- * معاينة ملف خطة Word — قراءة فقط، فبتكفي جلسة موظّف.
+ * معاينة ملف خطة Word — قراءة فقط، بلا أي كتابة.
  *
- * نوال هي يلي بترفع الخطة وهي مو أدمن. المعاينة ما بتكتب ولا صفّ، والتطبيق
- * تحتها بيمرق من نفس تحقّق `applyPlanUpdatePayload`.
+ * بلا بوابة أدمن: نوال بترفع الخطة وهي مو أدمن، ومنطقة الموظفين مفتوحة أصلاً
+ * بقرار التصميم — كروت الحالة والإنجاز بتتغيّر منها بلا دخول. التطبيق تحتها
+ * بيمرق من نفس تحقّق `applyPlanUpdatePayload` كل-أو-لا-شي.
  */
 export async function previewCompanyPlanDocx(companyId: string, fileBase64: string) {
-  if (!(await isAuthenticated())) return { ok: false as const, error: "غير مصرّح" };
   return previewPlanDocx(companyId, fileBase64);
 }
 
@@ -38,7 +38,6 @@ export async function applyCompanyPlanDocx(input: {
   fileBase64: string;
   fileName: string;
 }) {
-  if (!(await isAuthenticated())) return { ok: false as const, error: "غير مصرّح" };
   const result = await applyPlanDocx({ ...input, source: "رفع من الواجهة" });
   if (result.ok) revalidateAll();
   return result;

@@ -43,6 +43,12 @@ const INTENTIONALLY_PUBLIC = new Set([
   "updatePhotoSessionStatus",
   "markPiecesPublished",
   "completeProductionForPublishedTask",
+  // خطة الشهر من Word: نوال بتنزّل القالب وبترفعه من صفحة الشركات عند
+  // الموظفين (قرار القائدة ١٨/٩)، وهي مو أدمن. المعاينة قراءة فقط، والتطبيق
+  // بيمرق من نفس تحقّق `applyPlanUpdatePayload` كل-أو-لا-شي وبيكتب سطر دليل
+  // فيه اسم الملف — فالكتابة مقيَّدة بقطع الدورة ومؤرَّخة.
+  "previewCompanyPlanDocx",
+  "applyCompanyPlanDocx",
 ]);
 
 function walk(dir: string): string[] {

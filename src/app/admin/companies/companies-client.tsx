@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import CompanyForm from "@/components/forms/CompanyForm";
+import PlanDocxButtons from "@/components/PlanDocxButtons";
 import {
   deleteCompany,
   archiveCompany,
@@ -17,11 +18,7 @@ import {
   resumeCompanyPublishing,
   purgeOrphanCards,
 } from "@/server/actions/companies";
-import {
-  applyCompanyPlanDocx,
-  applyCompanyPlanUpdate,
-  previewCompanyPlanDocx,
-} from "@/server/actions/plans";
+import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
 import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
@@ -297,79 +294,6 @@ export default function CompaniesClient({
     });
   };
 
-  /**
-   * رفع خطة الشهر كملف Word — المسار يلي بتمشي فيه نوال.
-   *
-   * المعاينة إلزامية: الملف بينزّل نصوصاً على كروت شغل حقيقية، فالقراءة بتنعرض
-   * قبل أي كتابة — كم قطعة مقابل العقد، وأي كرت كتابة رح ينسكّر، وأي تحذير.
-   */
-  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const onUploadPlanDocx = (c: Company, file: File) => {
-    const reader = new FileReader();
-    reader.onerror = () => toast("تعذّرت قراءة الملف", "error");
-    reader.onload = () => {
-      const base64 = String(reader.result ?? "").split(",")[1] ?? "";
-      if (!base64) {
-        toast("الملف فارغ", "error");
-        return;
-      }
-      start(async () => {
-        const preview = await previewCompanyPlanDocx(c.id, base64);
-        if (!preview.ok) {
-          void Swal.fire({ icon: "error", title: "الملف ما انقرا", text: preview.error, confirmButtonColor: "#0a8fa3" });
-          return;
-        }
-        const esc = (value: string) =>
-          value.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] ?? ch);
-        const counts = preview.counts
-          .map((row) => {
-            const bad = row.inFile !== row.inContract;
-            return `<span style="color:${bad ? "#b45309" : "#166534"}">${row.inFile}/${row.inContract} ${esc(row.label)}</span>`;
-          })
-          .join(" · ");
-        const cards = preview.writeCards
-          .map((card) => `<li>${esc(card.title)}${card.assignee ? ` — ${esc(card.assignee)}` : ""}${card.alreadyDone ? " (مسكَّر أصلاً)" : ""}</li>`)
-          .join("");
-        const pieces = preview.pieces
-          .map((piece) => `<li><b>${esc(piece.label)}-${piece.pieceNo}</b> · ${esc(piece.head)}</li>`)
-          .join("");
-        const warnings = preview.warnings.length
-          ? `<div style="background:#fef3c7;border-radius:6px;padding:8px;margin:8px 0"><b>تنبيهات</b><ul style="margin:4px 0 0;padding-inline-start:18px">${preview.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>`
-          : "";
-        const res = await Swal.fire({
-          title: `معاينة خطة ${esc(c.name)}`,
-          html: `<div dir="rtl" style="text-align:right;font-size:13px">
-            <p style="margin:0 0 6px">${preview.cycleLabel ? `الدورة: ${esc(preview.cycleLabel)}` : "بلا دورة"}</p>
-            <p style="margin:0 0 6px">القطع مقابل العقد: ${counts}</p>
-            ${warnings}
-            <p style="margin:8px 0 2px"><b>كروت الكتابة التي ستُسكَّر</b></p>
-            <ul style="margin:0;padding-inline-start:18px">${cards || "<li>لا شيء</li>"}</ul>
-            <p style="margin:8px 0 2px"><b>النصوص ستنزل على</b></p>
-            <ul style="margin:0;padding-inline-start:18px;max-height:180px;overflow:auto">${pieces}</ul>
-          </div>`,
-          width: 620,
-          showCancelButton: true,
-          confirmButtonText: "طبّق الخطة",
-          cancelButtonText: "إلغاء",
-          confirmButtonColor: "#0a8fa3",
-        });
-        if (!res.isConfirmed) return;
-        const applied = await applyCompanyPlanDocx({ companyId: c.id, fileBase64: base64, fileName: file.name });
-        if (!applied.ok) {
-          void Swal.fire({ icon: "error", title: "ما انطبّقت", text: applied.error, confirmButtonColor: "#0a8fa3" });
-          return;
-        }
-        toast(
-          `تم تطبيق خطة ${applied.company}: ${applied.describedPieces} وصفاً` +
-            (applied.closedWriteCards ? ` · أُغلق ${applied.closedWriteCards} كرت كتابة` : ""),
-        );
-        router.refresh();
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-
   /** Paste a validated JSON plan payload. The selected card supplies the company
    * id, so a payload copied from another client cannot accidentally target it. */
   const onImportPlan = (c: Company) => {
@@ -614,43 +538,8 @@ export default function CompaniesClient({
         {/* المؤرشفة (لم تجدّد) واقفة من حالها: لا استيراد ولا إيقاف ولا إرجاع — «جدّد» فقط */}
         {c.managed && lifecycle !== "archived" && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {/* قالب الشهر الفاضي — بينبنى لحظة الطلب من عقد الشركة ودورتها،
-                فما بيتقادم متل الملف المحفوظ. هاد يلي بتعبّيه نوال. */}
-            {c.publishStartDate && (
-              <a
-                href={`/api/plan-template?companyId=${c.id}`}
-                title="ملف Word فارغ بجداول الشهر — لتعبئته وإعادة رفعه"
-                className="text-[11px] px-2 py-1 rounded-md border border-accent/40 text-accent hover:bg-accent/10"
-              >
-                حمّل قالب الخطة
-              </a>
-            )}
-            {/* رفع الخطة المعبّاة — نفس الملف يلي نزّلته نوال من الزرّ يلي قبله. */}
-            {c.publishStartDate && (
-              <>
-                <input
-                  ref={(el) => {
-                    fileInputs.current[c.id] = el;
-                  }}
-                  type="file"
-                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) onUploadPlanDocx(c, file);
-                  }}
-                />
-                <button
-                  type="button"
-                  title="رفع خطة الشهر المعبّاة — معاينة قبل التطبيق"
-                  className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"
-                  onClick={() => fileInputs.current[c.id]?.click()}
-                >
-                  ارفع الخطة
-                </button>
-              </>
-            )}
+            {/* أزرار الخطة الثلاثة — نفس المكوّن يلي بصفحة الموظفين. */}
+            {c.publishStartDate && <PlanDocxButtons companyId={c.id} companyName={c.name} />}
             <button
               className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
               title="لصق حمولة JSON — للعمليات: إقفال قطع بدليل، كروت خارج الخطة، دورات التدريب"
@@ -658,18 +547,6 @@ export default function CompaniesClient({
             >
               استيراد خطة JSON
             </button>
-            {/* تصدير Word — بينفتح بتبويب جديد فالمتصفح بينزّله لحاله.
-                بيبيّن للشركة يلي إلها تاريخ بدء نشر بس: بلا تاريخ ما في
-                دورة، والملف بلا دورة بيوهم إنّ في جدول وما في. */}
-            {c.publishStartDate && (
-              <a
-                href={`/api/plan-doc?companyId=${c.id}`}
-                title="خطة الدورة الحالية بتواريخ النشر والمسؤولين والحالة"
-                className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
-              >
-                تصدير الخطة Word
-              </a>
-            )}
             <button
               className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
               title="حذف كروت لا تنتمي لأي دورة صالحة"
