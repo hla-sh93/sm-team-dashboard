@@ -44,13 +44,19 @@ export type TemplateSection = {
   headers: string[];
   widths: number[];
   example: string[];
-  hint: string;
 };
 
 const pad = (widths: number[]) => {
   const sum = widths.reduce((a, b) => a + b, 0);
   return widths.map((w, i) => (i === widths.length - 1 ? w + (TABLE_W - sum) : w));
 };
+
+/**
+ * رقم صفّ المثال. القائدة شالت التعليمات من القالب («مالهن داعي»)، فما عاد في
+ * سطر بيقول «احذفي صفّ المثال». فبدل ما نتّكل على حدا يتذكّر، الرقم كلمة لا
+ * عدد، والقارئ بيتخطّى الصف كله — انحذف أو ضلّ، النتيجة وحدة.
+ */
+export const EXAMPLE_ROW_MARK = "مثال";
 
 /** جدول لكل نوع: الأعمدة يلي بتلزم هالنوع وبس. */
 export const TEMPLATE_SECTIONS: TemplateSection[] = [
@@ -60,14 +66,13 @@ export const TEMPLATE_SECTIONS: TemplateSection[] = [
     headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
     widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
     example: [
-      "1",
+      EXAMPLE_ROW_MARK,
       "الجملة الأولى يلي بتوقّف المتابع.",
       "السكريبت كامل، سطر لكل مشهد أو جملة.\nكل سطر بينزل متل ما هو على كرت المصوّر والمونتير.",
       "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
       "#العلامة #الخدمة",
       "تصوير",
     ],
-    hint: "الترقيم من ١ لعدد الريلات. «ملاحظة» للتصوير أو أي توضيح إنتاجي.",
   },
   {
     type: "POST",
@@ -75,21 +80,19 @@ export const TEMPLATE_SECTIONS: TemplateSection[] = [
     headers: ["رقم", "نص التصميم", "الكابشن", "الهاشتاغات", "ملاحظة"],
     widths: pad([800, 6200, 5200, 1700, 1450]),
     example: [
-      "1",
+      EXAMPLE_ROW_MARK,
       "النصّ يلي بينكتب جوّا التصميم، سطر لكل سطر بالتصميم.",
       "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
       "#العلامة #الخدمة",
       "كاروسيل ٣ شرائح",
     ],
-    hint: "الكاروسيل بوست واحد — اذكري عدد الشرائح بعمود «ملاحظة».",
   },
   {
     type: "STORY",
     heading: "جدول الستوريز",
     headers: ["رقم", "المحتوى", "ملاحظة"],
     widths: pad([800, 10000, 4550]),
-    example: ["1", "نصّ الستوري أو وصف اللقطة.", "تصويت / عدّاد / إعادة نشر"],
-    hint: "شكل الستوري (تصويت، سؤال، عدّاد) بعمود «ملاحظة» لا بعمود الرقم.",
+    example: [EXAMPLE_ROW_MARK, "نصّ الستوري أو وصف اللقطة.", "تصويت / عدّاد / إعادة نشر"],
   },
   {
     type: "AI_REEL",
@@ -97,14 +100,13 @@ export const TEMPLATE_SECTIONS: TemplateSection[] = [
     headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
     widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
     example: [
-      "1",
+      EXAMPLE_ROW_MARK,
       "الجملة الأولى يلي بتوقّف المتابع.",
       "السكريبت كامل، سطر لكل مشهد.",
       "نصّ الكابشن.",
       "#العلامة",
       "",
     ],
-    hint: "ريل مولّد بالذكاء الاصطناعي — بلا تصوير.",
   },
 ];
 
@@ -170,7 +172,6 @@ function sectionBlocks(section: TemplateSection, blanks: number) {
         new TextRun({ text: section.heading, rightToLeft: true, font: FONT, size: 24, bold: true, color: NAVY }),
       ],
     }),
-    p(section.hint, { color: MUTED, size: 16, after: 100 }),
     new Table({
       width: { size: TABLE_W, type: WidthType.DXA },
       columnWidths: section.widths,
@@ -187,7 +188,9 @@ function sectionBlocks(section: TemplateSection, blanks: number) {
 }
 
 /**
- * القالب: تعليمات قصيرة، وجدول لكل نوع بعنوانه.
+ * القالب: عنوان وسطر الدورة، وجدول لكل نوع بعنوانه. بلا تعليمات — قرار
+ * القائدة ١٨/٩: «احذف التعليمات، مالهن داعي». فالأمان لازم يكون بالبنية لا
+ * بسطر بينقرا: صفّ المثال رقمه كلمة، والقارئ بيتخطّاه لحاله.
  *
  * الجداول بتنحط حسب عقد الشركة: شركة بلا ستوريز ما بدها جدول ستوريز فاضي
  * يغري بالتعبئة، وشركة بلا ريلات AI ما بتشوف الجدول أصلاً.
@@ -229,13 +232,6 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
           }),
           p(input.cycleLabel ? `الدورة: ${input.cycleLabel}` : "الدورة: —", { color: MUTED, after: 40 }),
           ...(planLine ? [p(planLine, { color: MUTED, after: 140 })] : [p("", { after: 100 })]),
-
-          p("التعليمات", { bold: true, size: 20, color: NAVY, after: 60 }),
-          p("• جدول لكل نوع. اكتبي كل قطعة بصفّ واحد داخل جدولها.", { after: 40 }),
-          p("• «رقم»: الترقيم يبدأ من ١ ويكمل داخل كل جدول على حدة.", { after: 40 }),
-          p("• لا تغيّري عنوان أي جدول ولا عناوين أعمدته ولا ترتيبها: التطبيق يقرأ عليها.", { after: 40 }),
-          p("• الأعمدة الفارغة مسموحة، وحذف عمود غير مسموح.", { after: 40 }),
-          p("• احذفي صفّ المثال الرمادي والصفوف الفارغة الزائدة قبل الإرسال.", { after: 60 }),
 
           ...sections.flatMap((section) =>
             sectionBlocks(section, Math.max(minRows, (quota[section.type] || 0) + 1)),

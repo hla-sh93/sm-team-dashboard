@@ -228,6 +228,8 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
       const content = [cell("hook"), cell("script"), cell("caption"), cell("tags")].join("");
       if (!rawNo && !rawType && !content) continue; // صف فاضي من القالب
 
+      // صفّ المثال بالقالب رقمه كلمة «مثال» — بينتخطّى انحذف أو ضلّ.
+      if (/^\s*(مثال|example)\s*$/i.test(rawNo)) continue;
       const noMatch = rawNo.match(/\d+/);
       if (!noMatch) {
         problems.push(`${at}: ما في رقم للقطعة`);

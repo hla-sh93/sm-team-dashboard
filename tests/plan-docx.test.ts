@@ -19,7 +19,7 @@ import {
   type DocxBlock,
   type DocxTable,
 } from "@/lib/plan-docx";
-import { TEMPLATE_SECTIONS } from "@/lib/plan-template";
+import { EXAMPLE_ROW_MARK, TEMPLATE_SECTIONS } from "@/lib/plan-template";
 
 /** الشكل القديم: عمود «النوع» بكل صف (لسا مدعوم). */
 const HEAD = ["رقم", "النوع", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"];
@@ -174,15 +174,37 @@ describe("القالب: جدول لكل نوع، والنوع من عنوان ا
     expect(result.error).toContain("عنوان جدول");
   });
 
-  it("كل قوالب الأنواع بتنقرا متل ما بينتجها مولّد القالب", () => {
+  // القائدة شالت التعليمات من القالب، فما عاد في سطر بيقول «احذفي صفّ المثال».
+  // الأمان صار بالبنية: رقم صفّ المثال كلمة، والقارئ بيتخطّاه.
+  it("قالب فاضي ما فيه غير صفّ المثال بينرفض كخطة فاضية", () => {
     for (const s of TEMPLATE_SECTIONS) {
       const result = parsePlanDocument(section(s.heading, s.headers, s.example));
-      expect(result.ok, `${s.heading}: ${result.ok ? "" : result.error}`).toBe(true);
-      if (!result.ok) continue;
-      expect(result.pieces).toHaveLength(1);
-      expect(result.pieces[0].type).toBe(s.type);
-      expect(result.pieces[0].pieceNo).toBe(1);
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.error).toContain("فاضية");
     }
+  });
+
+  it("صفوف نوال الحقيقية بتنقرا والمثال فوقهن ما بيصير قطعة", () => {
+    const s = TEMPLATE_SECTIONS[0];
+    const real = [...s.example];
+    real[0] = "1";
+    const result = parsePlanDocument(section(s.heading, s.headers, s.example, real));
+    expect(result.ok, result.ok ? "" : result.error).toBe(true);
+    if (!result.ok) return;
+    expect(result.pieces).toHaveLength(1);
+    expect(result.pieces[0].pieceNo).toBe(1);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("كلمة «مثال» بعمود الرقم ما بتوقف القراءة", () => {
+    expect(EXAMPLE_ROW_MARK).toBe("مثال");
+    const result = parsePlanDocument(
+      section("جدول البوستات", ["رقم", "نص التصميم"], [EXAMPLE_ROW_MARK, "نصّ المثال"], ["1", "نصّ حقيقي"]),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.pieces.map((x) => x.brief)).toEqual([expect.stringContaining("نصّ حقيقي")]);
   });
 
   it("الفقرات جوّا الجداول ما بتنعدّ عناوين", () => {
