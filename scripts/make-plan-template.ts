@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { Packer } from "docx";
 import { prisma } from "@/lib/db";
 import { buildPlanTemplate } from "@/lib/plan-template";
+import { withArabicDefaults } from "@/lib/docx-rtl";
 import { companySlug } from "@/lib/asset-name";
 import { currentCycleBucket, cycleForBucket } from "@/lib/contract";
 import { formatDateShort } from "@/lib/dates";
@@ -41,7 +42,7 @@ async function main() {
       minRows: 4,
     });
     const file = `${dir}/${companySlug(company)}-plan-template.docx`;
-    writeFileSync(file, await Packer.toBuffer(doc));
+    writeFileSync(file, await withArabicDefaults(await Packer.toBuffer(doc)));
     console.log(`✓ ${file}  — ${company.name}${cycleLabel ? ` · ${cycleLabel}` : " · بلا دورة"}`);
   }
 }

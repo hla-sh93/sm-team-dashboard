@@ -211,7 +211,16 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
     : null;
 
   return new Document({
-    styles: { default: { document: { run: { font: FONT, size: 18 } } } },
+    // المحاذاة والرَنّة بتنقبلوا هون؛ اتجاه الفقرة الافتراضي (`<w:bidi/>`)
+    // ما بتدعمه المكتبة فبينحقن بعد التوليد (`withArabicDefaults`).
+    styles: {
+      default: {
+        document: {
+          run: { font: FONT, size: 18, rightToLeft: true },
+          paragraph: { alignment: AlignmentType.RIGHT },
+        },
+      },
+    },
     sections: [
       {
         properties: {
