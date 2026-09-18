@@ -137,6 +137,16 @@ const planUpdateSchema = z
             .optional(),
           date: isoDate.optional(),
           /**
+           * نقل الكرت لمسؤول تاني، بالاسم.
+           *
+           * المطابقة القديمة سجّلت كروتاً على الشخص الغلط — «تصوير ريل التوظيف»
+           * على أليسار بدل ماجد، و«لينكد إن — مقال LinkedIn Profile» على سابين
+           * بدل نوال — وما كان في طريق مدقَّق لتصحيحها: نافذة «تعديل» فيها حقل
+           * المسؤول، بس بلا دليل وبلا فحص ما قبل التطبيق، والكرت المنجز بينقل
+           * إنجازاً من شخص لشخص فلازم يكون القرار موثَّقاً.
+           */
+          assignee: z.string().trim().min(1).max(60).optional(),
+          /**
            * تقدير الجهد بالساعات. الكرت خارج الخطة بيشتري حصّة من يوم الشخص
            * (`dailyTaskEffortDays`)، وكرت بيوصل ليوم كامل بيصير **حصرياً**
            * فبياخد اليوم لحاله وبيخفي باقي شغل الشخص. صار فعلاً: «بوست-6 ·
@@ -578,6 +588,21 @@ export async function applyPlanUpdatePayload(input: unknown) {
           error: `كروت خارج الخطة في دورة ${company.name}: ${problems.join(" · ")}`,
         };
       }
+    }
+
+    // نقل المسؤولية بينفحص قبل أي كتابة: اسم غلط بيرجّع الحمولة كلها.
+    const adhocAssignees = new Map<string, string>();
+    const reassignNames = [
+      ...new Set(adhocSpecs.map((spec) => spec.assignee).filter((name): name is string => !!name)),
+    ];
+    if (reassignNames.length) {
+      const people = await prisma.employee.findMany({
+        where: { name: { in: reassignNames } },
+        select: { id: true, name: true },
+      });
+      for (const person of people) adhocAssignees.set(person.name, person.id);
+      const missing = reassignNames.find((name) => !adhocAssignees.has(name));
+      if (missing) return { ok: false as const, error: `المسؤول «${missing}» غير موجود` };
     }
 
     // كروت خارج الخطة الجديدة: كلها بتنفحص قبل أي كتابة — مسؤول مو موجود أو
@@ -1024,6 +1049,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
     for (const { spec, task } of adhocResolved) {
       const update = stateUpdateFor(spec, task);
       if (spec.hours != null) update.hours = spec.hours;
+      if (spec.assignee) update.assigneeId = adhocAssignees.get(spec.assignee);
       writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
     }
 

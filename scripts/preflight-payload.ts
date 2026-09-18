@@ -107,6 +107,16 @@ for (const file of files) {
       const bits = [t.id, `«${t.title}»`, `${t.status}`];
       if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
       if (spec.hours != null) bits.push(`ساعات ${t.hours}→${spec.hours}`);
+      if (spec.assignee) {
+        const from = (snap.employees as Row[]).find((e) => e.id === t.assigneeId);
+        const to = (snap.employees as Row[]).find((e) => e.name === spec.assignee);
+        if (!to) {
+          console.log(`   ✗ «${needle}»: المسؤول «${String(spec.assignee)}» مو موجود باللقطة`);
+          problems++;
+          continue;
+        }
+        bits.push(`المسؤول ${String(from?.name ?? "—")}→${String(to.name)}`);
+      }
       console.log(`   ✓ خارج الخطة · ${bits.join(" · ")}`);
     }
   }

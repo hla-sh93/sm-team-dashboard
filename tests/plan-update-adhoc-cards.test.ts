@@ -244,6 +244,52 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(result.ok).toBe(false);
   });
 
+  // نقل كرت لمسؤول تاني بدليل — المطابقة القديمة سجّلت كروتاً على الشخص الغلط،
+  // وما كان في غير نافذة «تعديل» بلا دليل ولا فحص.
+  it("`adhocStates.assignee` بتنقل الكرت لمسؤول تاني وبتكتب الدليل", async () => {
+    if (skip()) return;
+    const writer = await prisma.employee.findFirst({ where: { name: writerName } });
+    const result = await apply({
+      companyName,
+      year: 2026,
+      month: 8,
+      adhocStates: [
+        {
+          title: "تصميم بوستَي المسابقة",
+          stage: "DESIGN",
+          assignee: writerName,
+          evidence: "تصحيح المسؤول بقرار القائدة.",
+        },
+      ],
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.updatedAdhoc).toBe(1);
+    const card = await prisma.task.findUnique({ where: { id: DESIGN_ID } });
+    expect(card.assigneeId).toBe(writer.id);
+    expect(card.notes).toContain("تصحيح المسؤول بقرار القائدة.");
+    // بترجع لصاحبتها حتى ما تتعلّق باقي الفحوص على الترتيب.
+    const designer = await prisma.employee.findFirst({ where: { name: designerName } });
+    await prisma.task.update({ where: { id: DESIGN_ID }, data: { assigneeId: designer.id } });
+  });
+
+  it("اسم مسؤول غلط بـ`adhocStates` بيرجّع الحمولة كلها بلا نقل", async () => {
+    if (skip()) return;
+    const before = await prisma.task.findUnique({ where: { id: DESIGN_ID } });
+    const result = await apply({
+      companyName,
+      year: 2026,
+      month: 8,
+      adhocStates: [
+        { title: "تصميم بوستَي المسابقة", stage: "DESIGN", assignee: "لا أحد", evidence: "محاولة نقل." },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(String(result.error)).toContain("غير موجود");
+    const after = await prisma.task.findUnique({ where: { id: DESIGN_ID } });
+    expect(after.assigneeId).toBe(before.assigneeId);
+    expect(after.notes).toBe(before.notes);
+  });
+
   it("حقل غير معروف بيرفض الحمولة بدل ما ينشال بالصمت", async () => {
     if (skip()) return;
     const result = await apply(
