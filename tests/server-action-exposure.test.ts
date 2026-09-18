@@ -15,7 +15,17 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const GUARDS = ["assertAdmin", "isAuthenticated", "requireAuth", "guard()", "await guard"];
+// `assertPlanUpload` حارس حقيقي بس بكلمة تانية: بوابة رفع الخطة، بتقبل جلسة
+// الإدارة أو كوكي الرفع الموقَّع (`plan-upload-auth.ts`). نوال بترفع وهي مو
+// أدمن، فالحراسة لازم تكون بكلمة ضيّقة لا بكلمة اللوحة.
+const GUARDS = [
+  "assertAdmin",
+  "isAuthenticated",
+  "requireAuth",
+  "guard()",
+  "await guard",
+  "assertPlanUpload",
+];
 
 /**
  * مكشوفة عن قصد.
@@ -48,7 +58,10 @@ const INTENTIONALLY_PUBLIC = new Set([
   // بيمرق من نفس تحقّق `applyPlanUpdatePayload` كل-أو-لا-شي وبيكتب سطر دليل
   // فيه اسم الملف — فالكتابة مقيَّدة بقطع الدورة ومؤرَّخة.
   "previewCompanyPlanDocx",
-  "applyCompanyPlanDocx",
+  // فتح قفل الرفع: نقطة دخول بطبيعتها متل `loginAction` — بتتحقّق من الكلمة
+  // قبل ما تعطي كوكي. وحالة القفل قراءة بلا أسرار.
+  "unlockPlanUploadAction",
+  "planUploadStatusAction",
 ]);
 
 function walk(dir: string): string[] {

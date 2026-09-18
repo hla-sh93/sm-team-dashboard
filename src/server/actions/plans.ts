@@ -8,6 +8,7 @@
  * **واحد** وهو يلي بيتحقّق من الأدمن.
  */
 import { assertAdmin } from "@/lib/auth";
+import { assertPlanUpload } from "@/lib/plan-upload-auth";
 import { applyPlanUpdatePayload } from "@/server/plan-update";
 import { applyPlanDocx, previewPlanDocx } from "@/server/plan-docx-import";
 import { revalidateAll } from "@/lib/revalidate";
@@ -32,12 +33,22 @@ export async function previewCompanyPlanDocx(companyId: string, fileBase64: stri
   return previewPlanDocx(companyId, fileBase64);
 }
 
-/** تطبيق ملف خطة Word: النصوص على القطع، وكرت الكتابة بينسكّر بدليل. */
+/**
+ * تطبيق ملف خطة Word: النصوص على القطع، وكرت الكتابة بينسكّر بدليل.
+ *
+ * **محروس** بكلمة رفع الخطة (قرار القائدة ١٨/٩: «حط بوابة على الرفع بس»).
+ * جلسة الإدارة بتكفي، وإلا لازم كوكي الرفع. القراءة والتنزيل ضلّوا مفتوحين.
+ */
 export async function applyCompanyPlanDocx(input: {
   companyId: string;
   fileBase64: string;
   fileName: string;
 }) {
+  try {
+    await assertPlanUpload();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح — افتحي قفل رفع الخطة أولاً" };
+  }
   const result = await applyPlanDocx({ ...input, source: "رفع من الواجهة" });
   if (result.ok) revalidateAll();
   return result;
