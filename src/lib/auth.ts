@@ -178,24 +178,9 @@ async function sign(payload: string): Promise<string> {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-/**
- * توكن موقَّع بصلاحية محدَّدة — نفس السرّ ونفس التوقيع.
- *
- * مصدَّر مشان بوابة رفع الخطة (`plan-upload-auth.ts`) تبني كوكيّها بلا ما
- * تكرّر التوقيع ولا تخترع سرّاً تانياً.
- */
-export async function makeSignedToken(ttlMs: number): Promise<string> {
-  const exp = String(Date.now() + ttlMs);
-  return `${exp}.${await sign(exp)}`;
-}
-
-/** تحقّق من توكن بناه `makeSignedToken` — التوقيع والصلاحية. */
-export async function isValidSignedToken(token: string | undefined): Promise<boolean> {
-  return isValidToken(token);
-}
-
 async function makeToken(): Promise<string> {
-  return makeSignedToken(SESSION_TTL_MS);
+  const exp = String(Date.now() + SESSION_TTL_MS);
+  return `${exp}.${await sign(exp)}`;
 }
 
 async function isValidToken(token: string | undefined): Promise<boolean> {

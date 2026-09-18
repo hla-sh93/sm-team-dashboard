@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import CompanyForm from "@/components/forms/CompanyForm";
 import PlanDocxButtons from "@/components/PlanDocxButtons";
-import { setPlanUploadPasswordAction } from "@/server/actions/plan-upload";
 import {
   deleteCompany,
   archiveCompany,
@@ -25,7 +24,7 @@ import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contra
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { companyLifecycle, groupCompaniesByLifecycle } from "@/lib/company-visibility";
 import type { Company, Employee } from "@/types";
-import { Plus, Pencil, Trash2, CalendarClock, KeyRound } from "lucide-react";
+import { Plus, Pencil, Trash2, CalendarClock } from "lucide-react";
 
 /** How a contract's cycle state reads on the card. */
 function contractChip(s: ContractState): { label: string; cls: string } | null {
@@ -293,24 +292,6 @@ export default function CompaniesClient({
         router.refresh();
       } else toast(done.error, "error");
     });
-  };
-
-  /** ضبط/تغيير كلمة رفع الخطة — الكلمة يلي بتعطيها لنوال. */
-  const onSetUploadPassword = async () => {
-    const res = await Swal.fire({
-      title: "كلمة رفع الخطة",
-      input: "password",
-      inputLabel: "كلمة واحدة للفريق، تفتح رفع الخطة فقط — لا تفتح لوحة الإدارة",
-      inputPlaceholder: "ستة محارف على الأقل",
-      showCancelButton: true,
-      confirmButtonText: "احفظ",
-      cancelButtonText: "إلغاء",
-      confirmButtonColor: "#0a8fa3",
-    });
-    if (!res.isConfirmed || !res.value) return;
-    const saved = await setPlanUploadPasswordAction(String(res.value));
-    if (saved.ok) toast("تم حفظ كلمة رفع الخطة");
-    else toast(saved.error, "error");
   };
 
   /** Paste a validated JSON plan payload. The selected card supplies the company
@@ -603,23 +584,16 @@ export default function CompaniesClient({
           <h1 className="display-font text-2xl">الشركات</h1>
           <p className="text-sm text-fg-dim">الخطة والمالكون لكل نوع محتوى</p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* كلمة الرفع: ضيّقة وخاصة بتطبيق خطة شهر، مو كلمة اللوحة — نوال
-              بتحتاجها وهي مو أدمن. */}
-          <Button variant="ghost" size="sm" onClick={onSetUploadPassword}>
-            <KeyRound className="w-4 h-4" /> كلمة رفع الخطة
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" /> شركة جديدة
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
+          <Plus className="w-4 h-4" /> شركة جديدة
+        </Button>
       </header>
 
       <div className="grid md:grid-cols-2 gap-4">

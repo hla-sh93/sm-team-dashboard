@@ -15,7 +15,6 @@ import { useRef, useTransition } from "react";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { applyCompanyPlanDocx, previewCompanyPlanDocx } from "@/server/actions/plans";
-import { planUploadStatusAction, unlockPlanUploadAction } from "@/server/actions/plan-upload";
 import { toast } from "@/components/ui/toaster";
 
 const esc = (value: string) =>
@@ -104,50 +103,6 @@ export default function PlanDocxButtons({
     reader.readAsDataURL(file);
   };
 
-  /**
-   * قفل الرفع: القراءة مفتوحة والكتابة لأ (قرار القائدة ١٨/٩).
-   *
-   * بنسأل الكلمة **قبل** اختيار الملف لا بعده: نوال بتعبّي خطة شهر، فتشوف
-   * «غير مصرّح» بعد ما ترفع وتعاين هو أسوأ وقت ممكن.
-   */
-  const ensureUnlocked = async (): Promise<boolean> => {
-    const status = await planUploadStatusAction();
-    if (status.unlocked) return true;
-    if (!status.configured) {
-      await Swal.fire({
-        icon: "info",
-        title: "الرفع مقفل",
-        text: "لم تُضبط كلمة رفع الخطة بعد — اطلبيها من قائدة الفريق.",
-        confirmButtonColor: "#0a8fa3",
-      });
-      return false;
-    }
-    const asked = await Swal.fire({
-      title: "كلمة رفع الخطة",
-      input: "password",
-      inputPlaceholder: "الكلمة الخاصة بالرفع",
-      inputAttributes: { autocomplete: "current-password" },
-      showCancelButton: true,
-      confirmButtonText: "افتح القفل",
-      cancelButtonText: "إلغاء",
-      confirmButtonColor: "#0a8fa3",
-    });
-    if (!asked.isConfirmed || !asked.value) return false;
-    const res = await unlockPlanUploadAction(String(asked.value));
-    if (!res.ok) {
-      await Swal.fire({ icon: "error", title: "ما انفتح", text: res.error, confirmButtonColor: "#0a8fa3" });
-      return false;
-    }
-    toast("انفتح قفل رفع الخطة على هذا المتصفّح");
-    return true;
-  };
-
-  const onUploadClick = () => {
-    start(async () => {
-      if (await ensureUnlocked()) fileRef.current?.click();
-    });
-  };
-
   return (
     <div className={"flex flex-wrap gap-1.5 " + className}>
       <a
@@ -173,9 +128,9 @@ export default function PlanDocxButtons({
           <button
             type="button"
             disabled={busy}
-            title="رفع خطة الشهر المعبّاة — يلزم كلمة الرفع، ثم معاينة قبل التطبيق"
+            title="رفع خطة الشهر المعبّاة — معاينة قبل التطبيق"
             className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10 disabled:opacity-50"
-            onClick={onUploadClick}
+            onClick={() => fileRef.current?.click()}
           >
             {busy ? "…" : "ارفع الخطة"}
           </button>
