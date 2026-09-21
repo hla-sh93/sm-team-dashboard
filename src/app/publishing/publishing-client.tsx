@@ -75,12 +75,21 @@ export default function PublishingClient({
   // from earlier cycles — surfaces in the «متأخر النشر» strip below, so the
   // publisher's own screen finally shows his overdue queue.
   const todayISO = toISODate(new Date());
+  /** كرت من بكت غير المعروض: الشبكة بتفلتر بالبكت فما إلو خانة فيها أصلاً. */
+  const offGrid = (t: Task) => t.year !== year || t.month !== month;
   const overdue = useMemo(
     () =>
       pubTasks
-        .filter(
-          (t) => !isTaskDoneState(t) && toISODate(new Date(t.publishDate!)) < todayISO,
-        )
+        .filter((t) => {
+          if (isTaskDoneState(t)) return false;
+          const due = toISODate(new Date(t.publishDate!));
+          if (due < todayISO) return true;
+          // مستحقّ **اليوم** وجاي من دورة سابقة = ما إلو خانة بالشبكة ولا بيحقّق
+          // شرط «تجاوز موعده»، فكان بيختفي من الصفحة كلها. صار فعلاً: خمس قطع
+          // بلسم من بكت آب أُعيد تأريخ نشرها لـ٢١/٩ فما ظهرت لا بالشبكة ولا هون،
+          // بينما تقرير الصباح بيقول «نشر: مركز البلسم». (القائدة ٢١/٩/٢٠٢٦)
+          return due === todayISO && offGrid(t);
+        })
         .sort(
           (a, b) =>
             new Date(a.publishDate!).getTime() - new Date(b.publishDate!).getTime() ||
@@ -88,7 +97,7 @@ export default function PublishingClient({
             comparePieceSequence(a, b) ||
             a.id.localeCompare(b.id),
         ),
-    [pubTasks, todayISO],
+    [pubTasks, todayISO, year, month],
   );
 
   const items = useMemo(
@@ -229,10 +238,11 @@ export default function PublishingClient({
           <div className="flex items-center gap-2 mb-2">
             <CalendarClock className="w-4 h-4 text-danger" />
             <span className="text-sm font-semibold text-danger">
-              متأخر النشر · {overdue.length}
+              متأخر النشر ومستحقّ اليوم · {overdue.length}
             </span>
             <span className="text-[11px] text-fg-muted">
-              كل قطعة جاهزة أو مستحقة تجاوزت موعد نشرها — انشريها أو عدّلي موعدها
+              كل قطعة مفتوحة تجاوزت موعد نشرها، ومعها المستحقّ اليوم من دورة سابقة —
+              انشريها أو عدّلي موعدها
             </span>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[260px] overflow-y-auto pr-1">
@@ -251,9 +261,13 @@ export default function PublishingClient({
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
-                  <span className="text-danger font-semibold">
-                    موعدها {formatDateShort(new Date(t.publishDate!))}
-                  </span>
+                  {toISODate(new Date(t.publishDate!)) === todayISO ? (
+                    <span className="text-fg font-semibold">موعدها اليوم</span>
+                  ) : (
+                    <span className="text-danger font-semibold">
+                      موعدها {formatDateShort(new Date(t.publishDate!))}
+                    </span>
+                  )}
                   <span className="text-fg-muted">· {empName(t.assigneeId)}</span>
                 </div>
                 <Select

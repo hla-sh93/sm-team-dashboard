@@ -2,13 +2,110 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-20**
 
 Workspace: `C:\Users\hla2-\Videos\Social\socialmediateam-live` (fresh clone of `origin/main` at `ffcd0bc`, 2026-09-15). **⚠️ The former workspace `C:\Users\hla2-\Videos\Social\sm-team-dashboard` no longer holds this repository**: on 2026-09-14 its contents were replaced by the May-2026 zip extraction (`sm-team-dashboard.zip`, Apr-30 code, no `.git`, no handoff). A full day of test/report work was done there on 2026-09-15 against that stale copy before the mismatch was noticed; nothing from it applies to production. The lead's own working folder appears to be `E:\Hla\Social\sm-team-dashboard` (drive not mounted here). Uncommitted local work that may exist there is not in this clone.
 
 Production alias: <https://socialmediateam.vercel.app>
 
 Current phase: **2026-09-18 (11:05) — PhoeniJobs weekly loop live: عمر publishes one blog article on LinkedIn every Wednesday (five named articles, 23/9 → 21/10), نوال writes المقال ٨–١١ and سابين designs each cover; see the 11:05 entry. Previous: 2026-09-17 (15:25) — three additional cards added through the new `adhocCards` payload block (حلا: Phoenitech catalog 16/9→20/9 · سابين: two contest posts · نوال: contest copy, closed today); see the 15:25 entry. Previous: 2026-09-17 (15:10) — «مهام اليوم» now closes when the day's work is done: finished-today cards count against the rate, the home panel shows «تم إنجاز مهام اليوم» (pushed; see the 15:10 entry). Previous: 2026-09-16 (22:40) — Telegram reduced to two daily messages (07:45 distribution by company + count; 20:00 achievement report), pushed; see the 22:40 entry. Previous: 2026-09-16 (19:35) — التوظيف on its September plan only (October renewal removed, August closed, document briefs on the cards); ماجد Wed = التوظيف + فونيتيك, Thu = وصل, rate 6/day; achievement per latest cycle with the span beside each company; task filter active-only. See the 19:35 log entry. Previous: 2026-09-15 (15:20) — company lifecycle rule live: «لم تجدّد» = archive section with auto-closed cards, pause only for active companies on client request (`05a872f`, verified with snapshot 15:15; WORK_RULES §٨). Previous: 2026-09-15 (14:45) — التدريب October course cards live for سابين (Wed 16/9 · Thu 17/9) via the new `courses` payload block (`prod-22`); September training closed on Instagram evidence; see the 14:40 log entry. Earlier text follows.** Previous phase: **2026-09-15 — two live issues from the lead (designer day shows one card; shoot-week re-dating for ماجد/أليسار). Diagnosis and three draft payloads are in the 2026-09-15 log entry; nothing applied, preflight blocked on a production snapshot. Earlier phase text follows.** Full application audit requested by the user; report completed locally at `docs/qa/APP_STATE_DEEP_TEST_2026-09-06.md`. Current local HEAD `556c9db`; 555/555 tests pass. Six confirmed audit findings remain, including unguarded full regeneration, inconsistent overdue reporting, live Today hydration/timezone and Telegram-match display defects, eight dangling dependencies in the latest saved snapshot, and an audit exit-code defect. Latest saved snapshot is 2026-09-05 10:26 Baghdad (1,129 tasks); live browser inspected 2026-09-06. No audit fix, production mutation, deployment, or local database sync performed. Earlier company states and next actions below are historical and must be reconciled with newer dated entries before use.**
+
+## ٢٠/٩/٢٠٢٦ — دفعة مهام القائدة (Claude) · **جلسة موقوفة مؤقتاً، تُستأنف**
+
+### مُطبَّق على الإنتاج ومتحقَّق منه بلقطة (لا برسالة النجاح)
+
+اللقطة بعد التطبيق: `backups/prod-20260920-1308.json` (الكروت ١١٣٣ → ١١٥١).
+
+| الحمولة | ماذا فعلت |
+| --- | --- |
+| `prod-29-jobs-weekly-2026-10` | **كانت مكتوبة منذ ١٨/٩ ولم تصل الإنتاج إطلاقاً** — سجّلها هذا الملف «live» خطأً. طُبِّقت الآن: ١٢ كرتاً (مقالات نوال ٨–١١ · أغلفة سابين · نشر عمر). |
+| `prod-30-training-cv-workshop-2026-09` | محتوى ورشة الـCV لنوال على **التدريب** (باختيار القائدة) · ٤س · ٢١/٩ → ٢٣/٩ · أولوية «مهم». |
+| `prod-31-jobs-week39-and-contest-ideas-2026-09` | مقال أسبوع ٢٠–٢٤/٩ (٣س، ٢٣/٩) + أفكار المسابقة (٢س، ٢٤/٩) — كلاهما لنوال. |
+| `prod-32-tawzeef-hla-omar-shoot-2026-09-20` | ريل خطوات الدعوة للمسابقة (حلا، منجز ٢٠/٩) · نشر محتوى المسابقة (عمر، ٢٠/٩ → ٥/١٠) · تصوير التوظيف ريل ٥+٦+٧ → الاثنين ٢١/٩ · مونتاج ريل ٥ → ٢٢/٩. |
+| `prod-33-schools-banner-2026-09` | بانر المدارس (حلا، منجز ١٧/٩). |
+| `prod-34-balsam-shoot-2026-09-22` | تصوير البلسم ريل ٤ → الثلاثاء ٢٢/٩ (كان ٣٠/٩). |
+| `prod-35-obada-story9-close-2026-09-20` | إغلاق تصميم ستوري ٩ — عبادة (سنده: كرت النشر انتقل لمنشور بتأكيد تلغرام ٢٠/٩). |
+
+### الدفعة الثانية — **مُطبَّقة ومتحقَّق منها** (١٥ تغيير حالة)
+
+طُبِّقت ١٣:٥٥ بعد عودة إضافة Chrome (كانت مقطوعة نحو ساعة). التحقّق بلقطة `backups/prod-20260920-1355.json` صفّاً صفّاً — الخمسة عشر مطابقة، وسطرا الدليل الخاطئان على مونتاج BW ٣ و٤ مشطوبان فعلاً:
+
+| الحمولة | التغييرات |
+| --- | --- |
+| `prod-36-phoenitech-shoot-monday-2026-09-21` | تصوير ريل ١+٢ → الاثنين ٢١/٩ · مونتاج ريل ١ → ٢٢/٩ · نشر ريل ١ → الأربعاء ٢٣/٩ (كان ٢٠/٩، أي قبل التصوير الجديد؛ الأربعاء باختيار القائدة). |
+| `prod-37-obada-story10-close-2026-09-20` | إغلاق ستوري ١٠ تصميماً ونشراً «جاهزاً» بقرار القائدة بعد عرض بديل الحذف. نفدت منتجات الزبون: الإغلاق **إداري لا إنجاز**، والسبب في سطر الدليل لأنّه سيدخل نسبة «منتَج». |
+| `prod-38-tawzeef-reel7-next-sunday` | تصحيح prod-32 بعد قاعدة «٢ ريل لكل زبون»: ريل ٧ ينتقل للأحد ٢٧/٩ · مونتاجه ٢٨/٩ · **نشره ٢٧/٩ → ٢٩/٩** لأنّ موعد النشر القديم هو يوم التصوير الجديد نفسه. يبقى ٥ و٦ على الاثنين. |
+| `prod-39-bw-renumber-and-shoot-2026-09-21` | تصحيح ترقيم BW + إعادة فتح تصوير ٣ و٤ (٦ تغييرات). |
+
+### تصحيح ترقيم BW — الحادثة وسببها
+
+القائدة (٢٠/٩): «الترقيم غلط — تم تصوير ١ و٢ من خطة BW وليس ٣ و٤»، و«ريلان ١ و٢ تم تصويرهما وتسليمهما (تصوير ومونتاج)».
+
+**ما حدث:** يوم ١٦/٩ سلّمت أليسار `bw 3-9.mp4` (١٥:٤٣:٤٢) و`bw 4-9.mp4` (٢٢:٠١:٠١) على مجموعة BW. طابقهما المطابق **بالاسم** على كرتَي مونتاج ريل ٣ و٤، وإغلاق المونتاج أغلق كرت التصوير الأعلى منه **تلقائياً** الساعة ١٥:٤٣:٣٨ و٢٢:٠٠:٥٥ — قبل الرسالتين بأربع وستّ ثوانٍ، **وبلا أي سطر دليل** (`notes: null`)، ومع أنّ موعدَي التصوير ٢٠/٩ و٢١/٩ لم يحِلّا بعد. الكرتان المصوَّران فعلاً (١ و٢) يحملان ملاحظة موعد ١٥/٩ — فالملاحظة الفارغة هي بصمة الإغلاق المتسلسل.
+
+**درسان:** (أ) تسلسل الإغلاق من المونتاج إلى التصوير يكتب بلا دليل — مخالفة قاعدة العمل ٢، وتستحقّ فحصاً يمنعها. (ب) المطابقة بالاسم تثق برقم الملف، وترقيم الفريق لا يطابق ترقيم النظام — قاعدة العمل ١ بعينها.
+
+**ما يصحّحه `prod-39`:** مونتاج ١ و٢ → منجَز بسطر التسليم الصحيح · مونتاج ٣ و٤ → لم يبدأ مع **شطب** سطر الدليل الخاطئ (`removeEvidence`) · تصوير ٣ → مفتوح ومثبَّت على الاثنين ٢١/٩ · تصوير ٤ → مفتوح، ومؤقّتاً الأحد ٢٧/٩ وغير مثبَّت (تركه على الاثنين يجعل يوم ماجد ستة ريلات بدل خمسة). بعد التصحيح يصير نشر ريل ١ (١٧/٩) و٢ (٢٠/٩) ممكناً عند عمر — وكلاهما مستحقّ الآن.
+
+### مواعيد تصوير الأسبوع كما ستستقرّ
+
+القاعدة من القائدة: «٢ ريل لكل زبون — المخبر وفونيتيك والتوظيف؛ البلسم ١ · عبادة ١ · BW ١».
+
+- **الاثنين ٢١/٩** (خمسة ريلات لماجد): التوظيف ٥+٦ (١١:٠٠) · فونيتيك ١+٢ (١٢:٣٠) · BW ٣ (١:٣٠).
+- **الثلاثاء ٢٢/٩**: البلسم ريل ٤ (٢:٠٠) — مُطبَّق.
+- **الأحد ٢٧/٩**: التوظيف ريل ٧ · BW ريل ٤ (مؤقّت).
+- **عبادة والمخبر (الأربعاء/الخميس): لم تُنشأ لهما كروت** — القائدة: «بانتظار موافقة العميل». عند الموافقة: عبادة = المشهد المتبقي من ريل ٣ (كرت تصوير خارج الخطة + كرت إعادة مونتاج؛ كرت النشر مفتوح ومتأخر منذ ١٧/٩)، والمخبر = ريلان خارج الخطة ريثما يُسجَّل تجديد شهر ١٠.
+
+### التحقّق النهائي من الإنتاج (لقطة ١٣:٥٥)
+
+- **طابور ماجد:** الاثنين ٢١/٩ خمسة ريلات بالضبط (BW ٣ · فونيتيك ١+٢ · التوظيف ٥+٦) · الثلاثاء ٢٢/٩ البلسم ريل ٤ · الأحد ٢٧/٩ التوظيف ٧ و BW ٤ · الاثنين ٢٨/٩ فونيتيك ٣ و٤.
+- **نوال:** الاثنين ٤س ورشة الـCV · الثلاثاء ٣س لينكد إن · الأربعاء ٣س مقال المدونة · الخميس ٢س أفكار المسابقة.
+- **أثر تصحيح BW:** نشر ريل ١ (١٧/٩) وريل ٢ (٢٠/٩) صارا مستحقَّين عند عمر بعد أن كانا محجوبين خلف مونتاج مسجَّل «لم يبدأ».
+- **ملاحظة تقنية:** `publishDate` على كرتَي التصوير والمونتاج يبقى على القيمة القديمة بعد تحريك كرت النشر. غير مؤثِّر: `taskDeadline = readyDate ?? publishDate`، وكل الكروت المعدَّلة لها `readyDate`. وهو سلوك قائم أصلاً في الإنتاج (مثال: عبادة بوست ٢).
+
+### فحص تلغرام × المنصة (٢٠/٩، بطلب القائدة «أرجع تحقق من مهام كل الفريق»)
+
+فحص للقراءة فقط على اللقطة (لا `deep-audit.ts` — يكتب على الداتا، قاعدة العمل ٣). النتائج:
+
+- **لا خرق لترتيب المراحل في أي شركة.**
+- **١٩٦ من ٢٦٥ ملف منذ ١/٩ بلا مطابقة** — معظمها حميد (صور خام `DSC*`، مستندات، إعادة إرسال لكروت مغلقة). الحقيقي منها كرتان فقط. ما يكسر المطابقة بالاسم: مسافة مزدوجة (`obada  1-8.mp4`)، مسافة زائدة (`wasl 2-9 .mp4`)، لاحقة أجزاء (`wasl-story-9-1-2.jpg`).
+- **عبادة: لا خلل.** القائدة أكّدت أنّ الملفين المُسلَّمين هما ريل ٢ و٣ («العنوان والكرسي»)، فلا إزاحة ترقيم؛ ومونتاج ريل ١ مفتوح **بحق** (أُعيد فتحه بعد تصوير ١٥/٩). صُحّح شيء واحد: سطر دليل مفقود على مونتاج ريل ٢ (`prod-40`).
+- **Siizen: أكبر فجوة.** كانت ريلات ٣–٦ كلها `NOT_STARTED` في المراحل الثلاث بلا أي ملف. إفادة القائدة: ٣ منتَج · ٤ قيد المونتاج · ٥ و٦ بانتظار معلومات من العميل → `prod-41`.
+- **البلسم:** خمس قطع تصاميمها جاهزة ونشرها عالق منذ ٢٥–٣١/٨ → نُقلت للاثنين ٢١/٩ ومثبَّتة (`prod-42`).
+
+**المتأخرات: ٣٦ → ٢٨.** المتبقّي: Siizen ٢٠ · عبادة ٢ (نشر بوست ٦ وريل ٣) · البلسم ٢ (ستوري ١٣ تصميماً ونشراً) · BW ١ · وصل ١ · التدريب ١ · التوظيف ١.
+
+⚠️ ريلا Siizen ٥ و٦ موقوفان على العميل ومكتوب ذلك في دليلهما، لكنهما **يظلّان في لوائح المتأخر**: `isTaskLateState` لا تقرأ الحجز ولا إعفاء الشركة (مشخَّص في مدخل ٣/٩ فقرة ج، ولم يُصلَح بعد).
+
+## ٢١/٩/٢٠٢٦ — ورشة الـCV، وفرق التقرير عن اللوح (Claude)
+
+**`prod-43`** (مُطبَّقة ومتحقَّقة، لقطة `prod-20260921-0853.json`): أُغلق كرت نوال «كتابة محتوى الورشة التعريفية لكتابة السيرة الذاتية» بدليل تسليم `ورشة تدريبية مجانية - محاور.docx` (تلغرام ٢٠/٩ ١٠:٢٨، لم يطابقه المطابق لأنّ اسمه وصفي)، وأُنشئ كرت التصميم المقابل لسابين (٢س، ٢١/٩ → ٢٣/٩، «مهم»). **سبب غيابه:** طلب ٢٠/٩ ورد تحت عنوان «مهام لنوال» ولم يذكر سابين، فأُنشئ نصف المهمة فقط.
+
+### لماذا يختلف تقرير ٠٧:٤٥ عن اللوح — ليس خطأً
+
+أُعيد توليد رسالة ٠٧:٤٥ من `buildDailyBrief` نفسها فطابقت رسالة القائدة **في كل سطر عدا سطر عمر**، والفرق سببه تغيّر الداتا بين ٠٧:٤٥ و٠٨:٥٠. التقرير يعرض **شغل اليوم** ويُخفي عمداً أربع فئات يعرضها اللوح (`src/lib/telegram/brief.ts`):
+
+| الفئة | المُخفى عند عمر |
+| --- | --- |
+| شركة خاملة (`isDormantCompany`) | جدارات **١٢ كرت نشر** · وأغاليا/المول/مانغو/برو |
+| كرت محجوز (`makeBlockedPredicate`) | عبادة ريل ١ · البلسم ستوري ١٣ · وصل ستوري ١٤–٢٠ |
+| كرت خارج الخطة (`kind==='ADHOC'`) | يُسمّى «مهمة متابعة» بلا اسم الشركة |
+| موعد مستقبلي | كل كروت وصل (٢٢/٩ → ٣٠/٩) |
+
+**نتيجة عملية:** كرت «نشر محتوى المسابقة — فوني جوبس» (`prod-32`) خارج الخطة، فالتقرير لن يسمّي التوظيف طوال المدة ٢٠/٩ → ٥/١٠ بل سيقول «ومهمة متابعة». القاعدة من قرار القائدة ١٦/٩ (سطر النشر يسمّي قطع الخطة فقط)؛ تغييرها تعديل على `publishPiece` في `brief.ts` — معلَّق على قرارها.
+
+### معلَّق على قرار القائدة
+
+1. **Siizen** — الدورة (١٩/٨ → ١٨/٩) انتهت والتجديد غير مسجَّل، وريلا ٥ و٦ موقوفان على العميل. تحتاج قرار تجديد أو أرشفة.
+2. **البلسم ستوري ١٣** — تصميمها لم يبدأ عند سابين منذ ٢٥/٨، ونشرها محجوب خلفه.
+3. **إعادة خطة المخبر لنوال** — «ما حدّدنا لسا، نحن قيد تعديل الخطة». لا كرت لدورة تشرين الأول لأنّ التجديد غير مسجَّل؛ زرّ «جدّد» يسجّله **ويولّد كروت الدورة كاملة فوراً** (`renewContract` → `generateScheduleInternal`)، وهذا قرارها.
+4. **تصوير عبادة والمخبر** — بانتظار موافقة العميل على الموعد.
+5. **موعد BW ريل ٤** — تاريخه الحالي مؤقّت.
+
+### ملاحظات تقنية من الجلسة
+
+- المرآة المحلية بتوقيت بغداد: أي تاريخ يكتبه التشغيل التجريبي يُخزَّن `21:00Z` لليوم السابق فيُقرأ **يوماً أبكر**. الإنتاج (UTC) يخزّنه صحيحاً — تحقَّق من ذلك فعلياً بعد التطبيق. لا تُعدّل تواريخ الحمولة بناءً على قراءة المرآة.
+- نسخة أمان المرآة قبل التجارب: `backups/dev.db.before-dryrun-20260920-prod29-30-31`.
 
 ## ٤/٩/٢٠٢٦ — نقل دورة Siizen لبكتها الصحيح (Claude)
 
