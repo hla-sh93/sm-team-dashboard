@@ -227,10 +227,17 @@ export function buildDailyBrief({
 
   const scheduleLines: string[] = ["صباح الخير", ""];
   const idleToday: string[] = [];
-  // كرت نشر بيدخل سطر عمر لما يكون قطعة خطة لشركة بتنشر فعلاً — الكرت اليدوي
-  // (Outreach) بينعدّ «مهام متابعة»، والمعفاة (جدارات) ما بتنشر أصلاً.
+  // كرت نشر بيدخل سطر عمر لما يكون إله شركة بتنشر فعلاً — والمعفاة (جدارات) ما
+  // بتنشر أصلاً.
+  //
+  // كان بيستثني كل كرت خارج الخطة فيعدّه «مهمة متابعة» بلا اسم شركة. القائدة
+  // (٢١/٩/٢٠٢٦): «خليه بشركة التوظيف — كرت نشر المسابقة». حملة مسابقة فوني
+  // جوبس (٢٠/٩ → ٥/١٠) كرت خارج الخطة، فكانت رح تمرق أسبوعين بلا ما ينذكر
+  // التوظيف ولا مرة بسطر النشر، بينما اللوح بيسمّيها — وهاد بالضبط التعارض
+  // يلي رصدته. الشرط الباقي: لازم يكون إله شركة، وإلا ما في اسم يتسمّى فيه
+  // (كرت «متابعة مع العملاء» بلا شركة بيضل «مهمة متابعة»).
   const publishPiece = (t: Task) =>
-    t.stage === "PUBLISH" && t.kind !== "ADHOC" && !(t.companyId && lateExempt.has(t.companyId));
+    t.stage === "PUBLISH" && !!t.companyId && !lateExempt.has(t.companyId);
   for (const emp of employees) {
     const mineLate = late.filter((t) => t.assigneeId === emp.id);
     // Off today → not on today's list at all. A freelancer has no standing
@@ -252,7 +259,8 @@ export function buildDailyBrief({
       // · التوظيف (بوست)، متراكم: عبادة (ستوري)» — بلا أعداد ولا أسماء قطع.
       const pubToday = todays.filter(publishPiece);
       const pubLate = owed.filter(publishPiece);
-      const followUps = todays.filter((t) => t.kind === "ADHOC").length;
+      // بلا `!publishPiece` بينعدّ الكرت مرتين: باسم شركته وكـ«مهمة متابعة».
+      const followUps = todays.filter((t) => t.kind === "ADHOC" && !publishPiece(t)).length;
       headline = pubToday.length ? `نشر: ${typesByCompany(pubToday, coName)}` : "متابعة الصفحات والنشر";
       if (pubLate.length) headline += `، متراكم: ${typesByCompany(pubLate, coName)}`;
       if (followUps) headline += followUps === 1 ? " ومهمة متابعة" : ` و${followUps} مهام متابعة`;
