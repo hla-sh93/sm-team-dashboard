@@ -391,26 +391,67 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       }
     }
 
-    // FEED — interleave types proportionally, place with a ≥1-day gap.
+    // FEED — الترتيب يلي بناه `interleaveTypes` لازم يوصل للتقويم **كما هو**.
     const feedSeq = interleaveTypes({
       POST: co.posts,
       REEL: co.reels,
       AI_REEL: co.aiReels,
     });
-    const usedFeed = new Set<number>();
-    feedSeq.forEach((type, i) => {
-      const target =
-        Math.round(offset + (i + 0.5) * (cycleLen / feedSeq.length)) % cycleLen;
-      const slot = placeAvoidingAdjacent(target, usedFeed, cycleLen, minIdxOf[type]);
-      usedFeed.add(slot);
-      emit(type, slot);
-    });
+    if (feedSeq.length > 0) {
+      const n = feedSeq.length;
+      // ═══ التوزيع بينحسب على النافذة الشرعية لا على الدورة كلها ═══
+      //
+      // `minIdxOf` بيمنع النشر بأول الدورة (أسبوع التحضير، ومهلة تصوير الريل).
+      // لما تنحسب المسافات من يوم ٠ بتطلع أهداف جوّا المنطقة الميتة، وكل قطعة
+      // هدفها هناك بتنكبش لأول يوم مسموح — فبيتكدّسوا أول الدورة. صار فعلاً
+      // بمخبر د.نور (دورة ٢٣/٩): ريل ٣٠/٩ · ريل ١/١٠ · بوست ٣/١٠ · بوست ٤/١٠.
+      const feedFloor = Math.min(...feedSeq.map((type) => minIdxOf[type]));
+      // ═══ دوران الشركات صار **إزاحة بداية** لا لفّ أيام ═══
+      //
+      // الدوران موجود مشان الشركات ما تنشر كلها بنفس الأيام. لما كان بيلفّ
+      // الأيام (`% cycleLen`) كان ترتيب الأيام ينكسر عن ترتيب التسلسل،
+      // فالتنويع يلي بناه `interleaveTypes` يوصل للتقويم مبعثراً: وصل طلعت
+      // `PPPP` رغم إنّ تسلسلها المثالي أقصى تكرار فيه بوستين. الإزاحة بتحرّك
+      // أول يوم جوّا خطوة وحدة وبتعيد حساب المسافة على الباقي — نفس التبعيد،
+      // وترتيب الأيام بيضل تصاعدياً.
+      // الإزاحة بتمشي على **الفسحة** فقط (الأيام الفاضلة بعد ما تاخد كل قطعة
+      // يومها)، ومحدودة بيومين: الشركات بتتبعّد عن بعض بلا ما ياكل الدوران أول
+      // الدورة. بلا السقف طلعت إزاحة ستة أيام على مخبر د.نور فصار أول نشر
+      // ٦/١٠ بدورة بلّشت ٢٣/٩ — أسبوعان مدفوعان بلا نشر.
+      // والسقف ٣ مو ٢: `offset` زوجي دايماً (`coIdx * 2`)، فباقي القسمة على ٢
+      // بيطلع صفر لكل الشركات والدوران بيروح كلّه.
+      const slack = Math.min(3, Math.max(1, cycleLen - feedFloor - n + 1));
+      const feedStart = feedFloor + (offset % slack);
+      const feedSpan = Math.max(1, cycleLen - feedStart);
+      let prevDay = feedStart - 1;
+      let prevType: ContentType | null = null;
+      feedSeq.forEach((type, i) => {
+        const ideal = feedStart + Math.round((i + 0.5) * (feedSpan / n));
+        let day = Math.max(ideal, minIdxOf[type], prevDay + 1);
+        // ═══ التنويع: ما في نوعين متشابهين يوم ورا يوم ═══
+        //
+        // بوست جنب ريل تنويع، وريل جنب ريل تكرار — وخوارزمية السوشال بتعاقب
+        // التكرار، والفريق كمان بيتكدّس شغله (تصويران بيومين متتاليين).
+        // منزحزح يوم **بس لما يكون في فسحة**: الباقي لازم يلاقي أياماً. خطة
+        // كثيفة (وصل: ١٥ بوست و٨ ريلات بـ٢٦ يوم) فيها التصاق حتمي رياضياً،
+        // فالقاعدة بتتنازل بدل ما تدفع النشر برّا الدورة.
+        const remaining = n - i - 1;
+        const slack = cycleLen - 1 - day - remaining;
+        if (prevType === type && day === prevDay + 1 && slack > 0) day += 1;
+        const slot = Math.min(day, cycleLen - 1);
+        prevDay = slot;
+        prevType = type;
+        emit(type, slot);
+      });
+    }
 
     // STORIES — even spread, one per day for the company (may share feed days).
+    const storyFloor = minIdxOf.STORY;
+    const storySpan = Math.max(1, cycleLen - storyFloor);
     const usedStory = new Set<number>();
     for (let i = 0; i < co.stories; i++) {
       const target =
-        Math.round(offset + (i + 0.5) * (cycleLen / co.stories)) % cycleLen;
+        storyFloor + (Math.round(offset + (i + 0.5) * (storySpan / co.stories)) % storySpan);
       const slot = placeUnique(target, usedStory, cycleLen, minIdxOf.STORY);
       usedStory.add(slot);
       emit("STORY", slot);
@@ -781,30 +822,6 @@ function interleaveTypes(counts: {
   });
   pos.sort((a, b) => a.p - b.p);
   return pos.map((x) => x.t);
-}
-
-/** Nearest free day index to `target` whose neighbours (±1) are also free for
- *  this company — enforces "no same-day and no consecutive-day" for feed. Falls
- *  back to same-day-free, then to target, if the canvas is saturated. `minIdx`
- *  floors the slot (first-cycle reels must leave shoot+delivery lead inside a
- *  brand-new contract). */
-function placeAvoidingAdjacent(
-  target: number,
-  used: Set<number>,
-  len: number,
-  minIdx = 0,
-): number {
-  const ok = (i: number) =>
-    i >= minIdx && i < len && !used.has(i) && !used.has(i - 1) && !used.has(i + 1);
-  for (let d = 0; d < len; d++) {
-    if (ok(target + d)) return target + d;
-    if (ok(target - d)) return target - d;
-  }
-  for (let d = 0; d < len; d++) {
-    if (target + d >= minIdx && target + d < len && !used.has(target + d)) return target + d;
-    if (target - d >= minIdx && !used.has(target - d)) return target - d;
-  }
-  return Math.min(len - 1, Math.max(minIdx, target));
 }
 
 /** Nearest free day index to `target` (no two of the same kind on one day).

@@ -165,6 +165,14 @@ export function applyPipelinePreservation(
   const byPipelineStage = new Map(
     existing.map((task) => [`${task.pipelineKey}|${task.stage}`, task]),
   );
+  // القطع يلي **نزلت فعلاً** — كرت نشرها مسكَّر. يوم النشر عندها تاريخ صار،
+  // فبينجمد على كل مراحلها. القطعة يلي لساها ما نزلت يوم نشرها خطة، ولو كان
+  // تصويرها أو تصميمها منجزاً.
+  const publishedKeys = new Set(
+    existing
+      .filter((task) => task.stage === "PUBLISH" && task.board === "DONE" && task.pipelineKey)
+      .map((task) => task.pipelineKey),
+  );
   const byPlanDateStage = new Map<string, ExistingPipelineTaskState>();
   for (const task of existing) {
     if (!task.companyId || !task.type || !task.publishDate || !task.stage) continue;
@@ -230,7 +238,17 @@ export function applyPipelinePreservation(
     if (saved.board === "DONE") {
       if (saved.workDate) task.workDate = iso(saved.workDate);
       if (saved.readyDate) task.readyDate = iso(saved.readyDate);
-      if (saved.publishDate) task.publishDate = iso(saved.publishDate);
+      // يوم النشر بينجمد لما يكون **صار**: كرت النشر نفسه، أو أي مرحلة من قطعة
+      // كرت نشرها مسكَّر. أما قطعة لساها ما نزلت — تصويرها منجز وبس — فيوم
+      // نشرها خطة، وتجميده على كرت الإنتاج بيخلّي مراحل القطعة الوحدة
+      // تتناقض عند إعادة الجدولة: تصوير نور ريل ١ بيقول «نشر ٣٠/٩» وكرت
+      // النشر بيقول «٣/١٠». وترقيم القطع بينبني على `publishDate`، فالتناقض
+      // بيغلّط الأرقام.
+      const pieceWentOut =
+        task.stage === "PUBLISH" || (saved.pipelineKey != null && publishedKeys.has(saved.pipelineKey));
+      if (saved.publishDate && pieceWentOut) {
+        task.publishDate = iso(saved.publishDate);
+      }
     }
     if (saved.isPinned) {
       task.isPinned = true;
