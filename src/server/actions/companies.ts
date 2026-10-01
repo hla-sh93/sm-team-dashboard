@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { companySchema, reorderSchema, type CompanyInput } from "@/lib/schemas";
 import {
+  currentCycleBucket,
   cycleForBucket,
   cyclesOf,
   naturalCycleEnd,
@@ -640,6 +641,52 @@ export async function resumeCompanyPublishing(companyId: string, startDateISO: s
  * الحارس: بيرجّع العدد أول مرة بدل ما يحذف، ولازم تأكيد بنفس العدد. والكروت
  * اليدوية ما بتنلمس أبداً — هي شغل حدا كتبه بإيده، مو توليد.
  */
+/**
+ * إعادة جدولة **الدورة الحالية لشركة وحدة** — بلا ما تنلمس باقي الشركات.
+ *
+ * الزرّ الوحيد كان «إعادة جدولة فوراً» بصفحة الأولويات، وهو بيعيد توليد دلو
+ * الشهر التقويمي **لكل الشركات**. فلما تتصلّح قاعدة التوزيع (تنويع النشر، ١/١٠)
+ * وبدّك تطبّقها على شركة وحدة، كان الخيار الوحيد يا كلشي يا ولا شي — وكمان
+ * دلو الشهر التقويمي مو دايماً دلو دورة الشركة (مخبر د.نور: دورة ٢٣/٩→٢٢/١٠
+ * بدلو أيلول، والزرّ العام بيعيد توليد تشرين).
+ *
+ * الحفظ بيصون كلّ شي مسجَّل: الحالات والأوصاف والأدلّة، والكروت المثبّتة،
+ * وأيام شغل المنجز، ويوم نشر أي قطعة نزلت فعلاً. يلي بيتحرّك هو أيام نشر
+ * القطع يلي لسا ما نزلت.
+ */
+export async function regenerateCompanyCurrentCycle(companyId: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  try {
+    const co = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
+    if (companyLifecycle(co) !== "active") {
+      return { ok: false as const, error: "الشركة مو نشطة — ما في دورة تنعاد جدولتها" };
+    }
+    // `currentCycleBucket` بيرجع دلو الشهر التقويمي لما ما في دورة، فلازم
+    // نتأكّد إنّ الدلو فعلاً إله دورة — وإلا التوليد بيفرّغه.
+    const bucket = currentCycleBucket(co, new Date());
+    const cycle = cycleForBucket(co, bucket.year, bucket.month);
+    if (!cycle) return { ok: false as const, error: "ما في دورة حالية لهالشركة" };
+    const built = await generateScheduleInternal(bucket.year, bucket.month, companyId);
+    if (!built.ok) return { ok: false as const, error: built.error ?? "فشلت إعادة الجدولة" };
+    revalidateAll();
+    const last = new Date(cycle.end);
+    last.setDate(last.getDate() - 1);
+    return {
+      ok: true as const,
+      company: co.name,
+      cycle: `${formatDateShort(cycle.start)} – ${formatDateShort(last)}`,
+      stages: built.stages,
+    };
+  } catch {
+    return { ok: false as const, error: "فشلت إعادة الجدولة" };
+  }
+}
+
 export async function purgeOrphanCards(companyId: string, confirmCount?: number) {
   try {
     await assertAdmin();

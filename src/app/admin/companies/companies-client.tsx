@@ -17,6 +17,7 @@ import {
   pauseCompanyPublishing,
   resumeCompanyPublishing,
   purgeOrphanCards,
+  regenerateCompanyCurrentCycle,
 } from "@/server/actions/companies";
 import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
@@ -298,6 +299,35 @@ export default function CompaniesClient({
     });
   };
 
+  /**
+   * إعادة جدولة الدورة الحالية لهالشركة وحدها. الزرّ العام بصفحة الأولويات
+   * بيعيد توليد دلو الشهر التقويمي لكل الشركات — وهاد بيلمس شركات ما بدك
+   * تلمسيها، وأحياناً ما بيوصل لدورة الشركة أصلاً.
+   */
+  const onRegenerateCycle = (c: Company) => {
+    Swal.fire({
+      title: `إعادة جدولة — ${c.name}`,
+      html:
+        "بتتوزّع أيام نشر <b>الدورة الحالية</b> من جديد (تنويع: ما في نوعين متشابهين يوم ورا يوم)." +
+        "<br/>الحالات والأوصاف والأدلّة والكروت المثبّتة ما بتنمسّ، ولا يوم نشر قطعة نزلت فعلاً." +
+        "<br/>باقي الشركات ما بتنلمس.",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "أعد الجدولة",
+      cancelButtonText: "إلغاء",
+      confirmButtonColor: "#0a8fa3",
+    }).then((res) => {
+      if (!res.isConfirmed) return;
+      start(async () => {
+        const r = await regenerateCompanyCurrentCycle(c.id);
+        if (r.ok) {
+          toast(`انعادت جدولة ${r.company} · دورة ${r.cycle} · نشر ${r.stages.publish}`);
+          router.refresh();
+        } else toast(r.error, "error");
+      });
+    });
+  };
+
   /** Paste a validated JSON plan payload. The selected card supplies the company
    * id, so a payload copied from another client cannot accidentally target it. */
   const onImportPlan = (c: Company) => {
@@ -559,6 +589,15 @@ export default function CompaniesClient({
             >
               استيراد خطة JSON
             </button>
+            {lifecycle === "active" && (
+              <button
+                className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
+                title="توزيع أيام نشر الدورة الحالية من جديد — لهالشركة وحدها"
+                onClick={() => onRegenerateCycle(c)}
+              >
+                أعد جدولة الدورة الحالية
+              </button>
+            )}
             <button
               className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
               title="حذف كروت لا تنتمي لأي دورة صالحة"
