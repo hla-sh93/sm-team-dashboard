@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolvePublishMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
-import { isTaskDoneState } from "@/lib/constants";
+import { keepOtherCycleCard } from "@/lib/publish-calendar";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import PublishingClient from "./publishing-client";
 
@@ -25,7 +25,8 @@ export default async function PublishingPage({
     prisma.task.findMany({ where: { ...openCarryoverWhere(year, month), stage: "PUBLISH" } }),
   ]);
 
-  const continuation = continuationRaw.filter((t) => !isTaskDoneState(t));
+  // شوف `keepOtherCycleCard`: المفتوح دايماً، والمنجز لما يكون يوم نشره بالشهر.
+  const continuation = continuationRaw.filter((t) => keepOtherCycleCard(t, year, month));
   const seen = new Set(bucketTasks.map((t) => t.id));
   const extras = [...continuation, ...carryover].filter((t) => {
     if (seen.has(t.id)) return false;

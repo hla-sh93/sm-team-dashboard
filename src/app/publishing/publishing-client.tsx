@@ -19,6 +19,7 @@ import {
 import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
 import { buildReelNumbers, comparePieceSequence } from "@/lib/cards";
+import { calendarPublishItems, publishesInMonth } from "@/lib/publish-calendar";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task } from "@/types";
@@ -75,8 +76,9 @@ export default function PublishingClient({
   // from earlier cycles — surfaces in the «متأخر النشر» strip below, so the
   // publisher's own screen finally shows his overdue queue.
   const todayISO = toISODate(new Date());
-  /** كرت من بكت غير المعروض: الشبكة بتفلتر بالبكت فما إلو خانة فيها أصلاً. */
-  const offGrid = (t: Task) => t.year !== year || t.month !== month;
+  /** كرت ما إلو خانة بالشبكة: لا من دورة هالشهر ولا يوم نشره جوّاه. */
+  const offGrid = (t: Task) =>
+    !(t.year === year && t.month === month) && !publishesInMonth(t, year, month);
   const overdue = useMemo(
     () =>
       pubTasks
@@ -100,14 +102,16 @@ export default function PublishingClient({
     [pubTasks, todayISO, year, month],
   );
 
+  // الشبكة بتعرض كل قطعة يوم نشرها بهالشهر — من أي دورة — مش بس كروت دورة
+  // الشهر. شوف `calendarPublishItems`.
   const items = useMemo(
     () =>
-      bucketPub.filter(
+      calendarPublishItems(pubTasks, year, month).filter(
         (t) =>
           (company === "all" || t.companyId === company) &&
           (type === "all" || t.type === type),
       ),
-    [bucketPub, company, type],
+    [pubTasks, year, month, company, type],
   );
 
   const seqOf = useMemo(() => buildReelNumbers(pubTasks), [pubTasks]);
