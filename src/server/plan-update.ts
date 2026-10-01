@@ -18,7 +18,9 @@ import {
   statusToBoard,
 } from "@/lib/constants";
 import { formatDateShort, fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
-import { cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
+import { cycleForBucket, cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
+import { hasLaterCycle, planTotal, type PlanCounts } from "@/lib/cycle-plan";
+import { bucketKey, existingPieceCounts } from "@/server/cycle-plan";
 import { companyLifecycle } from "@/lib/company-visibility";
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { COURSE_SLUG, courseCardBucket, planCourseCards } from "@/lib/course-cards";
@@ -323,6 +325,34 @@ const planUpdateSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * عدد قطع الدورة — تعديل الكمية لآخر دورة مسجَّلة وإعادة بناء كروتها.
+     *
+     * القائدة (١/١٠/٢٠٢٦): «عدّلت على عدد بوستات BW وفونيتيك لهذا الشهر نتيجة
+     * قلة عدد العملاء… صلّح عدد منشورات BW حسب الخطة لشهر ١٠». رقم السجلّ هو
+     * خطة **آخر دورة مسجَّلة**؛ الدورات يلي قبلها مثبّتة بكروتها (شوف
+     * `lib/cycle-plan.ts`) فتعديله ما بيمدّ إيده عليها.
+     *
+     * الحمولة بتعدّل السجلّ وبتعيد توليد دلو هالشركة وحدها: القطع الموجودة
+     * بتحتفظ بأرقامها وأوصافها وحالاتها، والزيادة بتنولّد بعدها. التقليل مرفوض
+     * لو القطع يلي رح تنشال عليها شغل أو وصف. **مستقلة** متل التجديد: الكروت
+     * بتنولّد أولاً، وحمولة الأوصاف بتجي بعدها.
+     */
+    planCounts: z
+      .object({
+        posts: z.number().int().min(0).max(60).optional(),
+        reels: z.number().int().min(0).max(60).optional(),
+        aiReels: z.number().int().min(0).max(60).optional(),
+        stories: z.number().int().min(0).max(60).optional(),
+        /** مصدر القرار — للسجلّ (الشركة ما إلها حقل ملاحظات). */
+        evidence: z.string().trim().min(3).max(500),
+      })
+      .strict()
+      .refine(
+        (v) => [v.posts, v.reels, v.aiReels, v.stories].some((n) => n !== undefined),
+        { message: "حدّدي عدداً واحداً على الأقل (posts / reels / aiReels / stories)" },
+      )
+      .optional(),
     /** تعليق الحمولة — شرح القرار ومصدره. بينقرا الإنسان، مو الكود. */
     _: z.unknown().optional(),
   })
@@ -346,6 +376,7 @@ const planUpdateSchema = z
           value.adhocCards?.length ||
           value.courses ||
           value.renewal ||
+          value.planCounts ||
           value.instagramHandle,
       ),
     { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
@@ -362,11 +393,29 @@ const planUpdateSchema = z
         value.adhocStates?.length ||
         value.adhocCards?.length ||
         value.courses ||
+        value.planCounts ||
         value.prepareOn ||
         value.publishOn ||
         value.instagramHandle
       ),
     { message: "التجديد يُطبَّق بحمولة مستقلة، ثم حمولة الخطة بعد توليد الدورة" },
+  )
+  // نفس السبب: تعديل العدد بيعيد توليد الدلو قبل أي تحقّق من القطع.
+  .refine(
+    (value) =>
+      !value.planCounts ||
+      !(
+        value.items?.length ||
+        value.closePreviousOpenTasks ||
+        value.pieceStates?.length ||
+        value.adhocStates?.length ||
+        value.adhocCards?.length ||
+        value.courses ||
+        value.prepareOn ||
+        value.publishOn ||
+        value.instagramHandle
+      ),
+    { message: "تعديل عدد القطع يُطبَّق بحمولة مستقلة، ثم حمولة الأوصاف بعد إعادة بناء الدورة" },
   );
 
 /** للفحوص وسكربت ما قبل التطبيق — نفس المخطّط يلي بيقرأه الخادم. */
@@ -523,21 +572,24 @@ export async function applyPlanUpdatePayload(input: unknown) {
       });
     }
 
+    // حمولتا التجديد وعدد القطع ما بيلمسوا كرتاً بعينه — عدّادات الخطة كلها صفر.
+    const none = {
+      describedPieces: 0,
+      updatedStates: 0,
+      updatedAdhoc: 0,
+      createdAdhocCards: 0,
+      updatedAdhocCards: 0,
+      unchangedAdhocCards: 0,
+      closedPreviousTasks: 0,
+      restoredTasks: 0,
+      createdCourseCards: 0,
+      updatedCourseCards: 0,
+      unchangedCourseCards: 0,
+      planCountsChanged: false,
+    };
+
     if (data.renewal) {
       const start = fromISODate(data.renewal.start);
-      const none = {
-        describedPieces: 0,
-        updatedStates: 0,
-        updatedAdhoc: 0,
-        createdAdhocCards: 0,
-        updatedAdhocCards: 0,
-        unchangedAdhocCards: 0,
-        closedPreviousTasks: 0,
-        restoredTasks: 0,
-        createdCourseCards: 0,
-        updatedCourseCards: 0,
-        unchangedCourseCards: 0,
-      };
       if (companyLifecycle(company) !== "active") {
         return { ok: false as const, error: "الشركة غير نشطة — تجديدها من صفحة الشركات" };
       }
@@ -588,6 +640,102 @@ export async function applyPlanUpdatePayload(input: unknown) {
         company: company.name,
         ...none,
         renewed: true,
+        generatedCards,
+        affectedRows: generatedCards,
+      };
+    }
+
+    if (data.planCounts) {
+      const fields = ["posts", "reels", "aiReels", "stories"] as const;
+      const TYPE_OF = { posts: "POST", reels: "REEL", aiReels: "AI_REEL", stories: "STORY" } as const;
+      const LABEL = { posts: "البوستات", reels: "الريلات", aiReels: "ريلات AI", stories: "الستوريات" } as const;
+      const record: PlanCounts = {
+        posts: company.posts,
+        reels: company.reels,
+        aiReels: company.aiReels,
+        stories: company.stories,
+      };
+      const next: PlanCounts = { ...record };
+      for (const field of fields) {
+        const value = data.planCounts[field];
+        if (value !== undefined) next[field] = value;
+      }
+      if (companyLifecycle(company) !== "active") {
+        return { ok: false as const, error: "الشركة غير نشطة — لا تُعدَّل خطتها" };
+      }
+      if (!cycleForBucket(company, data.year, data.month)) {
+        return { ok: false as const, error: "لا دورة للشركة في هذا الدلو — لا خطة تُعدَّل" };
+      }
+      if (hasLaterCycle(company, data.year, data.month)) {
+        return {
+          ok: false as const,
+          error: "هذه الدورة سُجّلت بعدها دورة، فعدد قطعها مثبّت — العدد يُعدَّل لآخر دورة مسجَّلة",
+        };
+      }
+      if (planTotal(next) === 0) {
+        return { ok: false as const, error: "الخطة لا تكون صفراً — أوقفي النشر أو أرشفي الشركة" };
+      }
+      const bucket = { companyId, year: data.year, month: data.month };
+      const existing = (await existingPieceCounts([bucket])).get(bucketKey(bucket)) ?? {
+        posts: 0,
+        reels: 0,
+        aiReels: 0,
+        stories: 0,
+      };
+      const countCards = () =>
+        prisma.task.count({
+          where: { companyId, year: data.year, month: data.month, isAuto: true, status: { not: "CANCELED" } },
+        });
+      // السجلّ والكروت الاتنين على العدد المطلوب → إعادة تطبيق، ما بتعمل شي.
+      if (fields.every((f) => next[f] === record[f] && next[f] === existing[f])) {
+        return {
+          ok: true as const,
+          company: company.name,
+          ...none,
+          renewed: false,
+          generatedCards: await countCards(),
+          affectedRows: 0,
+        };
+      }
+      // التقليل بيشيل القطع صاحبة الأرقام الأعلى (الترقيم بترتيب النشر، والحفظ
+      // بيطابق بالرقم). قطعة عليها شغل أو وصف ما بتنشال بحمولة عدد.
+      for (const field of fields) {
+        if (next[field] >= existing[field]) continue;
+        const dropped = await prisma.task.findMany({
+          where: {
+            companyId,
+            year: data.year,
+            month: data.month,
+            isAuto: true,
+            type: TYPE_OF[field],
+            pieceNo: { gt: next[field] },
+          },
+          select: { status: true, board: true, brief: true },
+        });
+        if (dropped.some((t) => t.status !== "NOT_STARTED" || t.board !== "TODO" || Boolean(t.brief?.trim()))) {
+          return {
+            ok: false as const,
+            error: `تقليل ${LABEL[field]} إلى ${next[field]} يحذف قطعاً عليها شغل أو وصف — عالجي كروتها أولاً`,
+          };
+        }
+      }
+      await prisma.company.update({ where: { id: companyId }, data: next });
+      const built = await generateScheduleInternal(data.year, data.month, companyId);
+      if (!built.ok) {
+        await prisma.company.update({ where: { id: companyId }, data: record });
+        return {
+          ok: false as const,
+          error: `لم يُعدَّل العدد لأن إعادة بناء الدورة فشلت: ${built.error}`,
+        };
+      }
+      const generatedCards = await countCards();
+      revalidateAll();
+      return {
+        ok: true as const,
+        company: company.name,
+        ...none,
+        renewed: false,
+        planCountsChanged: true,
         generatedCards,
         affectedRows: generatedCards,
       };
@@ -1221,6 +1369,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
       updatedCourseCards,
       unchangedCourseCards,
       renewed: false,
+      planCountsChanged: false,
       generatedCards: 0,
       // الإنشاء بيرجع الصف لا عدّاداً — بينحسب صفاً واحداً.
       affectedRows: results.reduce((sum, result) => sum + (result.count ?? 1), 0),

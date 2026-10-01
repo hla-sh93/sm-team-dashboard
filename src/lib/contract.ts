@@ -383,8 +383,11 @@ export function contractStateOf(
   }
   const current = currentCycle(co, t);
   if (current) {
-    const daysLeft = daysBetween(t, current.end);
-    const endsAt = current.end;
+    // دورة مسجَّلة بعد الحالية = سؤال التجديد انجاب عليه (تجديد مبكر): العقد
+    // ماشي لنهاية آخر دورة مسجَّلة، فما منسأل «هل جدّد؟» قبل نهاية دورة معروف
+    // شو بعدها.
+    const endsAt = all[all.length - 1].end;
+    const daysLeft = daysBetween(t, endsAt);
     return daysLeft <= RENEWAL_NOTICE_DAYS
       ? { state: "due_soon", cycle: current, endsAt, daysLeft }
       : { state: "active", cycle: current, endsAt, daysLeft };

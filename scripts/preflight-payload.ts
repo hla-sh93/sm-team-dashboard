@@ -10,7 +10,8 @@
  */
 import { readFileSync } from "node:fs";
 import { parseWorkDays, toISODate } from "@/lib/dates";
-import { cyclesOf, parseRenewals } from "@/lib/contract";
+import { cycleForBucket, cyclesOf, parseRenewals } from "@/lib/contract";
+import { hasLaterCycle, pieceCountsOf, type PlanCounts } from "@/lib/cycle-plan";
 import { planCourseCards, type CourseItem, type CoursePoster } from "@/lib/course-cards";
 
 type Row = Record<string, unknown>;
@@ -181,6 +182,49 @@ for (const file of files) {
           (last ? ` (الحالية ${toISODate(last.start)} → ${toISODate(last.end)} حصراً)` : "") +
           ` · دلو ${payload.year}/m=${payload.month} — الكروت بتتولّد عند التطبيق`,
       );
+    }
+  }
+
+  // عدد قطع الدورة: نفس حرّاس الخادم — لآخر دورة مسجَّلة فقط، والتقليل ما بيشيل
+  // قطعة عليها شغل أو وصف.
+  const planCounts = payload.planCounts as (Partial<PlanCounts> & { evidence: string }) | undefined;
+  if (planCounts) {
+    const fields = ["posts", "reels", "aiReels", "stories"] as const;
+    const TYPE_OF = { posts: "POST", reels: "REEL", aiReels: "AI_REEL", stories: "STORY" } as const;
+    const bucket = tasks.filter(
+      (t) => t.companyId === company.id && t.year === payload.year && t.month === payload.month && t.isAuto,
+    );
+    const existing = pieceCountsOf(bucket as never);
+    const record = company as unknown as PlanCounts;
+    const line = fields
+      .filter((f) => planCounts[f] !== undefined)
+      .map((f) => `${f}: سجلّ ${record[f]} · كروت ${existing[f]} → ${planCounts[f]}`)
+      .join(" · ");
+    if (company.status !== "active") {
+      console.log("   ✗ عدد القطع: الشركة غير نشطة");
+      problems++;
+    } else if (!cycleForBucket(company as never, payload.year, payload.month)) {
+      console.log("   ✗ عدد القطع: لا دورة للشركة بهذا الدلو");
+      problems++;
+    } else if (hasLaterCycle(company as never, payload.year, payload.month)) {
+      console.log("   ✗ عدد القطع: هالدورة انسجّلت بعدها دورة — عددها مثبّت");
+      problems++;
+    } else {
+      console.log(`   ✓ عدد القطع · ${line} — الدلو بينعاد بناؤه لهالشركة وحدها عند التطبيق`);
+      for (const f of fields) {
+        const next = planCounts[f];
+        if (next === undefined || next >= existing[f]) continue;
+        const touched = bucket.filter(
+          (t) =>
+            t.type === TYPE_OF[f] &&
+            Number(t.pieceNo) > next &&
+            (t.status !== "NOT_STARTED" || t.board !== "TODO" || String(t.brief ?? "").trim()),
+        );
+        if (touched.length) {
+          console.log(`   ✗ تقليل ${f} إلى ${next} بيشيل ${touched.length} كرت عليه شغل أو وصف`);
+          problems++;
+        }
+      }
     }
   }
 

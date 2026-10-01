@@ -34,6 +34,8 @@ import {
   parseWorkDays,
 } from "@/lib/dates";
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
+import { planTotal } from "@/lib/cycle-plan";
+import { frozenPlanCounts } from "@/server/cycle-plan";
 import { revalidateAll } from "@/lib/revalidate";
 
 
@@ -248,6 +250,18 @@ export async function generateScheduleInternal(
             "الشركة موقوفة أو مؤرشفة أو غير مُدارة — المحرّك ما بيولّد إلها كروت، " +
             "وإعادة بناء دورتها لحالها بتمحي كروتها بلا بديل. فعّليها أولاً.",
         };
+    }
+
+    // دورة انسجّلت بعدها دورة خطتها مثبّتة بكروتها الموجودة: رقم السجلّ صار خطة
+    // الدورة الأحدث. BW رفعت بوستاتها لخطة تشرين الأول (١/١٠) ودورة أيلول لسا
+    // شغّالة — بلا هالتثبيت كانت أي إعادة جدولة لدلو أيلول تزرع الزيادة جوّاها.
+    const frozenPlans = await frozenPlanCounts(state.companies.filter(isPlanned), () => ({
+      year,
+      month,
+    }));
+    for (const co of state.companies) {
+      const counts = frozenPlans.get(co.id);
+      if (counts && planTotal(counts) > 0) Object.assign(co, counts);
     }
 
     const result = buildSchedule(state);

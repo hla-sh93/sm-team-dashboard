@@ -3,6 +3,8 @@ import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "
 import { isTaskDoneState } from "@/lib/constants";
 import { hideDormantCompanyWork, isDormantCompany } from "@/lib/company-visibility";
 import { achievementSpanLabel, latestCycleBucket } from "@/lib/contract";
+import { planTotal } from "@/lib/cycle-plan";
+import { frozenPlanCounts } from "@/server/cycle-plan";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
 import OverviewClient from "./overview-client";
@@ -65,9 +67,12 @@ export default async function OverviewView({
   // الإنجاز على **آخر دورة** لا على الدورة الشغّالة اليوم: شركة خلصت دورتها
   // وبانتظار التجديد بتضل تعرض إنجاز دورتها لا صفراً (القائدة ١٦/٩)؛ وتاريخ
   // الدورة بيطلع جنب كل شركة — والشركة على شهر التقويم بتعرض شهرها.
+  // خطة الدورة المعروضة: رقم السجلّ، إلا لو انسجّلت بعدها دورة (تجديد مبكر
+  // بعدد مختلف) — وقتها خطتها عدد قطعها هي، لا رقم الدورة الجاية.
+  const frozenPlans = await frozenPlanCounts(tracked, (co) => latestCycleBucket(co, now));
   const companyProgress: CompanyProgress[] = tracked.map((co) => ({
     companyId: co.id,
-    plan: co.posts + co.reels + co.stories + co.aiReels,
+    plan: planTotal(frozenPlans.get(co.id) ?? co),
     published: completedCompanyPlanCount(cycleTasks, co.id),
     produced: producedCompanyPlanCount(cycleTasks, co.id),
     cycleLabel: achievementSpanLabel(co, now),

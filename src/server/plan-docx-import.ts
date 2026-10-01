@@ -27,6 +27,7 @@ import {
   type PlanDocxPiece,
 } from "@/lib/plan-docx";
 import { applyPlanUpdatePayload } from "@/server/plan-update";
+import { frozenPlanCounts } from "@/server/cycle-plan";
 
 /** نطاق الكتابة يلي بيغطّيه كل نوع — نفس تقسيم `pipeline.ts`. */
 const SCOPE_OF = (type: PieceType): "DESIGN" | "SHOOT" => (type === "REEL" ? "SHOOT" : "DESIGN");
@@ -102,11 +103,14 @@ export async function previewPlanDocx(
   if (!parsed.ok) return fail(parsed.error);
 
   const found = summarisePieces(parsed.pieces);
+  // عدد الدورة يلي الملف نازل عليها: لو انسجّلت بعدها دورة بعدد مختلف، المقارنة
+  // مع قطع هالدورة لا مع رقم السجلّ (يلي صار خطة الدورة الجاية).
+  const plan = (await frozenPlanCounts([company], () => bucket)).get(company.id) ?? company;
   const contract: Record<PieceType, number> = {
-    POST: company.posts,
-    REEL: company.reels,
-    STORY: company.stories,
-    AI_REEL: company.aiReels,
+    POST: plan.posts,
+    REEL: plan.reels,
+    STORY: plan.stories,
+    AI_REEL: plan.aiReels,
   };
   const counts: PlanDocxCount[] = (Object.keys(contract) as PieceType[])
     .filter((type) => contract[type] > 0 || found[type] > 0)
