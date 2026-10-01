@@ -205,4 +205,38 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     const { companyLifecycle: lc } = await import("@/lib/company-visibility");
     expect(lc(row)).toBe("paused");
   });
+
+  it("الموقوفة إلها الجوابان (القائدة ١/١٠ — برو): «لم يُجدد» بيأرشفها، و«جدّد» بيرجّعها نشطة بدورة جديدة", async () => {
+    if (skip()) return;
+    const { companyLifecycle: lc } = await import("@/lib/company-visibility");
+
+    const ended = await makeCompany(`${uniq}-paused-ended`);
+    await actions.pauseCompanyPublishing(ended.id);
+    const end = await actions.endContract(ended.id);
+    expect(end.ok, (end as { error?: string }).error).toBe(true);
+    const endedRow = await prisma.company.findUniqueOrThrow({ where: { id: ended.id } });
+    expect(lc(endedRow)).toBe("archived");
+    expect(endedRow.contractEndedAt).toBeTruthy();
+
+    const designer = await prisma.employee.findFirst({ where: { isScheduled: true, role: { contains: "designer" } } });
+    const renewed = await makeCompany(`${uniq}-paused-renewed`, {
+      contentSupplied: true,
+      postOwnerId: designer?.id ?? null,
+      defaultOwnerId: designer?.id ?? null,
+      renewals: '["2026-08-01"]',
+    });
+    await actions.pauseCompanyPublishing(renewed.id);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: renewed.id } })).publishStartDate).toBeNull();
+    const r = await actions.renewContract(renewed.id, "2026-10-05");
+    expect(r.ok, (r as { error?: string }).error).toBe(true);
+    const row = await prisma.company.findUniqueOrThrow({ where: { id: renewed.id } });
+    expect(row.status).toBe("active");
+    expect(lc(row)).toBe("active");
+    expect(new Date(row.publishStartDate).getDate()).toBe(5);
+    // الدورة بتبلّش من جديد — تجديدات ما قبل الإيقاف ما عادت توصف شي.
+    expect(row.renewals).toBeNull();
+    expect(
+      await prisma.task.count({ where: { companyId: renewed.id, year: 2026, month: 9, isAuto: true } }),
+    ).toBeGreaterThan(0);
+  });
 });

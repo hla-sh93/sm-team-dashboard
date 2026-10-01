@@ -232,6 +232,12 @@ export async function renewContract(companyId: string, startDateISO: string) {
     // يقرأ تاريخ العقد، فشركة بتنشر بلا تاريخ عقد (BW من ١٠/٩) كانت رح تنرفض
     // عند «جدّد» مع إنّ دوراتها شغّالة وبتنتهي.
     if (!co.publishStartDate) {
+      // موقوفة بطلب زبونها: الإيقاف فرّغ تاريخ بدء النشر، فما في دورة تنمدّ.
+      // «جدّد» إلها = رجوع بدورة جديدة من هالتاريخ — نفس «رجّع النشر» حرفياً
+      // (القائدة ١/١٠: الموقوفة إلها خيار «جدّد» أو «لم يُجدد»).
+      if (companyLifecycle(co) === "paused") {
+        return resumeCompanyPublishing(companyId, startDateISO);
+      }
       return {
         ok: false as const,
         error: "هذه الشركة بلا تاريخ بدء نشر (توزيع شهري) — لا تحتاج تجديداً",

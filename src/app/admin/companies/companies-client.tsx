@@ -94,12 +94,16 @@ export default function CompaniesClient({
         : s.state === "awaiting_renewal"
           ? toISODate(s.endedAt)
           : toISODate(new Date());
+    // الموقوفة بطلب زبونها بلا دورة قائمة: التجديد يعيدها نشطة بدورة جديدة.
+    const pausedNoCycle = companyLifecycle(c) === "paused" && s.state === "none";
     Swal.fire({
       title: `تجديد عقد ${c.name}`,
       input: "date",
       inputValue: suggested,
       inputLabel: "تاريخ بدء الدورة الجديدة",
-      text: "أي تاريخ بعد نهاية الدورة الحالية يترك فجوة لا يُنتَج فيها شيء.",
+      text: pausedNoCycle
+        ? "الشركة موقوفة: التجديد يعيدها نشطة ويبني دورة جديدة كاملة من هذا التاريخ."
+        : "أي تاريخ بعد نهاية آخر دورة مسجَّلة يترك فجوة لا يُنتَج فيها شيء، ولا تبدأ دورة قبل نهاية التي قبلها.",
       showCancelButton: true,
       confirmButtonText: "تأكيد التجديد",
       cancelButtonText: "إلغاء",
@@ -325,6 +329,7 @@ export default function CompaniesClient({
           // لحمولة نجحت بالكامل (حالات، كروت خارج الخطة، كروت دورات).
           const parts = [
             result.renewed ? `تسجيل دورة جديدة وتوليد ${result.generatedCards} كرتاً` : "",
+            result.planCountsChanged ? `تعديل عدد القطع وإعادة بناء الدورة (${result.generatedCards} كرتاً)` : "",
             result.describedPieces ? `${result.describedPieces} وصفاً` : "",
             result.updatedStates ? `${result.updatedStates} حالة قطعة` : "",
             result.updatedAdhoc ? `${result.updatedAdhoc} كرتاً خارج الخطة` : "",
@@ -348,7 +353,8 @@ export default function CompaniesClient({
   };
 
   /** «لم يُجدد» — أرشيف لا إيقاف: الشركة تقف من نفسها وكروتها المفتوحة تُغلق
-   *  تلقائياً (قرار القائدة ١٥/٩). تعود بتسجيل تجديد لاحقاً. */
+   *  تلقائياً (قرار القائدة ١٥/٩). تعود بتسجيل تجديد لاحقاً. متاح لأي شركة غير
+   *  مؤرشفة، نشطة أو موقوفة (١/١٠: برو موقوفة ثم لم تجدّد). */
   const onEndContract = (c: Company) => {
     Swal.fire({
       title: `لم يُجدد عقد ${c.name}؟`,
@@ -422,11 +428,13 @@ export default function CompaniesClient({
         ? { label: "مؤرشفة", cls: "bg-bg-elev2 text-fg-muted" }
         : contractChip(state);
     const hasRenewals = parseRenewals(c).length > 0;
-    // The renewal question only exists once a cycle is ending or over.
-    const needsAnswer =
-      state.state === "due_soon" ||
-      state.state === "awaiting_renewal" ||
-      state.state === "ended";
+    // قرار التجديد متاح بأي وقت، مو بس آخر ثلاثة أيام من الدورة (القائدة ١/١٠:
+    // «خلّي في إمكانية لوقف / استكمال أي شركة مع خيار جدّد أو لم يجدّد»).
+    // «جدّد» بدها دورة تنمدّ أو شركة موقوفة/مؤرشفة ترجع؛ «لم يُجدد» لأي شركة
+    // لسا مو بالأرشيف.
+    const hasCycle = state.state !== "none";
+    const canRenew = hasCycle || lifecycle !== "active";
+    const canEnd = lifecycle !== "archived";
     return (
       <Card key={c.id} style={{ borderRight: `4px solid ${c.color ?? "#C8A84E"}` }}>
         <div className="flex items-start justify-between">
@@ -483,7 +491,7 @@ export default function CompaniesClient({
             )}
           </div>
         )}
-        {(chip || lifecycle === "paused") && (
+        {(chip || canRenew || canEnd) && (
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             {chip && (
               <span
@@ -502,23 +510,26 @@ export default function CompaniesClient({
                 موقوفة بطلب الزبون
               </span>
             )}
-            {(needsAnswer || lifecycle === "archived") && (
+            {canRenew && (
               <button
                 className="text-[11px] px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 font-semibold"
+                title="تسجيل دورة جديدة بتاريخ بدئها"
                 onClick={() => onRenew(c, state)}
               >
                 جدّد
               </button>
             )}
-            {needsAnswer && lifecycle !== "archived" && state.state !== "ended" && (
+            {canEnd && (
               <button
                 className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
+                title="نقل الشركة إلى الأرشيف وإغلاق كروتها المفتوحة"
                 onClick={() => onEndContract(c)}
               >
                 لم يُجدد
               </button>
             )}
-            {hasRenewals && lifecycle !== "archived" && (
+            {/* تصحيح/شيل آخر تجديد بدهم دورة قائمة — الموقوفة بلا مرساة ما إلها. */}
+            {hasRenewals && lifecycle !== "archived" && hasCycle && (
               <button
                 className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-warning/10 hover:text-warning"
                 onClick={() => onCorrectLatestRenewal(c)}
@@ -526,7 +537,7 @@ export default function CompaniesClient({
                 صحّح آخر تجديد
               </button>
             )}
-            {hasRenewals && lifecycle !== "archived" && (
+            {hasRenewals && lifecycle !== "archived" && hasCycle && (
               <button
                 className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
                 onClick={() => onRemoveLatestRenewal(c)}
