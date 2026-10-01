@@ -44,6 +44,18 @@ const writerName = `${uniq} كاتبة`;
 let companyId = "";
 let writerId = "";
 
+/**
+ * «اليوم» تبع الفحص — تاريخ ثابت جوّا دورة أيلول (١/٩ ← ١/١٠) يلي بتنبني تحت.
+ *
+ * `previewPlanDocx` بتحدّد الدورة الشغّالة من `new Date()` وما بتاخد تاريخاً
+ * من برّا، فالفحص كان بيمرق بس طول ما تقويم الجهاز جوّا أيلول: من ١/١٠ صار
+ * المستورد يدوّر ببكت تشرين الأول الفاضي. تثبيت الساعة بيخلّي الكروت والدورة
+ * و«اليوم» من مرجع واحد، بلا ما يتغيّر شي بكود الإنتاج.
+ */
+const CYCLE_START = new Date(2026, 8, 1);
+const CYCLE_BUCKET = { year: 2026, month: 8 };
+const TODAY = new Date(2026, 8, 20, 9, 0);
+
 /** جدول معبّى بنفس شكل القالب — بيتحوّل لـdocx حقيقي بنفس المكتبة. */
 async function planFile(rows: { reels: number; posts: number }): Promise<string> {
   const { AlignmentType, Document, Paragraph, Table, TableCell, TableRow, TextRun } = await import("docx");
@@ -84,8 +96,10 @@ async function planFile(rows: { reels: number; posts: number }): Promise<string>
 const skip = () => !scratch.available;
 
 beforeAll(async () => {
+  // بلا `useFakeTimers`: بينزيَّف `Date` وحده، والمؤقّتات الحقيقية بتضل لـPrisma.
+  vi.setSystemTime(TODAY);
   if (skip()) return;
-  prisma = (await import("@/lib/db")).prisma;
+  prisma =(await import("@/lib/db")).prisma;
   ({ previewPlanDocx: preview, applyPlanDocx: apply } = await import("@/server/plan-docx-import"));
   ({ buildPlanTemplate: buildTemplate } = await import("@/lib/plan-template"));
 
@@ -101,13 +115,13 @@ beforeAll(async () => {
       reels: 2,
       stories: 0,
       aiReels: 0,
-      publishStartDate: new Date(2026, 8, 1),
-      contractStartDate: new Date(2026, 8, 1),
+      publishStartDate: CYCLE_START,
+      contractStartDate: CYCLE_START,
     },
   });
   companyId = company.id;
   // دورة أيلول: كرتا كتابة (نطاقان) وقطع بلا وصف.
-  const bucket = { year: 2026, month: 8 };
+  const bucket = CYCLE_BUCKET;
   await prisma.task.createMany({
     data: [
       { id: `t${process.pid}_w_design`, kind: "CONTENT_WRITING", stage: "WRITE", pipelineKey: `${companyId}|DESIGN`, title: "كتابة بوستات وستوريز", companyId, assigneeId: writerId, status: "NOT_STARTED", board: "TODO", ...bucket },
@@ -122,6 +136,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.useRealTimers();
   if (!prisma) return;
   await prisma.task.deleteMany({ where: { companyId } });
   await prisma.company.deleteMany({ where: { name: companyName } });
@@ -146,6 +161,8 @@ describe("رفع خطة Word", () => {
     if (skip()) return;
     const result = await preview(companyId, await planFile({ reels: 2, posts: 2 }));
     expect(result.ok, result.error).toBe(true);
+    // الدورة الشغّالة بتاريخ `TODAY`، لا شهر تقويم الجهاز.
+    expect({ year: result.year, month: result.month }).toEqual(CYCLE_BUCKET);
     expect(result.counts).toEqual([
       { type: "POST", label: "بوست", inFile: 2, inContract: 2 },
       { type: "REEL", label: "ريل", inFile: 2, inContract: 2 },
