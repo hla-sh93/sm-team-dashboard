@@ -228,10 +228,13 @@ export async function renewContract(companyId: string, startDateISO: string) {
   try {
     const co = await prisma.company.findUnique({ where: { id: companyId } });
     if (!co) return { ok: false as const, error: "الشركة غير موجودة" };
-    if (!co.contractStartDate) {
+    // مرساة الدورات تاريخ **بدء النشر** لا توقيع العقد (قاعدة ٣/٨). الحارس كان
+    // يقرأ تاريخ العقد، فشركة بتنشر بلا تاريخ عقد (BW من ١٠/٩) كانت رح تنرفض
+    // عند «جدّد» مع إنّ دوراتها شغّالة وبتنتهي.
+    if (!co.publishStartDate) {
       return {
         ok: false as const,
-        error: "هذه الشركة بلا تاريخ عقد (توزيع شهري) — لا تحتاج تجديداً",
+        error: "هذه الشركة بلا تاريخ بدء نشر (توزيع شهري) — لا تحتاج تجديداً",
       };
     }
     const start = parseContractDate(startDateISO)!;

@@ -10,6 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { parseWorkDays, toISODate } from "@/lib/dates";
+import { cyclesOf, parseRenewals } from "@/lib/contract";
 import { planCourseCards, type CourseItem, type CoursePoster } from "@/lib/course-cards";
 
 type Row = Record<string, unknown>;
@@ -156,6 +157,33 @@ for (const file of files) {
     );
     if (rateNote) console.log(`      معدّله: ${rateNote}`);
   }
+  // التجديد المبكر: نفس حرّاس الخادم — ما بيبدأ قبل نهاية الدورة الحالية.
+  const renewal = payload.renewal as { start: string } | undefined;
+  if (renewal) {
+    const start = new Date(`${renewal.start}T00:00:00`);
+    const cycles = cyclesOf(company as never);
+    const last = cycles[cycles.length - 1];
+    const already = parseRenewals(company as never).some((d) => toISODate(d) === renewal.start);
+    if (already) {
+      console.log(`   ✓ تجديد ${renewal.start}: مسجَّل أصلاً — ما بيتغيّر شي`);
+    } else if (!company.publishStartDate || company.status !== "active") {
+      console.log("   ✗ التجديد: الشركة غير نشطة أو بلا تاريخ بدء نشر");
+      problems++;
+    } else if (last && start.getTime() < last.end.getTime()) {
+      console.log(`   ✗ التجديد ${renewal.start} قبل نهاية الدورة الحالية ${toISODate(last.end)}`);
+      problems++;
+    } else if (start.getFullYear() !== payload.year || start.getMonth() !== payload.month) {
+      console.log("   ✗ دلو الحمولة لا يطابق شهر بداية الدورة");
+      problems++;
+    } else {
+      console.log(
+        `   ✓ تجديد: دورة جديدة من ${renewal.start}` +
+          (last ? ` (الحالية ${toISODate(last.start)} → ${toISODate(last.end)} حصراً)` : "") +
+          ` · دلو ${payload.year}/m=${payload.month} — الكروت بتتولّد عند التطبيق`,
+      );
+    }
+  }
+
   // كروت الدورات: نفس الحساب يلي بيكتبه الخادم (`course-cards.ts`) — بيفرجيك
   // لكل كرت هل رح ينخلق، أو ينعاد توقيته، أو يضل متل ما هو لأنه منجز/ملغى.
   type LooseBlock = {

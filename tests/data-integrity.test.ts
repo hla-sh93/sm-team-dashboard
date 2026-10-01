@@ -223,11 +223,16 @@ describe("contract cycles", () => {
     expect(bad).toEqual([]);
   });
 
-  it("a company with renewals also has a contractStartDate", () => {
+  it("a company with renewals also has a first cycle (publish start or contract date)", () => {
     if (skipIfEmpty()) return;
     // Renewals are cycle starts AFTER the first — meaningless with no first.
+    // The first is `publishStartDate` (the lead's rule 3/8: the cycle is
+    // anchored on the first publication, not the signature) — BW publishes since
+    // 10/9 with no contract date at all, and its October renewal is legitimate.
+    // A company paused on the client's request has its publish anchor cleared
+    // while its renewal history stays (برو), so the contract date also counts.
     const bad = companies.filter(
-      (c) => !c.contractStartDate && parseRenewals(c as any).length > 0,
+      (c) => !c.publishStartDate && !c.contractStartDate && parseRenewals(c as any).length > 0,
     );
     expect(bad.map((c) => c.name)).toEqual([]);
   });

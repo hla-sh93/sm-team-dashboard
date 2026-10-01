@@ -324,6 +324,7 @@ export default function CompaniesClient({
           // الرسالة بتعدّ كل ما تغيّر — كانت تعدّ الأوصاف وحدها فتقول «٠ وصفاً»
           // لحمولة نجحت بالكامل (حالات، كروت خارج الخطة، كروت دورات).
           const parts = [
+            result.renewed ? `تسجيل دورة جديدة وتوليد ${result.generatedCards} كرتاً` : "",
             result.describedPieces ? `${result.describedPieces} وصفاً` : "",
             result.updatedStates ? `${result.updatedStates} حالة قطعة` : "",
             result.updatedAdhoc ? `${result.updatedAdhoc} كرتاً خارج الخطة` : "",

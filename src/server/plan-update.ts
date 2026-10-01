@@ -17,7 +17,10 @@ import {
   PRIORITIES,
   statusToBoard,
 } from "@/lib/constants";
-import { fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
+import { formatDateShort, fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
+import { cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
+import { companyLifecycle } from "@/lib/company-visibility";
+import { generateScheduleInternal } from "@/server/schedule-engine";
 import { COURSE_SLUG, courseCardBucket, planCourseCards } from "@/lib/course-cards";
 import { completeProductionForPublishedTask } from "@/server/actions/tasks";
 import { revalidateAll } from "@/lib/revalidate";
@@ -298,6 +301,28 @@ const planUpdateSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * تجديد مبكر — تسجيل الدورة الجاية قبل ما تخلص الحالية.
+     *
+     * الخطة بتوصل قبل نهاية الدورة (BW خطة تشرين الأول وصلت ١/١٠ والدورة بتخلص
+     * ٩/١٠)، وقاعدة القائدة: «التجديد ممكن ينوافق عليه والدورة الجاية تدخل
+     * التحضير قبل ما تخلص الحالية حتى ما يوقف النشر». زرّ «جدّد» بصفحة الشركات
+     * ما بيظهر إلا قبل النهاية بثلاثة أيام، فما كان في طريق مدقَّق يسجّل الدورة
+     * ويولّد كروتها مشان تنزل عليها الخطة.
+     *
+     * نفس حرّاس «جدّد»: ما بتبدأ قبل نهاية الدورة الحالية، وللشركة النشطة فقط.
+     * التوليد محصور بهالشركة — دلاء باقي الشركات ما بتنلمس. الحمولة **مستقلة**:
+     * التجديد بيولّد الكروت أولاً، وحمولة الخطة بتجي بعده على الدورة الموجودة.
+     * إعادة التطبيق بنفس التاريخ ما بتعمل شي.
+     */
+    renewal: z
+      .object({
+        start: isoDate,
+        /** مصدر القرار — للسجلّ (الشركة ما إلها حقل ملاحظات). */
+        evidence: z.string().trim().min(3).max(500),
+      })
+      .strict()
+      .optional(),
     /** تعليق الحمولة — شرح القرار ومصدره. بينقرا الإنسان، مو الكود. */
     _: z.unknown().optional(),
   })
@@ -320,9 +345,28 @@ const planUpdateSchema = z
           value.adhocStates?.length ||
           value.adhocCards?.length ||
           value.courses ||
+          value.renewal ||
           value.instagramHandle,
       ),
     { message: "الحمولة فاضية — لا خطة ولا إقفال ولا حالات" },
+  )
+  // التجديد بيولّد كروت الدورة قبل أي تحقّق من القطع — لو انجمع مع خطة وفشلت
+  // الخطة، بيضل التجديد مسجَّلاً وبتنكسر قاعدة كل-أو-لا-شي. فهو حمولة لحاله.
+  .refine(
+    (value) =>
+      !value.renewal ||
+      !(
+        value.items?.length ||
+        value.closePreviousOpenTasks ||
+        value.pieceStates?.length ||
+        value.adhocStates?.length ||
+        value.adhocCards?.length ||
+        value.courses ||
+        value.prepareOn ||
+        value.publishOn ||
+        value.instagramHandle
+      ),
+    { message: "التجديد يُطبَّق بحمولة مستقلة، ثم حمولة الخطة بعد توليد الدورة" },
   );
 
 /** للفحوص وسكربت ما قبل التطبيق — نفس المخطّط يلي بيقرأه الخادم. */
@@ -477,6 +521,76 @@ export async function applyPlanUpdatePayload(input: unknown) {
         where: { id: companyId },
         data: { instagramHandle: data.instagramHandle },
       });
+    }
+
+    if (data.renewal) {
+      const start = fromISODate(data.renewal.start);
+      const none = {
+        describedPieces: 0,
+        updatedStates: 0,
+        updatedAdhoc: 0,
+        createdAdhocCards: 0,
+        updatedAdhocCards: 0,
+        unchangedAdhocCards: 0,
+        closedPreviousTasks: 0,
+        restoredTasks: 0,
+        createdCourseCards: 0,
+        updatedCourseCards: 0,
+        unchangedCourseCards: 0,
+      };
+      if (companyLifecycle(company) !== "active") {
+        return { ok: false as const, error: "الشركة غير نشطة — تجديدها من صفحة الشركات" };
+      }
+      if (!company.publishStartDate) {
+        return { ok: false as const, error: "الشركة بلا تاريخ بدء نشر — لا دورة تُجدَّد" };
+      }
+      // دلو الدورة = شهر بدايتها؛ دلو غلط بالحمولة معناه إنّ الخطة رح تنزل بمكان تاني.
+      if (start.getFullYear() !== data.year || start.getMonth() !== data.month) {
+        return { ok: false as const, error: "دلو الحمولة لا يطابق شهر بداية الدورة الجديدة" };
+      }
+      const existing = parseRenewals(company);
+      const countCards = () =>
+        prisma.task.count({
+          where: { companyId, year: data.year, month: data.month, isAuto: true, status: { not: "CANCELED" } },
+        });
+      if (existing.some((d) => d.getTime() === start.getTime())) {
+        return {
+          ok: true as const,
+          company: company.name,
+          ...none,
+          renewed: false,
+          generatedCards: await countCards(),
+          affectedRows: 0,
+        };
+      }
+      const cycles = cyclesOf(company);
+      const last = cycles[cycles.length - 1];
+      if (last && start.getTime() < last.end.getTime()) {
+        return {
+          ok: false as const,
+          error: `الدورة الحالية تنتهي ${formatDateShort(last.end)} — لا يمكن بدء دورة جديدة قبلها`,
+        };
+      }
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { renewals: serializeRenewals([...existing, start]) },
+      });
+      const built = await generateScheduleInternal(start.getFullYear(), start.getMonth(), companyId);
+      if (!built.ok) {
+        // التوليد فشل = الدورة بلا كروت؛ منرجّع التجديد حتى ما تضل دورة فاضية مسجَّلة.
+        await prisma.company.update({ where: { id: companyId }, data: { renewals: company.renewals } });
+        return { ok: false as const, error: `سُجّل التجديد ثم أُلغي: ${built.error}` };
+      }
+      const generatedCards = await countCards();
+      revalidateAll();
+      return {
+        ok: true as const,
+        company: company.name,
+        ...none,
+        renewed: true,
+        generatedCards,
+        affectedRows: generatedCards,
+      };
     }
 
     const tasks = await prisma.task.findMany({
@@ -1106,6 +1220,8 @@ export async function applyPlanUpdatePayload(input: unknown) {
       createdCourseCards,
       updatedCourseCards,
       unchangedCourseCards,
+      renewed: false,
+      generatedCards: 0,
       // الإنشاء بيرجع الصف لا عدّاداً — بينحسب صفاً واحداً.
       affectedRows: results.reduce((sum, result) => sum + (result.count ?? 1), 0),
     };
