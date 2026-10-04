@@ -6,7 +6,7 @@
  * وبتطبعه PDF. كل قاعدة هون جاية من غلطة بتقرير أيلول اليدوي — مذكورة جنبها.
  */
 import { CONTENT_TYPE_LABELS, STAGE_LABELS, isTaskDoneState } from "@/lib/constants";
-import { cycleForBucket, hasStartedPublishing, type ContractCompany } from "@/lib/contract";
+import { contractModeOf, cycleForBucket, hasStartedPublishing, type ContractCompany } from "@/lib/contract";
 import { ARABIC_DAYS, ARABIC_MONTHS } from "@/lib/dates";
 import { isProductionMember } from "@/lib/team";
 
@@ -189,6 +189,8 @@ export type ReportCompany = ContractCompany & {
   status: string;
   photographerId: string | null;
   lateExemptReason: string | null;
+  /** آخر تعديل على السجلّ — تقريب لتاريخ الإيقاف، يلي ما إله حقل. */
+  updatedAt?: Date | string | null;
 };
 
 /** ملف مربوط بكرت على تلغرام — وقته هو وقت التسليم الفعلي. */
@@ -267,11 +269,20 @@ function isDone(t: ReportTask): boolean {
   return t.status !== "CANCELED" && isTaskDoneState(t);
 }
 
-/** موقوفة أو مؤرشفة **وقتها** — مانغو اللي ما جدّدت من ١/١٠ كانت نشطة بأيلول. */
+/** تعدّل سجلّ الشركة بعد الفترة؟ حالتها الحالية ممكن ما تكون حالتها وقتها. */
+function changedAfter(co: ReportCompany, lastKey: string): boolean {
+  return co.updatedAt != null && dayKeyOf(co.updatedAt) > lastKey;
+}
+
+/**
+ * موقوفة أو مؤرشفة **وقتها** — مانغو اللي ما جدّدت من ١/١٠ كانت نشطة بأيلول،
+ * وSiizen يلي توقّفت ٤/١٠ كانت نشطة بأيلول. الإيقاف ما إله تاريخ، فآخر تعديل على
+ * السجلّ هو التقريب: تعديل بعد الفترة = كانت نشطة فيها.
+ */
 function dormantDuring(co: ReportCompany, lastKey: string): boolean {
-  if (co.status === "paused") return true;
   if (co.contractEndedAt) return dayKeyOf(co.contractEndedAt) <= lastKey;
-  return co.status === "archived";
+  if (co.status === "paused" || co.status === "archived") return !changedAfter(co, lastKey);
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -385,12 +396,8 @@ export function buildPeriodReport(input: {
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const coName = (id: string | null) => (id ? coById.get(id)?.name ?? "—" : "بلا شركة");
 
-  const firstDelivery = new Map<string, string>();
-  for (const d of deliveries) {
-    const iso = new Date(d.sentAt).toISOString();
-    const prev = firstDelivery.get(d.taskId);
-    if (!prev || iso < prev) firstDelivery.set(d.taskId, iso);
-  }
+  /** كروت إلها ملف مربوط على تلغرام — دليل إنها انسلّمت فعلاً. */
+  const delivered = new Set(deliveries.map((d) => d.taskId));
 
   /** التصوير على غير مصوّر = ملف المونتاج انربط بكرت التصوير → لمصوّر الشركة. */
   function creditOf(t: ReportTask): string | null {
@@ -402,10 +409,32 @@ export function buildPeriodReport(input: {
     return t.assigneeId;
   }
 
-  /** دورة الكرت (حسب دلوه) — للستوري ولعنوان دورات الشركة. */
+  // مدى مواعيد النشر لكل دلو — بديل الدورة لما السجلّ ما عاد يحملها.
+  const publishRange = new Map<string, { start: string; last: string }>();
+  for (const t of tasks) {
+    if (!t.companyId || !t.publishDate) continue;
+    const key = `${t.companyId}|${t.year}|${t.month}`;
+    const day = dayKeyOf(t.publishDate);
+    const range = publishRange.get(key);
+    if (!range) publishRange.set(key, { start: day, last: day });
+    else {
+      if (day < range.start) range.start = day;
+      if (day > range.last) range.last = day;
+    }
+  }
+
+  /**
+   * دورة الكرت (حسب دلوه) — للستوري ولعنوان دورات الشركة. شركة ما عاد إلها تاريخ
+   * بدء نشر (Siizen بعد إيقافها ٤/١٠) دورتها من مواعيد نشر قطع الدلو نفسه، لا
+   * الشهر التقويمي: دورة ١٩/٨ → ١٨/٩ مش «آب».
+   */
   function cycleOf(t: ReportTask): { start: string; last: string } | null {
     const co = t.companyId ? coById.get(t.companyId) : null;
     if (!co) return null;
+    if (contractModeOf(co) !== "publishing") {
+      const range = publishRange.get(`${co.id}|${t.year}|${t.month}`);
+      if (range) return range;
+    }
     const cycle = cycleForBucket(co, t.year, t.month);
     if (!cycle) return null;
     return { start: dayKeyOf(cycle.start), last: addDaysToKey(dayKeyOf(cycle.end), -1) };
@@ -431,7 +460,7 @@ export function buildPeriodReport(input: {
   }
 
   function hasDeliveryEvidence(t: ReportTask): boolean {
-    return firstDelivery.has(t.id) || Boolean(t.notes?.trim());
+    return delivered.has(t.id) || Boolean(t.notes?.trim());
   }
 
   /** مفتوح وقت `asOfKey`: ما انسكّر، أو انسكّر بعد نهاية الفترة. */
@@ -458,16 +487,20 @@ export function buildPeriodReport(input: {
     if (TIMED.includes(cat) && hasDeliveryEvidence(t)) {
       const deadline = deadlineOf(t);
       if (deadline) {
-        const delivered = dayKeyOf(firstDelivery.get(t.id) ?? at);
-        lateDays = Math.max(0, daysBetweenKeys(delivered, deadline));
+        // طابع الكرت لا الملف المربوط: إعادة الترقيم بتنقل سجلّ القطعة لكرت تاني
+        // والرابط بيضل على القديم (Siizen ٤/١٠). والإقفال من تلغرام طابعه وقت الملف.
+        const deliveredDay = dayKeyOf(at);
+        lateDays = Math.max(0, daysBetweenKeys(deliveredDay, deadline));
       }
     }
     doneInPeriod.push({ t, who, cat, dayKey, lateDays });
   }
 
   // ---- المتأخر المفتوح ----
+  // ما بلّش نشرها وقتها = لا تأخير عليها. نصّ الإعفاء الحر ما بيعفي لحاله: الإعفاء
+  // للموقوفة بس (القائدة ١٥/٩)، والموقوفة مستبعدة أصلاً بـ`dormantDuring`.
   const exempt = new Set(
-    companies.filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim()).map((c) => c.id),
+    companies.filter((c) => !hasStartedPublishing(c) && !changedAfter(c, period.to)).map((c) => c.id),
   );
   const openLate: { t: ReportTask; who: string | null }[] = [];
   for (const t of tasks) {

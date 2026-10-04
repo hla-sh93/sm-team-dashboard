@@ -176,16 +176,20 @@ describe("المنجز", () => {
 
 // ---------- الالتزام بالموعد ----------
 describe("الالتزام بالموعد", () => {
-  it("البوست على موعد الجهوزية، والتسليم أول ملف مربوط على تلغرام", () => {
-    const post = done({ readyDate: "2026-09-10T00:00:00Z", finishedAt: "2026-09-13T10:00:00Z" });
-    const r = build([post], [
-      { taskId: post.id, sentAt: "2026-09-13T09:00:00Z" },
-      { taskId: post.id, sentAt: "2026-09-12T08:00:00Z" },
-    ]);
+  it("البوست على موعد الجهوزية، والملف المربوط دليل تسليم ولو بلا سطر دليل", () => {
+    const post = done({ notes: null, readyDate: "2026-09-10T00:00:00Z", finishedAt: "2026-09-12T08:00:00Z" });
+    const r = build([post], [{ taskId: post.id, sentAt: "2026-09-12T08:00:00Z" }]);
     const d = person(r, "d");
     expect(d.measured).toBe(1);
     expect(d.lateCount).toBe(1);
     expect(d.lateItems[0].lateDays).toBe(2);
+  });
+
+  it("وقت التسليم طابع الكرت لا الملف المربوط: إعادة الترقيم بتنقل القطع بين الكروت والروابط بتضل", () => {
+    // Siizen ٤/١٠: ملف «siizen 4-8.mp4» (٢٢/٩) ضلّ مربوطاً بكرت صار ريل ٣ المنجز ١٠/٩.
+    const reel = done({ stage: "EDIT", type: "REEL", assigneeId: "e", readyDate: "2026-09-10T00:00:00Z", finishedAt: "2026-09-10T08:00:00Z" });
+    const r = build([reel], [{ taskId: reel.id, sentAt: "2026-09-22T19:19:00Z" }]);
+    expect(person(r, "e")).toMatchObject({ measured: 1, onTime: 1, lateCount: 0 });
   });
 
   it("الستوري على نهاية دورتها لا تاريخ المحرّك اليومي", () => {
@@ -230,6 +234,40 @@ describe("الالتزام بالموعد", () => {
     expect(d).toMatchObject({ measured: 4, onTime: 2, lateCount: 2, avgDelay: 3, maxDelay: 5 });
     expect(d.onTimePct).toBe(50);
     expect(r.team).toMatchObject({ measured: 4, onTime: 2, lateCount: 2, avgDelay: 3, onTimePct: 50 });
+  });
+});
+
+describe("شركة توقّفت بعد الفترة وانشال تاريخ بدء نشرها", () => {
+  // Siizen وقّفت ٤/١٠ وانمسح `publishStartDate`، فدورتها ١٩/٨ → ١٨/٩ ما عاد إلها أثر
+  // بالسجلّ. تقرير أيلول ما لازم يتغيّر بقرار انأخذ بعده.
+  const paused: ReportCompany = {
+    id: "c5", name: "Siizen", status: "paused", publishStartDate: null, renewals: null, contractEndedAt: null,
+    photographerId: "p", lateExemptReason: "النشر موقوف بقرار", updatedAt: "2026-10-04T08:00:00Z",
+  };
+  const run = (tasks: ReportTask[]) =>
+    buildPeriodReport({ period: sept(), tasks, employees, companies: [...companies, paused], deliveries: [], now: NOW });
+
+  it("الستوري على آخر موعد نشر بدورتها لما الدورة ما عاد إلها سجلّ", () => {
+    const r = run([
+      done({ companyId: "c5", month: 7, type: "STORY", readyDate: "2026-09-03T00:00:00Z", publishDate: "2026-09-06T00:00:00Z", finishedAt: "2026-09-14T07:00:00Z" }),
+      T({ kind: "PUBLISH", stage: "PUBLISH", assigneeId: "o", companyId: "c5", month: 7, type: "REEL", publishDate: "2026-09-17T00:00:00Z" }),
+    ]);
+    expect(person(r, "d")).toMatchObject({ measured: 1, onTime: 1 });
+    expect(r.companies.find((c) => c.id === "c5")?.cycles).toEqual(["6/9 – 17/9"]);
+  });
+
+  it("كانت نشطة بالفترة: متأخرها ونشرها المستحق بينحسبوا", () => {
+    const r = run([T({ companyId: "c5", month: 7, readyDate: "2026-09-10T00:00:00Z" })]);
+    expect(person(r, "d").openLate).toBe(1);
+  });
+
+  it("الموقوفة قبل نهاية الفترة (آخر تعديل جوّاها) بتضل موقوفة", () => {
+    const early: ReportCompany = { ...paused, id: "c6", name: "جدارات ٢", updatedAt: "2026-09-05T08:00:00Z" };
+    const r = buildPeriodReport({
+      period: sept(), tasks: [T({ companyId: "c6", month: 7, readyDate: "2026-09-10T00:00:00Z" })],
+      employees, companies: [...companies, early], deliveries: [], now: NOW,
+    });
+    expect(person(r, "d").openLate).toBe(0);
   });
 });
 

@@ -25,6 +25,7 @@ export async function loadPeriodReport(period: ReportPeriod, now: Date = new Dat
         publishStartDate: true,
         renewals: true,
         contractEndedAt: true,
+        updatedAt: true,
       },
     }),
     prisma.task.findMany({
