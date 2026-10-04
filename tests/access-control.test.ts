@@ -74,6 +74,11 @@ describe("access control — admin area still exposes its routes (sanity)", () =
     }
   });
 
+  it("period PDF reports (individual performance) live in the admin area only", () => {
+    expect(adminHrefs).toContain(`${ADMIN_BASE}/reports/period`);
+    expect(flat(employeeNav).some((h) => h.includes("/reports/period"))).toBe(false);
+  });
+
   it("every admin href is the admin base or under it", () => {
     for (const href of adminHrefs) {
       expect(href === ADMIN_BASE || href.startsWith(`${ADMIN_BASE}/`)).toBe(true);

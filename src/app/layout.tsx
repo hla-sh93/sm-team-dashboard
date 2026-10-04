@@ -26,9 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         {/* Stacks vertically below lg (sticky mobile bar above content) and
             becomes a row at lg+ (rail beside content). */}
-        <div className="lg:flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <div className="lg:flex min-h-screen print:block print:min-h-0">
+          {/* الطباعة (تقارير PDF) بلا قائمة التنقّل ولا هوامش الصفحة. */}
+          <div className="contents print:hidden">
+            <Sidebar />
+          </div>
+          <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-8 print:p-0">
             {children}
           </main>
         </div>

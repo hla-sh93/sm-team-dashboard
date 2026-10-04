@@ -15,6 +15,7 @@ import {
   Building2,
   CheckSquare,
   FileBarChart,
+  FileDown,
   LayoutDashboard,
   ListOrdered,
   MessageCircle,
@@ -61,6 +62,9 @@ export const adminNav: NavSection[] = [
       { href: `${ADMIN_BASE}/publishing`, label: "جدول النشر", icon: Send },
       { href: `${ADMIN_BASE}/workload`, label: "أحمال العمل", icon: TrendingUp },
       { href: `${ADMIN_BASE}/reports`, label: "تقرير الإنجاز", icon: FileBarChart },
+      // يومي · أسبوعي · شهري · مخصّص — بتصدير PDF (WORK_RULES §١٠). أداء أفراد،
+      // فمكانه الأدمن بس.
+      { href: `${ADMIN_BASE}/reports/period`, label: "تقارير PDF", icon: FileDown },
       { href: `${ADMIN_BASE}/finance`, label: "المالية", icon: Wallet },
     ],
   },
