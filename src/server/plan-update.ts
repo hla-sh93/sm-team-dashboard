@@ -159,11 +159,25 @@ const planUpdateSchema = z
            * ونافذة «تعديل مهمة» ما فيها حقل ساعات، فما كان في طريق لتصحيحه.
            */
           hours: z.number().min(0).max(80).optional(),
+          /**
+           * إعادة تأريخ كرت **مفتوح** — نفس حقلَي `pieceStates`.
+           *
+           * إعادة جدولة المتأخر من تاريخ اليوم (القائدة ١١/١٠) لزمها نقل
+           * «سيناريو تصوير — التوظيف» (كرت كتابة، بلا رقم قطعة) وكروت أيمن
+           * اليدوية بلا `adhoc_` من أيام فاتت. `date` بتأرّخ إنجازاً صار،
+           * و`adhocCards` بتلزمها معرّف `adhoc_` — فما كان في طريق مدقَّق
+           * لنقل كرت مفتوح متل هدول غير نافذة «تعديل» بلا دليل.
+           */
+          workDate: isoDate.optional(),
+          readyDate: isoDate.optional(),
           /** متل `pieceStates.pinned` — تثبيت الصف كسلطة يدوية. */
           pinned: z.boolean().optional(),
           evidence: z.string().trim().min(3).max(500),
         })
-          .strict(),
+          .strict()
+          .refine((spec) => !spec.workDate || !spec.readyDate || spec.workDate <= spec.readyDate, {
+            message: "يوم الشغل بعد يوم التسليم",
+          }),
       )
       .max(50)
       .optional(),

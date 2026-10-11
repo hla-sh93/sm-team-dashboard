@@ -109,6 +109,9 @@ for (const file of files) {
       const bits = [t.id, `«${t.title}»`, `${t.status}`];
       if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
       if (spec.hours != null) bits.push(`ساعات ${t.hours}→${spec.hours}`);
+      if (spec.workDate) bits.push(`شغل ${L(t.workDate)}→${spec.workDate}`);
+      if (spec.readyDate) bits.push(`جهوزية ${L(t.readyDate)}→${spec.readyDate}`);
+      if (spec.pinned !== undefined) bits.push(`مثبّت ${t.isPinned}→${spec.pinned}`);
       if (spec.assignee) {
         const from = (snap.employees as Row[]).find((e) => e.id === t.assigneeId);
         const to = (snap.employees as Row[]).find((e) => e.name === spec.assignee);
