@@ -158,13 +158,34 @@ function applyCanceledPieces(pipe: PipelineTask[], canceledPieces: CanceledPiece
   }
 }
 
+// Piece identity — company, type, number, stage. Null for a card that carries
+// no number (the WRITE card, legacy rows from before numbering).
+function pieceKeyOf(row: {
+  companyId: string | null;
+  type: string | null;
+  pieceNo?: number | null;
+  stage: string | null;
+}): string | null {
+  if (!row.companyId || !row.type || row.pieceNo == null || !row.stage || row.stage === "WRITE") {
+    return null;
+  }
+  return `${row.companyId}|${row.type}|${row.pieceNo}|${row.stage}`;
+}
+
 export function applyPipelinePreservation(
   pipe: PipelineTask[],
   existing: ExistingPipelineTaskState[],
 ) {
-  const byPipelineStage = new Map(
-    existing.map((task) => [`${task.pipelineKey}|${task.stage}`, task]),
-  );
+  // Several saved rows can sit behind one schedule key (two pieces publishing
+  // the same day share the plan-date key), so the schedule maps keep every
+  // candidate in order and the lookup takes the first one still available.
+  const byPipelineStage = new Map<string, ExistingPipelineTaskState[]>();
+  for (const task of existing) {
+    const key = `${task.pipelineKey}|${task.stage}`;
+    const rows = byPipelineStage.get(key) ?? [];
+    rows.push(task);
+    byPipelineStage.set(key, rows);
+  }
   // القطع يلي **نزلت فعلاً** — كرت نشرها مسكَّر. يوم النشر عندها تاريخ صار،
   // فبينجمد على كل مراحلها. القطعة يلي لساها ما نزلت يوم نشرها خطة، ولو كان
   // تصويرها أو تصميمها منجزاً.
@@ -173,11 +194,13 @@ export function applyPipelinePreservation(
       .filter((task) => task.stage === "PUBLISH" && task.board === "DONE" && task.pipelineKey)
       .map((task) => task.pipelineKey),
   );
-  const byPlanDateStage = new Map<string, ExistingPipelineTaskState>();
+  const byPlanDateStage = new Map<string, ExistingPipelineTaskState[]>();
   for (const task of existing) {
     if (!task.companyId || !task.type || !task.publishDate || !task.stage) continue;
     const key = `${task.companyId}|${task.type}|${iso(task.publishDate)}|${task.stage}`;
-    if (!byPlanDateStage.has(key)) byPlanDateStage.set(key, task);
+    const rows = byPlanDateStage.get(key) ?? [];
+    rows.push(task);
+    byPlanDateStage.set(key, rows);
   }
   // PIECE-KEY — the last resort, and the only one tied to the piece's IDENTITY
   // rather than to its schedule. Both keys above move when the plan is
@@ -188,10 +211,29 @@ export function applyPipelinePreservation(
   // تموز» is the same piece whatever day it ends up on; that is what we key on.
   const byPiece = new Map<string, ExistingPipelineTaskState>();
   for (const task of existing) {
-    if (!task.companyId || !task.type || task.pieceNo == null || !task.stage) continue;
-    const key = `${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`;
-    if (!byPiece.has(key)) byPiece.set(key, task);
+    const key = pieceKeyOf(task);
+    if (key && !byPiece.has(key)) byPiece.set(key, task);
   }
+  // CLAIMED ROWS — a saved row whose piece identity matches a numbered card of
+  // THIS run belongs to that card and to nobody else. When a plan's count goes
+  // up (Phoenitech 4 → 10 posts, BW 4 → 8) the new pieces carry numbers no
+  // saved row has, so they fall through to the schedule keys below — and a new
+  // piece's date is often the OLD date of a piece that is already matched by
+  // number, because the engine re-spreads the whole cycle. POST#7 came back
+  // wearing POST#3's «فُتح من جديد» notes line that way; had POST#3 been READY,
+  // #7 would have been born finished — completed work that never happened.
+  // Only rows no numbered card claims (cards without a number, pieces that left
+  // the plan) may still be handed out by schedule.
+  const claimedByNumber = new Set<string>();
+  for (const task of pipe) {
+    const key = pieceKeyOf(task);
+    if (key && byPiece.has(key)) claimedByNumber.add(key);
+  }
+  const firstUnclaimed = (rows: ExistingPipelineTaskState[] | undefined) =>
+    rows?.find((row) => {
+      const key = pieceKeyOf(row);
+      return key == null || !claimedByNumber.has(key);
+    });
 
   // Order matters, most precise first. The PIECE key beats the plan-date key:
   // several pieces of one company legitimately share a publish date (برو ships
@@ -208,14 +250,18 @@ export function applyPipelinePreservation(
     // wrong one just won. «ستوري ٩ من دورة تموز» is the same piece whatever day
     // it lands on, so the piece number decides first and the schedule only fills
     // in for cards that have no number (they cannot collide this way).
-    if (task.companyId && task.type && task.stage !== "WRITE" && task.pieceNo != null) {
-      const byNo = byPiece.get(`${task.companyId}|${task.type}|${task.pieceNo}|${task.stage}`);
+    const pieceKey = pieceKeyOf(task);
+    if (pieceKey) {
+      const byNo = byPiece.get(pieceKey);
       if (byNo) return byNo;
     }
-    const direct = byPipelineStage.get(`${task.pipelineKey}|${task.stage}`);
+    // Schedule keys only ever see rows that no numbered card already owns.
+    const direct = firstUnclaimed(byPipelineStage.get(`${task.pipelineKey}|${task.stage}`));
     if (direct) return direct;
     if (task.companyId && task.type && task.stage !== "WRITE" && task.publishDate)
-      return byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`);
+      return firstUnclaimed(
+        byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`),
+      );
     return undefined;
   };
 

@@ -461,3 +461,161 @@ describe("بلا تاريخ بدء نشر → بلا كروت نشر", () => {
     expect(without.some((t) => t.stage === "WRITE")).toBe(true);
   });
 });
+
+/**
+ * رفع عدد قطع الخطة (فونيتيك ٤ → ١٠ بوستات، ١١/١٠؛ وBW ٤ → ٨ قبلها) بيعطي القطع
+ * الجديدة أرقاماً ما إلها صف محفوظ، فبتنزل لمفاتيح الجدول — وتاريخ القطعة
+ * الجديدة كتير مرات هو التاريخ القديم لقطعة مطابَقة برقمها، لأنّ المحرّك بيعيد
+ * توزيع الدورة كلها. بالتجربة على نسخة من لقطة الإنتاج بوست ٧ ورث سطر ملاحظات
+ * بوست ٣؛ ولو كانت القطع القديمة منجزة كانت الجديدة رح تطلع منجزة — شغل مكتمل
+ * ما صار. الصف يلي بيطالب فيه كرت برقمه ما بينعطى لحدا تاني بالتاريخ.
+ */
+describe("رفع عدد القطع ما بيورّث حالة قطعة قديمة", () => {
+  const item = (publishDate: string, readyDate: string, id = `c|POST|${publishDate}|1`) => ({
+    ...baseItem,
+    id,
+    publishDate,
+    readyDate,
+    workDate: readyDate,
+  });
+  const designNo = (pipe: ReturnType<typeof expandPipeline>, no: number) =>
+    pipe.find((t) => t.stage === "DESIGN" && t.pieceNo === no)!;
+  const publishNo = (pipe: ReturnType<typeof expandPipeline>, no: number) =>
+    pipe.find((t) => t.stage === "PUBLISH" && t.pieceNo === no)!;
+
+  // الدورة القديمة: بوستان، الاتنين منجزان وعليهم دليل.
+  const finishedAt = new Date(2026, 6, 12, 15, 0);
+  const oldPlan = [
+    saved({
+      pipelineKey: "c|POST|2026-07-07|1",
+      publishDate: new Date(2026, 6, 7),
+      pieceNo: 1,
+      board: "DONE",
+      status: "READY",
+      brief: "نصّ بوست ١",
+      notes: "سُلّم على تلغرام (بالاسم): Phoenitech-post-10-1.jpg",
+      startedAt: finishedAt,
+      finishedAt,
+      completedAt: finishedAt,
+    }),
+    saved({
+      pipelineKey: "c|POST|2026-07-14|1",
+      publishDate: new Date(2026, 6, 14),
+      pieceNo: 2,
+      board: "DONE",
+      status: "READY",
+      brief: "نصّ بوست ٢",
+      notes: "فُتح من جديد بعد فحص المحتوى",
+      startedAt: finishedAt,
+      finishedAt,
+      completedAt: finishedAt,
+    }),
+  ];
+
+  it("القطعة الجديدة يلي مفتاحها صار مفتاح قطعة قديمة بتضل غير مبدوءة بلا وصف ولا ملاحظات", () => {
+    // العدد صار ٤: بوست ٣ الجديد نزل على ١٤/٧ — نفس مفتاح بوست ٢ القديم، وبوست ٢
+    // القديم مطابَق برقمه مع بوست ٢ الجديد (١٠/٧).
+    const pipe = expandPipeline(
+      [
+        item("2026-07-07", "2026-07-05"),
+        item("2026-07-10", "2026-07-08"),
+        item("2026-07-14", "2026-07-12"),
+        item("2026-07-17", "2026-07-15"),
+      ],
+      opts,
+    );
+    applyPipelinePreservation(pipe, oldPlan);
+
+    // الرقم بيحكم: ١ و٢ بياخدوا حالتهم القديمة.
+    expect(designNo(pipe, 1).board).toBe("DONE");
+    expect(designNo(pipe, 1).brief).toBe("نصّ بوست ١");
+    expect(designNo(pipe, 2).board).toBe("DONE");
+    expect(designNo(pipe, 2).notes).toBe("فُتح من جديد بعد فحص المحتوى");
+
+    // القطع الجديدة ولدت الآن — ما عملها حدا بعد.
+    for (const no of [3, 4]) {
+      const design = designNo(pipe, no);
+      expect(design.board, `تصميم بوست ${no} لازم يكون مفتوحاً`).toBe("TODO");
+      expect(design.status).toBe("NOT_STARTED");
+      expect(design.brief ?? null, `بوست ${no} ما إلو وصف بعد`).toBeNull();
+      expect(design.notes ?? null, `بوست ${no} ما عليه ملاحظات`).toBeNull();
+      expect(design.startedAt ?? null).toBeNull();
+      expect(design.finishedAt ?? null).toBeNull();
+      expect(design.completedAt ?? null).toBeNull();
+      expect(publishNo(pipe, no).board).toBe("TODO");
+    }
+  });
+
+  it("ولا بمفتاح التاريخ: قطعة جديدة بنفس يوم نشر قطعة مطابَقة برقمها ما بتورث شي", () => {
+    // بوست ٣ الجديد بينشر ١٤/٧ متل بوست ٢ بس بتسلسل تاني (`|2`)، فمفتاحه ما
+    // بيطابق أي صف ومفتاح التاريخ بيوصل لصف بوست ٢ القديم — المحجوز لبوست ٢.
+    const pipe = expandPipeline(
+      [
+        item("2026-07-07", "2026-07-05"),
+        item("2026-07-14", "2026-07-12"),
+        item("2026-07-14", "2026-07-12", "c|POST|2026-07-14|2"),
+      ],
+      opts,
+    );
+    applyPipelinePreservation(pipe, oldPlan);
+
+    expect(designNo(pipe, 2).pipelineKey).toBe("c|POST|2026-07-14|1");
+    expect(designNo(pipe, 2).board).toBe("DONE");
+    const third = designNo(pipe, 3);
+    expect(third.pipelineKey).toBe("c|POST|2026-07-14|2");
+    expect(third.board).toBe("TODO");
+    expect(third.status).toBe("NOT_STARTED");
+    expect(third.brief ?? null).toBeNull();
+    expect(third.notes ?? null).toBeNull();
+  });
+
+  it("الكرت بلا رقم بيضل يتطابق بالتاريخ متل قبل", () => {
+    // صفوف قديمة بلا ترقيم (قبل التعبئة) وكرت بلا رقم: لا رقم يطالب بالصف،
+    // فالتاريخ بيضل يوصّل الحالة والدليل.
+    const fresh = [
+      {
+        companyId: "c",
+        type: "POST",
+        stage: "DESIGN",
+        pipelineKey: "c|POST|2026-07-14|9",
+        publishDate: "2026-07-14",
+        status: "NOT_STARTED",
+        board: "TODO",
+      },
+    ] as never as ReturnType<typeof expandPipeline>;
+    applyPipelinePreservation(fresh, [
+      saved({
+        pipelineKey: "legacy-key",
+        publishDate: new Date(2026, 6, 14),
+        pieceNo: null,
+        board: "DONE",
+        status: "READY",
+        notes: "سُلّم على تلغرام (بالاسم): post-14.jpg",
+      }),
+    ]);
+    expect(fresh[0].board).toBe("DONE");
+    expect(fresh[0].notes).toBe("سُلّم على تلغرام (بالاسم): post-14.jpg");
+  });
+
+  it("إعادة توقيت نفس القطع بتحفظ الحالة بالرقم — ولا قطعة بتاخد حالة غيرها", () => {
+    // نفس العدد، كل المواعيد زحفت: مفتاح ١ الجديد = مفتاح ٢ القديم، ومفتاح ٢
+    // الجديد = مفتاح ٣ القديم. الحالة بتلحق الرقم، والمفاتيح المتقاطعة ما بتأثّر.
+    const before = [
+      saved({ pipelineKey: "c|POST|2026-07-07|1", publishDate: new Date(2026, 6, 7), pieceNo: 1, board: "DONE", status: "READY", notes: "منجز ١" }),
+      saved({ pipelineKey: "c|POST|2026-07-10|1", publishDate: new Date(2026, 6, 10), pieceNo: 2, board: "TODO", status: "NOT_STARTED" }),
+      saved({ pipelineKey: "c|POST|2026-07-14|1", publishDate: new Date(2026, 6, 14), pieceNo: 3, board: "DONE", status: "READY", notes: "منجز ٣" }),
+    ];
+    const pipe = expandPipeline(
+      [item("2026-07-10", "2026-07-08"), item("2026-07-14", "2026-07-12"), item("2026-07-17", "2026-07-15")],
+      opts,
+    );
+    applyPipelinePreservation(pipe, before);
+
+    expect(designNo(pipe, 1).board).toBe("DONE");
+    expect(designNo(pipe, 1).notes).toBe("منجز ١");
+    expect(designNo(pipe, 2).board).toBe("TODO");
+    expect(designNo(pipe, 2).notes ?? null).toBeNull();
+    expect(designNo(pipe, 3).board).toBe("DONE");
+    expect(designNo(pipe, 3).notes).toBe("منجز ٣");
+  });
+});
