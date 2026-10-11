@@ -3,6 +3,7 @@ import {
   dailyTaskEffortDays,
   isFinishedOnDay,
   makeBlockedPredicate,
+  makeHeldReason,
   selectDailyWork,
   selectDailyWorkTasks,
 } from "@/lib/daily-work";
@@ -578,5 +579,77 @@ describe("finished-today work closes the day", () => {
     const work = selectDailyWork({ employee: workingToday(), tasks: [task({ id: "o" })], allTasks: [...finished, task({ id: "o" })], companies: [co], today: friday });
     expect(work.queue).toEqual([]);
     expect(work.doneToday).toHaveLength(1);
+  });
+});
+
+/**
+ * القائدة (١١/١٠/٢٠٢٦): «ممنوع يكون في بس هيك متبقّي بدون ما تحدّد شو المهام».
+ * بعد إعادة جدولة التوظيف من ١٢/١٠ صارت كروت سابين الـ١٢ كلها مثبّتة على أيام
+ * لاحقة، فقائمة اليوم فاضية عن حقّ — بس اللوحة كانت تختصر الـ١٢ بعدد. الكرت
+ * المستبعَد لازم يقول **ليش ولوين**: مثبّت على أي يوم، أو واقف على مين.
+ */
+describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHeldReason)", () => {
+  const todayISO = "2026-07-05";
+
+  it("كرت مثبّت على يوم لاحق → مثبّت لحدّ هالتاريخ", () => {
+    const parked = task({ id: "parked", isPinned: true, workDate: new Date(2026, 6, 6) });
+    const reason = makeHeldReason([parked], todayISO)(parked);
+    expect(reason).toEqual({ parkedUntil: "2026-07-06", blockedBy: null });
+  });
+
+  it("«بدّل» على يوم لاحق نفس الشي، والمثبّت على اليوم أو قبله مو مستبعَد", () => {
+    const swapped = task({ id: "swapped", manualDay: new Date(2026, 6, 8) });
+    const todayCard = task({ id: "today", isPinned: true, workDate: new Date(2026, 6, 5) });
+    const pastCard = task({ id: "past", isPinned: true, workDate: new Date(2026, 6, 1) });
+    const reasonOf = makeHeldReason([swapped, todayCard, pastCard], todayISO);
+    expect(reasonOf(swapped)?.parkedUntil).toBe("2026-07-08");
+    expect(reasonOf(todayCard)).toBeNull();
+    expect(reasonOf(pastCard)).toBeNull();
+  });
+
+  it("كرت حاجزه مفتوح → بانتظار الحاجز نفسه (بصاحبه)", () => {
+    const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer", status: "NOT_STARTED", board: "TODO" });
+    const design = task({ id: "design", blockedById: "plan" });
+    const reason = makeHeldReason([plan, design], todayISO)(design);
+    expect(reason?.blockedBy?.id).toBe("plan");
+    expect(reason?.parkedUntil).toBeNull();
+  });
+
+  it("بسلسلة حجز بيرجّع أول حاجز **مفتوح** — يلي الدور عليه فعلاً", () => {
+    const shoot = task({ id: "shoot", stage: "SHOOT", assigneeId: "photographer" });
+    const edit = task({ id: "edit", stage: "EDIT", assigneeId: "editor", blockedById: "shoot", board: "DONE", status: "READY", finishedAt: new Date(2026, 6, 3) });
+    const publish = task({ id: "publish", stage: "PUBLISH", blockedById: "edit" });
+    // المونتاج منجز بس التصوير (قبله) لسا مفتوح — تناقض بالداتا، والجواب الصادق هو التصوير.
+    expect(makeHeldReason([shoot, edit, publish], todayISO)(publish)?.blockedBy?.id).toBe("shoot");
+    const done = task({ id: "shoot2", stage: "SHOOT", board: "DONE", status: "READY", finishedAt: new Date(2026, 6, 3) });
+    const edit2 = task({ id: "edit2", stage: "EDIT", blockedById: "shoot2" });
+    expect(makeHeldReason([done, edit2], todayISO)(edit2)).toBeNull();
+  });
+
+  it("حاجز محذوف/مؤرشف ما بيعتبر حجزاً — متل makeBlockedPredicate", () => {
+    const orphan = task({ id: "orphan", blockedById: "gone" });
+    expect(makeHeldReason([orphan], todayISO)(orphan)).toBeNull();
+  });
+
+  it("الكرتان معاً: مثبّت على يوم لاحق وواقف على غيره", () => {
+    const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer" });
+    const both = task({ id: "both", blockedById: "plan", isPinned: true, workDate: new Date(2026, 6, 9) });
+    expect(makeHeldReason([plan, both], todayISO)(both)).toEqual({ parkedUntil: "2026-07-09", blockedBy: plan });
+  });
+
+  it("لما كل المفتوح مثبّت على أيام لاحقة: القائمة فاضية وكل كرت عندو سبب — ما في «متبقّي» بلا تفسير", () => {
+    const designer = employee();
+    const companies = [company({ id: "company", priority: 1 })];
+    const open = [12, 13, 15, 15, 19].map((day, i) =>
+      task({ id: `post-${i}`, isPinned: true, workDate: new Date(2026, 9, day), readyDate: new Date(2026, 9, day) }),
+    );
+    const today = new Date(2026, 9, 11); // الأحد ١١/١٠ — يوم شغل
+    const work = selectDailyWork({ employee: designer, tasks: open, companies, today });
+    expect(work.queue).toEqual([]);
+    expect(work.doneToday).toEqual([]);
+    const reasonOf = makeHeldReason(open, "2026-10-11");
+    expect(open.map((t) => reasonOf(t)?.parkedUntil)).toEqual([
+      "2026-10-12", "2026-10-13", "2026-10-15", "2026-10-15", "2026-10-19",
+    ]);
   });
 });

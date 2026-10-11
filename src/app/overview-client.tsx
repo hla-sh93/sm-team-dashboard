@@ -31,7 +31,7 @@ import {
   type GroupedCard,
 } from "@/lib/cards";
 import type { CompanyProgress } from "@/lib/progress";
-import { dailyTaskEffortDays, makeBlockedPredicate, selectDailyWork } from "@/lib/daily-work";
+import { dailyTaskEffortDays, makeBlockedPredicate, makeHeldReason, selectDailyWork } from "@/lib/daily-work";
 import { personDayState } from "@/lib/person-day-state";
 import {
   toISODate,
@@ -192,6 +192,10 @@ export default function OverviewClient({
   );
   // المنجَز اليوم جزء من اليوم: بياخد حصّته من السعة، فالقائمة بتفضى لما يخلّص
   // الشخص حمله، وبتطلع «تم إنجاز مهام اليوم» بدل ما تتابع لكروت الأيام الجاية.
+  // «ممنوع يكون في بس هيك متبقّي بدون ما تحدّد شو المهام» (القائدة ١١/١٠): الكرت
+  // المفتوح يلي ما نزل بقائمة اليوم لازم يقول ليش — مثبّت على أي يوم، أو واقف
+  // على مين. نفس شرطَي الاستبعاد تبع `selectDailyWork`، بصيغة جواب.
+  const heldReasonOf = makeHeldReason(tasks, todayISO);
   const dayByPerson = rosterToday.map((e) => {
     const work = selectDailyWork({
       employee: e,
@@ -600,15 +604,72 @@ export default function OverviewClient({
                     isOff: activeGroup.isOff,
                     doneTodayCount: activeGroup.doneCards.length,
                   }) === "BACKLOG" ? (
-                    <div className="text-center py-8 text-sm text-warning">
-                      لدى {activeGroup.emp.name} {activeGroup.openCards.length} مهمة غير منجزة.
-                      <Link
-                        href={`${base}/tasks?person=${activeGroup.emp.id}`}
-                        className="block text-accent hover:underline mt-2"
-                      >
-                        عرض مهامه المفتوحة
-                      </Link>
-                    </div>
+                    (() => {
+                      // كل كرت مفتوح وسبب غيابه عن اليوم: مثبّت على يوم لاحق (بتاريخه)
+                      // أو واقف على كرت غيره (باسمه وصاحبه). الأقرب يوماً أولاً.
+                      const held = activeGroup.openCards
+                        .map((card) => ({ card, reason: heldReasonOf(card.repr) }))
+                        .sort(
+                          (a, b) =>
+                            (a.reason?.parkedUntil ?? "9999-12-31").localeCompare(
+                              b.reason?.parkedUntil ?? "9999-12-31",
+                            ) || comparePieceSequence(a.card.repr, b.card.repr),
+                        );
+                      const parked = held.filter((h) => h.reason?.parkedUntil).length;
+                      const blocked = held.filter((h) => h.reason?.blockedBy).length;
+                      const dayLabel = (iso: string) => {
+                        const d = fromISODate(iso);
+                        return `${ARABIC_DAYS[d.getDay()]} ${formatDateShort(d)}`;
+                      };
+                      return (
+                        <div className="py-2 text-sm">
+                          <p className="text-center text-warning font-medium">
+                            لا شيء مجدول اليوم لدى {activeGroup.emp.name} — {held.length} مهمة مفتوحة
+                            {parked > 0 && ` · ${parked} مثبّتة على أيام لاحقة`}
+                            {blocked > 0 && ` · ${blocked} بانتظار كرت غيرها`}
+                          </p>
+                          <div className="flex flex-col gap-1.5 mt-3">
+                            {held.map(({ card, reason }) => (
+                              <div
+                                key={card.key}
+                                className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft"
+                                style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
+                              >
+                                <CalendarClock className="w-3.5 h-3.5 text-fg-muted shrink-0" />
+                                <span className="text-xs truncate flex-1">
+                                  {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                                </span>
+                                {reason?.parkedUntil && (
+                                  <span className="rounded-full px-1.5 py-0.5 text-[10px] bg-bg-elev2 text-fg-muted tabular-nums shrink-0">
+                                    {dayLabel(reason.parkedUntil)}
+                                  </span>
+                                )}
+                                {reason?.blockedBy && (
+                                  <span
+                                    className="rounded-full px-1.5 py-0.5 text-[10px] bg-warning/10 text-warning truncate max-w-[50%]"
+                                    title={cardLabelFor(reason.blockedBy, 1, reelNum, coName)}
+                                  >
+                                    بانتظار {cardLabelFor(reason.blockedBy, 1, reelNum, coName)}
+                                    {reason.blockedBy.assigneeId ? ` · ${empName(reason.blockedBy.assigneeId)}` : ""}
+                                  </span>
+                                )}
+                                {!reason && (
+                                  <span className="rounded-full px-1.5 py-0.5 text-[10px] bg-bg-elev2 text-fg-muted shrink-0">
+                                    غير مجدول اليوم
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <Link
+                            href={`${base}/tasks?person=${activeGroup.emp.id}`}
+                            className="block text-center text-accent hover:underline mt-3"
+                          >
+                            عرض مهامه المفتوحة
+                          </Link>
+                        </div>
+                      );
+                    })()
                   ) : activeGroup.isOff ? (
                     <div className="text-center py-8 text-sm text-fg-muted">
                       عطلة اليوم — {activeGroup.emp.name} في يوم إجازته.

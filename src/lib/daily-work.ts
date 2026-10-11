@@ -214,6 +214,48 @@ export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean 
   };
 }
 
+export type HeldReason = {
+  /** مثبّت أو مبدَّل على يوم **لاحق** — اليوم (ISO) يلي بيرجع فيه للقائمة. */
+  parkedUntil: string | null;
+  /** أول حاجز **مفتوح** بسلسلة الحجز — الكرت يلي الدور عليه فعلاً. */
+  blockedBy: Task | null;
+};
+
+/**
+ * ليش هالكرت المفتوح مو بقائمة اليوم.
+ *
+ * نفس شرطَي الاستبعاد يلي بيطبّقهم `selectDailyWork` (حاجز مفتوح، أو يوم مثبّت
+ * بعد اليوم) بس بصيغة **جواب** بدل فلتر. القائدة (١١/١٠): «ممنوع يكون في بس
+ * هيك متبقّي بدون ما تحدّد شو المهام» — بعد إعادة جدولة التوظيف من ١٢/١٠ صارت
+ * كل كروت سابين الـ١٢ ونوال الـ٨ مثبّتة على أيام لاحقة، فقائمة اليوم فاضية
+ * عن حقّ، بس اللوحة كانت تختصرها بعدد. الكرت المستبعَد لازم يقول ليش ولوين.
+ *
+ * `null` = الكرت مؤهَّل اليوم (ما انحطّ لسبب سعة أو ترتيب، مو لسبب استبعاد).
+ */
+export function makeHeldReason(allTasks: Task[], todayISO: string): (task: Task) => HeldReason | null {
+  const byId = new Map(allTasks.map((t) => [t.id, t]));
+  const openBlocker = (task: Task): Task | null => {
+    const seen = new Set<string>();
+    let cur: Task | undefined = task;
+    while (cur?.blockedById) {
+      if (seen.has(cur.id)) break;
+      seen.add(cur.id);
+      const blocker: Task | undefined = byId.get(cur.blockedById);
+      if (!blocker) return null; // حاجز مؤرشف/محذوف → ما عاد بوابة (متل makeBlockedPredicate)
+      if (!isTaskDoneState(blocker)) return blocker;
+      cur = blocker;
+    }
+    return null;
+  };
+  return (task) => {
+    const fixed = fixedDayISO(task);
+    const parkedUntil = fixed != null && fixed > todayISO ? fixed : null;
+    const blockedBy = openBlocker(task);
+    if (parkedUntil == null && blockedBy == null) return null;
+    return { parkedUntil, blockedBy };
+  };
+}
+
 /**
  * «خلّص مهامه اليوم» — الكرت انقفل بنفس اليوم.
  *
