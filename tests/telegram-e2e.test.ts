@@ -57,11 +57,30 @@ beforeAll(async () => {
   // بالعدد). فالمطابقة بترفض بحقّ: «المسلَّم ما بينسلّم مرتين».
   //
   // الحل إنّ الفحص يجهّز حالته بنفسه على **النسخة** بدل ما يركب على الحيّ.
+  //
+  // ومن ١٢/١٠ (قرار D3) الكرت بيسكّره **صاحبه** أو القائدة بس — والملف بالفحص من أيمن
+  // (اسمه البديل «أيمن ديزاينst»). فالكروت يلي بيسلّمها الفحص لازم تكون **إله** على
+  // النسخة؛ بالحيّ بوست ١ Siizen لسابين، وملف أيمن عليه بيتخزّن «من غير صاحب الكرت».
+  // وستوري ١ كمان بتنفتح هون — كانت مسكّرة بالحيّ من ٣/٩ فـ٢ب يفشل بانزياح داتا.
   const siizen = await db.prisma.company.findFirst({ where: { name: { contains: "Siizen" } } });
+  const ayman = await db.prisma.employee.findFirst({ where: { name: "أيمن" } });
   if (siizen) {
     await db.prisma.task.updateMany({
-      where: { companyId: siizen.id, type: "POST", pieceNo: { in: [1, 2] }, stage: "DESIGN" },
-      data: { status: "NOT_STARTED", board: "TODO", finishedAt: null, completedAt: null },
+      where: {
+        companyId: siizen.id,
+        stage: "DESIGN",
+        OR: [
+          { type: "POST", pieceNo: { in: [1, 2] } },
+          { type: "STORY", pieceNo: 1 },
+        ],
+      },
+      data: {
+        status: "NOT_STARTED",
+        board: "TODO",
+        finishedAt: null,
+        completedAt: null,
+        ...(ayman ? { assigneeId: ayman.id } : {}),
+      },
     });
   }
 });
@@ -138,7 +157,8 @@ describe("المسار الحي: صورة أيمن على Siizen", () => {
       employees as never,
       companies as never,
       tasks as never,
-      report.DONE_REPORT_PEOPLE,
+      // التقرير لكل التيم الأساسي — `DONE_REPORT_PEOPLE` فلتر عمر وحلا، وأيمن مش بينهن.
+      null,
       messages.map((m) => ({
         senderName: m.senderName,
         companyName: m.companyId ? (coName.get(m.companyId) ?? null) : null,

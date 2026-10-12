@@ -183,7 +183,9 @@ export type TelegramMessage = {
   mediaGroupId: string | null;
   companyId: string | null;
   taskId: string | null;
-  matchedBy: string | null; // NAME | TYPE | MANUAL
+  // NAME | BRIEF | TYPE | DOCUMENT | MANUAL = تسليم انربط · PUBLISH = تأكيد نشر ·
+  // NOT_OWNER = بيسمّي كرت غير المرسِل (D3) · WRONG_TOPIC = اسم شركة تانية (TR-26)
+  matchedBy: string | null;
   confirmed: boolean;
   createdAt: Date;
 };

@@ -142,7 +142,13 @@ export function matchTopicCompany<T extends NamedCompany>(title: string, compani
   return (
     companies.find((c) => normalise(c.name) === t) ??
     companies.find((c) => t.includes(normalise(c.name)) || normalise(c.name).includes(t)) ??
-    companies.find((c) => c.slug && slugMatches(c.slug, title.replace(/[^A-Za-z]/g, ""))) ??
+    companies.find(
+      (c) =>
+        c.slug &&
+        c.slug
+          .split("|")
+          .some((s) => s.trim() && slugMatches(s.trim(), title.replace(/[^A-Za-z]/g, ""))),
+    ) ??
     null
   );
 }

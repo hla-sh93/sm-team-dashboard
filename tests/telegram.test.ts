@@ -224,24 +224,39 @@ describe("delivery matching", () => {
     ).toEqual({ taskId: "p3", by: "NAME" });
   });
 
-  it("ignores a name that belongs to another company", () => {
-    const res = matchDelivery(delivery({ fileName: "Wasl 7-1.mp4" }), "Agalia", [reel1, reel2]);
-    // Falls through to the type rule → earliest open reel.
-    expect(res).toEqual({ taskId: "r2", by: "TYPE" });
+  /** الإرسال من صاحب الكروت (`e1`) — طبقة «النوع» تخمين، فبتلزمها مرسِل معروف (D3). */
+  const byOwner = (d: Delivery, cards: Task[], foreign: string[] = []) =>
+    matchDelivery(d, "Agalia", cards, [], [], null, false, "e1", foreign);
+
+  it("ignores a name that belongs to another company — even as the owner's type guess", () => {
+    // كان بيوقع لطبقة النوع ويسكّر أبكر ريل هون (فحص ١٢/١٠، TR-02): «الاسم الصريح أقوى
+    // من مكان الإرسال».
+    expect(byOwner(delivery({ fileName: "Wasl 7-1.mp4" }), [reel1, reel2], ["Wasl"])).toBeNull();
+    expect(matchDelivery(delivery({ fileName: "Wasl 7-1.mp4" }), "Agalia", [reel1, reel2])).toBeNull();
   });
 
   it("matches a video to the most urgent open reel when unnamed", () => {
-    expect(matchDelivery(delivery(), "Agalia", [reel1, reel2, post3])).toEqual({
-      taskId: "r2",
+    expect(byOwner(delivery(), [reel1, reel2, post3])).toEqual({ taskId: "r2", by: "TYPE" });
+  });
+
+  it("matches a photo to a post, never to a reel", () => {
+    expect(byOwner(delivery({ kind: "PHOTO" }), [reel1, reel2, post3])).toEqual({
+      taskId: "p3",
       by: "TYPE",
     });
   });
 
-  it("matches a photo to a post, never to a reel", () => {
-    expect(matchDelivery(delivery({ kind: "PHOTO" }), "Agalia", [reel1, reel2, post3])).toEqual({
-      taskId: "p3",
-      by: "TYPE",
-    });
+  it("guesses by type only for a known sender, and only among their own cards (D3)", () => {
+    // بلا مرسِل معروف ما في تخمين.
+    expect(matchDelivery(delivery(), "Agalia", [reel1, reel2])).toBeNull();
+    // كرت غيره ما بينخمَّن: صورة المونتيرة ما بتسكّر تصميم المصمّم (فونيتيك ١٩/٨).
+    const theirs = task({ id: "p9", type: "POST", stage: "DESIGN", assigneeId: "e2" });
+    expect(byOwner(delivery({ kind: "PHOTO" }), [theirs])).toBeNull();
+  });
+
+  it("never counts a raw camera/phone file as finished work (TR-02)", () => {
+    for (const fileName of ["IMG_1342.jpg", "DSC03882.JPG", "PXL_20260810_101010.jpg", "Screenshot 2026-08-10.png"])
+      expect(byOwner(delivery({ kind: "PHOTO", fileName }), [post3]), fileName).toBeNull();
   });
 
   it("reads the piece type out of the file name the team already writes", () => {
@@ -257,7 +272,7 @@ describe("delivery matching", () => {
     const story = task({ id: "s", type: "STORY", stage: "DESIGN", readyDate: new Date(2026, 6, 9) });
     // Earliest deadline alone would pick the post; the name says otherwise.
     expect(
-      matchDelivery(delivery({ kind: "PHOTO", fileName: "STORY صرف سوريا.jpg" }), "Agalia", [post, story]),
+      byOwner(delivery({ kind: "PHOTO", fileName: "STORY صرف سوريا.jpg" }), [post, story]),
     ).toEqual({ taskId: "s", by: "TYPE" });
   });
 
@@ -299,9 +314,10 @@ describe("delivery matching", () => {
 
   it("still guesses by type for a company with no plan text", () => {
     const bare = task({ id: "p3", type: "POST", stage: "DESIGN", brief: null });
-    expect(
-      matchDelivery(delivery({ kind: "PHOTO", fileName: "شي.jpg" }), "Wasl", [bare]),
-    ).toEqual({ taskId: "p3", by: "TYPE" });
+    expect(byOwner(delivery({ kind: "PHOTO", fileName: "شي.jpg" }), [bare])).toEqual({
+      taskId: "p3",
+      by: "TYPE",
+    });
   });
 
   it("never matches plain text or an unmatchable document", () => {
@@ -1010,7 +1026,7 @@ describe("صلاحية تأكيد النشر", () => {
   const explicit = rx("PUBLISHED_EXPLICIT");
   const loose = rx("PUBLISHED_LOOSE");
 
-  it("«تم النشر» و«اننشر» و✅ صريحة — مقبولة من أي حدا", () => {
+  it("«تم النشر» و«اننشر» و✅ صريحة (والصلاحية بتلزم كل الصيغ — D3)", () => {
     for (const t of ["تم النشر", "اننشر", "✅"]) expect(explicit.test(t), t).toBe(true);
   });
 

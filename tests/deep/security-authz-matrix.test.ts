@@ -136,6 +136,8 @@ beforeAll(async () => {
     { name: "createEmployee", call: () => employees.createEmployee({} as never), reached: "message" },
     { name: "updateEmployee", call: () => employees.updateEmployee(NOPE, {} as never), reached: "message" },
     { name: "deleteEmployee", call: () => employees.deleteEmployee(NOPE), reached: "queries" },
+    // «تسليم الشغل» (D4، ١٢/١٠) — بينقل كروت وحقول شركات من موظف لموظف.
+    { name: "handoverEmployeeWork", call: () => employees.handoverEmployeeWork({ fromId: NOPE, toId: `${NOPE}-2`, fromDate: "2026-10-01" }), reached: "queries" },
     { name: "applyCompanyPlanUpdate", call: () => plans.applyCompanyPlanUpdate({ companyName: NOPE, year: 2026, month: 9, pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", evidence: "دليل للفحص" }] }), reached: "queries" },
     // التوليد بالكوكي الصحيحة مغطّى بـtests/schedule-authorization.test.ts — هون الرفض بس.
     { name: "generateSchedule", call: () => schedule.generateSchedule(2026, 9), reached: "queries" },
@@ -249,7 +251,7 @@ describe("خريطة التصديرات (ثابت)", () => {
       [
         "applyCompanyPlanUpdate", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
-        "generateCompanySchedule", "generateSchedule", "linkChatToCompany", "markChatAsTeam",
+        "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "markChatAsTeam",
         "pauseCompanyPublishing", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "removeLatestRenewal", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "setBriefRecipient", "telegramStatus",

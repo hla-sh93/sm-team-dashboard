@@ -13,6 +13,7 @@ import { buildDailyBrief, briefMessagesFor, type BriefWave, type DailyBrief } fr
 import { buildWeeklyPublishDigest } from "./weekly";
 import { buildDailyDoneReport } from "./done-report";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
+import { DELIVERY_MATCH_KINDS } from "./match";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
 
@@ -49,9 +50,18 @@ export async function buildTodayBrief(today = new Date()): Promise<DailyBrief> {
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     loadLiveTasks(year, month),
-    prisma.telegramMessage.count({ where: { sentAt: { gte: since }, taskId: { not: null } } }),
+    // ملف انربط بكرته = مطابق. المحجوز («من غير صاحب الكرت»، «توبيك غلط») والبلا
+    // كرت = غير مطابق. رسائل تأكيد النشر نصوص، مو ملفات (D3/TR-08).
     prisma.telegramMessage.count({
-      where: { sentAt: { gte: since }, taskId: null, kind: { not: "TEXT" } },
+      where: {
+        sentAt: { gte: since },
+        kind: { not: "TEXT" },
+        confirmed: true,
+        matchedBy: { in: DELIVERY_MATCH_KINDS },
+      },
+    }),
+    prisma.telegramMessage.count({
+      where: { sentAt: { gte: since }, kind: { not: "TEXT" }, confirmed: false },
     }),
   ]);
   return buildDailyBrief({

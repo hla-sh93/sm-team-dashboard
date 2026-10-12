@@ -113,7 +113,7 @@ async function runFor(co: Co) {
 
   // ---- 1. مهام التحضير ------------------------------------------------------
   let created = 0;
-  const idOf = (slug: string) => `prep_${co.slug ?? co.id}_${slug}`;
+  const idOf = (slug: string) => `prep_${co.slug?.split("|")[0].trim() || co.id}_${slug}`;
   /** تاريخ كل كرت بعد ما ينحسب — لازم لحساب تاريخ يلي بيعتمد عليه. */
   const dateOf = new Map<string, Date>();
   for (const [i, p] of PREP.entries()) {

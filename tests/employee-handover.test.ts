@@ -31,7 +31,6 @@ vi.mock("@/lib/db", async () => {
   return { prisma: new PrismaClient({ datasources: { db: { url } } }) };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prisma: any;
 let actions: typeof import("@/server/actions/employees");
 const uniq = `handover-${process.pid}`;

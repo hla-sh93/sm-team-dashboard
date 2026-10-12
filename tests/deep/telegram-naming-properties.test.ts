@@ -100,10 +100,9 @@ describe("§١ خاصية: كل قطعة مفتوحة بتنمسك بتسميت�
     expect(match(delivery(null, D(9, 20), "PHOTO", "بوست 10-2"))?.taskId).toBe("9-POST-2-DESIGN");
   });
 
-  it("[TR-30] (تحذير) الأرقام الهندية «بوست ١٠-٢» ما بتنقرا — ما في ولا ملف هيك بالمدوَّنة الحقيقية", () => {
-    // مع وصف خطة: بيضل غير مطابق. (بلا وصف بتوقع بطبقة النوع وبتسكّر أبكر بوست — TR-02.)
+  it("[TR-30] الأرقام الهندية «بوست ١٠-٢» بتنقرا متل «بوست 10-2»", () => {
     const withBrief = ALL.map((t, i) => (i === 0 ? { ...t, brief: "خبر عاجل عن السوق" } : t));
-    expect(match(delivery(null, D(9, 20), "PHOTO", "بوست ١٠-٢"), withBrief)).toBeNull();
+    expect(match(delivery(null, D(9, 20), "PHOTO", "بوست ١٠-٢"), withBrief)?.taskId).toBe("9-POST-2-DESIGN");
   });
 });
 
@@ -131,7 +130,7 @@ describe("§١ المسلَّم ما بينسلّم مرتين — على مست
     expect(resendLeaks(PIECES.filter((p) => p.type !== "STORY"))).toEqual([]);
   });
 
-  it.fails("[TR-04] خاصية: اسم أي ستوري مسكّرة ما بيسكّر ستوري تانية — القراءة المقلوبة ما لازم تمرق بعد ما الأولى تسمّي قطعة مسلّمة", () => {
+  it("[TR-04] خاصية: اسم أي ستوري مسكّرة ما بيسكّر ستوري تانية — القراءة المقلوبة ما لازم تمرق بعد ما الأولى تسمّي قطعة مسلّمة", () => {
     // «Delta-story-11-10» (ستوري ١٠ مسلّمة) ← ستوري ١١؛ «Delta-story-10-11» (ستوري ١١ مسلّمة) ← ستوري ١٠.
     expect(resendLeaks(PIECES.filter((p) => p.type === "STORY"))).toEqual([]);
   });
@@ -154,14 +153,14 @@ describe("§١ المسلَّم ما بينسلّم مرتين — على مست
 });
 
 describe("§١ عطول مثبتة", () => {
-  it.fails("[TR-03] الدورة الشغّالة بتربح: قطعة أيلول بتنشر بتشرين، مسمّاة بشهر النشر قبل ما تبلّش دورة تشرين، ما لازم تسكّر قطعة تشرين", () => {
+  it("[TR-03] الدورة الشغّالة بتربح: قطعة أيلول بتنشر بتشرين، مسمّاة بشهر النشر قبل ما تبلّش دورة تشرين، ما لازم تسكّر قطعة تشرين", () => {
     // ٥/١٠ جوّا دورة أيلول (١٣/٩ → ١٣/١٠)؛ بوست ٥ أيلول بينشر ٨/١٠ → «Delta-post-10-5».
     // القراءة المباشرة (شهر ١٠ = دلو تشرين) بتلاقي بوست ٥ **تشرين** (مولّد بالتجديد المبكر) وبتسكّره.
     const hit = match(delivery("Delta-post-10-5.jpg", D(9, 5)));
     expect(hit?.taskId).toBe("8-POST-5-DESIGN");
   });
 
-  it.fails("[TR-04] تسمية شهر النشر لقطعة الدورة الجاية (أسبوع التحضير) ما لازم تنقلب قطعة-أول وتسكّر قطعة تانية", () => {
+  it("[TR-04] تسمية شهر النشر لقطعة الدورة الجاية (أسبوع التحضير) ما لازم تنقلب قطعة-أول وتسكّر قطعة تانية", () => {
     // ستوري ١٠ تشرين بتنشر ٢/١١ → «Delta-story-11-10» مرسلة ١١/١٠ (قبل بداية الدورة ١٣/١٠).
     // القراءة شهر-أول ما بتلاقي شي، فالمقلوبة «شهر ١٠ قطعة ١١» بتسكّر **ستوري ١١**.
     const hit = match(delivery("Delta-story-11-10.jpg", D(9, 11)));
@@ -172,7 +171,7 @@ describe("§١ عطول مثبتة", () => {
     expect(match(delivery("Delta-story-11-10.jpg", D(9, 20)))?.taskId).toBe("9-STORY-10-DESIGN");
   });
 
-  it.fails("[TR-05] «أي شهر تاني = غلطة تسمية، ممنوع تطابق» — حتى لو الشهر جنب شهر الإرسال", () => {
+  it("[TR-05] «أي شهر تاني = غلطة تسمية، ممنوع تطابق» — حتى لو الشهر جنب شهر الإرسال", () => {
     // ستوري ١ تشرين (دلو m=9، بتنشر ١٦/١٠). «Delta-story-1-9» قراءتاها: كانون/٩ أو أيلول/١
     // — ولا وحدة بتفسّرها. احتياط «رقم القطعة لحاله» (±شهر من الإرسال) بيسكّرها.
     const hit = match(delivery("Delta-story-1-9.jpg", D(9, 20)));
@@ -205,15 +204,25 @@ describe("§١ عطول مثبتة", () => {
     expect(bad).toEqual([]);
   });
 
-  it.fails("[TR-06] المخبر: الفريق بيكتب «Drnoor-reel-10-2» والسلَق «Makhbar» — التسليم لازم يلاقي مونتاج ريل ٢", () => {
+  it("[TR-06] المخبر: الفريق بيكتب «Drnoor-reel-10-2» والسلَق «Makhbar|Drnoor» (اسم بديل بنفس الحقل) — التسليم بيلاقي مونتاج ريل ٢", () => {
     // لقطة ١٢:٤٩: أليسار بعتت Drnoor-reel-10-2.mov (٢/١٠) وDrnoor-reel-10-5.mp4 (٢/١٠)،
     // وكروت مونتاج ريل ٢·٣·٤·٥ (دلو m=8، دورة ٢٣/٩ → ٢٣/١٠) لسا مفتوحة ومتأخرة من ٢٩/٩.
     const noor = { publishStartDate: new Date(2026, 5, 15), renewals: JSON.stringify(["2026-07-15", "2026-09-23"]) };
     // كروت المخبر المفتوحة كلها عليها وصف (٦/٦ باللقطة) → طبقة النوع مطفية.
     const edit2 = { id: "noor-edit-2", type: "REEL", stage: "EDIT", month: 8, year: 2026, pieceNo: 2, readyDate: D(8, 29), publishDate: D(9, 7), assigneeId: EDITOR, brief: "ريل فويس أوفر عن التحاليل الدورية" };
     const d = delivery("Drnoor-reel-10-2.mov", D(9, 2), "VIDEO");
-    const hit = matchDelivery(d, "Makhbar", [edit2], [], [], currentCycleBucket(noor, d.sentAt), false, EDITOR);
+    const hit = matchDelivery(d, "Makhbar|Drnoor", [edit2], [], [], currentCycleBucket(noor, d.sentAt), false, EDITOR);
     expect(hit?.taskId).toBe("noor-edit-2");
+    // «dr.noor-post-…» نفس البديل بعد التطبيع.
+    const post = { ...edit2, id: "noor-post-1", type: "POST", stage: "DESIGN", pieceNo: 1, assigneeId: DESIGNER };
+    expect(matchDelivery(delivery("dr.noor-post-9-1.jpg", D(9, 5)), "Makhbar|Drnoor", [post], [], [], currentCycleBucket(noor, D(9, 5)))?.taskId).toBe("noor-post-1");
+  });
+
+  it("[TR-06] بلا الاسم البديل بالسلَق («Makhbar» لحالها) الملف بيضل ما بيطابق — البديل داتا (المرحلة J)، مو قاعدة بالكود", () => {
+    const noor = { publishStartDate: new Date(2026, 5, 15), renewals: JSON.stringify(["2026-07-15", "2026-09-23"]) };
+    const edit2 = { id: "noor-edit-2", type: "REEL", stage: "EDIT", month: 8, year: 2026, pieceNo: 2, readyDate: D(8, 29), publishDate: D(9, 7), assigneeId: EDITOR, brief: "ريل فويس أوفر عن التحاليل الدورية" };
+    const d = delivery("Drnoor-reel-10-2.mov", D(9, 2), "VIDEO");
+    expect(matchDelivery(d, "Makhbar", [edit2], [], [], currentCycleBucket(noor, d.sentAt), false, EDITOR)).toBeNull();
   });
 
   it("[TR-06] نفس الملف بسلَق «Drnoor» بيوصل — العطل بالسلَق الوحيد، مو بالقراءة", () => {
@@ -229,7 +238,7 @@ describe("الصور الخام والطبقة الثالثة (بالنوع) —
   const raw = ["IMG_1342.jpg", "DSC03882.JPG", "WhatsApp Image 2026-08-10 at 11.19.47 AM.jpeg", null];
 
   for (const name of raw) {
-    it.fails(`[TR-02] صورة خام «${name ?? "بلا اسم"}» ما بتسكّر كرت تصميم`, () => {
+    it(`[TR-02] صورة خام «${name ?? "بلا اسم"}» ما بتسكّر كرت تصميم`, () => {
       // صار فعلاً: IMG_1342/1358/1359/1360 (أليسار ١٩/٨) سكّرت تصاميم بوستات فونيتيك،
       // وDSC03882/85/62 (المصوّر ٣/٩) سكّرت ستوري مانغو ٦–٨.
       expect(match(delivery(name, D(9, 20)))).toBeNull();
@@ -260,7 +269,7 @@ describe("ملف بتوبيك شركة تانية", () => {
     expect(match(delivery("Yankee-reel-10-1.mp4", D(9, 20), "VIDEO"), withBrief)).toBeNull();
   });
 
-  it.fails("[TR-02] «الاسم الصريح أقوى من مكان الإرسال» — حتى بشركة بلا وصف خطة", () => {
+  it("[TR-02] «الاسم الصريح أقوى من مكان الإرسال» — حتى بشركة بلا وصف خطة", () => {
     // PROJECT.md §14: ملف باسم شركة تانية بيضل مرفوض. بلا وصف، الملف بينزل لطبقة النوع وبيسكّر أبكر ريل هون.
     expect(match(delivery("Yankee-reel-10-1.mp4", D(9, 20), "VIDEO"))).toBeNull();
   });

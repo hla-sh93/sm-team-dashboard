@@ -83,7 +83,7 @@ async function main() {
         // Deterministic id so a re-run can never duplicate a day. العنوان جزء
         // منه لأنّ الشخص ممكن يكون إلو مهمتين إضافيتين بنفس اليوم لنفس الشركة
         // (نشرات الصرف صباحاً، وهايلايتس بعد الضهر).
-        id: `adhoc_${company.slug ?? company.id}_${person.id}_${iso}_${titleKey}`,
+        id: `adhoc_${company.slug?.split("|")[0].trim() || company.id}_${person.id}_${iso}_${titleKey}`,
         kind: "ADHOC",
         title: titleArg,
         hours: HOURS,

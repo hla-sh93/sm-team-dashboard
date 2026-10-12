@@ -24,12 +24,13 @@ import { basename } from "path";
 import { PrismaClient } from "@prisma/client";
 import { parseAssetName } from "../src/lib/asset-name";
 import {
+  RAW_CAPTURE,
   matchDelivery,
   parseOffPlanKeywords,
   type Delivery,
   type MatchCandidate,
 } from "../src/lib/telegram/match";
-import { companySlug } from "../src/lib/asset-name";
+import { companySlugs } from "../src/lib/asset-name";
 import {
   buildTopicIndex,
   matchTopicCompany,
@@ -65,14 +66,8 @@ if (!file) {
  * «وصل · بوست ١ ← Profile.jpg».
  */
 const NOT_A_DELIVERABLE = [
-  /^photo from/i,
-  /^whatsapp (image|video|audio)/i,
-  /^img[_-]?\d/i,
-  /^video_\d+@/i,
-  /^photo_\d+@/i,
-  /^dsc\d+/i,
-  /screenshot/i,
-  /^https?:\/\//i,
+  // نفس قائمة الملفات الخام يلي بيرفضها الويبهوك الحي (فحص ١٢/١٠، TR-02).
+  ...RAW_CAPTURE,
   // Trailing digits are common («COVER2.jpg»), so \b would miss them.
   /\blogo\d*\b|\bprofile\d*\b|\bcover\d*\b/i,
   /تيمبليت|template/i,
@@ -185,7 +180,7 @@ async function main() {
 
   const closures = new Map<
     string,
-    { at: Date; evidence: string[]; label: string; by: "NAME" | "BRIEF" | "TYPE"; sender: string | null }
+    { at: Date; evidence: string[]; label: string; by: "NAME" | "BRIEF" | "TYPE" | "DOCUMENT"; sender: string | null }
   >();
   const claimed = new Set<string>();
   let seen = 0;
@@ -301,7 +296,7 @@ async function main() {
    */
   const usedDeliveries = new Set<string>();
 
-  const record = (p: Prepared, t: MatchCandidate, by: "NAME" | "BRIEF" | "TYPE") => {
+  const record = (p: Prepared, t: MatchCandidate, by: "NAME" | "BRIEF" | "TYPE" | "DOCUMENT") => {
     claimed.add(t.id);
     usedDeliveries.add(p.delivery.id);
     const evidence = p.delivery.fileName ?? p.delivery.caption?.slice(0, 30) ?? "(صورة بلا اسم)";
@@ -383,7 +378,7 @@ async function main() {
     if (!candidates.length) continue;
     const hit = matchDelivery(
       p.delivery,
-      companySlug(p.co),
+      companySlugs(p.co).join("|"),
       candidates,
       parseOffPlanKeywords(p.co.offPlanKeywords),
       doneByCompany.get(p.co.id) ?? [],
@@ -461,7 +456,7 @@ async function main() {
       if (!candidates.length) continue;
       const hit = matchDelivery(
         p.delivery,
-        companySlug(p.co),
+        companySlugs(p.co).join("|"),
         candidates,
         parseOffPlanKeywords(p.co.offPlanKeywords),
         doneByCompany.get(p.co.id) ?? [],

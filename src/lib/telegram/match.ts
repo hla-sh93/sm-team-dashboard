@@ -15,7 +15,7 @@
  * Anything else stays unmatched and simply shows up as "وصل ملف غير مطابق".
  */
 import type { ContentType } from "@/lib/constants";
-import { parseAssetName, slugMatches } from "@/lib/asset-name";
+import { latinDigits, parseAssetName, slugMatches, type AssetReading } from "@/lib/asset-name";
 import type { TelegramMessageRef } from "./client";
 import { senderName } from "./client";
 
@@ -29,6 +29,8 @@ export type Delivery = {
   sentAt: Date;
   senderId: string | null;
   senderName: string | null;
+  /** اسم المستخدم بتلغرام بلا @ — هوية تانية بعد المعرّف الرقمي (ما بينخزّن). */
+  senderUsername?: string | null;
   kind: DeliveryKind;
   fileName: string | null;
   caption: string | null;
@@ -54,7 +56,7 @@ export type MatchCandidate = {
   assigneeId?: string | null;
 };
 
-export type MatchResult = { taskId: string; by: "NAME" | "BRIEF" | "TYPE" } | null;
+export type MatchResult = { taskId: string; by: "NAME" | "BRIEF" | "TYPE" | "DOCUMENT" } | null;
 
 // ---------------------------------------------------------------- content match
 
@@ -186,6 +188,7 @@ export function normalizeMessage(msg: TelegramMessageRef): Delivery {
     sentAt: new Date(msg.date * 1000),
     senderId: msg.from ? String(msg.from.id) : null,
     senderName: senderName(msg.from),
+    senderUsername: msg.from?.username ?? null,
     caption: msg.caption ?? msg.text ?? null,
     mediaGroupId: msg.media_group_id ?? null,
   };
@@ -276,13 +279,138 @@ const deadlineOf = (t: MatchCandidate): number => {
 };
 
 /**
+ * أسماء ملفات الكاميرا والموبايل الخام — ما بتقول شي عن أي قطعة.
+ *
+ * «Raw photographs do not count as finished work» (الهاندوف §3). باللقطة ١٧ من ٢١
+ * إقفال «بالنوع» كانوا هيك: `IMG_1342` من المونتيرة سكّر تصاميم بوستات فونيتيك،
+ * و`DSC03882` من المصوّر سكّر ستوريات مانغو (فحص ١٢/١٠، TR-02). نفس القائمة بيقراها
+ * استيراد التصدير (`import-telegram-export.ts`).
+ */
+export const RAW_CAPTURE: RegExp[] = [
+  /^photo from/i,
+  /^whatsapp (image|video|audio)/i,
+  /^img[_-]?\d/i,
+  /^vid[_-]?\d/i,
+  /^video_\d+@/i,
+  /^photo_\d+@/i,
+  /^dsc[_f]?\d+/i,
+  /^pxl_\d/i,
+  /screenshot/i,
+  /^https?:\/\//i,
+];
+
+export function isRawCapture(fileName: string | null | undefined): boolean {
+  const name = fileName?.trim();
+  return Boolean(name) && RAW_CAPTURE.some((re) => re.test(name!));
+}
+
+/**
+ * قيم `TelegramMessage.matchedBy` يلي معناها «تسليم انربط بكرته» — المطابقة الآلية
+ * والربط اليدوي. غيرها: `PUBLISH` (رسالة تأكيد نشر)، `NOT_OWNER` (الملف بيسمّي كرت
+ * غيره فما سكّره — قرار D3)، `WRONG_TOPIC` (اسم شركة تانية بتوبيك هالشركة، TR-26).
+ */
+export const DELIVERY_MATCH_KINDS = ["NAME", "BRIEF", "TYPE", "DOCUMENT", "MANUAL"];
+
+type Bucket = { year: number; month: number };
+const bucketKey = (t: Bucket) => t.year * 12 + t.month;
+const publishMonthOf = (t: MatchCandidate): number | null =>
+  t.publishDate != null ? new Date(t.publishDate).getMonth() : null;
+const splitSlugs = (slug: string) =>
+  slug
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+/**
+ * القطعة يلي بتسمّيها **قراءة وحدة** من الاسم، بين كروت معطاة — بترتيب الأفضلية (§١):
+ *
+ *   (أ) تطابق مباشر: شهر الدلو = شهر الاسم ونفس الرقم.
+ *   (ب) قاعدة الدورة: الرقم جوّا الدورة الشغّالة وقت الإرسال، والشهر مفسَّر (شهر
+ *       الدورة أو شهر نشر القطعة، أو رقم مجرّد بلا شهر).
+ *   (ج) أسبوع تحضير الدورة الجاية: قطعة دلو أحدث من الشغّالة، مسمّاة بشهر نشرها.
+ *
+ * ‏(أ) قبل (ب) — إلا إذا كان التطابق المباشر بدلو **أحدث** من الشغّالة: بنافذة التجديد
+ * المبكر قطعة أيلول يلي بتنشر بتشرين («Delta-post-10-5» مرسلة ٥/١٠) كانت تسكّر بوست ٥
+ * **تشرين** المولّد سلفاً (فحص ١٢/١٠، TR-03). الدورة الشغّالة بتربح هون؛ التسمية
+ * الصريحة بشهر دلو **أقدم** بتضل توصل للقديمة.
+ *
+ * ‏(ج) سدّ TR-04: «Delta-story-11-10» (ستوري ١٠ تشرين، نشرها بتشرين التاني) مرسلة
+ * بأسبوع التحضير ما كانت تلاقي قطعتها، فالقراءة المقلوبة «شهر ١٠ قطعة ١١» تسكّر ستوري ١١.
+ */
+function designatedBy(
+  r: AssetReading,
+  cards: MatchCandidate[],
+  activeBucket: Bucket | null,
+  pick: (list: MatchCandidate[]) => MatchCandidate | undefined,
+): MatchCandidate | null {
+  const activeKey = activeBucket ? bucketKey(activeBucket) : null;
+  const exact = pick(cards.filter((t) => t.month === r.month0 && t.pieceNo === r.pieceNo));
+  const byCycle =
+    activeBucket && activeKey != null
+      ? pick(
+          cards.filter(
+            (t) =>
+              bucketKey(t) === activeKey &&
+              t.pieceNo === r.pieceNo &&
+              (r.month0 === -1 || r.month0 === activeBucket.month || publishMonthOf(t) === r.month0),
+          ),
+        )
+      : undefined;
+  if (exact && byCycle && activeKey != null && bucketKey(exact) > activeKey) return byCycle;
+  if (exact) return exact;
+  if (byCycle) return byCycle;
+  if (activeKey != null && r.month0 !== -1) {
+    const upcoming = pick(
+      cards.filter(
+        (t) => bucketKey(t) > activeKey && t.pieceNo === r.pieceNo && publishMonthOf(t) === r.month0,
+      ),
+    );
+    if (upcoming) return upcoming;
+  }
+  return null;
+}
+
+/** نطاق كرت كتابة أو مستند — مين بيسكّر مين (فحص ١٢/١٠، TR-24). */
+type WritingScope = "SHOOT" | "ARTICLE" | "LINKEDIN" | "PLAN";
+
+/** كلمات اسم المستند → نطاقه. الترتيب مقصود: «خطة تصوير» سيناريو مو خطة بوستات. */
+const DOCUMENT_SCOPES: [WritingScope, RegExp][] = [
+  ["SHOOT", /shoot|script|scenario|سيناريو|سكريبت|تصوير|\breels?\b|ريلز?/i],
+  ["ARTICLE", /blog|article|مقال|مدون/i],
+  ["LINKEDIN", /linked\s*in|لينكد/i],
+  ["PLAN", /plan|خط[ةه]|posts?|stor(?:y|ies)|بوست|ستوري|content|محتوى|ideas?|[أا]فكار/i],
+];
+
+/** عنوان كرت الكتابة → نطاقه («كتابة بوستات وستوريز» · «سيناريو تصوير» · «المدونة — المقال 4»). */
+const CARD_SCOPES: [WritingScope, RegExp][] = [
+  ["SHOOT", /سيناريو|تصوير|سكريبت|script|shoot/i],
+  ["ARTICLE", /مقال|مدون|blog|article/i],
+  ["LINKEDIN", /لينكد|linked\s*in/i],
+  ["PLAN", /بوستات|ستوري|خط[ةه]|plan|محتوى/i],
+];
+
+const scopeOf = (text: string, table: [WritingScope, RegExp][]) =>
+  table.find(([, re]) => re.test(text))?.[0] ?? null;
+
+/** رقم المقال: «Blogs - 4 -.docx» = ٤ · «المدونة — المقال 4: …» = ٤. */
+function articleNo(text: string): number | null {
+  const m = latinDigits(text).match(/(?:blog|article|مقال[ةه]?|مدون[ةه]?)s?\s*[-#_:]?\s*(\d{1,3})(?!\d)/i);
+  return m ? Number(m[1]) : null;
+}
+
+/**
  * Match one delivery to a piece.
  *
  * `candidates` must already be filtered to the company's still-open cards —
  * the matcher does not know about task status.
+ *
+ * المطابقة **هوية** بس: بتقول أي قطعة هاد الملف. مين مسموحلو يسكّرها (صاحب الكرت أو
+ * القائدة — قرار D3) بيتحدّد بـ`ingest.ts`، إلا طبقة «النوع»: هي تخمين، فبتختار بس
+ * من كروت المرسِل نفسه.
  */
 export function matchDelivery(
   delivery: Delivery,
+  /** السلَق القياسي، وبعده الأسماء البديلة مفصولة بـ`|` («Makhbar|Drnoor»). */
   companySlug: string,
   candidates: MatchCandidate[],
   /** Keywords marking content published OUTSIDE the paid plan (§14). */
@@ -304,15 +432,23 @@ export function matchDelivery(
    */
   preferPieceFirst = false,
   /**
-   * الموظّف يلي **بعت الملف فعلاً** (من `Employee.telegramUserId`).
+   * الموظّف يلي **بعت الملف فعلاً** (هويّته من `ingest.ts`: المعرّف الرقمي ثم اسم
+   * المستخدم ثم الأسماء البديلة).
    *
    * القطعة إلها كذا مرحلة بنفس تاريخ النشر، فترتيب «الأبكر موعداً» بيوقع
    * تعادلاً بينهن وبيربح أول واحد بالصدفة: مونتاج أليسار «phoenijobs 1-9.mp4»
    * سكّر كرت **التصوير** وضلّ كرت **المونتاج** مفتوح — والقائدة شافتها «الريل
    * ما انلقط». مين بعت بيقول أي مرحلة خلصت: فيديو من المونتيرة = مونتاج،
-   * ولقطات من المصوّر = تصوير. بلا مرسِل معروف بيرجع الترتيب القديم.
+   * ولقطات من المصوّر = تصوير. بلا مرسِل معروف بيرجع الترتيب القديم — وطبقة
+   * «النوع» بتطفى (ما في كرت «إلو» نخمّن منه).
    */
   senderEmployeeId: string | null = null,
+  /**
+   * سلَقات **باقي** الشركات. ملف باسم شركة تانية صريح («BW-post-9-1» بتوبيك Siizen)
+   * ما بيطابق هون ولا بأي طبقة — «الاسم الصريح أقوى من مكان الإرسال» (PROJECT.md §14،
+   * TR-02/TR-26). بلاها كانت طبقة النوع تسكّر أبكر كرت بالتوبيك الغلط.
+   */
+  foreignSlugs: string[] = [],
 ): MatchResult {
   if (delivery.kind === "TEXT") return null;
   const ownsStage = (t: MatchCandidate) =>
@@ -326,29 +462,44 @@ export function matchDelivery(
   // report work as done that nobody has produced yet.
   if (isOffPlan(delivery, offPlanKeywords)) return null;
 
+  const slugs = splitSlugs(companySlug);
+  const primarySlug = slugs[0] ?? companySlug;
+  const isOurs = (slug: string) => slugs.some((s) => slugMatches(slug, s));
+  const explicitName = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  if (
+    explicitName &&
+    !isOurs(explicitName.slug) &&
+    foreignSlugs.some((s) => slugMatches(explicitName.slug, s))
+  )
+    return null;
+
   // ---- 0. ملف الخطة بيسكّر كرت الكتابة ---------------------------------
   //
   // القائدة (5/8): «نوال بعتت خطة مانغو — ليش ما مسكتها وحسبتها تأخير؟»
-  // الجواب كان بنيوياً: المطابقة بتعرف الصور (بوست/ستوري) والفيديو (ريل) وبس،
-  // فأي DOCUMENT بترجع `types = []` وما بتلاقي شي — وكرت «كتابة بوستات
-  // وستوريز» بيضل مفتوح ومتأخر رغم إنّ الخطة واصلة على التوبيك.
+  // الكتابة تسليمها ملف، مو صورة: ملف (docx/pdf) على توبيك شركة إلها كرت كتابة
+  // مفتوح = تسليم هالكتابة.
   //
-  // الكتابة تسليمها ملف، مو صورة. فملف (docx/pdf) بينبعت على توبيك شركة إلها
-  // كرت كتابة مفتوح = تسليم الخطة. وأي كرت كتابة مفتوح بيتحدّد بالنطاق:
-  // «Scripts For Shooting» / «سيناريو تصوير» بيسكّر كرت التصوير، وغيره بيسكّر
-  // كرت البوستات والستوريز — وإلا الأبكر موعداً.
+  // بس **بنطاقه** (فحص ١٢/١٠، TR-24): كان أي مستند يسكّر «الأبكر موعداً» — خطة آب
+  // سكّرت «المدونة — المقال 4»، ودليل شركة PDF من برّا الفريق سكّر مقالات، ونفس
+  // السيناريو المنبعت مرّتين سكّر كرت البوستات بالمرّة التانية. هلّق اسم المستند لازم
+  // يشبه نطاق الكرت: Scripts/سيناريو ← السيناريو، Plan/Posts/Stories ← البوستات
+  // والستوريز، Blog N ← المقال N، LinkedIn ← لينكد إن. غير هيك ما بيسكّر شي.
   if (delivery.kind === "DOCUMENT") {
     const writing = candidates.filter((t) => t.stage === "WRITE");
     if (!writing.length) return null;
-    const text = `${delivery.fileName ?? ""} ${delivery.caption ?? ""}`;
-    const wantsShoot = /shoot|سيناريو|تصوير/i.test(text);
-    const isShootCard = (t: MatchCandidate) => /سيناريو|تصوير|shoot/i.test(t.title ?? "");
-    const scoped = writing.filter((t) => isShootCard(t) === wantsShoot);
-    const pool2 = scoped.length ? scoped : writing;
-    return {
-      taskId: [...pool2].sort(byOwnerThenDeadline)[0].id,
-      by: "NAME",
-    };
+    const text = latinDigits(`${delivery.fileName ?? ""} ${delivery.caption ?? ""}`);
+    const scope = scopeOf(text, DOCUMENT_SCOPES);
+    if (!scope) return null;
+    const wantedNo = scope === "ARTICLE" ? articleNo(text) : null;
+    const inScope = writing.filter((t) => {
+      const title = t.title ?? "";
+      if (scopeOf(title, CARD_SCOPES) !== scope) return false;
+      if (wantedNo == null) return true;
+      const cardNo = articleNo(title);
+      return cardNo == null || cardNo === wantedNo;
+    });
+    if (!inScope.length) return null;
+    return { taskId: [...inScope].sort(byOwnerThenDeadline)[0].id, by: "DOCUMENT" };
   }
 
   // ---- 1. by canonical name «Agalia 7-1» -------------------------------
@@ -369,16 +520,15 @@ export function matchDelivery(
    * الرفض كما هو، لأن الاسم الصريح أقوى من مكان الإرسال.
    */
   const parsedRaw =
-    parseAssetName(delivery.fileName) ??
-    parseAssetName(delivery.caption) ??
-    parseAssetName(`${companySlug} ${delivery.fileName ?? delivery.caption ?? ""}`);
+    explicitName ??
+    parseAssetName(`${primarySlug} ${delivery.fileName ?? delivery.caption ?? ""}`);
   // `parseAssetName` بترتّب شهر-أول ثم قطعة-أول. لما يكون عرف الشركة معروفاً
   // منقلب الترتيب — القراءة الصح بتنجرّب أولاً بدل ما تخسر بالصدفة.
   const parsed =
     parsedRaw && preferPieceFirst && parsedRaw.readings.length > 1
       ? { ...parsedRaw, readings: [...parsedRaw.readings].reverse() }
       : parsedRaw;
-  if (parsed && slugMatches(parsed.slug, companySlug)) {
+  if (parsed && isOurs(parsed.slug)) {
     // The number alone is not enough: «wasl 4-7.mp4» is a VIDEO, so piece 4
     // means reel 4, not story 4.
     //
@@ -399,100 +549,42 @@ export function matchDelivery(
       ? candidates.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : [];
     const pool = typed.length ? typed : wanted.length ? [] : candidates;
-    // ترتيب القراءات = ترتيب الأفضلية، فلازم **تنستنفد كل الطرق للقراءة
-    // الأولى** قبل الانتقال للتانية. كانت الحلقة بتجرّب «تطابق مباشر» لكل
-    // القراءات ثم قاعدة الدورة لكلهن — فـ«wasl 7-8» (قطعة ٧ شهر ٨ بعرف
-    // أليسار) بتخسر: القراءة المفضّلة ما إلها تطابق مباشر، فالقراءة التانية
-    // «تموز قطعة ٨» بتلقط تطابقاً مباشراً وبتسكّر ريل ٨ محل ريل ٧.
-    const inCycle = activeBucket
-      ? pool.filter((t) => t.year === activeBucket.year && t.month === activeBucket.month)
-      : [];
-    const explains = (m0: number, t: MatchCandidate) =>
-      !!activeBucket &&
-      (m0 === -1 ||
-        m0 === activeBucket.month ||
-        (t.publishDate != null && new Date(t.publishDate).getMonth() === m0));
-    const earliest = (list: MatchCandidate[]) =>
-      [...list].sort(byOwnerThenDeadline)[0];
-
-    for (const r of parsed.readings) {
-      // (أ) تطابق مباشر: نفس الشهر ونفس الرقم.
-      const exact = earliest(pool.filter((t) => t.month === r.month0 && t.pieceNo === r.pieceNo));
-      if (exact) return { taskId: exact.id, by: "NAME" };
-      // (ب) قاعدة الدورة: الرقم داخل الدورة الشغّالة، والشهر مفسَّر.
-      const byCycle = earliest(
-        inCycle.filter((t) => t.pieceNo === r.pieceNo && explains(r.month0, t)),
-      );
-      if (byCycle) return { taskId: byCycle.id, by: "NAME" };
-    }
-    // …وإذا الشهر ما طابق، جرّب **رقم القطعة لحاله**.
-    //
-    // دورة العقد بتقع على شهرين: وصل بتمشي 21/7 → 20/8، فالاسم القياسي «Wasl 7-2»
-    // (شهر بداية الدورة) بينما الريل فعلياً بينشر بآب — وأليسار سمّته «Wasl 8-2»
-    // لأنّ هيك بيقرأ صح من ناحيتها. القديم كان بيشترط تطابق الشهر ثم **بيوقف**،
-    // فالملف بينخزّن وما بيسكّر ولا كرت. رقم القطعة + الشركة + النوع بيحدّدوا
-    // القطعة لحالهن؛ الشهر مجرّد راحة بشرية. منقبله بس لما يكون **بلا لبس**:
-    // قطعة مفتوحة وحدة بهالرقم — وإلا منوقف متل قبل.
-    //
-    // …ولا مرة لقطعة الاسم **مسكّرة**. «BW reel 2 July.mp4» بينبعت بـ٢٢/٧ وريل
-    // تموز ٢ مسلّم من زمان، فرقم القطعة كان بيمرّق ويسكّر **ريل آب ٢** — تسليم
-    // ما صار. إعادة إرسال شغل مسلّم هي نسخة تانية منه، مو قطعة جديدة.
     const closedTyped = wanted.length
       ? closed.filter((t) => t.type != null && wanted.includes(t.type as ContentType))
       : closed;
+    const earliest = (list: MatchCandidate[]) => [...list].sort(byOwnerThenDeadline)[0];
 
-    // ═══════ المسلَّم ما بينسلّم مرتين ═══════
-    //
-    // «BW reel 2 July.mp4» بينبعت بـ٢٢/٧ وريل تموز ٢ مسلّم من زمان، فرقم القطعة
-    // كان بيمرّق ويسكّر **ريل آب ٢** — تسليم ما صار. إعادة إرسال شغل مسلّم هي
-    // نسخة تانية منه، مو قطعة جديدة.
-    //
-    // ⚠️ الفحص هون **بعد** المطابقة، مو قبلها: القطعة إلها كذا مرحلة، وتصوير
-    // مسكّر ما بيعني إنّ القطعة خلصت. لما كان الفحص فوق، مونتاج «Wasl 8-5» كان
-    // بينرفض لأنّ تصويرها مسكّر — ٨ قطع مفتوحة ما كانت تنمسك بأسمائها.
-    // وصولنا لهون معناه إنّه ما ضل ولا كرت مفتوح لهالقطعة.
-    for (const r of parsed.readings) {
-      if (closedTyped.some((t) => t.month === r.month0 && t.pieceNo === r.pieceNo)) return null;
-      if (
-        activeBucket &&
-        closedTyped.some(
-          (t) =>
-            t.year === activeBucket.year &&
-            t.month === activeBucket.month &&
-            t.pieceNo === r.pieceNo &&
-            (r.month0 === -1 ||
-              r.month0 === activeBucket.month ||
-              (t.publishDate != null && new Date(t.publishDate).getMonth() === r.month0)),
-        )
-      )
-        return null;
-    }
-    //
-    // بس القراءة لازم يكون شهرها **معقول** بالنسبة لتاريخ الإرسال. «1-8» بتنقرأ
-    // «شهر ٨ قطعة ١» و«شهر ١ قطعة ٨»؛ الأولى مسكّرة، فالتانية كانت بتمرّر رقم
-    // القطعة ٨ وتسكّر ريل ٨ — بملف اسمه ريل ١. شهر كانون بملف انبعت بآب مو
-    // قراءة، غلط قراءة. شهر الدورة بيبعد شهر واحد بالكتير عن تاريخ التسليم.
+    // شهر التسمية لازم يكون **معقول** بالنسبة لتاريخ الإرسال: شهر الدورة بيبعد شهر
+    // واحد بالكتير عن التسليم. «1-8» بتنقرأ «آب قطعة ١» و«كانون قطعة ٨» — كانون
+    // بملف انبعت بآب غلط قراءة، مو قراءة.
     const sentMonth = delivery.sentAt ? new Date(delivery.sentAt).getMonth() : NaN;
     const plausible = (month0: number) => {
-      // الرقم المجرّد بلا ادعاء شهر: مقبول جوّا قاعدة الدورة بس (انفحص فوق).
-      // وصلنا لهون بلا دورة معروفة → ما منبني عليه.
       if (month0 === -1) return false;
       if (Number.isNaN(sentMonth)) return true; // بلا تاريخ ما في معلومة نحكم فيها
       const d = Math.abs(month0 - sentMonth);
       return Math.min(d, 12 - d) <= 1;
     };
+
+    // ترتيب القراءات = ترتيب الأفضلية، فكل قراءة **بتنستنفد كل طرقها** قبل التانية —
+    // وإذا سمّت قطعة **مسلَّمة** منوقف (فحص ١٢/١٠، TR-04): «Delta-story-11-10» لستوري
+    // ١٠ المسلّمة كانت تمرق للقراءة المقلوبة «شهر ١٠ قطعة ١١» وتسكّر ستوري ١١. إعادة
+    // إرسال شغل مسلّم نسخة تانية منه، مو قطعة جديدة (BW reel 2 July ← ريل آب ٢).
     for (const r of parsed.readings) {
-      if (!plausible(r.month0)) continue;
-      const sameNo = pool.filter((t) => t.pieceNo === r.pieceNo);
-      if (!sameNo.length) continue;
-      // «قطعة وحدة بهالرقم» بتنقاس بالقطعة مو بالكرت: الريل إلو كرت تصوير وكرت
-      // مونتاج، والاتنين رقمهن ٤. اعتبارهن «لبس» كان بيوقف المطابقة تماماً —
-      // فالفريق يلي عم يسمّي بشهر **النشر** («Makhbar 8-4» ونحنا بدورة 15/7)
-      // ما كان يلاقي كرتو أبداً وبيضل الكرت متأخر رغم إنّ الشغل انبعت. لبس
-      // حقيقي = رقم نفسه بدورتين مفتوحتين؛ وقتها منوقف متل قبل.
-      if (new Set(sameNo.map((t) => t.month)).size > 1) continue;
-      // نفس القطعة بمراحل: مرحلة المرسِل أولاً، وبلاه الأبكر موعداً.
-      return { taskId: [...sameNo].sort(byOwnerThenDeadline)[0].id, by: "NAME" };
+      const open = designatedBy(r, pool, activeBucket, earliest);
+      if (open) return { taskId: open.id, by: "NAME" };
+      if (designatedBy(r, closedTyped, activeBucket, earliest)) return null;
+      // …وتسمية بشهر **النشر** لقطعة دلوها مش الشغّال (متبقّي دورة سابقة، أو دورة
+      // وصل 21/7 → 20/8 مسمّاة «Wasl 8-2»). مقبولة بس لما الشهر بيفسّرها فعلاً (شهر
+      // نشرها) وبلا لبس (دلو واحد بهالرقم). كان الاحتياط القديم يقبل «رقم القطعة
+      // لحاله» بأي شهر جنب الإرسال — «Delta-story-1-9» سكّرت ستوري ١ تشرين وولا قراءة
+      // بتفسّرها (TR-05: «أي شهر تاني = غلطة تسمية، ممنوع تطابق»).
+      if (plausible(r.month0)) {
+        const sameNo = pool.filter(
+          (t) => t.pieceNo === r.pieceNo && publishMonthOf(t) === r.month0,
+        );
+        if (sameNo.length && new Set(sameNo.map((t) => `${t.year}-${t.month}`)).size === 1)
+          return { taskId: earliest(sameNo).id, by: "NAME" };
+      }
     }
     // The name states which piece this is. If that piece is not in the open set
     // it is already closed — by an earlier carousel slide, or by a first send
@@ -525,10 +617,19 @@ export function matchDelivery(
   // contract) must never be matched to a piece just because "بوست" appears in
   // its file name, so an empty `types` still means "no match".
   if (!types.length) return null;
+  // تخمين، فبشروط (فحص ١٢/١٠، TR-02 وقرار D3): مرسِل معروف، والتخمين من **كروته هو**
+  // بس (صورة المونتيرة ما بتسكّر تصميم المصمّم)، ولا صورة خام بتنحسب شغلاً منتهياً.
+  if (!senderEmployeeId) return null;
+  if (isRawCapture(delivery.fileName)) return null;
   const hint = typeHintFrom(delivery.fileName, delivery.caption);
   const wanted = hint ? [hint] : types;
   const byType = candidates
-    .filter((t) => t.type != null && wanted.includes(t.type as ContentType))
+    .filter(
+      (t) =>
+        t.assigneeId === senderEmployeeId &&
+        t.type != null &&
+        wanted.includes(t.type as ContentType),
+    )
     .sort((a, b) => {
       // Respect the type preference order (a video is a REEL before an AI_REEL)
       // and then take the most urgent open piece.
@@ -537,4 +638,36 @@ export function matchDelivery(
       return ra - rb || byOwnerThenDeadline(a, b) || a.id.localeCompare(b.id);
     })[0];
   return byType ? { taskId: byType.id, by: "TYPE" } : null;
+}
+
+/**
+ * القطعة يلي **بيسمّيها** الاسم بين كروت معطاة — مفتوحة أو مسلّمة، بنفس قواعد
+ * التسمية فوق.
+ *
+ * لشرائح الكاروسيل (فحص ١٢/١٠، TR-14): «Phoenitech-post-10-2-1…7» — الشريحة الأولى
+ * بتسكّر بوست ٢، والست الباقية كانت «ما طابق شي» لأنّ قطعتها صارت مسكّرة، والعدد ما
+ * بيرتفع. هلّق الاستقبال بيربطهن بنفس الكرت وبيسجّل عدد الشرائح (§٥: وحدة لكل شريحة).
+ */
+export function pieceNamedBy(
+  delivery: Pick<Delivery, "fileName" | "caption" | "kind">,
+  companySlug: string,
+  cards: MatchCandidate[],
+  activeBucket: { year: number; month: number } | null,
+): MatchCandidate | null {
+  const slugs = splitSlugs(companySlug);
+  const parsed =
+    parseAssetName(delivery.fileName) ??
+    parseAssetName(delivery.caption) ??
+    parseAssetName(`${slugs[0] ?? companySlug} ${delivery.fileName ?? delivery.caption ?? ""}`);
+  if (!parsed || !slugs.some((s) => slugMatches(parsed.slug, s))) return null;
+  const types = candidateTypesFor(delivery.kind);
+  const hint = typeHintFrom(delivery.fileName, delivery.caption);
+  const wanted = hint && types.includes(hint) ? [hint] : types;
+  const typed = cards.filter((t) => t.type != null && wanted.includes(t.type as ContentType));
+  const pick = (list: MatchCandidate[]) => [...list].sort((a, b) => deadlineOf(a) - deadlineOf(b))[0];
+  for (const r of parsed.readings) {
+    const hit = designatedBy(r, typed, activeBucket, pick);
+    if (hit) return hit;
+  }
+  return null;
 }

@@ -7,6 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import { buildPeriodReport, type PeriodReport, type ReportPeriod } from "@/lib/period-report";
+import { DELIVERY_MATCH_KINDS } from "@/lib/telegram/match";
 
 export async function loadPeriodReport(period: ReportPeriod, now: Date = new Date()): Promise<PeriodReport> {
   const [employees, companies, tasks, deliveries] = await Promise.all([
@@ -55,7 +56,14 @@ export async function loadPeriodReport(period: ReportPeriod, now: Date = new Dat
       },
     }),
     prisma.telegramMessage.findMany({
-      where: { taskId: { not: null }, kind: { not: "TEXT" } },
+      // تسليم انربط بكرته بس — مو ملف «من غير صاحب الكرت» محجوز للمراجعة (D3)،
+      // ولا لقطة شاشة سكّرت كرت نشر.
+      where: {
+        taskId: { not: null },
+        kind: { not: "TEXT" },
+        confirmed: true,
+        matchedBy: { in: DELIVERY_MATCH_KINDS },
+      },
       select: { taskId: true, sentAt: true },
     }),
   ]);

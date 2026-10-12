@@ -55,6 +55,10 @@ async function pass(offset?: number): Promise<number | undefined> {
     const where = outcome.chatTitle ?? outcome.chatId;
     if (outcome.unlinked) {
       console.log(`• ${where} — محادثة غير مربوطة بشركة بعد`);
+    } else if (outcome.held) {
+      console.log(
+        `⏸️ ${where} — ${outcome.held === "NOT_OWNER" ? `من غير صاحب الكرت ${outcome.taskId}` : "باسم شركة تانية"}`,
+      );
     } else if (outcome.taskId) {
       console.log(
         `✅ ${where} — طابق مهمة ${outcome.taskId} (${outcome.matchedBy})` +

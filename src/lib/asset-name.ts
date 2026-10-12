@@ -37,15 +37,40 @@ export const SLUG_BY_NAME: Record<string, string> = {
   "المدارس": "SKM",
 };
 
-/** The company's latin short name used in file names. */
-export function companySlug(co: Pick<Company, "name"> & { slug?: string | null }): string {
-  const explicit = co.slug?.trim();
-  if (explicit) return explicit;
+/**
+ * كل الأسماء اللاتينية للشركة — الأول هو القياسي، والباقي أسماء بديلة.
+ *
+ * الفريق مرّات بيكتب الشركة باسم غير سلَقها: ملفات المخبر بتوصل «Drnoor-reel-10-2»
+ * و«dr.noor-post-9-1» والسلَق «Makhbar» (فحص ١٢/١٠، TR-06) — ١٣ ملف ما انقرى ولا
+ * واحد. البديل بينكتب بنفس حقل `Company.slug` مفصول بـ`|` («Makhbar|Drnoor») بلا
+ * حقل جديد؛ الاسم القياسي (الأول) هو يلي منطلبه من الفريق.
+ */
+export function companySlugs(co: Pick<Company, "name"> & { slug?: string | null }): string[] {
+  const explicit = (co.slug ?? "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (explicit.length) return explicit;
   const mapped = SLUG_BY_NAME[co.name.trim()];
-  if (mapped) return mapped;
+  if (mapped) return [mapped];
   // Last resort: keep whatever latin characters the name already has.
   const ascii = co.name.replace(/[^A-Za-z0-9]+/g, " ").trim().replace(/\s+/g, "");
-  return ascii || co.name.trim();
+  return [ascii || co.name.trim()];
+}
+
+/** The company's latin short name used in file names. */
+export function companySlug(co: Pick<Company, "name"> & { slug?: string | null }): string {
+  return companySlugs(co)[0];
+}
+
+/**
+ * الأرقام الهندية (٠–٩) والفارسية (۰–۹) لأرقام لاتينية — «بوست ١٠-٢» هي «بوست 10-2»
+ * (فحص ١٢/١٠، TR-30).
+ */
+export function latinDigits(text: string): string {
+  return text
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
 }
 
 /** كلمة النوع بالاسم — إنكليزية عن قصد، لأنها جزء من اسم ملف. */
@@ -147,19 +172,36 @@ const TYPE_WORDS = /^(?:carousel|slide|posts?|stor(?:y|ies)|reels?|ai|video|imag
 export function parseAssetName(text: string | null | undefined): ParsedAssetName | null {
   if (!text) return null;
   // Drop a trailing file extension so `.mp4` never eats a number.
-  const base = text.trim().replace(/\.[A-Za-z0-9]{2,4}$/, "");
+  const base = latinDigits(text.trim()).replace(/\.[A-Za-z0-9]{2,4}$/, "");
 
   // A carousel is ONE post split across slides: «carousel 03» is the slide, not
   // the piece. Pull it out first so it can never be read as a piece number.
   const slide = base.match(/\b(?:carousel|slide|كاروسيل|شريحة)\s*[-_]?\s*(\d{1,3})\b/i);
-  const slideNo = slide ? Number(slide[1]) : undefined;
-  const withoutSlide = slide ? base.replace(slide[0], " ") : base;
+  // …وتسمية الفريق بلا كلمة: «Phoenitech-post-10-2-1…7» = شهر-قطعة-**شريحة** (فحص
+  // ١٢/١٠، TR-14). الرقم التالت بآخر الاسم بعد زوج «شهر-قطعة» هو الشريحة.
+  // الشهر ١–١٢ والشريحة ١–٢٠ (حدّ إنستغرام)، فتاريخ متل «2026-08-10» ما بينقرا شريحة.
+  const triple = slide ? null : base.match(/(?<!\d)(\d{1,2})\s*-\s*(\d{1,3})\s*-\s*(\d{1,2})\s*$/);
+  const tripleSlide =
+    triple &&
+    Number(triple[1]) >= 1 &&
+    Number(triple[1]) <= 12 &&
+    Number(triple[3]) >= 1 &&
+    Number(triple[3]) <= 20
+      ? triple
+      : null;
+  const slideNo = slide ? Number(slide[1]) : tripleSlide ? Number(tripleSlide[3]) : undefined;
+  const withoutSlide = slide
+    ? base.replace(slide[0], " ")
+    : tripleSlide
+      ? base.slice(0, base.length - tripleSlide[0].length) + `${tripleSlide[1]}-${tripleSlide[2]}`
+      : base;
 
   // The company is the latin text BEFORE the type word — «al balsam-carousel …»
   // is "al balsam", not "al". Fall back to the first latin run.
   const beforeType = withoutSlide.split(/[-_\s]*\b(?:carousel|post|story|reel|ai)\b/i)[0];
   const slugMatch =
-    beforeType.match(/[A-Za-z][A-Za-z\s]*[A-Za-z]|[A-Za-z]{2,}/) ??
+    // النقطة جوّا الاسم جزء منه: «dr.noor-post-9-1» هي «drnoor» مو «dr» (TR-06).
+    beforeType.match(/[A-Za-z][A-Za-z\s.]*[A-Za-z]|[A-Za-z]{2,}/) ??
     withoutSlide.match(/[A-Za-z]{2,}/);
   if (!slugMatch) return null;
   // A trailing lone letter is a piece marker, not part of the name:

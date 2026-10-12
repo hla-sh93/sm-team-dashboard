@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   try {
     const outcome = await ingestUpdate(update);
-    if (outcome?.stored) {
+    if (outcome?.stored || outcome?.advanced) {
       revalidateSafely("/today");
       revalidateSafely("/admin/today");
       revalidateSafely("/admin/telegram");
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
       isTeam: chat?.isTeam ?? false,
       total: msgs.length,
       files: files.length,
-      matched: files.filter((m) => m.taskId).length,
+      matched: files.filter((m) => m.taskId && m.confirmed).length,
       latest: msgs.slice(0, 6).map((m) => ({
         at: m.sentAt.toISOString().slice(5, 16),
         from: m.senderName,

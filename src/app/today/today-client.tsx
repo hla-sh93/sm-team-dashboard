@@ -153,8 +153,9 @@ export default function TodayClient({
     const ignored = new Set(ignoredChatIds);
     return deliveries.filter((d) => d.companyId == null && !ignored.has(d.chatId));
   }, [deliveries, ignoredChatIds]);
+  // ملف ما انحسب: بلا كرت، أو محجوز «من غير صاحب الكرت» (D3)، أو «باسم شركة تانية».
   const unmatched = useMemo(
-    () => deliveries.filter((d) => d.companyId != null && d.taskId == null && d.kind !== "TEXT"),
+    () => deliveries.filter((d) => d.companyId != null && d.kind !== "TEXT" && !d.confirmed),
     [deliveries],
   );
 
@@ -372,18 +373,34 @@ export default function TodayClient({
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
-                          {matched ? (
+                          {d.matchedBy === "PUBLISH" ? (
+                            <span className="text-success">
+                              {" "}
+                              · تأكيد نشر{matched ? ` ${label(matched)}` : ""}
+                            </span>
+                          ) : d.matchedBy === "NOT_OWNER" ? (
+                            <span className="text-warning">
+                              {" "}
+                              · وصل من غير صاحب الكرت{matched ? ` — ${label(matched)}` : ""}
+                            </span>
+                          ) : d.matchedBy === "WRONG_TOPIC" ? (
+                            <span className="text-warning"> · باسم شركة تانية — ما انحسب هون</span>
+                          ) : matched ? (
                             <span className="text-success">
                               {" "}
                               · طابق {label(matched)}
                               {d.matchedBy === "TYPE" ? " (حسب النوع)" : ""}
                             </span>
+                          ) : d.taskId && d.confirmed ? (
+                            // كرت مربوط بس مش بالدورة المعروضة (متبقّي، أو دورة تانية) —
+                            // مو «ما طابق شي» جنب زرّ تراجع (B04/TR-13).
+                            <span className="text-success"> · طابق كرت من دورة تانية</span>
                           ) : d.kind !== "TEXT" ? (
                             <span className="text-warning"> · ما طابق شي</span>
                           ) : null}
                         </div>
                       </div>
-                      {d.taskId && (
+                      {d.taskId && d.matchedBy !== "PUBLISH" && (
                         <button
                           disabled={busy}
                           onClick={() => undo(d.id)}
@@ -405,11 +422,12 @@ export default function TodayClient({
       {unmatched.length > 0 && (
         <section className="rounded-lg border border-warning/40 bg-warning/5 p-3">
           <h2 className="text-sm font-semibold text-warning mb-2 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> وصل ولم يُطابق ({unmatched.length})
+            <AlertTriangle className="w-4 h-4" /> وصل وما انحسب ({unmatched.length})
           </h2>
           <p className="text-[11px] text-fg-muted mb-2">
-            غالباً ما في قطعة مفتوحة من هالنوع، أو الاسم مو حسب الصيغة{" "}
-            <span className="font-mono">Agalia 7-1</span>.
+            الكرت بيسكّره صاحبه أو القائدة بس؛ والصورة الخام ما بتنحسب. وإلا غالباً ما في قطعة
+            مفتوحة من هالنوع، أو الاسم مو حسب الصيغة{" "}
+            <span className="font-mono">Agalia-post-7-1</span>.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {unmatched.map((d) => (
@@ -417,6 +435,11 @@ export default function TodayClient({
                 <div className="truncate">{d.fileName || d.caption?.slice(0, 40) || "بدون اسم"}</div>
                 <div className="text-[10px] text-fg-muted truncate">
                   {companies.find((c) => c.id === d.companyId)?.name} · {d.senderName ?? "—"}
+                  {d.matchedBy === "NOT_OWNER"
+                    ? " · من غير صاحب الكرت"
+                    : d.matchedBy === "WRONG_TOPIC"
+                      ? " · باسم شركة تانية"
+                      : ""}
                 </div>
               </div>
             ))}

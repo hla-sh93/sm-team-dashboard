@@ -1,19 +1,32 @@
 /**
  * Telegram ingest (§14) — turn an incoming update into dashboard state.
  *
- * Flow: discover the chat → store the message → resolve the company → match the
- * delivery to a piece → close that piece's production card.
+ * Flow: discover the chat → store the message → resolve the sender and the
+ * company → match the delivery to a piece → close that piece's production card
+ * **when the sender may close it**: the card's owner or the lead (قرار القائدة
+ * ١٢/١٠، D3 — «لصاحب الكرت او للمدير (أنا)»).
  *
- * Everything is idempotent: the row id is `<chatId>:<messageId>`, so Telegram
- * retrying a webhook (it will) can never double-count a delivery, and an album
+ * Everything is idempotent: the row id is `<chatId>:<messageId>` and it is
+ * written FIRST, so Telegram retrying a webhook (it will) or an edited message
+ * can never double-count a delivery or a publish confirmation, and an album
  * (one carousel sent as many messages) closes its piece once.
  */
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
-import { companySlug, parseAssetName } from "@/lib/asset-name";
+import { companySlugs, latinDigits, parseAssetName, slugMatches } from "@/lib/asset-name";
 import { currentCycleBucket } from "@/lib/contract";
 import type { TelegramUpdate } from "./client";
-import { matchDelivery, normalizeMessage, parseOffPlanKeywords, type Delivery } from "./match";
+import {
+  DELIVERY_MATCH_KINDS,
+  matchDelivery,
+  normalizeMessage,
+  parseOffPlanKeywords,
+  pieceNamedBy,
+  type Delivery,
+} from "./match";
+
+/** كيف انربط الملف بكرته. */
+export type MatchedBy = "NAME" | "BRIEF" | "TYPE" | "DOCUMENT";
 
 export type IngestOutcome = {
   stored: boolean;
@@ -23,9 +36,15 @@ export type IngestOutcome = {
   unlinked: boolean;
   companyId: string | null;
   taskId: string | null;
-  matchedBy: "NAME" | "BRIEF" | "TYPE" | null;
+  /** `PUBLISH` = رسالة تأكيد نشر سكّرت كرت النشر. */
+  matchedBy: MatchedBy | "PUBLISH" | null;
   /** True when this delivery closed the piece's production card. */
   advanced: boolean;
+  /**
+   * الملف انعرف بس ما سكّر شي، وبيطلع بـ«اليوم» مع سببه: `NOT_OWNER` — بيسمّي كرت
+   * غير المرسِل (D3)، و`taskId` هو هالكرت · `WRONG_TOPIC` — اسم شركة تانية (TR-26).
+   */
+  held?: "NOT_OWNER" | "WRONG_TOPIC";
 };
 
 /**
@@ -49,11 +68,80 @@ export function conversationKey(chatId: string, threadId: number | null | undefi
   return threadId == null ? chatId : `${chatId}#${threadId}`;
 }
 
+// ───────────────────────────────────────────────────────── هويّة المرسِل
+
+export type SenderIdentity = { id: string; name: string; role: string };
+
+const normIdentity = (s: string) =>
+  s.normalize("NFKC").replace(/^@/, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * مين بعت — بالترتيب (قرار D3): المعرّف الرقمي `telegramUserId` ← اسم المستخدم
+ * `telegramUsername` (من `from.username`) ← الأسماء البديلة `telegramAliases` بمطابقة
+ * **كاملة** للاسم الظاهر.
+ *
+ * المسار الحي كان يقرا المعرّف الرقمي بس، وأيمن (٤٠٨ ملف) وماجد (١٣٨) بلاه — فما
+ * كانت ولا قاعدة مرسِل تشتغل لأكبر منتجَين (فحص ١٢/١٠، TR-11). اسم بيطابق شخصين = ما
+ * في هوية: الاسم الغلط أسوأ من المجهول.
+ */
+export async function resolveSender(
+  d: Pick<Delivery, "senderId" | "senderName" | "senderUsername">,
+): Promise<SenderIdentity | null> {
+  if (d.senderId) {
+    const byId = await prisma.employee.findFirst({
+      where: { telegramUserId: d.senderId },
+      select: { id: true, name: true, role: true },
+    });
+    if (byId) return byId;
+  }
+  if (!d.senderUsername && !d.senderName) return null;
+  const people = await prisma.employee.findMany({
+    select: { id: true, name: true, role: true, telegramUsername: true, telegramAliases: true },
+  });
+  const only = (hits: typeof people): SenderIdentity | null =>
+    hits.length === 1 ? { id: hits[0].id, name: hits[0].name, role: hits[0].role } : null;
+  if (d.senderUsername) {
+    const want = normIdentity(d.senderUsername);
+    const hit = only(
+      people.filter((e) => e.telegramUsername && normIdentity(e.telegramUsername) === want),
+    );
+    if (hit) return hit;
+  }
+  if (d.senderName) {
+    const want = normIdentity(d.senderName);
+    const hit = only(
+      people.filter((e) =>
+        (e.telegramAliases ?? "").split(",").map(normIdentity).filter(Boolean).includes(want),
+      ),
+    );
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** «تيم ليدر». */
+const isLead = (role: string) => /ليدر|lead|قائد/i.test(role);
+
+/**
+ * مين بيسكّر كرت إنتاج: صاحبه أو القائدة — قرار القائدة ١٢/١٠ (D3)، أحدث من «الكريدت
+ * للمرسِل» (١/٨) ومن «السكّر لصاحب الكرت بس» (١١/١٠). والكريدت بيضل لصاحب الكرت: ما
+ * في إعادة إسناد للمرسِل. ملف من غيرهن (أو من مرسِل مجهول) بيتخزّن «وصل من غير صاحب
+ * الكرت» وبيطلع بـ«اليوم» للقائدة — حادثة فونيتيك ١٩/٨ (صور المونتيرة سكّرت تصاميم
+ * أيمن) ما بتتكرّر.
+ */
+function mayClose(sender: SenderIdentity | null, card: { assigneeId?: string | null }): boolean {
+  if (!sender) return false;
+  return sender.id === card.assigneeId || isLead(sender.role);
+}
+
+// ───────────────────────────────────────────────────────── الاستقبال
+
 export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcome | null> {
   const msg = update.message ?? update.channel_post ?? update.edited_message;
   if (!msg) return null;
   // Never ingest the bot's own traffic (the brief it sends to the lead).
   if (msg.from?.is_bot) return null;
+  const isEdit = !update.message && !update.channel_post;
 
   const delivery = normalizeMessage(msg);
   const chatTitle = msg.chat.title ?? null;
@@ -91,107 +179,173 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
   });
 
   const companyId = chat.companyId;
+  const base = { chatId, chatTitle, unlinked: companyId == null, companyId };
+  const nothing = { taskId: null, matchedBy: null, advanced: false } as const;
 
-  // 2. Store the message itself — even unlinked/text ones. The log is what the
-  //    «شو انبعت اليوم» panel reads, and plans arrive here as documents.
+  // 2. Store the message FIRST — even unlinked/text ones. The row is the
+  //    idempotency key: a retried or edited «تم النشر» used to close a second
+  //    piece every time, because the confirmation path returned before the row
+  //    was written (فحص ١٢/١٠، TR-08). The log is also what «شو انبعت اليوم» reads.
   const existing = await prisma.telegramMessage.findUnique({ where: { id: delivery.id } });
   if (existing) {
+    // تعديل كابشن ملف ما طابق شي = تصحيح اسم («نسيت الاسم» → بيكتبه بالتعديل):
+    // بياخد جولة مطابقة تانية (TR-30). ملف مطابَق أو نصّ ما بينعاد.
+    if (
+      isEdit &&
+      companyId &&
+      !existing.taskId &&
+      existing.kind !== "TEXT" &&
+      (delivery.caption ?? null) !== (existing.caption ?? null)
+    ) {
+      await prisma.telegramMessage.update({
+        where: { id: existing.id },
+        data: { caption: delivery.caption },
+      });
+      const sender = await resolveSender(delivery);
+      const settled = await settleDelivery(delivery, chatId, companyId, sender);
+      return { ...base, stored: false, ...settled };
+    }
+    const kind = existing.matchedBy;
     return {
+      ...base,
       stored: false,
-      chatId,
-      chatTitle,
-      unlinked: companyId == null,
-      companyId,
       taskId: existing.taskId,
-      matchedBy: (existing.matchedBy as "NAME" | "BRIEF" | "TYPE" | null) ?? null,
+      matchedBy:
+        kind === "PUBLISH" || (kind != null && DELIVERY_MATCH_KINDS.includes(kind) && kind !== "MANUAL")
+          ? (kind as MatchedBy | "PUBLISH")
+          : null,
       advanced: false,
     };
   }
 
-  // «نشر» as a REPLY to the design file is the publisher's confirmation. The
-  // reply names the piece exactly — no content matching, no guessing which of
-  // today's posts went out — so it closes that piece's نشر card and nothing else.
-  const published = await handlePublishConfirmation(msg, chatId, delivery.sentAt);
-  if (published.length)
+  try {
+    await prisma.telegramMessage.create({
+      data: {
+        id: delivery.id,
+        chatId,
+        threadId,
+        messageId: delivery.messageId,
+        sentAt: delivery.sentAt,
+        senderId: delivery.senderId,
+        senderName: delivery.senderName,
+        kind: delivery.kind,
+        fileName: delivery.fileName,
+        caption: delivery.caption,
+        fileId: delivery.fileId,
+        mediaGroupId: delivery.mediaGroupId,
+        companyId,
+        taskId: null,
+        matchedBy: null,
+        confirmed: false,
+      },
+    });
+  } catch (e) {
+    // نفس التحديث بطلبين متوازيين: التاني بيلاقي الصفّ مكتوب — نفس «موجود».
+    if ((e as { code?: string })?.code === "P2002") return { ...base, stored: false, ...nothing };
+    throw e;
+  }
+
+  const sender = await resolveSender(delivery);
+  const replyTo = msg.reply_to_message?.message_id ?? null;
+
+  // 3. نصّ بلا ملف = يا محادثة يا تأكيد نشر.
+  if (delivery.kind === "TEXT") {
+    const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
+    const closed = await handlePublishConfirmation({
+      text,
+      replyTo,
+      conversation: chatId,
+      at: delivery.sentAt,
+      sender,
+    });
+    if (closed.length) await markRowPublish(delivery.id, closed[0]);
     return {
+      ...base,
       stored: true,
-      chatId,
-      chatTitle,
-      unlinked: companyId == null,
-      companyId,
-      taskId: published[0],
-      matchedBy: "NAME",
-      advanced: true,
+      taskId: closed[0] ?? null,
+      matchedBy: closed.length ? "PUBLISH" : null,
+      advanced: closed.length > 0,
     };
+  }
+  if (!companyId) return { ...base, stored: true, ...nothing };
 
-  const match = companyId ? await matchAgainstCompany(delivery, companyId) : null;
+  // 4. الملف أولاً، والكابشن سياق (TR-08): «Zulu-post-10-3.jpg» بكابشن «جاهز ✅» من
+  //    المصمّم كان ينقرا تأكيد نشر — بيسكّر كرت نشر أقدم والتصميم بيضيع.
+  const settled = await settleDelivery(delivery, chatId, companyId, sender);
+  if (settled.advanced || (settled.taskId && !settled.held) || settled.held === "WRONG_TOPIC") {
+    return { ...base, stored: true, ...settled };
+  }
 
-  await prisma.telegramMessage.create({
-    data: {
-      id: delivery.id,
-      chatId,
-      threadId,
-      messageId: delivery.messageId,
-      sentAt: delivery.sentAt,
-      senderId: delivery.senderId,
-      senderName: delivery.senderName,
-      kind: delivery.kind,
-      fileName: delivery.fileName,
-      caption: delivery.caption,
-      fileId: delivery.fileId,
-      mediaGroupId: delivery.mediaGroupId,
-      companyId,
-      taskId: match?.taskId ?? null,
-      matchedBy: match?.by ?? null,
-      // The lead asked for automatic matching, so a match counts immediately;
-      // the «اليوم» screen still shows how it was matched and can undo it.
-      confirmed: match != null,
-    },
+  // 5. ملف ما سكّر شي، وكابشنه تأكيد نشر من الناشر أو القائدة (لقطة المنشور، أو ملف
+  //    القطعة نفسه بـ«تم النشر») — نفس قواعد الرسالة النصّية.
+  const caption = msg.caption?.trim();
+  if (caption) {
+    const closed = await handlePublishConfirmation({
+      text: caption,
+      replyTo,
+      pieceTaskId: settled.held === "NOT_OWNER" ? settled.taskId : null,
+      conversation: chatId,
+      at: delivery.sentAt,
+      sender,
+    });
+    if (closed.length) {
+      await markRowPublish(delivery.id, closed[0]);
+      return { ...base, stored: true, taskId: closed[0], matchedBy: "PUBLISH", advanced: true };
+    }
+  }
+  return { ...base, stored: true, ...settled };
+}
+
+const markRowPublish = (id: string, taskId: string) =>
+  prisma.telegramMessage.update({
+    where: { id },
+    data: { taskId, matchedBy: "PUBLISH", confirmed: true },
   });
 
-  // A carousel arrives as several files for ONE post. Record the slide count on
-  // the design card: §5 charges a design unit per slide, so «كاروسيل من ٥» is
-  // five units of أيمن's day even though the client sees one post.
-  if (match) await recordCarouselSlides(match.taskId, delivery);
-
-  const advanced = match
-    ? await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId, {
-        by: match.by,
-        evidence: delivery.fileName ?? delivery.caption?.slice(0, 40) ?? "(صورة بلا اسم)",
-      })
-    : false;
-
-  return {
-    stored: true,
-    chatId,
-    chatTitle,
-    unlinked: companyId == null,
-    companyId,
-    taskId: match?.taskId ?? null,
-    matchedBy: match?.by ?? null,
-    advanced,
-  };
-}
+// ───────────────────────────────────────────────────────── تأكيد النشر
 
 /**
  * كلمات تأكيد النشر — على مستويين، لأنّ نفس الكلمة بتكون سؤالاً أو خبراً.
  *
- * القائدة (8/8): «"نشرت" ممكن تكون سؤال إذا ما كان عمر باعتها». فـ«نشرت
- * الستوري؟» من المصمّمة سؤال، ومن الناشر خبر. القاعدة:
- *   - `PUBLISHED_EXPLICIT`: صيغة ما بتنقال إلا كخبر («تم النشر»، «اننشر»،
- *     ✅) — مقبولة من أي حدا بالفريق.
- *   - `PUBLISHED_LOOSE`: تصريف ممكن يكون سؤالاً («نشرت»، «نزل») — مقبولة
- *     **بس** من المخوّلين بالنشر (الناشر والقائدة).
+ * القائدة (8/8): «"نشرت" ممكن تكون سؤال إذا ما كان عمر باعتها».
+ *   - `PUBLISHED_EXPLICIT`: صيغة ما بتنقال إلا كخبر («تم النشر»، «اننشر»، ✅).
+ *   - `PUBLISHED_LOOSE`: تصريف ممكن يكون سؤالاً («نشرت»، «نزل»).
  * وبأي حال: علامة استفهام بالرسالة بتلغي التأكيد — السؤال مو إنجاز.
  *
  * «منشور» و«ناشر» مستثنيان بالتصميم: وصف مو تأكيد.
+ *
+ * فحص ١٢/١٠ (TR-01): ٣٤ من ٣٨ إقفال نشر آلي كانوا زور — ٢٨ كابشن لنوال فيه ✅
+ * («…التداول✅ 📍»)، ودردشة عمر («عليها حقوق نشر»، والنفي «ما نزلت عالموقع»)، وشكوى
+ * حلا («الفيديو نزل بدقة سيئة»). فالتأكيد صار بشروط كلها سوا (`isPublishConfirmation`):
+ * من الناشر أو القائدة **بس** (D3، للصيغة الصريحة كمان) · الرسالة **بتبلّش** بالتأكيد
+ * أو هي رموز ✅ بس · قصيرة (≤ ٨ كلمات، سطر واحد إلا الرد) · بلا نفي.
  */
 const PUBLISHED_EXPLICIT =
   /(^|\s)(?:تم\s+النشر|ان+نشر(?:ت)?|published)(?=\s|$|[.،!])|✅|☑️|✔️/i;
 const PUBLISHED_LOOSE =
   /(^|\s)(?:نشر(?:ت|نا|و|وا)?|نزل(?:ت|نا|و|وا)?|نزّل(?:ت|نا)?|publish(?:ed)?)(?=\s|$|[.،!])/i;
+/** نفي: «ما نزلت عالموقع» · «لسا ما انشرت» · «مش منشور». */
+const PUBLISH_NEGATION =
+  /(^|\s)(?:ما|مش|مو|لسا|لسّا|لسه|لم|لن|not|didn'?t|hasn'?t|haven'?t)(?=\s|$)/i;
+/** تأكيد بالرموز لحالها: «✅» · «تم ✅». */
+const CHECKS_ONLY = /^(?:تم)?(?:✅|☑️|✔️|☑|✔)+$/u;
+const MAX_CONFIRMATION_WORDS = 8;
 
-/** مين مخوّل يأكّد النشر: الناشر والقائدة (القائدة 8/8: «أحياناً حلا بتقول»). */
+function isPublishConfirmation(text: string, anchored: boolean): boolean {
+  const body = text.trim();
+  if (!body) return false;
+  if (/[?؟]/.test(body)) return false;
+  if (PUBLISH_NEGATION.test(body)) return false;
+  if (!anchored && body.split(/\r?\n/).filter((line) => line.trim()).length > 1) return false;
+  if (body.split(/\s+/).length > MAX_CONFIRMATION_WORDS) return false;
+  if (CHECKS_ONLY.test(body.replace(/\s+/g, ""))) return true;
+  // الرسالة لازم **تبلّش** بالتأكيد (بعد أي رمز بأولها): «تم النشر» · «نشرت 7-2» ·
+  // «✅ تم النشر». كلمة «نشر» أو ✅ بنصّ حديث مو تأكيد.
+  const head = body.replace(/^[^\p{L}\p{N}]+/u, "");
+  return [PUBLISHED_EXPLICIT, PUBLISHED_LOOSE].some((re) => re.exec(head)?.index === 0);
+}
+
+/** مين مخوّل يأكّد النشر: الناشر والقائدة (القائدة 8/8: «أحياناً حلا بتقول»؛ D3: للصيغ كلها). */
 function mayConfirmPublish(emp: { role: string } | null): boolean {
   if (!emp) return false;
   return /ناشر|publish/i.test(emp.role) || /ليدر|lead|قائد/i.test(emp.role);
@@ -206,13 +360,24 @@ function mayConfirmPublish(emp: { role: string } | null): boolean {
  */
 function appendNote(existing: string | null, line: string | null): string | undefined {
   if (!line) return undefined;
-  const parts = (existing ?? "")
-    .split(/\r?\n| · /)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const parts = noteParts(existing);
   if (parts.includes(line.trim())) return undefined;
   return [...parts, line.trim()].join(" · ");
 }
+
+/** عكس `appendNote` — لـ«مو هي». `undefined` = السطر مش موجود، ما في تغيير. */
+function withoutNote(existing: string | null, line: string): string | null | undefined {
+  const parts = noteParts(existing);
+  if (!parts.includes(line.trim())) return undefined;
+  const rest = parts.filter((part) => part !== line.trim());
+  return rest.length ? rest.join(" · ") : null;
+}
+
+const noteParts = (existing: string | null) =>
+  (existing ?? "")
+    .split(/\r?\n| · /)
+    .map((part) => part.trim())
+    .filter(Boolean);
 
 /** إقفال كرت نشر واحد بوقت النشر الحقيقي + دليله. */
 async function markPublished(publishCard: { id: string; startedAt: Date | null; notes: string | null }, at: Date, why: string) {
@@ -242,61 +407,65 @@ async function markPublished(publishCard: { id: string; startedAt: Date | null; 
  * نفهم الكلام يلي بيكتبو أصلاً.
  *
  * تلات أشكال، من الأقوى للأضعف:
- *   ١. **رد** بـ«نشر» على الملف → القطعة معروفة بيقين مطلق.
+ *   ١. **رد** بـ«نشر» على الملف (أو «تم النشر» كابشن على ملف القطعة نفسه) → القطعة
+ *      معروفة بيقين.
  *   ٢. رسالة بتسمّي القطع: «نشرت 7-2 و7-3» أو «تم نشر بوست 3» → منسكّرهن كلهن.
+ *      الرقم بيندوّر بالدورة الشغّالة أولاً ثم الأقدم (متبقّي)؛ وإذا ما انلقى، أو
+ *      كان ملتبساً (رقم بلا نوع مفتوح ببوست وستوري) → **ما منسكّر شي**: «تم نشر بوست
+ *      3» لمتبقّي أيلول كانت تنزل لـ«أقدم مستحقّة» وتسكّر بوست ٢ (فحص ١٢/١٠، TR-09).
  *   ٣. رسالة مجرّدة «تم النشر» → بتسكّر **قطعة وحدة**: أقدم كرت نشر مستحق
- *      اليوم أو قبلو لهالشركة. عمر بيكتبها مرة لكل قطعة (شفناها مرتين ورا بعض
- *      بتوبيك وصل 2/8) — فرسالتان بتسكّروا قطعتين، وهاد بالضبط سلوكه.
+ *      اليوم أو قبلو لهالشركة. عمر بيكتبها مرة لكل قطعة.
  *
- * ما منسكّر قطعة موعدها بالمستقبل: «تم النشر» اليوم ما بتعني نشر بكرا.
+ * ما منسكّر قطعة موعدها بالمستقبل بالصيغة المجرّدة: «تم النشر» اليوم ما بتعني نشر بكرا.
  * بترجّع معرّفات الكروت يلي انسكّرت.
  */
-async function handlePublishConfirmation(
-  msg: {
-    reply_to_message?: { message_id?: number };
-    text?: string;
-    caption?: string;
-    from?: { id?: number };
-  },
-  chatId: string,
-  at: Date,
-): Promise<string[]> {
-  const text = `${msg.text ?? ""} ${msg.caption ?? ""}`.trim();
-  if (!text) return [];
-  // سؤال مو خبر: «نشرت الستوري؟» ما بتسكّر شي مهما كان المرسل.
-  if (/[?؟]/.test(text)) return [];
+async function handlePublishConfirmation(input: {
+  text: string;
+  replyTo: number | null;
+  /** كرت إنتاج انعرف من ملف الرسالة نفسها. */
+  pieceTaskId?: string | null;
+  conversation: string;
+  at: Date;
+  sender: SenderIdentity | null;
+}): Promise<string[]> {
+  const { text, replyTo, pieceTaskId, conversation, at, sender } = input;
+  if (!mayConfirmPublish(sender)) return [];
+  if (!isPublishConfirmation(text, replyTo != null || pieceTaskId != null)) return [];
+  const who = sender ? ` · ${sender.name}` : "";
 
-  const sender = msg.from?.id
-    ? await prisma.employee.findFirst({ where: { telegramUserId: String(msg.from.id) } })
-    : null;
-  const confirmed = PUBLISHED_EXPLICIT.test(text)
-    ? true
-    : PUBLISHED_LOOSE.test(text) && mayConfirmPublish(sender);
-  if (!confirmed) return [];
-
-  // ١) رد على ملف مطابَق — أقوى دليل.
-  const replyTo = msg.reply_to_message?.message_id;
-  if (replyTo) {
+  // ١) رد على ملف مطابَق، أو ملف القطعة نفسه — أقوى دليل.
+  let productionId = pieceTaskId ?? null;
+  let fileLabel = "ملف القطعة";
+  if (!productionId && replyTo) {
     const target = await prisma.telegramMessage.findFirst({
-      where: { chatId, messageId: replyTo, taskId: { not: null } },
+      where: {
+        chatId: conversation,
+        messageId: replyTo,
+        taskId: { not: null },
+        matchedBy: { in: [...DELIVERY_MATCH_KINDS, "NOT_OWNER"] },
+      },
     });
     if (target?.taskId) {
-      const production = await prisma.task.findUnique({ where: { id: target.taskId } });
-      if (production?.pipelineKey) {
-        const card = await prisma.task.findFirst({
-          where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
-        });
-        if (card && !isTaskDoneState(card)) {
-          await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${target.fileName ?? "الملف"}${sender ? ` · ${sender.name}` : ""}`);
-          return [card.id];
-        }
-      }
-      return [];
+      productionId = target.taskId;
+      fileLabel = target.fileName ?? "الملف";
     }
+  }
+  if (productionId) {
+    const production = await prisma.task.findUnique({ where: { id: productionId } });
+    if (production?.pipelineKey) {
+      const card = await prisma.task.findFirst({
+        where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
+      });
+      if (card && !isTaskDoneState(card)) {
+        await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${fileLabel}${who}`);
+        return [card.id];
+      }
+    }
+    return [];
   }
 
   // بعدها لازم نعرف الشركة — بلاها ما في مجال نحزر أي قطعة.
-  const chat = await prisma.telegramChat.findUnique({ where: { id: chatId } });
+  const chat = await prisma.telegramChat.findUnique({ where: { id: conversation } });
   if (!chat?.companyId) return [];
   const company = await prisma.company.findUnique({ where: { id: chat.companyId } });
   if (!company) return [];
@@ -313,38 +482,40 @@ async function handlePublishConfirmation(
   //
   // مو `parseAssetName` — هي بتلزمها سلاغ لاتيني («Wasl 7-2») والناشر بيكتب
   // عربي بلا اسم شركة، لأنّ الشركة معروفة من التوبيك أصلاً. فمنقرأ النوع
-  // والأرقام مباشرة، ومنحصر الاختيار بالدورة الشغّالة.
-  const named: string[] = [];
-  const bucket = currentCycleBucket(company as never, at);
-  const typeWord = /بوست|post/i.test(text)
+  // والأرقام مباشرة.
+  const said = latinDigits(text);
+  const typeWord = /بوست|post/i.test(said)
     ? "POST"
-    : /ستوري|story/i.test(text)
+    : /ستوري|story/i.test(said)
       ? "STORY"
-      : /ريل|reel/i.test(text)
+      : /ريل|reel/i.test(said)
         ? "REEL"
         : null;
   /** أرقام القطع المذكورة: «7-2» بتعطي ٢ (شهر-قطعة)، و«ستوري 16» بتعطي ١٦. */
   const pieceNos: number[] = [];
-  for (const m of text.matchAll(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/g)) pieceNos.push(Number(m[2]));
+  for (const m of said.matchAll(/(\d{1,2})\s*-\s*(\d{1,3})(?!\d)/g)) pieceNos.push(Number(m[2]));
   if (!pieceNos.length)
-    for (const m of text.matchAll(/(?:بوست|ستوري|ريل|post|story|reel)\s*[-#]?\s*(\d{1,3})/gi))
+    for (const m of said.matchAll(/(?:بوست|ستوري|ريل|post|story|reel)\s*[-#]?\s*(\d{1,3})/gi))
       pieceNos.push(Number(m[1]));
-  for (const no of pieceNos) {
-    const hit = open.find(
-      (t) =>
-        t.pieceNo === no &&
-        (!typeWord || t.type === typeWord) &&
-        t.year === bucket.year &&
-        t.month === bucket.month,
-    );
-    if (hit && !named.includes(hit.id)) named.push(hit.id);
-  }
-  if (named.length) {
-    for (const id of named) {
-      const card = open.find((t) => t.id === id)!;
-      await markPublished(card, at, `«${text.slice(0, 40)}»${sender ? ` · ${sender.name}` : ""}`);
+  if (pieceNos.length) {
+    const bucket = currentCycleBucket(company as never, at);
+    const key = (t: { year: number; month: number }) => t.year * 12 + t.month;
+    const activeKey = key(bucket);
+    const named: typeof open = [];
+    for (const no of pieceNos) {
+      // الدورة الشغّالة أولاً، وبعدها الأحدث من الأقدم (متبقّي) — ولا مرة دورة جاية.
+      const pool = open.filter(
+        (t) => t.pieceNo === no && (!typeWord || t.type === typeWord) && key(t) <= activeKey,
+      );
+      if (!pool.length) continue;
+      const newest = Math.max(...pool.map(key));
+      const inBucket = pool.filter((t) => key(t) === newest);
+      // «7-2» بلا كلمة نوع وبالدورة بوست ٢ وستوري ٢ مفتوحين = ما منعرف أي وحدة.
+      if (!typeWord && new Set(inBucket.map((t) => t.type)).size > 1) continue;
+      if (!named.includes(inBucket[0])) named.push(inBucket[0]);
     }
-    return named;
+    for (const card of named) await markPublished(card, at, `«${text.slice(0, 40)}»${who}`);
+    return named.map((card) => card.id);
   }
 
   // ٣) تأكيد مجرّد → أقدم قطعة مستحقّة اليوم أو قبلو. ولا مرة قطعة مستقبلية.
@@ -358,25 +529,16 @@ async function handlePublishConfirmation(
   const content = due.filter((t) => t.type != null);
   const pick = (content.length ? content : due)[0];
   if (!pick) return [];
-  await markPublished(pick, at, `«${text.slice(0, 40)}»${sender ? ` · ${sender.name}` : ""} — أقدم قطعة مستحقّة`);
+  await markPublished(pick, at, `«${text.slice(0, 40)}»${who} — أقدم قطعة مستحقّة`);
   return [pick.id];
 }
 
-/** Find the piece this delivery belongs to, among the company's open work. */
-async function matchAgainstCompany(delivery: Delivery, companyId: string) {
-  // An album is ONE piece: if a sibling message already matched, reuse nothing —
-  // the piece is already closed and a second match would steal the next piece.
-  if (delivery.mediaGroupId) {
-    const sibling = await prisma.telegramMessage.findFirst({
-      where: { mediaGroupId: delivery.mediaGroupId, chatId: delivery.chatId, taskId: { not: null } },
-    });
-    if (sibling?.taskId)
-      return { taskId: sibling.taskId, by: (sibling.matchedBy as "NAME" | "BRIEF" | "TYPE") ?? "TYPE" };
-  }
+// ───────────────────────────────────────────────────────── مطابقة الملف وإقفاله
 
+/** شركة الملف وكروتها — كل يلي بتحتاجه المطابقة. */
+async function companyContext(companyId: string, at: Date) {
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) return null;
-
   // المسكّرة بتلزم المطابقة متل المفتوحة: اسم بيسمّي قطعة مسلّمة معناه إعادة
   // إرسال، فما بيصحّ يمرق على قطعة تانية بنفس الرقم.
   const all = await prisma.task.findMany({
@@ -392,26 +554,153 @@ async function matchAgainstCompany(delivery: Delivery, companyId: string) {
   const candidates = all.filter(
     (t) => t.board !== "DONE" && !isTaskDoneState(t) && t.status !== "READY" && t.status !== "PUBLISHED",
   );
-  if (!candidates.length) return null;
   const closed = all.filter((t) => !candidates.includes(t));
+  const others = await prisma.company.findMany({
+    where: { id: { not: companyId } },
+    select: { name: true, slug: true },
+  });
+  const slugs = companySlugs(company);
+  return {
+    company,
+    slugs,
+    slug: slugs.join("|"),
+    candidates,
+    closed,
+    foreignSlugs: others.flatMap((co) => companySlugs(co)),
+    // الدورة الشغّالة **وقت الإرسال** مو وقت القراءة: ملف انبعت آخر الدورة
+    // وانقرا بعد ما بلّشت الجديدة لازم يضل تبع دورتو.
+    bucket: currentCycleBucket(company, at),
+  };
+}
 
-  // مين بعت الملف — نفس المصدر يلي بينسند إله الكرت (`telegramUserId`).
-  // بيلزم **قبل** المطابقة كمان، لأنّه بيحدّد أي مرحلة من القطعة خلصت.
-  const sender = delivery.senderId
-    ? await prisma.employee.findFirst({ where: { telegramUserId: delivery.senderId } })
-    : null;
+type Settled = Pick<IngestOutcome, "taskId" | "matchedBy" | "advanced" | "held">;
+
+/**
+ * الملف ← قطعته ← إقفالها (أو حجزها) — ونتيجته بتنكتب على صفّ الرسالة. مشترك بين
+ * الويبهوك وتعديل الكابشن وإعادة المطابقة، فالقواعد وحدة بالتلاتة.
+ */
+async function settleDelivery(
+  delivery: Delivery,
+  conversation: string,
+  companyId: string,
+  sender: SenderIdentity | null,
+): Promise<Settled> {
+  const none: Settled = { taskId: null, matchedBy: null, advanced: false };
+  const setRow = (data: { taskId: string | null; matchedBy: string | null; confirmed: boolean }) =>
+    prisma.telegramMessage.update({ where: { id: delivery.id }, data });
+  const ctx = await companyContext(companyId, delivery.sentAt);
+  if (!ctx) return none;
+
+  const match = await matchAgainstCompany(delivery, ctx, conversation, sender);
+  if (match) {
+    const card = await prisma.task.findUnique({ where: { id: match.taskId } });
+    if (card) {
+      if (!mayClose(sender, card)) {
+        await setRow({ taskId: card.id, matchedBy: "NOT_OWNER", confirmed: false });
+        return { taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" };
+      }
+      const advanced = await closeProductionCard(card, delivery.sentAt, {
+        by: match.by,
+        evidence: evidenceOf(delivery),
+      });
+      await setRow({ taskId: card.id, matchedBy: match.by, confirmed: true });
+      // A carousel arrives as several files for ONE post. Record the slide count on
+      // the design card: §5 charges a design unit per slide, so «كاروسيل من ٥» is
+      // five units of أيمن's day even though the client sees one post.
+      await recordCarouselSlides(card.id, delivery);
+      return { taskId: card.id, matchedBy: match.by, advanced };
+    }
+  }
+
+  const named = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+
+  // شريحة ٢…N من كاروسيل قطعته انسكّرت بأول شريحة (TR-14): نفس الكرت، وعدد أكبر.
+  if (named?.slideNo) {
+    const card = pieceNamedBy(
+      delivery,
+      ctx.slug,
+      ctx.closed.filter((t) => t.stage === "DESIGN"),
+      ctx.bucket,
+    );
+    if (card) {
+      if (!mayClose(sender, card)) {
+        await setRow({ taskId: card.id, matchedBy: "NOT_OWNER", confirmed: false });
+        return { taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" };
+      }
+      await setRow({ taskId: card.id, matchedBy: "NAME", confirmed: true });
+      await recordCarouselSlides(card.id, delivery);
+      return { taskId: card.id, matchedBy: "NAME", advanced: false };
+    }
+  }
+
+  // اسم شركة تانية صريح بتوبيك هالشركة (TR-26): ما بيسكّر شي هون — بس بيطلع بـ«اليوم»
+  // بسببه بدل «ما طابق شي» الصامت (phoenitech-reel-10-1 بتوبيك التوظيف).
+  if (
+    named &&
+    !ctx.slugs.some((s) => slugMatches(named.slug, s)) &&
+    ctx.foreignSlugs.some((s) => slugMatches(named.slug, s))
+  ) {
+    await setRow({ taskId: null, matchedBy: "WRONG_TOPIC", confirmed: false });
+    return { ...none, held: "WRONG_TOPIC" };
+  }
+
+  await setRow({ taskId: null, matchedBy: null, confirmed: false });
+  return none;
+}
+
+const evidenceOf = (d: Pick<Delivery, "fileName" | "caption">) =>
+  d.fileName ?? d.caption?.slice(0, 40) ?? "(صورة بلا اسم)";
+
+const BY_LABEL: Record<MatchedBy, string> = {
+  NAME: "بالاسم",
+  BRIEF: "بالمحتوى",
+  TYPE: "بالنوع",
+  DOCUMENT: "مستند",
+};
+const deliveryLine = (by: MatchedBy, evidence: string) =>
+  `سُلّم على تلغرام (${BY_LABEL[by]}): ${evidence}`;
+const cascadeLine = (evidence: string) => `انسكّر مع مونتاجه على تلغرام: ${evidence}`;
+const CLOSING_KINDS = new Set<string>(["NAME", "BRIEF", "TYPE", "DOCUMENT"]);
+
+/** Find the piece this delivery belongs to, among the company's open work. */
+async function matchAgainstCompany(
+  delivery: Delivery,
+  ctx: NonNullable<Awaited<ReturnType<typeof companyContext>>>,
+  conversation: string,
+  sender: SenderIdentity | null,
+): Promise<{ taskId: string; by: MatchedBy } | null> {
+  // صورة **بلا اسم** بألبوم = نفس قطعة أختها (TR-10). المقارنة بمعرّف المحادثة
+  // المخزّن (`محادثة#توبيك`) — كانت بالمعرّف الخام فما تلاقي ولا أخت بالتوبيكات،
+  // وألبوم ٣ صور سكّر ٣ كروت. الملف المسمّى بيمشي باسمه: الفريق بيبعت قطع مختلفة
+  // مسمّاة بألبوم واحد (BW-post-9-1…4).
+  if (delivery.mediaGroupId && !delivery.fileName && !delivery.caption) {
+    const sibling = await prisma.telegramMessage.findFirst({
+      where: {
+        mediaGroupId: delivery.mediaGroupId,
+        chatId: conversation,
+        id: { not: delivery.id },
+        taskId: { not: null },
+        matchedBy: { in: [...CLOSING_KINDS, "NOT_OWNER"] },
+      },
+      orderBy: { messageId: "asc" },
+    });
+    if (sibling?.taskId)
+      return {
+        taskId: sibling.taskId,
+        by: CLOSING_KINDS.has(sibling.matchedBy ?? "") ? (sibling.matchedBy as MatchedBy) : "TYPE",
+      };
+  }
 
   return matchDelivery(
     delivery,
-    companySlug(company),
-    candidates,
-    parseOffPlanKeywords(company.offPlanKeywords),
-    closed,
-    // الدورة الشغّالة **وقت الإرسال** مو وقت القراءة: ملف انبعت آخر الدورة
-    // وانقرا بعد ما بلّشت الجديدة لازم يضل تبع دورتو.
-    currentCycleBucket(company, delivery.sentAt),
+    ctx.slug,
+    ctx.candidates,
+    parseOffPlanKeywords(ctx.company.offPlanKeywords),
+    ctx.closed,
+    ctx.bucket,
     undefined,
     sender?.id ?? null,
+    ctx.foreignSlugs,
   );
 }
 
@@ -437,55 +726,49 @@ async function recordCarouselSlides(taskId: string, delivery: Delivery): Promise
  * actually happened in the group rather than when someone remembered to move a
  * card. Never touches an already-closed card.
  *
- * The card is also re-credited to WHOEVER ACTUALLY SENT IT. The plan says who
- * was supposed to do a piece; the group says who did. When سابين delivered the
- * Jobs posts they closed حلا's cards and the reports read as حلا's work — the
- * lead caught it. The sender is matched by numeric Telegram id
- * (`Employee.telegramUserId`); an unknown sender leaves the owner untouched,
- * because a wrong name is worse than a stale one. Pinned, so regenerating the
- * month can't hand the piece back to the planned owner.
+ * The caller has already checked the sender may close it (`mayClose`). The card
+ * keeps its owner: the credit stays with whoever the piece is assigned to (D3).
  */
 async function closeProductionCard(
-  taskId: string,
+  t: {
+    id: string;
+    stage: string | null;
+    status: string;
+    board: string | null;
+    blockedById: string | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    finishedAt: Date | null;
+    notes: string | null;
+  },
   at: Date,
-  senderId?: string | null,
   /** الدليل يلي سكّر الكرت — بينكتب عليه متل ما بيعمل استيراد التصدير. */
-  proof?: { by: "NAME" | "BRIEF" | "TYPE"; evidence: string },
+  proof: { by: MatchedBy; evidence: string },
 ): Promise<boolean> {
-  const t = await prisma.task.findUnique({ where: { id: taskId } });
-  if (!t || isTaskDoneState(t)) return false;
-  const doer = senderId
-    ? await prisma.employee.findFirst({ where: { telegramUserId: senderId } })
-    : null;
-  const credited = doer && doer.id !== t.assigneeId ? doer.id : null;
+  if (isTaskDoneState(t)) return false;
   // بلا هالسطر الكرت بينسكّر بلا سبب مكتوب عليه: الربط موجود بجدول الرسائل بس،
   // فأي تقرير أو فحص بيقرا الكرت لحاله بيشوف «منجز» بلا ما يعرف مين ولا شو.
-  // الاستيراد اليدوي كان بيكتبها والبوت الحي — يلي هو المسار الأساسي — لأ.
-  const note = proof
-    ? `سُلّم على تلغرام (${proof.by === "NAME" ? "بالاسم" : proof.by === "BRIEF" ? "بالمحتوى" : "بالنوع"}): ${proof.evidence}`
-    : null;
+  const notes = appendNote(t.notes, deliveryLine(proof.by, proof.evidence));
   await prisma.task.update({
-    where: { id: taskId },
+    where: { id: t.id },
     data: {
       status: "READY",
       board: "DONE",
       startedAt: t.startedAt ?? at,
       finishedAt: at,
       completedAt: t.completedAt ?? at,
-      ...(() => {
-        const notes = appendNote(t.notes, note);
-        return notes ? { notes } : {};
-      })(),
-      ...(credited ? { assigneeId: credited, isPinned: true } : {}),
+      ...(notes ? { notes } : {}),
     },
   });
   // A finished montage proves the shoot happened — closing the cut while its
-  // تصوير card stays open would leave ماجد "late" for footage the team already
-  // has. Only the upstream blocker, and only if it is still open; the credit
-  // stays with whoever the shoot was assigned to.
+  // تصوير card stays open would leave the photographer "late" for footage the
+  // team already has. Only the upstream blocker, and only if it is still open;
+  // the credit stays with whoever the shoot was assigned to. With its own
+  // evidence line (WORK_RULES §٢) so «مو هي» can tell what it closed (TR-12).
   if (t.stage === "EDIT" && t.blockedById) {
     const shoot = await prisma.task.findUnique({ where: { id: t.blockedById } });
     if (shoot && !isTaskDoneState(shoot)) {
+      const shootNotes = appendNote(shoot.notes, cascadeLine(proof.evidence));
       await prisma.task.update({
         where: { id: shoot.id },
         data: {
@@ -494,6 +777,7 @@ async function closeProductionCard(
           startedAt: shoot.startedAt ?? at,
           finishedAt: shoot.finishedAt ?? at,
           completedAt: shoot.completedAt ?? at,
+          ...(shootNotes ? { notes: shootNotes } : {}),
         },
       });
     }
@@ -501,7 +785,13 @@ async function closeProductionCard(
   return true;
 }
 
-/** Undo an automatic match (the «مو هي» button on the اليوم screen). */
+/**
+ * Undo an automatic match (the «مو هي» button on the اليوم screen).
+ *
+ * بيمحي أثر الإقفال كلّه (فحص ١٢/١٠، TR-12): الكرت بيرجع مفتوح بلا سطر «سُلّم على
+ * تلغرام…» تبعه، والتصوير يلي انسكّر بالتتابع مع هالمونتاج بيرجع كمان. صفّ ما سكّر
+ * شي («من غير صاحب الكرت»، تأكيد نشر) بينفكّ ربطه بس.
+ */
 export async function unmatchMessage(messageId: string): Promise<void> {
   const m = await prisma.telegramMessage.findUnique({ where: { id: messageId } });
   if (!m) return;
@@ -509,18 +799,48 @@ export async function unmatchMessage(messageId: string): Promise<void> {
     where: { id: messageId },
     data: { taskId: null, matchedBy: null, confirmed: false },
   });
-  if (!m.taskId) return;
+  if (!m.taskId || !m.confirmed || !CLOSING_KINDS.has(m.matchedBy ?? "")) return;
   // Reopen the card only if this delivery is what closed it.
   const others = await prisma.telegramMessage.count({
-    where: { taskId: m.taskId, id: { not: messageId } },
+    where: {
+      taskId: m.taskId,
+      id: { not: messageId },
+      confirmed: true,
+      matchedBy: { in: [...CLOSING_KINDS] },
+    },
   });
   if (others > 0) return;
   const t = await prisma.task.findUnique({ where: { id: m.taskId } });
   if (!t || t.stage === "PUBLISH") return;
+  const evidence = evidenceOf(m);
+  const notes = withoutNote(t.notes, deliveryLine(m.matchedBy as MatchedBy, evidence));
   await prisma.task.update({
     where: { id: m.taskId },
-    data: { status: "IN_PROGRESS", board: "DOING", finishedAt: null, completedAt: null },
+    data: {
+      status: "IN_PROGRESS",
+      board: "DOING",
+      finishedAt: null,
+      completedAt: null,
+      ...(notes !== undefined ? { notes } : {}),
+    },
   });
+  if (t.stage === "EDIT" && t.blockedById) {
+    const shoot = await prisma.task.findUnique({ where: { id: t.blockedById } });
+    const shootNotes = shoot ? withoutNote(shoot.notes, cascadeLine(evidence)) : undefined;
+    // بس إذا هالملف هو يلي سكّره (سطره عليه) — تصوير مسكّر بإيد المصوّر بيضل.
+    if (shoot && shootNotes !== undefined) {
+      await prisma.task.update({
+        where: { id: shoot.id },
+        data: {
+          status: "IN_PROGRESS",
+          board: "DOING",
+          finishedAt: null,
+          completedAt: null,
+          notes: shootNotes,
+        },
+      });
+    }
+  }
 }
 
 /**
@@ -529,11 +849,13 @@ export async function unmatchMessage(messageId: string): Promise<void> {
  * تشخيص 5/8 كشف توبيكات الإنتاج مفكوكة الربط: البوت خزّن مئات الرسائل بلا
  * `companyId` فولا ملف طابق. بعد الربط (`link-telegram-topics`)، هاد بيعيد
  * تمرير المخزّن على نفس مسار المطابقة الحي بالضبط — نفس القواعد، نفس الدليل
- * على الكرت، ونفس نسب الكريدت للمرسل. متكافئ: الرسالة المطابقة بتنتخطى.
+ * على الكرت، ونفس شرط المرسِل (D3). متكافئ: الرسالة المطابقة بتنتخطى.
  */
 export async function rematchStoredMessage(messageId: string): Promise<IngestOutcome["matchedBy"]> {
   const m = await prisma.telegramMessage.findUnique({ where: { id: messageId } });
-  if (!m || m.taskId || m.kind === "TEXT") return null;
+  // صفّ ما انربط، أو انحجز («من غير صاحب الكرت»/«توبيك غلط») — بيستاهل جولة تانية
+  // بعد ربط التوبيك أو إضافة اسم بديل لموظف. المطابَق (`confirmed`) بينتخطى.
+  if (!m || m.confirmed || m.kind === "TEXT") return null;
   const chat = await prisma.telegramChat.findUnique({ where: { id: m.chatId } });
   if (!chat?.companyId) return null;
 
@@ -550,19 +872,7 @@ export async function rematchStoredMessage(messageId: string): Promise<IngestOut
     fileId: m.fileId,
     mediaGroupId: m.mediaGroupId,
   };
-  const match = await matchAgainstCompany(delivery, chat.companyId);
-  await prisma.telegramMessage.update({
-    where: { id: m.id },
-    data: {
-      companyId: chat.companyId,
-      ...(match ? { taskId: match.taskId, matchedBy: match.by, confirmed: true } : {}),
-    },
-  });
-  if (!match) return null;
-  await recordCarouselSlides(match.taskId, delivery);
-  await closeProductionCard(match.taskId, delivery.sentAt, delivery.senderId, {
-    by: match.by,
-    evidence: delivery.fileName ?? delivery.caption?.slice(0, 40) ?? "(صورة بلا اسم)",
-  });
-  return match.by;
+  await prisma.telegramMessage.update({ where: { id: m.id }, data: { companyId: chat.companyId } });
+  const settled = await settleDelivery(delivery, m.chatId, chat.companyId, await resolveSender(delivery));
+  return settled.matchedBy;
 }

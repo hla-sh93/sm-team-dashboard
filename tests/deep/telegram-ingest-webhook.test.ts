@@ -37,7 +37,7 @@ const CHAT = -1007700000000 - P;
 const T_Z1 = 11, T_Z2 = 12, T_FREE = 13;
 const tgId = (n: number) => String(7_700_000_000 + P * 10 + n);
 const ID = (s: string) => `tdi${P}_${s}`;
-const E = { dA: ID("dA"), dB: ID("dB"), ed: ID("ed"), ph: ID("ph"), pub: ID("pub"), wr: ID("wr") };
+const E = { dA: ID("dA"), dB: ID("dB"), ed: ID("ed"), ph: ID("ph"), pub: ID("pub"), wr: ID("wr"), lead: ID("lead") };
 const Z1 = ID("z1"), Z2 = ID("z2");
 /** الإرسال: الخميس ٨/١٠ ١٠:٠٠ بالتوقيت المحلي. */
 const AT = new Date(2026, 9, 8, 10, 0, 0);
@@ -45,7 +45,7 @@ const D = (m0: number, d: number) => new Date(2026, m0, d);
 
 let nextMsg = 5000;
 type Upd = {
-  thread?: number; from?: string | null; name?: string; bot?: boolean; at?: Date; msgId?: number;
+  thread?: number; from?: string | null; name?: string; username?: string; bot?: boolean; at?: Date; msgId?: number;
   text?: string; caption?: string; photo?: boolean; doc?: { name: string; mime: string }; video?: string;
   group?: string; replyTo?: number; edited?: boolean;
 };
@@ -56,7 +56,9 @@ function update(o: Upd) {
     date: Math.floor((o.at ?? AT).getTime() / 1000),
     chat: { id: CHAT, type: "supergroup", title: "فريق الاختبار" },
     ...(o.thread != null ? { message_thread_id: o.thread } : {}),
-    ...(o.from === null ? {} : { from: { id: Number(o.from ?? tgId(1)), is_bot: !!o.bot, first_name: o.name ?? "x" } }),
+    ...(o.from === null
+      ? {}
+      : { from: { id: Number(o.from ?? tgId(1)), is_bot: !!o.bot, first_name: o.name ?? "x", ...(o.username ? { username: o.username } : {}) } }),
     ...(o.text ? { text: o.text } : {}),
     ...(o.caption ? { caption: o.caption } : {}),
     ...(o.photo ? { photo: [{ file_id: `f${message_id}`, width: 1080, height: 1350 }] } : {}),
@@ -129,6 +131,7 @@ beforeAll(async () => {
   await emp(E.ph, "مصوّر", "مصور", 4, { isPhotographer: true });
   await emp(E.pub, "ناشر", "publisher", 5);
   await emp(E.wr, "كاتبة", "كاتبة محتوى", 6);
+  await emp(E.lead, "قائدة", "تيم ليدر + نص مصمم", 7);
   const co = (id: string, name: string, slug: string, over: Record<string, unknown> = {}) =>
     prisma.company.create({ data: { id, name: `${uniq} ${name}`, slug, managed: true, posts: 4, reels: 1, postOwnerId: E.dA, photographerId: E.ph, publishStartDate: D(8, 1), renewals: JSON.stringify(["2026-10-01"]), ...over } });
   await co(Z1, "أ", "Zulu");
@@ -188,12 +191,22 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_1_DESIGN")]);
     });
 
-    it("[TR-30] (تحذير — سلوك حالي) تعديل كابشن ملف مخزّن بيتجاهَل — تصحيح الاسم بالتعديل ما بيوصل للمطابقة", async () => {
+    it("[TR-30] تعديل كابشن ملف ما طابق شي = تصحيح اسم: بياخد جولة مطابقة، وما بينخزّن مرّة تانية", async () => {
       const id = nextMsg++;
       await ingest.ingestUpdate(update({ thread: T_Z2, msgId: id, photo: true }));
+      expect(await closedIds(Z2)).toEqual([]);
       const edited = await ingest.ingestUpdate(update({ thread: T_Z2, msgId: id, photo: true, caption: "Yankee-post-10-1", edited: true }));
       expect(edited?.stored).toBe(false);
-      expect(await closedIds(Z2)).toEqual([]);
+      expect(edited?.advanced).toBe(true);
+      expect(await closedIds(Z2)).toEqual([ID("yankee_9_POST_1_DESIGN")]);
+      expect(await prisma.telegramMessage.count({ where: { id: `${CHAT}:${id}` } })).toBe(1);
+    });
+
+    it("[TR-30] تعديل ملف مطابَق أصلاً ما بيعيد المطابقة", async () => {
+      const id = nextMsg++;
+      await ingest.ingestUpdate(update({ thread: T_Z1, msgId: id, doc: jpg("Zulu-post-10-1.jpg") }));
+      await ingest.ingestUpdate(update({ thread: T_Z1, msgId: id, doc: jpg("Zulu-post-10-1.jpg"), caption: "Zulu-post-10-2", edited: true }));
+      expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_1_DESIGN")]);
     });
   });
 
@@ -205,7 +218,7 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(new Date(c.finishedAt).getTime()).toBe(Math.floor(AT.getTime() / 1000) * 1000);
     });
 
-    it.fails("[TR-12] مونتاج بيسكّر تصويره بالتتابع — كرت التصوير لازم يحمل سطر دليل كمان", async () => {
+    it("[TR-12] مونتاج بيسكّر تصويره بالتتابع — كرت التصوير لازم يحمل سطر دليل كمان", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(3), video: "Zulu-reel-10-1.mp4" }));
       const edit = await t(ID("zulu_9_REEL_1_EDIT"));
       const shoot = await t(ID("zulu_9_REEL_1_SHOOT"));
@@ -223,43 +236,43 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect((await t(closed[0])).notes).toContain("تأكيد نشر على تلغرام");
     });
 
-    it.fails("[TR-08] نفس تحديث «تم النشر» لما تلغرام يعيده — ما لازم يسكّر قطعة تانية", async () => {
+    it("[TR-08] نفس تحديث «تم النشر» لما تلغرام يعيده — ما لازم يسكّر قطعة تانية", async () => {
       const u = update({ thread: T_Z1, from: tgId(5), text: "تم النشر" });
       await ingest.ingestUpdate(u);
       await ingest.ingestUpdate(u);
       expect(await closedIds(Z1)).toHaveLength(1);
     });
 
-    it.fails("[TR-08] تعديل رسالة «تم النشر» (edited_message) ما لازم يسكّر قطعة تانية", async () => {
+    it("[TR-08] تعديل رسالة «تم النشر» (edited_message) ما لازم يسكّر قطعة تانية", async () => {
       const id = nextMsg++;
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), msgId: id, text: "تم النشر" }));
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), msgId: id, text: "تم النشر ✅", edited: true }));
       expect(await closedIds(Z1)).toHaveLength(1);
     });
 
-    it.fails("[TR-08] رسالة التأكيد لازم تنخزّن بسجلّ الرسائل (هي مفتاح التكافؤ، و«شو وصل اليوم» بيقرا منه)", async () => {
+    it("[TR-08] رسالة التأكيد لازم تنخزّن بسجلّ الرسائل (هي مفتاح التكافؤ، و«شو وصل اليوم» بيقرا منه)", async () => {
       const id = nextMsg++;
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), msgId: id, text: "تم النشر" }));
       expect(await prisma.telegramMessage.findUnique({ where: { id: `${CHAT}:${id}` } })).not.toBeNull();
     });
 
-    it.fails("[TR-01] كابشن كاتبة المحتوى فيه ✅ مو تأكيد نشر", async () => {
+    it("[TR-01] كابشن كاتبة المحتوى فيه ✅ مو تأكيد نشر", async () => {
       // نوال بتبعت نصوص الكابشن بالتوبيك — ٢٨ إقفال نشر باللقطة مصدرها هيك («… التداول✅ 📍»).
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(6), text: "المعرفة هي رأس مالك الأول في التداول✅ 📍 تابعونا" }));
       expect(await closedIds(Z1)).toEqual([]);
     });
 
-    it.fails("[TR-01] النفي «ما نزلت عالموقع» من الناشر مو تأكيد", async () => {
+    it("[TR-01] النفي «ما نزلت عالموقع» من الناشر مو تأكيد", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "الخارجية نزلتها بس ما نزلت عالموقع" }));
       expect(await closedIds(Z1)).toEqual([]);
     });
 
-    it.fails("[TR-01] «حقوق نشر» بنصّ حديث مو تأكيد", async () => {
+    it("[TR-01] «حقوق نشر» بنصّ حديث مو تأكيد", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "عليها حقوق نشر للفيديو طريقة التسجيل" }));
       expect(await closedIds(Z1)).toEqual([]);
     });
 
-    it.fails("[TR-08] ملف تصميم كابشنه «جاهز ✅» بيتسجّل تسليماً لتصميمه — مو إقفال نشر وضياع الملف", async () => {
+    it("[TR-08] ملف تصميم كابشنه «جاهز ✅» بيتسجّل تسليماً لتصميمه — مو إقفال نشر وضياع الملف", async () => {
       const id = nextMsg++;
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), msgId: id, doc: jpg("Zulu-post-10-3.jpg"), caption: "جاهز ✅" }));
       expect((await t(ID("zulu_9_POST_3_DESIGN"))).board).toBe("DONE");
@@ -267,7 +280,7 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect((await closedIds(Z1)).filter((x: string) => x.endsWith("PUBLISH"))).toEqual([]);
     });
 
-    it.fails("[TR-09] «تم نشر بوست 3» لقطعة متبقّية من الدورة السابقة ما لازم تسكّر بوست 2", async () => {
+    it("[TR-09] «تم نشر بوست 3» لقطعة متبقّية من الدورة السابقة ما لازم تسكّر بوست 2", async () => {
       // الأرقام بتنحصر بدلو الدورة الشغّالة؛ بوست ٣ أيلول برّاه فبتنزل لـ«أقدم مستحقّة» = بوست ٢ أيلول.
       // دلو تشرين فيه كمان نشر بوست ٣ (٦/١٠) — القطعة المسمّاة بالدورة الشغّالة لازم تربح لو موجودة،
       // فمنشيلها لنعزل حالة المتبقّي.
@@ -278,7 +291,7 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
   });
 
   describe("الألبوم بتوبيك (media_group_id)", () => {
-    it.fails("[TR-10] ألبوم ٣ صور بلا اسم = قطعة وحدة — مو ٣ كروت", async () => {
+    it("[TR-10] ألبوم ٣ صور بلا اسم = قطعة وحدة — مو ٣ كروت", async () => {
       for (let i = 0; i < 3; i++) await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), photo: true, group: `g${P}` }));
       expect((await closedIds(Z1)).filter((x: string) => x.includes("DESIGN"))).toHaveLength(1);
     });
@@ -288,7 +301,7 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(await closedIds(Z1)).toEqual([1, 2, 3].map((n) => ID(`zulu_9_POST_${n}_DESIGN`)).sort());
     });
 
-    it.fails("[TR-14] شرائح الكاروسيل «-10-2-2…4» بتنربط بقطعتها وبتسجّل عدد الشرائح (§٥: وحدة تصميم لكل شريحة)", async () => {
+    it("[TR-14] شرائح الكاروسيل «-10-2-2…4» بتنربط بقطعتها وبتسجّل عدد الشرائح (§٥: وحدة تصميم لكل شريحة)", async () => {
       for (const s of [1, 2, 3, 4]) await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg(`Zulu-post-10-2-${s}.jpg`), group: `k${P}` }));
       const rows = await prisma.telegramMessage.findMany({ where: { mediaGroupId: `k${P}` } });
       expect(rows.every((r: any) => r.taskId === ID("zulu_9_POST_2_DESIGN"))).toBe(true);
@@ -297,19 +310,19 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
   });
 
   describe("صاحب الكرت والكريدت (القائدة ١١/١٠ مقابل ١/٨)", () => {
-    it.fails("[TR-11] ملف من غير صاحب الكرت ما بيسكّر الكرت (البوستات لأيمن)", async () => {
+    it("[TR-11] ملف من غير صاحب الكرت ما بيسكّر الكرت (البوستات لأيمن)", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(2), doc: jpg("Zulu-post-10-1.jpg") }));
       const c = await t(ID("zulu_9_POST_1_DESIGN"));
       expect(c.board).not.toBe("DONE");
       expect(c.assigneeId).toBe(E.dA);
     });
 
-    it.fails("[TR-02] صورة خام من المونتيرة (IMG_1342.jpg) ما بتسكّر تصميم بوست — حادثة فونيتيك ١٩/٨", async () => {
+    it("[TR-02] صورة خام من المونتيرة (IMG_1342.jpg) ما بتسكّر تصميم بوست — حادثة فونيتيك ١٩/٨", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(3), doc: jpg("IMG_1342.jpg") }));
       expect(await closedIds(Z1)).toEqual([]);
     });
 
-    it.fails("[TR-02] صورة خام من المصوّر (DSC03882.JPG) ما بتسكّر تصميم — حادثة مانغو ٣/٩", async () => {
+    it("[TR-02] صورة خام من المصوّر (DSC03882.JPG) ما بتسكّر تصميم — حادثة مانغو ٣/٩", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(4), doc: jpg("DSC03882.JPG") }));
       expect(await closedIds(Z1)).toEqual([]);
     });
@@ -320,25 +333,114 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(await closedIds(Z2)).toEqual([]);
     });
 
-    it("[TR-11] (تحذير — سلوك حالي) مرسِل بلا `telegramUserId` (متل أيمن وماجد باللقطة): بيسكّر، الكريدت بيضل لصاحب الخطة، وولا أثر بيقول إنّ المرسِل مجهول", async () => {
-      await ingest.ingestUpdate(update({ thread: T_Z1, from: "7799999999", name: "Ayman", doc: jpg("Zulu-post-10-4.jpg") }));
+    it("[TR-11] مرسِل مجهول (لا معرّف ولا اسم مستخدم ولا اسم بديل): ما بيسكّر، والملف بيتخزّن «من غير صاحب الكرت» مع كرته", async () => {
+      const id = nextMsg++;
+      const out = await ingest.ingestUpdate(update({ thread: T_Z1, from: "7799999999", name: "Ayman", msgId: id, doc: jpg("Zulu-post-10-4.jpg") }));
+      expect(out?.held).toBe("NOT_OWNER");
+      expect(out?.advanced).toBe(false);
       const c = await t(ID("zulu_9_POST_4_DESIGN"));
+      expect(c.board).not.toBe("DONE");
+      expect(c.assigneeId).toBe(E.dA);
+      const row = await prisma.telegramMessage.findUnique({ where: { id: `${CHAT}:${id}` } });
+      expect(row).toMatchObject({ taskId: ID("zulu_9_POST_4_DESIGN"), matchedBy: "NOT_OWNER", confirmed: false });
+    });
+  });
+
+  describe("D3 — السكّر لصاحب الكرت أو القائدة (قرار ١٢/١٠)", () => {
+    it("الاسم البديل (مطابقة كاملة للاسم الظاهر) بيعرّف المرسِل بلا معرّف رقمي، فبيسكّر كرته", async () => {
+      await prisma.employee.update({ where: { id: E.dA }, data: { telegramAliases: `Ayman ${P},Ayman D` } });
+      try {
+        await ingest.ingestUpdate(update({ thread: T_Z1, from: "7799999997", name: `Ayman ${P}`, doc: jpg("Zulu-post-10-1.jpg") }));
+        expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_1_DESIGN")]);
+        // مطابقة **كاملة** بس: «Ayman» لحالها مش اسم بديل.
+        await ingest.ingestUpdate(update({ thread: T_Z1, from: "7799999997", name: "Ayman", doc: jpg("Zulu-post-10-2.jpg") }));
+        expect((await t(ID("zulu_9_POST_2_DESIGN"))).board).not.toBe("DONE");
+      } finally {
+        await prisma.employee.update({ where: { id: E.dA }, data: { telegramAliases: null } });
+      }
+    });
+
+    it("اسم المستخدم (`from.username`) بيعرّف المرسِل لما المعرّف الرقمي مش مسجّل", async () => {
+      await prisma.employee.update({ where: { id: E.ed }, data: { telegramUsername: `editor_${P}` } });
+      try {
+        await ingest.ingestUpdate(update({ thread: T_Z1, from: "7799999996", username: `editor_${P}`, video: "Zulu-reel-10-1.mp4" }));
+        expect((await t(ID("zulu_9_REEL_1_EDIT"))).board).toBe("DONE");
+      } finally {
+        await prisma.employee.update({ where: { id: E.ed }, data: { telegramUsername: null } });
+      }
+    });
+
+    it("القائدة بتسكّر كرت غيرها — والكريدت بيضل لصاحب الكرت (ما في إعادة إسناد)", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(7), doc: jpg("Zulu-post-10-3.jpg") }));
+      const c = await t(ID("zulu_9_POST_3_DESIGN"));
       expect(c.board).toBe("DONE");
       expect(c.assigneeId).toBe(E.dA);
-      expect(c.notes).not.toMatch(/مجهول|غير معروف/);
+      expect(c.isPinned).toBe(false);
+    });
+
+    it("الصاحب نفسه: الكرت بيضل باسمه وما بينثبّت", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg("Zulu-post-10-1.jpg") }));
+      const c = await t(ID("zulu_9_POST_1_DESIGN"));
+      expect(c.assigneeId).toBe(E.dA);
+      expect(c.isPinned).toBe(false);
+    });
+
+    it("مستند الخطة من غير الكاتبة (المصمّم) ما بيسكّر كرت الكتابة", async () => {
+      const docx = { name: "Yankee - Oct-Plan NO.3.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+      const out = await ingest.ingestUpdate(update({ thread: T_Z2, from: tgId(1), doc: docx }));
+      expect(out?.held).toBe("NOT_OWNER");
+      expect((await t(ID("yankee_w_plan"))).board).not.toBe("DONE");
+    });
+
+    it("«تم النشر» من المصمّم (مش ناشر ولا قائدة) ما بيسكّر شي — حتى الصيغة الصريحة", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), text: "تم النشر" }));
+      expect(await closedIds(Z1)).toEqual([]);
+    });
+
+    it("«تم النشر» من القائدة بيسكّر أقدم مستحقّة", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(7), text: "تم النشر ✅" }));
+      expect(await closedIds(Z1)).toEqual([ID("zulu_8_POST_2_PUBLISH")]);
+    });
+
+    it("رد «تم النشر» من الناشر على ملف التصميم بيسكّر نشر قطعته بالذات", async () => {
+      const fileId = nextMsg++;
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), msgId: fileId, doc: jpg("Zulu-post-10-4.jpg") }));
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), replyTo: fileId, text: "تم النشر" }));
+      const closed = await closedIds(Z1);
+      expect(closed).toContain(ID("zulu_9_POST_4_PUBLISH"));
+      expect(closed).not.toContain(ID("zulu_8_POST_2_PUBLISH"));
+    });
+
+    it("«نشرت 10-2» بلا كلمة نوع ومفتوح بنوعين بالدورة = ما منعرف أي وحدة — ما بيسكّر شي", async () => {
+      await prisma.task.create({
+        data: card(Z1, "zulu", 9, "STORY", 2, "PUBLISH", { publishDate: D(9, 7) }),
+      });
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "نشرت 10-2" }));
+      expect(await closedIds(Z1)).toEqual([]);
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "نشرت بوست 10-2" }));
+      expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_2_PUBLISH")]);
     });
   });
 
   describe("«مو هي» — التراجع عن مطابقة", () => {
-    it("بيرجّع الكرت مفتوح لما يكون هالملف وحده يلي سكّره", async () => {
+    it("بيرجّع الكرت مفتوح لما يكون هالملف وحده يلي سكّره — وبلا سطر الدليل تبعه", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg("Zulu-post-10-1.jpg") }));
+      expect((await t(ID("zulu_9_POST_1_DESIGN"))).notes).toContain("سُلّم على تلغرام");
       await ingest.unmatchMessage(`${CHAT}:${nextMsg - 1}`);
       const c = await t(ID("zulu_9_POST_1_DESIGN"));
       expect(c.board).toBe("DOING");
       expect(c.finishedAt).toBeNull();
+      expect(c.notes ?? "").not.toContain("سُلّم على تلغرام");
     });
 
-    it.fails("[TR-12] التراجع بيمحي أثر الإقفال: سطر الدليل والإسناد للمرسِل والتثبيت", async () => {
+    it("«مو هي» على ملف محجوز («من غير صاحب الكرت») بيفكّ الربط بس — ما بيفتح كرتاً مسكّر بإيد صاحبه", async () => {
+      await prisma.task.update({ where: { id: ID("zulu_9_POST_1_DESIGN") }, data: { status: "READY", board: "DONE" } });
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(2), doc: jpg("Zulu-post-10-1.jpg") }));
+      await ingest.unmatchMessage(`${CHAT}:${nextMsg - 1}`);
+      expect((await t(ID("zulu_9_POST_1_DESIGN"))).board).toBe("DONE");
+    });
+
+    it("[TR-12] التراجع بيمحي أثر الإقفال: سطر الدليل والإسناد للمرسِل والتثبيت", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(2), doc: jpg("Zulu-post-10-1.jpg") }));
       await ingest.unmatchMessage(`${CHAT}:${nextMsg - 1}`);
       const c = await t(ID("zulu_9_POST_1_DESIGN"));
@@ -346,7 +448,7 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(c.notes ?? "").not.toContain("سُلّم على تلغرام");
     });
 
-    it.fails("[TR-12] التراجع عن ملف مونتاج بيرجّع كرت التصوير يلي انسكّر بالتتابع", async () => {
+    it("[TR-12] التراجع عن ملف مونتاج بيرجّع كرت التصوير يلي انسكّر بالتتابع", async () => {
       await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(3), video: "Zulu-reel-10-1.mp4" }));
       await ingest.unmatchMessage(`${CHAT}:${nextMsg - 1}`);
       expect((await t(ID("zulu_9_REEL_1_SHOOT"))).board).not.toBe("DONE");
@@ -363,20 +465,20 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect((await t(ID("yankee_w_shoot"))).notes).toContain("3 Scripts For Shooting- Yankee.docx");
     });
 
-    it.fails("[TR-24] خطة الشهر (docx) بتسكّر كرت «كتابة بوستات وستوريز» — مو أقرب كرت كتابة (مقال المدونة)", async () => {
+    it("[TR-24] خطة الشهر (docx) بتسكّر كرت «كتابة بوستات وستوريز» — مو أقرب كرت كتابة (مقال المدونة)", async () => {
       // باللقطة: «Phoeni Jobs - Aug-Plan NO.2.docx» سكّر «المدونة — المقال 4»، و«PhoeniJobs__New_Posts_Ideas.docx» سكّر «لينكد إن — دراسة حالة».
       await ingest.ingestUpdate(update({ thread: T_Z2, from: tgId(6), doc: docx("Yankee - Oct-Plan NO.3.docx") }));
       expect(await writeClosed()).toEqual([ID("yankee_w_plan")]);
     });
 
-    it.fails("[TR-24] مستند من برّا الفريق (دليل شركة PDF) ما بيسكّر كرت كتابة", async () => {
+    it("[TR-24] مستند من برّا الفريق (دليل شركة PDF) ما بيسكّر كرت كتابة", async () => {
       // باللقطة: رند (مو من الفريق) بعتت ٤ أدلّة PDF ٢٤/٨ فسكّرت ٤ مقالات لنوال، و«phoenijobs features.docx» (٦/١٠)
       // سكّر خطة بوستات التوظيف — وأوصاف بوست ٢–١٠ لسا فاضية.
       await ingest.ingestUpdate(update({ thread: T_Z2, from: "7799999998", name: "Rand", doc: { name: "Yankee-Company-Guide-AR.pdf", mime: "application/pdf" } }));
       expect(await writeClosed()).toEqual([]);
     });
 
-    it.fails("[TR-24] نفس المستند مرّتين (إعادة إرسال) ما بيسكّر كرت كتابة تاني", async () => {
+    it("[TR-24] نفس المستند مرّتين (إعادة إرسال) ما بيسكّر كرت كتابة تاني", async () => {
       // باللقطة: «3 Scripts For Shooting- Mango.docx» ٤/٨ سكّر السيناريو، ونفس الملف ٥/٨ سكّر كرت البوستات والستوريز.
       await ingest.ingestUpdate(update({ thread: T_Z2, from: tgId(6), doc: docx("3 Scripts For Shooting- Yankee.docx") }));
       await ingest.ingestUpdate(update({ thread: T_Z2, from: tgId(6), doc: docx("3 Scripts For Shooting- Yankee.docx") }));
@@ -390,7 +492,17 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       await prisma.task.update({ where: { id: ID("zulu_9_POST_1_DESIGN") }, data: { brief: "إطلاق الخدمة الجديدة" } });
       const out = await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg("Yankee-post-10-1.jpg") }));
       expect(out?.taskId).toBeNull();
+      expect(out?.held).toBe("WRONG_TOPIC");
       expect(await closedIds(Z2)).toEqual([]);
+      expect(await closedIds(Z1)).toEqual([]);
+      const row = await prisma.telegramMessage.findUnique({ where: { id: `${CHAT}:${nextMsg - 1}` } });
+      expect(row).toMatchObject({ taskId: null, matchedBy: "WRONG_TOPIC", confirmed: false });
+    });
+
+    it("[TR-26] بلا وصف خطة كمان: اسم شركة تانية ما بيوقع بطبقة النوع حتى من صاحب الكروت", async () => {
+      const out = await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg("Yankee-post-10-1.jpg") }));
+      expect(out?.held).toBe("WRONG_TOPIC");
+      expect(await closedIds(Z1)).toEqual([]);
     });
   });
 });

@@ -35,7 +35,7 @@ import {
 import { computeWorkload } from "../src/lib/workload";
 import { computeFinance } from "../src/lib/finance";
 import { ratePerDay, parseRates, cardDurationDays, taskDays } from "../src/lib/capacity";
-import { assetNameForTask, parseAssetName, companySlug, assetName } from "../src/lib/asset-name";
+import { assetNameForTask, parseAssetName, companySlug, companySlugs, assetName } from "../src/lib/asset-name";
 import { buildContentNumbers, groupTasksIntoCards } from "../src/lib/cards";
 import { derivePublishingSchedule } from "../src/lib/publishing";
 import { buildTodayBrief } from "../src/lib/telegram/service";
@@ -955,7 +955,7 @@ async function main() {
 
     // نسبة المطابقة للملفات (النصوص محادثة، ما بتسكّر شي — وهاد صح).
     const files = tgMessages.filter((m) => m.kind !== "TEXT");
-    const matchedFiles = files.filter((m) => m.taskId);
+    const matchedFiles = files.filter((m) => m.taskId && m.confirmed);
     ok(
       `الملفات الواصلة بتنطابق (${matchedFiles.length}/${files.length})`,
       files.length === 0 || matchedFiles.length / files.length >= 0.5,
@@ -991,6 +991,11 @@ async function main() {
     // ولازم الاتنتان يلاقوا نفس الكرت. الفحص بيولّد الاسمين لكل قطعة مفتوحة
     // وبيمرّرهن على المطابق الحقيقي؛ أي قطعة ما بتنمسك بإحداهما = ملف رح يوصل
     // ويضل كرتو متأخر، وهاد بالضبط اللي كان صاير قبل 3/8.
+    //
+    // فحص ١٢/١٠ (TR-07): الاسم بيتولّد **بالنوع** (القالب يلي منطلبه من الفريق)، والضربة
+    // لازم تكون أبكر مرحلة مفتوحة **لنفس القطعة** — كان أي إقفال بينعدّ نجاح، و١٩ تسمية
+    // كانت تسكّر قطعة غلط («PhoeniTech 10-3» ← ستوري ٣ بدل بوست ٣). ولحظتا إرسال: اليوم،
+    // ويوم جوّا دورة القطعة نفسها (أسبوع التحضير ونافذة التجديد المبكر — TR-03/04).
     const nameMisses: string[] = [];
     let nameHits = 0;
     for (const co of companies.filter((c) => c.managed && c.status === "active")) {
@@ -1004,31 +1009,47 @@ async function main() {
       );
       const open = cards.filter((t) => !isTaskDoneState(t));
       const closedCards = cards.filter((t) => isTaskDoneState(t));
-      const bucket = currentCycleBucket(co as never, NOW);
-      const slug = companySlug(co as never);
+      const slugs = companySlugs(co as never);
+      const slug = slugs[0];
       const seenPiece = new Set<string>();
       for (const t of open) {
         const key = `${t.type}|${t.pieceNo}|${t.year}-${t.month}`;
         if (seenPiece.has(key)) continue;
         seenPiece.add(key);
         const video = t.type === "REEL" || t.type === "AI_REEL";
+        const sameStages = open.filter(
+          (x) => x.type === t.type && x.pieceNo === t.pieceNo && x.year === t.year && x.month === t.month,
+        );
+        const expected = [...sameStages].sort(
+          (a, b) =>
+            new Date(a.readyDate ?? a.publishDate ?? 0).getTime() -
+            new Date(b.readyDate ?? b.publishDate ?? 0).getTime(),
+        )[0];
+        const own = cycleForBucket(co as never, t.year, t.month);
+        const insideOwn = own ? new Date(own.start.getTime() + 2 * 86_400_000) : null;
+        const moments = [NOW, ...(insideOwn && insideOwn.getTime() !== NOW.getTime() ? [insideOwn] : [])];
         const months = new Set([t.month, new Date(t.publishDate ?? new Date()).getMonth()]);
-        for (const m of months) {
-          const fileName = `${assetName(slug, m, t.pieceNo!)}.${video ? "mp4" : "jpg"}`;
-          const hit = matchDelivery(
-            {
-              id: "audit", chatId: "audit", messageId: 0, sentAt: NOW, senderId: null,
-              senderName: null, kind: video ? "VIDEO" : "PHOTO", fileName,
-              caption: null, fileId: null, mediaGroupId: null,
-            },
-            slug,
-            open as never,
-            [],
-            closedCards as never,
-            bucket,
-          );
-          if (hit) nameHits++;
-          else nameMisses.push(`${co.name} ${t.type}#${t.pieceNo} ← «${fileName}»`);
+        for (const sentAt of moments) {
+          for (const m of months) {
+            const fileName = `${assetName(slug, m, t.pieceNo!, t.type)}.${video ? "mp4" : "jpg"}`;
+            const hit = matchDelivery(
+              {
+                id: "audit", chatId: "audit", messageId: 0, sentAt, senderId: null,
+                senderName: null, kind: video ? "VIDEO" : "PHOTO", fileName,
+                caption: null, fileId: null, mediaGroupId: null,
+              },
+              slugs.join("|"),
+              open as never,
+              [],
+              closedCards as never,
+              currentCycleBucket(co as never, sentAt),
+            );
+            if (hit?.taskId === expected.id) nameHits++;
+            else
+              nameMisses.push(
+                `${co.name} ${t.type}#${t.pieceNo} ← «${fileName}» (${toISODate(sentAt)}) → ${hit?.taskId ?? "لا شي"}`,
+              );
+          }
         }
       }
     }
