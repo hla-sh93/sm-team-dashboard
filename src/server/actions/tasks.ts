@@ -73,9 +73,13 @@ export async function createTask(input: TaskInput) {
     });
     // Re-schedule the month so the new task lands in the right slot — only a LIVE
     // bucket; a closed cycle is history and is never rewritten from here (SA-15).
-    if (await isLiveBucket(d.year, d.month)) await generateScheduleInternal(d.year, d.month, null);
+    let warning: string | undefined;
+    if (await isLiveBucket(d.year, d.month)) {
+      const built = await generateScheduleInternal(d.year, d.month, null);
+      if (!built.ok) warning = `انحفظت المهمة، بس إعادة الجدولة ما مرقت: ${built.error}`;
+    }
     revalidateAll();
-    return { ok: true as const };
+    return { ok: true as const, ...(warning ? { warning } : {}) };
   } catch {
     return { ok: false as const, error: "فشل إنشاء المهمة" };
   }
@@ -97,12 +101,14 @@ export type TaskDetailsInput = {
   quantity?: number | null; // production work units, e.g. carousel slide count
   isPinned?: boolean;
   /**
-   * `updatedAt` of the card as the form loaded it (ISO). When the card changed
-   * since — someone finished it from the board while this dialog was open — the
-   * save is refused instead of writing the stale values back over that work
-   * (فحص ١٢/١٠، SA-03أ).
+   * The card's STATUS as the form loaded it. When the dialog changes the status
+   * and the card's status changed since — someone finished it from the board
+   * while this dialog was open — the save is refused instead of writing the
+   * stale status back over that work (فحص ١٢/١٠، SA-03أ). (Not `updatedAt`: every
+   * full regeneration recreates the bucket's auto rows, so it changes under any
+   * open dialog.) Fields other than the status are written only when sent.
    */
-  expectedUpdatedAt?: string;
+  expectedStatus?: string;
 };
 
 const CONFLICT = "الكرت تغيّر من وقت ما فتحتي التعديل — حدّثي الصفحة وجرّبي مرّة تانية";
@@ -126,7 +132,7 @@ function statusPatch(
   // اليوم ما كان بينحسب من يوم صاحبه، وكان بينعدّ بتقرير شهر جاي (OP-07). الختم
   // ما بيتجاوز هلّق أبداً.
   const inferred = done
-    ? input.publishDate !== undefined && dates.publishDate
+    ? (input.publishDate !== undefined || before.stage === "PUBLISH") && dates.publishDate
       ? dates.publishDate
       : inferHistoricalCompletionDate({ ...before, readyDate: dates.readyDate, workDate: dates.workDate }, now)
     : null;
@@ -178,7 +184,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
   try {
     const before = await prisma.task.findUnique({ where: { id: primary } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
-    if (input.expectedUpdatedAt && before.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+    if (input.status !== undefined && input.expectedStatus && before.status !== input.expectedStatus) {
       return { ok: false as const, error: CONFLICT };
     }
 
@@ -216,11 +222,10 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     }
     if (patch) Object.assign(data, patch.data);
 
-    // مع نسخة من النموذج: الكتابة مشروطة إنّ الكرت ما تغيّر لحظة الحفظ كمان.
-    // بلا نسخة (تعديل حقل واحد): بتنكتب الحقول المرسلة بس، فتعديلان متوازيان على
-    // حقلين مختلفين بيضلّوا التنين.
+    // تغيير الحالة مشروط إنّ الحالة ما تغيّرت لحظة الحفظ كمان. باقي الحقول بتنكتب
+    // المرسلة بس، فتعديلان متوازيان على حقلين مختلفين بيضلّوا التنين.
     const written = await prisma.task.updateMany({
-      where: input.expectedUpdatedAt ? { id: primary, updatedAt: before.updatedAt } : { id: primary },
+      where: input.status !== undefined ? { id: primary, status: before.status } : { id: primary },
       data,
     });
     if (written.count === 0) return { ok: false as const, error: CONFLICT };
@@ -261,15 +266,18 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     // Reschedule when scheduling-relevant fields changed (pins are preserved).
     const reschedule =
       input.priority !== undefined ||
+      input.assigneeId !== undefined ||
       datesTouched ||
       input.days != null ||
       input.quantity != null;
+    let warning: string | undefined;
     if (reschedule && (await isLiveBucket(before.year, before.month))) {
-      await generateScheduleInternal(before.year, before.month, null);
+      const built = await generateScheduleInternal(before.year, before.month, null);
+      if (!built.ok) warning = `انحفظ التعديل، بس إعادة الجدولة ما مرقت: ${built.error}`;
     }
 
     revalidateAll();
-    return { ok: true as const };
+    return { ok: true as const, ...(warning ? { warning } : {}) };
   } catch {
     return { ok: false as const, error: "فشل تعديل المهمة" };
   }
@@ -346,11 +354,13 @@ export async function deleteTasks(ids: string[]) {
       );
     }
 
+    let warning: string | undefined;
     if (first && (await isLiveBucket(first.year, first.month))) {
-      await generateScheduleInternal(first.year, first.month, null);
+      const built = await generateScheduleInternal(first.year, first.month, null);
+      if (!built.ok) warning = `انحذفت، بس إعادة الجدولة ما مرقت: ${built.error}`;
     }
     revalidateAll();
-    return { ok: true as const };
+    return { ok: true as const, ...(warning ? { warning } : {}) };
   } catch {
     return { ok: false as const, error: "فشل حذف المهمة" };
   }

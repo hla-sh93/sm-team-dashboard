@@ -21,6 +21,8 @@ import { generateCompanySchedule } from "./schedule";
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { revalidateAll } from "@/lib/revalidate";
 import { planReductionBlocker } from "@/server/cycle-plan";
+import { readPause, recordPause, resumeWindowDays, saveResume } from "@/server/company-pause";
+import type { ContentType } from "@/lib/constants";
 
 
 /** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */
@@ -250,6 +252,26 @@ export async function renewContract(companyId: string, startDateISO: string) {
         error: "هذه الشركة بلا تاريخ بدء نشر (توزيع شهري) — لا تحتاج تجديداً",
       };
     }
+    // موقوفة بالأسلوب الجديد (كروتها محفوظة): «جدّد» = دورة جديدة بعد الحالية (قرار
+    // ١/١٠). بس لو فيها قطع باقية، التجديد بيخلّيها متأخرة بلا ما حدا ينتبه — والقائدة
+    // (١٢/١٠): «مابدي ينحسب تأخير». الباقي بيتكمّل بـ«رجّع النشر».
+    if (companyLifecycle(co) === "paused") {
+      const remaining = await prisma.task.count({
+        where: {
+          companyId,
+          isAuto: true,
+          stage: "PUBLISH",
+          status: { notIn: ["CANCELED", ...DONE_STATUSES] },
+          board: { not: "DONE" },
+        },
+      });
+      if (remaining > 0) {
+        return {
+          ok: false as const,
+          error: `الشركة موقوفة وفيها ${remaining} قطعة باقية من دورتها — كمّليها بـ«رجّع النشر»، أو عالجيها قبل التجديد`,
+        };
+      }
+    }
     const start = parseContractDate(startDateISO)!;
     const cycles = cyclesOf(co);
     const last = cycles[cycles.length - 1];
@@ -270,10 +292,19 @@ export async function renewContract(companyId: string, startDateISO: string) {
         status: co.status === "paused" || co.status === "archived" ? "active" : co.status,
       },
     });
-    revalidateAll();
     // Build the new cycle's tasks right away so the renewal is visible without
-    // a manual «إعادة الجدولة».
-    await generateScheduleInternal(start.getFullYear(), start.getMonth(), null);
+    // a manual «إعادة الجدولة». A failed build = a cycle with no cards: the
+    // renewal is rolled back and the reason surfaced (it used to say ok).
+    const built = await generateScheduleInternal(start.getFullYear(), start.getMonth(), null);
+    if (!built.ok) {
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { renewals: co.renewals, contractEndedAt: co.contractEndedAt, status: co.status },
+      });
+      revalidateAll();
+      return { ok: false as const, error: `لم يُسجَّل التجديد لأن بناء الدورة فشل: ${built.error}` };
+    }
+    revalidateAll();
     return { ok: true as const, data: updated };
   } catch {
     return { ok: false as const, error: "فشل تسجيل التجديد" };
@@ -548,33 +579,21 @@ export async function pauseCompanyPublishing(companyId: string) {
       return { ok: false as const, error: "الشركة موقوفة أصلاً" };
     }
 
-    const removed = await prisma.task.deleteMany({
-      where: {
-        companyId,
-        isAuto: true,
-        board: { not: "DONE" },
-        status: { notIn: [...DONE_STATUSES] },
-      },
-    });
-    const sessions = await prisma.photoSession.deleteMany({
-      where: { companyId, isAuto: true, status: "NOT_STARTED" },
-    });
-
+    // قرار القائدة (١٢/١٠): «لا ماتمحيها… مابدي اخسر الخطة, ومابدي ينحسب تأخير».
+    // الإيقاف كان يمحي كل كرت مفتوح بأوصافه وجلسات التصوير (Siizen والبلسم ٤/١٠ —
+    // DA-01، OP-15، RG-10). هلّق: الحالة «موقوفة» بس — الكروت محفوظة ومخفيّة من كل
+    // القوائم، ولا تأخير، والمحرّك ما بيلمسها (`companyLifecycle`)؛ وتاريخ البدء
+    // والتجديدات بيضلّوا — الرجوع بيكمّل من هون.
     const updated = await prisma.company.update({
       where: { id: companyId },
       data: {
         status: "paused",
-        publishStartDate: null,
-        lateExemptReason: "النشر موقوف بقرار — بينتظر تاريخ بدء نشر جديد",
+        lateExemptReason: "النشر موقوف بطلب الزبون — بينتظر تاريخ رجوع",
       },
     });
+    await recordPause(companyId, new Date());
     revalidateAll();
-    return {
-      ok: true as const,
-      data: updated,
-      removedTasks: removed.count,
-      removedSessions: sessions.count,
-    };
+    return { ok: true as const, data: updated };
   } catch {
     return { ok: false as const, error: "فشل إيقاف نشر الشركة" };
   }
@@ -605,6 +624,13 @@ export async function resumeCompanyPublishing(companyId: string, startDateISO: s
       return { ok: false as const, error: "الشركة ليست موقوفة" };
     }
 
+    // إيقاف بالأسلوب الجديد: تاريخ البدء محفوظ والكروت موجودة → «منتابع من مكان يلي
+    // وقفنا فيه» (قرار ١٢/١٠). الإيقاف القديم كان يفرّغ تاريخ البدء ويمحي المعلّق، فما في
+    // باقي يتكمّل — بيمرق بالمسار القديم تحت (دورة جديدة من التاريخ).
+    if (co.publishStartDate) {
+      return resumeRemaining(co, start);
+    }
+
     const updated = await prisma.company.update({
       where: { id: companyId },
       data: {
@@ -632,6 +658,87 @@ export async function resumeCompanyPublishing(companyId: string, startDateISO: s
   } catch {
     return { ok: false as const, error: "فشل إرجاع الشركة للعمل" };
   }
+}
+
+/**
+ * الرجوع من إيقاف — الباقي بس، بنافذة **ديناميكية** (قرار القائدة ١٢/١٠: «مو 30 يوم
+ * ولا باقي أيام الدورة… نعمل نصف الخطة ويبقى نصفها, ف بترجع بنص… حسب عدد المهام وأيام
+ * عملن وتوزيع الجدولة مع باقي مهام التيم, حسب الأولويات»).
+ *
+ * دلو الدورة الموقوفة = آخر دلو إله دورة وفيه قطع نشرها مفتوح. طول النافذة متناسب
+ * مع حصّة الباقي من خطة الدورة (`resumeWindowDays`)، والقطع الباقية **لحظة الرجوع**
+ * (بأرقامها) بتنحفظ بـ`Setting` مشان المحرّك يوزّعها على النافذة بكل توليد بعدها —
+ * والمحسوم بيضل بمكانه. الإنتاج بينحشر بطاقة الفريق وأولوياته متل أي شغل.
+ */
+async function resumeRemaining(
+  co: NonNullable<Awaited<ReturnType<typeof prisma.company.findUnique>>>,
+  start: Date,
+) {
+  const companyId = co.id;
+  const publishCards = await prisma.task.findMany({
+    where: { companyId, isAuto: true, stage: "PUBLISH", pieceNo: { not: null }, type: { not: null } },
+    select: { year: true, month: true, type: true, pieceNo: true, status: true, board: true },
+  });
+  const isOpen = (t: (typeof publishCards)[number]) =>
+    t.status !== "CANCELED" && t.board !== "DONE" && !DONE_STATUSES.includes(t.status as never);
+  const buckets = [...new Set(publishCards.filter(isOpen).map((t) => t.year * 12 + t.month))]
+    .sort((a, b) => b - a)
+    .map((k) => ({ year: Math.floor(k / 12), month: k % 12 }))
+    .filter((b) => cycleForBucket(co, b.year, b.month));
+  const target = buckets[0] ?? null;
+
+  const activate = () =>
+    prisma.company.update({
+      where: { id: companyId },
+      data: { status: "active", lateExemptReason: null },
+    });
+
+  if (!target) {
+    // ما في باقي: الشركة بترجع نشطة، ودورتها الجاية بتجي بـ«جدّد».
+    const updated = await activate();
+    revalidateAll();
+    return { ok: true as const, data: updated, from: toISODate(start), remaining: 0, windowDays: 0 };
+  }
+
+  const inBucket = publishCards.filter((t) => t.year === target.year && t.month === target.month);
+  const open = inBucket.filter(isOpen);
+  const planned = inBucket.filter((t) => t.status !== "CANCELED").length;
+  const openByType: Partial<Record<ContentType, number>> = {};
+  const pieceNos: Partial<Record<ContentType, number[]>> = {};
+  for (const t of open) {
+    const type = t.type as ContentType;
+    openByType[type] = (openByType[type] ?? 0) + 1;
+    (pieceNos[type] ??= []).push(t.pieceNo!);
+  }
+  const cyc = cycleForBucket(co, target.year, target.month)!;
+  const windowDays = resumeWindowDays({ cycleDays: cyc.days.length, planned, open: openByType });
+  const until = new Date(start.getFullYear(), start.getMonth(), start.getDate() + windowDays);
+
+  await saveResume(companyId, {
+    from: toISODate(start),
+    until: toISODate(until),
+    year: target.year,
+    month: target.month,
+    pieceNos,
+  });
+  const updated = await activate();
+  const built = await generateCompanySchedule(companyId, target.year, target.month);
+  if (!built.ok) {
+    return {
+      ok: false as const,
+      resumed: true as const,
+      error: `رجعت الشركة للعمل، بس جدولة الباقي فشلت: ${built.error}`,
+    };
+  }
+  revalidateAll();
+  return {
+    ok: true as const,
+    data: updated,
+    from: toISODate(start),
+    remaining: open.length,
+    windowDays,
+    pausedAt: (await readPause(companyId))?.pausedAt ?? null,
+  };
 }
 
 /**

@@ -78,9 +78,18 @@ export function pieceHasWorkOrBrief(t: {
   status: string;
   board: string | null;
   brief?: string | null;
+  notes?: string | null;
+  reviewedAt?: Date | null;
 }): boolean {
   if (t.status === "CANCELED") return false;
-  return t.status !== "NOT_STARTED" || (t.board ?? "TODO") !== "TODO" || Boolean(t.brief?.trim());
+  return (
+    t.status !== "NOT_STARTED" ||
+    (t.board ?? "TODO") !== "TODO" ||
+    Boolean(t.brief?.trim()) ||
+    // سطر دليل/ملاحظة (مثلاً «موقوف بطلب الزبون») أو مراجعة القائدة — كمان ما بينمحى بصمت.
+    Boolean(t.notes?.trim()) ||
+    t.reviewedAt != null
+  );
 }
 
 /**
@@ -121,7 +130,7 @@ export async function planReductionBlocker(
           type: TYPE_OF_FIELD[field],
           pieceNo: { gt: next[field]! },
         },
-        select: { status: true, board: true, brief: true },
+        select: { status: true, board: true, brief: true, notes: true, reviewedAt: true },
       });
       if (dropped.some(pieceHasWorkOrBrief)) {
         return `تقليل ${PLAN_FIELD_LABEL[field]} إلى ${next[field]} يحذف قطعاً عليها شغل أو وصف — عالجي كروتها أولاً`;

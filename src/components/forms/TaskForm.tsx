@@ -108,7 +108,7 @@ export default function TaskForm({
         const initial = fromTask(task!);
         const changed = (k: keyof typeof initial) => form[k] !== initial[k];
         const result = await updateTaskDetails(ids ?? [task!.id], {
-          expectedUpdatedAt: new Date(task!.updatedAt).toISOString(),
+          expectedStatus: task!.status as TaskCreateStatus,
           ...(changed("title") ? { title: form.title.trim() } : {}),
           ...(changed("workDate") ? { workDate: form.workDate || null } : {}),
           ...(changed("readyDate") ? { readyDate: form.readyDate || null } : {}),
@@ -124,6 +124,7 @@ export default function TaskForm({
         });
         if (result.ok) {
           toast("تم تحديث المهمة");
+          if ("warning" in result && result.warning) toast(result.warning, "error");
           onOpenChange(false);
           router.refresh(); // pull the fresh server view so the edit shows immediately
         } else toast(result.error, "error");
@@ -148,6 +149,7 @@ export default function TaskForm({
         });
         if (result.ok) {
           toast("تم إنشاء المهمة");
+          if ("warning" in result && result.warning) toast(result.warning, "error");
           onOpenChange(false);
           router.refresh();
         } else toast(result.error, "error");

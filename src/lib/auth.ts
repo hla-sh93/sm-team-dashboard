@@ -96,7 +96,8 @@ async function currentEpoch(): Promise<string> {
  * warm instances cache it, so a rotation made the lead's NEW session fail there.
  */
 export async function invalidateAllSessions(): Promise<void> {
-  const next = String((Number(await currentEpoch()) || 0) + 1);
+  // عشوائي مو عدّاد: بسرّ قاعدة مسرّب (SA-02) عدّاد صغير بينخمّن ببضع محاولات.
+  const next = randomBytes(16).toString("hex");
   await prisma.setting.upsert({
     where: { key: EPOCH_KEY },
     update: { value: next },
@@ -226,6 +227,10 @@ export async function isAdminConfigured(): Promise<boolean> {
  */
 export async function claimFirstAdmin(email: string, password: string): Promise<boolean> {
   if (process.env.ADMIN_PASSWORD) return false;
+  // الإيميل من البيئة = صاحب الحساب معروف سلفاً: غيره ما بيقدر «ينشئ».
+  if (process.env.ADMIN_EMAIL && process.env.ADMIN_EMAIL.trim().toLowerCase() !== email.trim().toLowerCase()) {
+    return false;
+  }
   try {
     await prisma.setting.create({ data: { key: PASSWORD_KEY, value: hashPassword(password) } });
   } catch {

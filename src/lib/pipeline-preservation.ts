@@ -304,10 +304,12 @@ export function applyPipelinePreservation(
     return undefined;
   };
 
+  const handed = new Set<PipelineTask>();
   for (const task of pipe) {
     const saved = preservedStateOf(task);
     if (!saved) continue;
     matched.add(saved);
+    handed.add(task);
     task.board = saved.board as PipelineTask["board"];
     task.status = saved.status;
     task.startedAt = saved.startedAt ?? null;
@@ -354,5 +356,21 @@ export function applyPipelinePreservation(
   }
 
   applyCanceledPieces(pipe, collectCanceledPieces(existing));
+
+  // قطعة ملغاة برقمها = كل مراحلها ملغاة، حتى المرحلة يلي ما كان إلها صفّ محفوظ
+  // (كرت نشر انولّد لما بلّش النشر، أو مرحلة مونتاج جديدة). بالرقم — هويّة، مو تاريخ.
+  const canceledPieces = new Set(
+    existing
+      .filter((row) => row.status === "CANCELED" && row.companyId && row.type && row.pieceNo != null)
+      .map((row) => `${row.companyId}|${row.type}|${row.pieceNo}`),
+  );
+  for (const task of pipe) {
+    if (task.pieceNo == null || !task.companyId || !task.type || !isPieceStage(task.stage)) continue;
+    if (!canceledPieces.has(`${task.companyId}|${task.type}|${task.pieceNo}`)) continue;
+    if (handed.has(task)) continue; // مرحلة إلها صفّها المحفوظ — حالتها منّو
+    task.status = "CANCELED";
+    task.board = "TODO";
+    task.isPinned = true;
+  }
   return matched;
 }

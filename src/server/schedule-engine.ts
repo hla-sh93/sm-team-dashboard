@@ -31,11 +31,13 @@ import {
   backWorkday,
   formatDateShort,
   forwardWorkday,
+  fromISODate,
   parseWorkDays,
 } from "@/lib/dates";
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
 import { planTotal } from "@/lib/cycle-plan";
 import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
+import { resumeWindowsFor } from "@/server/company-pause";
 import { revalidateAll } from "@/lib/revalidate";
 
 
@@ -218,6 +220,10 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
 export async function isLiveBucket(year: number, month: number, now = new Date()): Promise<boolean> {
   if (year * 12 + month >= now.getFullYear() * 12 + now.getMonth()) return true;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // دلو فيه نافذة رجوع من إيقاف لسا شغّالة = شغل حيّ ولو دورته الأصلية خلصت.
+  for (const setting of (await resumeWindowsFor(year, month)).values()) {
+    if (fromISODate(setting.until).getTime() > today.getTime()) return true;
+  }
   const companies = await prisma.company.findMany({
     where: { managed: true },
     select: {
@@ -285,6 +291,43 @@ async function generateScheduleOnce(
 ) {
   try {
     const state = await loadState(year, month);
+
+    // نوافذ الرجوع من إيقاف لهالدلو (قرار القائدة ١٢/١٠): القطع يلي كانت باقية لحظة
+    // الرجوع بتتوزّع على النافذة، والباقي محسوم بمكانه — شوف `company-pause.ts`.
+    const resumeSettings = await resumeWindowsFor(year, month);
+    if (resumeSettings.size > 0) {
+      const resumedIds = [...resumeSettings.keys()];
+      const publishCards = await prisma.task.findMany({
+        where: {
+          companyId: { in: resumedIds },
+          year,
+          month,
+          isAuto: true,
+          stage: "PUBLISH",
+          pieceNo: { not: null },
+          type: { not: null },
+        },
+        select: { companyId: true, type: true, pieceNo: true, publishDate: true },
+      });
+      state.companies = state.companies.map((co) => {
+        const setting = resumeSettings.get(co.id);
+        if (!setting) return co;
+        const resumed = (type: string, no: number) =>
+          (setting.pieceNos[type as keyof typeof setting.pieceNos] ?? []).includes(no);
+        const pieces = publishCards
+          .filter((t) => t.companyId === co.id)
+          .map((t) => ({
+            type: t.type as "POST" | "REEL" | "AI_REEL" | "STORY",
+            pieceNo: t.pieceNo!,
+            publishDate: t.publishDate,
+            settled: !resumed(t.type!, t.pieceNo!),
+          }));
+        return {
+          ...co,
+          resume: { from: fromISODate(setting.from), until: fromISODate(setting.until), pieces },
+        };
+      });
+    }
 
     // الشركة يلي المحرّك بيخطّط إلها فعلاً — نفس شرط `scheduler.ts` حرفياً.
     // أي شركة برّا هالشرط ما بينولّد إلها ولا كرت، فحذف كروتها بلا ما ينبني
@@ -396,6 +439,8 @@ async function generateScheduleOnce(
         workDate: iso(t.workDate),
         week: t.week,
         status: t.status,
+        pieceNo: t.pieceNo ?? null,
+        settled: t.settled ?? false,
       }));
 
     const pipe = expandPipeline(items, {
@@ -545,13 +590,18 @@ async function generateScheduleOnce(
     // من نموذج الشركة (فحص ١٢/١٠، RG-02). الحرّاس بنموذج الشركة وبحمولة
     // `planCounts` بيمنعوا الحالة من أساسها؛ هون آخر خط: فشل بصوت بدل المحو.
     const protectedSet = new Set(protectedIds);
+    const inScope = (row: (typeof existing)[number]) =>
+      row.companyId != null &&
+      !protectedSet.has(row.companyId) &&
+      (!onlyCompanyId || row.companyId === onlyCompanyId);
+    // كرت الخطة (WRITE) لنطاق ما عاد بالخطة — الريلات صارت صفر، أو المحتوى صار من
+    // الزبون — ما بينولّد، بس إذا عليه شغل بيضل **متل ما هو**: سجلّ كتابة صار، مو
+    // قطعة. كان آخر خط يرفض توليد الدلو كله بسببه (مراجعة المرحلة B).
+    const carriedWrites = existing.filter(
+      (row) => !matchedRows.has(row) && inScope(row) && row.stage === "WRITE" && pieceHasWorkOrBrief(row),
+    );
     const lostRows = existing.filter(
-      (row) =>
-        !matchedRows.has(row) &&
-        row.companyId != null &&
-        !protectedSet.has(row.companyId) &&
-        (!onlyCompanyId || row.companyId === onlyCompanyId) &&
-        pieceHasWorkOrBrief(row),
+      (row) => !matchedRows.has(row) && inScope(row) && row.stage !== "WRITE" && pieceHasWorkOrBrief(row),
     );
     if (lostRows.length > 0) {
       const sample = lostRows
@@ -583,6 +633,13 @@ async function generateScheduleOnce(
     const readStamp = new Map(existing.map((row) => [row.id, row.updatedAt.getTime()]));
 
     await prisma.$transaction(async (tx) => {
+      // قفل الكتابة **قبل** الفحص: على SQLite المعاملة بتاخد القفل مع أول كتابة، فكتابة
+      // من برّا بين الفحص والمحو كانت تمرق وتضيع (تعديل عنوان متوازي مع إعادة توليد).
+      await tx.setting.upsert({
+        where: { key: "regenLock" },
+        update: { value: String(Date.now()) },
+        create: { key: "regenLock", value: String(Date.now()) },
+      });
       const current = await tx.task.findMany({
         where: existingWhere,
         select: { id: true, updatedAt: true },
@@ -594,7 +651,11 @@ async function generateScheduleOnce(
         throw new StaleBucketError();
       }
       // Replace generated cards + auto sessions (keep ad-hoc, isAuto=false).
-      await tx.task.deleteMany({ where: replaceScope });
+      await tx.task.deleteMany({
+        where: carriedWrites.length
+          ? { AND: [replaceScope, { id: { notIn: carriedWrites.map((row) => row.id) } }] }
+          : replaceScope,
+      });
       // روابط ملفات تلغرام بتنتقل مع **هوية** القطعة: المعرّف موضعي بالدلو كله
       // (`y_m_d_co_type_seq`)، فأي قطعة زيادة أو ناقصة عند شركة قبل بتبدّل معرّفات
       // غيرها — والرابط كان يضل على المعرّف القديم: يا بيصير يتيم، يا بيأشّر على
@@ -637,7 +698,14 @@ async function generateScheduleOnce(
           });
         }
       }
-      await tx.photoSession.deleteMany({ where: replaceScope });
+      // جلسات التصوير قبل يوم الرجوع لشركة راجعة من إيقاف هي تاريخ قطعها المحسومة —
+      // ما بتنولّد من جديد، فما بتنمحى.
+      const keptSessions = [...resumeSettings.entries()]
+        .filter(([id]) => !onlyCompanyId || id === onlyCompanyId)
+        .map(([id, setting]) => ({ companyId: id, shootDate: { lt: fromISODate(setting.from) } }));
+      await tx.photoSession.deleteMany({
+        where: keptSessions.length ? { AND: [replaceScope, { NOT: { OR: keptSessions } }] } : replaceScope,
+      });
 
       const now = new Date();
       await tx.task.createMany({
@@ -712,6 +780,9 @@ async function generateScheduleOnce(
       // Prisma's default 5s interactive-transaction limit → "Transaction not found".
       maxWait: 15000,
       timeout: 30000,
+      // فحص «ما تغيّر شي» والاستبدال لازم يكونوا ذرّة وحدة: على Postgres بـREAD COMMITTED
+      // كتابة بين الفحص والمحو كانت تضيع. التعارض (P2034) = «الدلو تغيّر» → إعادة.
+      isolationLevel: "Serializable",
     });
 
     // Stamp ad-hoc tasks' computed workDate/overflow AFTER the transaction. These
@@ -742,6 +813,7 @@ async function generateScheduleOnce(
     return { ok: true as const, stages, warnings: result.warnings };
   } catch (e) {
     if (e instanceof StaleBucketError) return { ok: false as const, stale: true as const };
+    if ((e as { code?: string })?.code === "P2034") return { ok: false as const, stale: true as const };
     console.error(e);
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };

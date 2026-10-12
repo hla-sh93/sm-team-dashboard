@@ -210,9 +210,8 @@ export default function CompaniesClient({
     Swal.fire({
       title: `أوقف النشر — ${c.name}`,
       html:
-        "كل الكروت <b>المعلّقة</b> رح تنشال، وتاريخ بدء النشر بينفرّغ — فما في دورة وما في تأخير علينا." +
-        "<br/><b>الشغل المنجَز والمنشور بيضل كما هو.</b>" +
-        "<br/>لما ترجّعيها، بتحطّي تاريخ بدء نشر جديد والكروت بتنبني من أوله.",
+        "الكروت <b>بتضل محفوظة ومخفيّة</b> بأوصافها وحالاتها، وما بينحسب تأخير لحدّ ما ترجع." +
+        "<br/>لما ترجّعيها بتاريخ، <b>الباقي بس</b> بيتجدول من هالتاريخ — بنافذة على قدّ الباقي من الخطة.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "أوقف النشر",
@@ -223,7 +222,7 @@ export default function CompaniesClient({
       start(async () => {
         const r = await pauseCompanyPublishing(c.id);
         if (r.ok) {
-          toast(`توقّف نشر ${c.name} · انشال ${r.removedTasks} كرت معلّق`);
+          toast(`توقّف نشر ${c.name} — الكروت محفوظة ومخفيّة`);
           router.refresh();
         } else toast(r.error, "error");
       });
@@ -234,7 +233,7 @@ export default function CompaniesClient({
   const onResumePublishing = (c: Company) => {
     Swal.fire({
       title: `رجّع النشر — ${c.name}`,
-      html: "حطّي تاريخ بدء النشر الجديد. منه بتتحدّد الدورة، ومنه بيرتّب النظام التصميم والتصوير والمونتاج والنشر.",
+      html: "حطّي تاريخ الرجوع. منه بيتجدول <b>الباقي</b> من الخطة (التصميم والتصوير والمونتاج والنشر) بنافذة على قدّ الباقي، والمنجز بيضل بمكانه.",
       input: "text",
       inputPlaceholder: "YYYY-MM-DD",
       inputAttributes: { dir: "ltr", spellcheck: "false" },
@@ -250,7 +249,11 @@ export default function CompaniesClient({
       start(async () => {
         const r = await resumeCompanyPublishing(c.id, String(res.value).trim());
         if (r.ok) {
-          toast(`رجع نشر ${c.name} — الدورة من ${r.from}`);
+          toast(
+            "remaining" in r && r.remaining
+              ? `رجع نشر ${c.name} — ${r.remaining} قطعة باقية من ${r.from} على ${r.windowDays} يوم`
+              : `رجع نشر ${c.name} — من ${r.from}`,
+          );
           router.refresh();
         } else toast(r.error, "error");
       });

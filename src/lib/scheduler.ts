@@ -87,6 +87,20 @@ export type CompanyInput = {
   defaultOwnerId: string | null;
   /** Photographer who shoots this company's reels. Null → first photographer. */
   photographerId?: string | null;
+  /**
+   * رجوع من إيقاف (قرار القائدة ١٢/١٠): «منتابع من مكان يلي وقفنا فيه مع جدولة جديدة
+   * حسب تاريخ البدء الجديد للمهام الباقية والنشر». القطع المحسومة (منجزة/ملغاة)
+   * بتضل بمواعيدها وأرقامها، والباقي بس بيتوزّع على نافذة الرجوع [from, until)،
+   * والإنتاج بينحشر بطاقة الفريق متل أي شغل. المحرّك بيعبّيها من `Setting`.
+   */
+  resume?: ResumeWindow | null;
+};
+
+export type ResumeWindow = {
+  from: Date;
+  /** حصري. */
+  until: Date;
+  pieces: { type: ContentType; pieceNo: number; publishDate: Date | null; settled: boolean }[];
 };
 
 export type AdhocInput = {
@@ -136,6 +150,10 @@ export type ScheduledTask = {
   /** Company contract start — no work day may be placed before it (engine
    *  internal, only bites in a contract's FIRST cycle). */
   notBefore?: Date | null;
+  /** رقم القطعة المعطى سلفاً (الرجوع من إيقاف) — `expandPipeline` بيحترمه. */
+  pieceNo?: number | null;
+  /** قطعة محسومة (منجزة/ملغاة) بالرجوع: بمكانها، بلا جلسة تصوير جديدة. */
+  settled?: boolean;
 };
 
 export type SchedulerWarning = {
@@ -348,6 +366,16 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     const firstCycle = cyc.coldStart;
     // أسبوع التحضير من التوقيع (١٢/١٠) — بيغلب القاعدتين القديمتين تحت.
     const signingPrep = signingPrepOf(co, year, month);
+    const resume = co.resume ?? null;
+    const resumeFrom = resume
+      ? new Date(resume.from.getFullYear(), resume.from.getMonth(), resume.from.getDate())
+      : null;
+    // الكمية يلي بتتوزّع: بالرجوع الباقي بس، وإلا خطة السجلّ.
+    const openOf = (type: ContentType) =>
+      resume ? resume.pieces.filter((piece) => piece.type === type && !piece.settled).length : 0;
+    const plan = resume
+      ? { posts: openOf("POST"), reels: openOf("REEL"), aiReels: openOf("AI_REEL"), stories: openOf("STORY") }
+      : { posts: co.posts, reels: co.reels, aiReels: co.aiReels, stories: co.stories };
     // Contracts started on/after the rule's adoption date get the PREP WEEK;
     // older ones keep the leads they were planned under (see the constants).
     const prepWeek =
@@ -357,26 +385,43 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     // which is counted in working days rather than calendar days.
     // A warm (contiguous) cycle keeps the plain contract-start floor, which is
     // a no-op for ongoing clients and preserves their prior-month prep.
-    const productionFloor = signingPrep
-      ? signingPrep.productionFloor
-      : prepWeek
-        ? addWorkingDays(cyc.start, PREP_PRODUCTION_WORKDAYS)
-        : firstCycle
-          ? shiftDays(cyc.start, WRITE_LEAD_DAYS)
-          : csMidnight;
+    const productionFloor = resumeFrom
+      ? resumeFrom
+      : signingPrep
+        ? signingPrep.productionFloor
+        : prepWeek
+          ? addWorkingDays(cyc.start, PREP_PRODUCTION_WORKDAYS)
+          : firstCycle
+            ? shiftDays(cyc.start, WRITE_LEAD_DAYS)
+            : csMidnight;
     if (productionFloor) productionFloorByCompany.set(co.id, productionFloor);
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
     // النشر بيمرق بأيام الدوام + السبت (قرار القائدة ١/٩: «السبت مسموح للنشر
     // بس، مو للإنتاج»). الجمعة مستثناة. الشرط كان رقماً حرفياً `!== 5` — صار
     // قاعدة مسمّاة بمكان واحد مع باقي أيام الأسبوع.
-    const cycleDays = cyc.days.filter(isPublishableDay);
+    const cycleDays = resume
+      ? daysBetween(resumeFrom!, resume.until).filter(isPublishableDay)
+      : cyc.days.filter(isPublishableDay);
     const cycleLen = cycleDays.length;
     // Cold-start publish floors per type: writing (2d) + the type's own
     // production lead must fit INSIDE the cycle. POST/AI 2+2, STORY 2+1,
     // REEL 2 (scenario) + 3 (shoot→publish). Applies to a brand-new contract
     // AND to a cycle resumed after a renewal gap.
     const minIdxOf: Record<ContentType, number> = { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0 };
-    if (signingPrep) {
+    if (resumeFrom) {
+      // الرجوع: الخطة مكتوبة من قبل — النشر بعد مهلة **الإنتاج** من يوم الرجوع.
+      const offs: Record<ContentType, number> = {
+        POST: LEAD.POST,
+        AI_REEL: LEAD.AI_REEL,
+        STORY: LEAD.STORY,
+        REEL: LEAD.REEL + SHOOT_BEFORE_MONTAGE.max,
+      };
+      for (const ty of TYPE_ORDER) {
+        const minDate = shiftDays(resumeFrom, offs[ty]);
+        const idx = cycleDays.findIndex((d) => d.getTime() >= minDate.getTime());
+        minIdxOf[ty] = idx >= 0 ? idx : Math.max(0, cycleDays.length - 1);
+      }
+    } else if (signingPrep) {
       // الخطة انكتبت بأسبوع التحضير: النشر بعد مهلة **الإنتاج** بس، من أول يوم إنتاج.
       const offs: Record<ContentType, number> = {
         POST: LEAD.POST,
@@ -458,9 +503,9 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 
     // FEED — الترتيب يلي بناه `interleaveTypes` لازم يوصل للتقويم **كما هو**.
     const feedSeq = interleaveTypes({
-      POST: co.posts,
-      REEL: co.reels,
-      AI_REEL: co.aiReels,
+      POST: plan.posts,
+      REEL: plan.reels,
+      AI_REEL: plan.aiReels,
     });
     if (feedSeq.length > 0) {
       const n = feedSeq.length;
@@ -514,12 +559,56 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     const storyFloor = minIdxOf.STORY;
     const storySpan = Math.max(1, cycleLen - storyFloor);
     const usedStory = new Set<number>();
-    for (let i = 0; i < co.stories; i++) {
+    for (let i = 0; i < plan.stories; i++) {
       const target =
-        storyFloor + (Math.round(offset + (i + 0.5) * (storySpan / co.stories)) % storySpan);
+        storyFloor + (Math.round(offset + (i + 0.5) * (storySpan / plan.stories)) % storySpan);
       const slot = placeUnique(target, usedStory, cycleLen, minIdxOf.STORY);
       usedStory.add(slot);
       emit("STORY", slot);
+    }
+
+    if (resume) {
+      // الباقي بياخد أرقامه القديمة بترتيبها على المواعيد الجديدة (الرقم هوية القطعة:
+      // وصفها ودليلها وروابط ملفاتها عليه)…
+      const fresh = tasks.filter((t) => t.companyId === co.id && t.pieceNo == null && !t.settled);
+      for (const type of TYPE_ORDER) {
+        const slots = fresh
+          .filter((t) => t.type === type)
+          .sort((a, b) => a.publishDate!.getTime() - b.publishDate!.getTime() || a.detKey.localeCompare(b.detKey));
+        const numbers = resume.pieces
+          .filter((piece) => piece.type === type && !piece.settled)
+          .map((piece) => piece.pieceNo)
+          .sort((a, b) => a - b);
+        slots.forEach((t, i) => (t.pieceNo = numbers[i] ?? null));
+      }
+      // …والمحسوم بيضل بمكانه ورقمه — بلا ما ياكل يوماً من نافذة الرجوع.
+      for (const piece of resume.pieces.filter((p) => p.settled)) {
+        const at = piece.publishDate ? new Date(piece.publishDate) : new Date(resumeFrom!);
+        const iso = toISODate(at);
+        tasks.push({
+          detKey: `${co.id}|${piece.type}|${iso}|settled-${piece.pieceNo}`,
+          kind: "CONTENT",
+          type: piece.type,
+          title: `${CONTENT_TYPE_LABELS[piece.type]} — ${co.name}`,
+          companyId: co.id,
+          assigneeId: ownerFor(co, piece.type),
+          hours: hoursForTask(empById.get(ownerFor(co, piece.type) ?? ""), piece.type),
+          priority: "NORMAL",
+          status: "NOT_STARTED",
+          publishDate: at,
+          readyDate: null,
+          workDate: null,
+          week: null,
+          overflow: false,
+          month,
+          year,
+          isPinned: false,
+          isAuto: true,
+          notBefore: null,
+          pieceNo: piece.pieceNo,
+          settled: true,
+        });
+      }
     }
   }
 
@@ -529,7 +618,9 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   // photographer's sessions are built on HIS OWN working days. This splits the
   // shoot load across multiple freelance photographers.
   // -------------------------------------------------------------------------
-  const reelCompanies = managed.filter((co) => co.reels > 0);
+  const reelCompanies = managed.filter((co) =>
+    co.resume ? co.resume.pieces.some((p) => p.type === "REEL" && !p.settled) : co.reels > 0,
+  );
   const reelsByPhotographer = new Map<
     string,
     {
@@ -552,11 +643,11 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       companyId: co.id,
       companyName: co.name,
       preferredShootDay: co.preferredShootDay ?? null,
-      cycleStart: cyc.start,
-      cycleEnd: cyc.end,
+      cycleStart: co.resume ? co.resume.from : cyc.start,
+      cycleEnd: co.resume ? co.resume.until : cyc.end,
       notBefore: productionFloorByCompany.get(co.id) ?? null,
       reels: tasks
-        .filter((t) => t.type === "REEL" && t.companyId === co.id)
+        .filter((t) => t.type === "REEL" && t.companyId === co.id && !t.settled)
         .map<ReelTask>((t) => ({
           detKey: t.detKey,
           companyId: co.id,
@@ -897,4 +988,15 @@ function placeUnique(target: number, used: Set<number>, len: number, minIdx = 0)
     if (target - d >= minIdx && !used.has(target - d)) return target - d;
   }
   return Math.min(len - 1, Math.max(minIdx, target));
+}
+
+/** كل الأيام من `start` (منتصف ليله) لقبل `end` — نافذة الرجوع من إيقاف. */
+function daysBetween(start: Date, end: Date): Date[] {
+  const out: Date[] = [];
+  const d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  while (d.getTime() < end.getTime()) {
+    out.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }

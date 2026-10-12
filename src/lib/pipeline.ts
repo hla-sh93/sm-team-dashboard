@@ -34,6 +34,10 @@ export type PipelineContentItem = {
   productionQuantity?: number;
   /** Client-facing published units. For one carousel post, keep this at 1. */
   publishQuantity?: number;
+  /** رقم القطعة المعطى سلفاً (الرجوع من إيقاف) — بيغلب الترقيم بترتيب النشر. */
+  pieceNo?: number | null;
+  /** قطعة محسومة بمكانها القديم — ما بتحدّد موعد كرت الخطة. */
+  settled?: boolean;
 };
 
 export type PipelineTask = {
@@ -204,7 +208,7 @@ export function expandPipeline(
     const s = scopesByCompany.get(it.companyId) ?? new Set();
     s.add(scope);
     scopesByCompany.set(it.companyId, s);
-    const start = it.workDate ?? it.publishDate;
+    const start = it.settled ? null : (it.workDate ?? it.publishDate);
     if (start) {
       const k = `${it.companyId}|${scope}`;
       const cur = earliestStart.get(k);
@@ -382,6 +386,13 @@ export function expandPipeline(
       (a, b) => (a[1] ?? "9999").localeCompare(b[1] ?? "9999") || a[0].localeCompare(b[0]),
     );
     ordered.forEach(([pk], i) => numOf.set(pk, i + 1));
+  }
+  // الأرقام المعطاة سلفاً (الرجوع من إيقاف) بتغلب: القطعة الباقية بتحتفظ برقمها
+  // ولو صار موعدها الجديد بعد قطع محسومة أعلى منها رقماً.
+  for (const it of items) {
+    if (it.pieceNo == null) continue;
+    const pk = it.id ?? null;
+    if (pk) numOf.set(pk, it.pieceNo);
   }
   for (const t of out) {
     if (t.stage === "WRITE" || !t.pipelineKey) continue;

@@ -1266,7 +1266,7 @@ describe("contract renewal lifecycle", () => {
    * محو تاريخ إنتاج صار فعلاً. لو انمحى المنجَز بتضيع أرقام الإنجاز وحصيلة كل
    * شخص — وهاد بالضبط يلي القائدة قالت عنه «ما بدي يضيع شغل الشركات النشطة».
    */
-  it("الإيقاف بيشيل المعلّق وبيخلّي المنجَز، والإرجاع بيعيد بناء الدورة من التاريخ الجديد", async () => {
+  it("الإيقاف بيخفي ولا بيمحي (قرار القائدة ١٢/١٠)، والرجوع بيكمّل الباقي من التاريخ الجديد", async () => {
     if (skip()) return;
     const co = await makeCompany({
       name: `${uniq}-pause`,
@@ -1294,12 +1294,12 @@ describe("contract renewal lifecycle", () => {
     expect(paused.ok, paused.error).toBe(true);
 
     const after = await prisma.company.findUniqueOrThrow({ where: { id: co.id } });
-    expect(after.status).toBe("paused");
-    expect(after.publishStartDate).toBeNull(); // بلا تاريخ = بلا دورة = بلا تأخير علينا
+    expect(after.status).toBe("paused"); // موقوفة = مخفيّة وبلا تأخير
+    expect(after.publishStartDate).not.toBeNull(); // الخطة ودورتها محفوظين
 
     const left = await prisma.task.findMany({ where: { companyId: co.id } });
+    expect(left.length).toBe(before); // ولا كرت انمحى
     expect(left.map((t: { id: string }) => t.id)).toContain(done.id); // المنجَز صمد
-    expect(left.every((t: { board: string }) => t.board === "DONE")).toBe(true); // ولا كرت معلّق
 
     // ═══ إرجاع بلا تاريخ = مرفوض ═══
     expect((await actions.resumeCompanyPublishing(co.id, "")).ok).toBe(false);
@@ -1309,12 +1309,14 @@ describe("contract renewal lifecycle", () => {
     expect(resumed.ok, resumed.error).toBe(true);
     const back = await prisma.company.findUniqueOrThrow({ where: { id: co.id } });
     expect(back.status).toBe("active");
-    expect(toISODate(back.publishStartDate!)).toBe("2026-09-20");
 
-    const rebuilt = await prisma.task.count({
-      where: { companyId: co.id, year: YEAR, month: 8, isAuto: true, board: { not: "DONE" } },
+    const open = await prisma.task.findMany({
+      where: { companyId: co.id, year: YEAR, month: 8, isAuto: true, board: { not: "DONE" }, status: { not: "CANCELED" } },
     });
-    expect(rebuilt).toBeGreaterThan(0); // الكروت رجعت
+    expect(open.length).toBeGreaterThan(0); // الباقي رجع
+    for (const t of open as { publishDate: Date | null; stage: string | null }[]) {
+      if (t.stage === "PUBLISH" && t.publishDate) expect(toISODate(t.publishDate) >= "2026-09-20").toBe(true);
+    }
     // والمنجَز لسا موجود — ما انبنى فوقه ولا انمحى.
     expect(await prisma.task.count({ where: { id: done.id } })).toBe(1);
   });

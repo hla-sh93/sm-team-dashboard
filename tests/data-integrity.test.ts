@@ -64,6 +64,8 @@ let employees: Row[] = [];
 let companies: Row[] = [];
 let tasks: Row[] = [];
 let sessions: Row[] = [];
+/** نوافذ الرجوع من إيقاف (`companyResume:<id>` بـSetting) — قرار القائدة ١٢/١٠. */
+let resumeWindows = new Map<string, { from: string; until: string; year: number; month: number }>();
 let seeded = false;
 
 beforeAll(async () => {
@@ -75,6 +77,13 @@ beforeAll(async () => {
       prisma.photoSession.findMany(),
     ]);
     seeded = companies.length > 0;
+    for (const row of await prisma.setting.findMany({ where: { key: { startsWith: "companyResume:" } } })) {
+      try {
+        resumeWindows.set(row.key.slice("companyResume:".length), JSON.parse(row.value));
+      } catch {
+        /* صفّ تالف = ما في نافذة */
+      }
+    }
   } catch {
     seeded = false;
   }
@@ -341,6 +350,13 @@ describe("scheduling rules hold on the stored data", () => {
         continue;
       }
       const p = t.publishDate.getTime();
+      // قطعة كمّلت بعد رجوع من إيقاف: مكانها نافذة الرجوع، مو الدورة الأصلية.
+      const rw = resumeWindows.get(co.id);
+      if (rw && rw.year === t.year && rw.month === t.month) {
+        const [fy, fm, fd] = rw.from.split("-").map(Number);
+        const [uy, um, ud] = rw.until.split("-").map(Number);
+        if (p >= new Date(fy, fm - 1, fd).getTime() && p < new Date(uy, um - 1, ud).getTime()) continue;
+      }
       if (p < cyc.start.getTime() || p >= cyc.end.getTime()) {
         bad.push(
           `${co.name}: نشر ${toISODate(t.publishDate)} خارج الدورة ${toISODate(cyc.start)}→${toISODate(cyc.end)}`,

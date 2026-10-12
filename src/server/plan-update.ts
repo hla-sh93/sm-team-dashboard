@@ -1428,7 +1428,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
       planCountsChanged: false,
       generatedCards: 0,
       // الإنشاء بيرجع الصف لا عدّاداً — بينحسب صفاً واحداً.
-      affectedRows: results.reduce((sum, result) => sum + (result.count ?? 1), 0),
+      affectedRows: results
+        .slice(0, handleWrite ? results.length - 1 : results.length)
+        .reduce((sum, result) => sum + (result.count ?? 1), 0),
     };
   } catch (error) {
     // الرسالة للقائدة بتضل عامّة، بس السبب لازم ينكتب مطرح ما بينقرا: بلا هالسطر

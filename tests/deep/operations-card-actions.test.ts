@@ -392,8 +392,11 @@ describe("[OP-14] تعديل جماعي (updateTaskDetails بأكتر من مع�
   });
 });
 
-describe("[OP-15] «أوقف النشر» (pauseCompanyPublishing) مقابل §٨ «كروتها محفوظة ومخفيّة»", () => {
-  it("[OP-15] warning (قرار قائدة): الإيقاف بيمحي الكروت المولَّدة المفتوحة بأوصافها، وبيخلّي المنجَز — السلوك الحالي", async () => {
+describe("[OP-15 مُصلَح] «أوقف النشر» بيخفي ولا بيمحي، و«رجّع النشر» بيكمّل الباقي (قرار القائدة ١٢/١٠)", () => {
+  let doneId = "";
+  let openId = "";
+
+  it("الإيقاف: المنجَز والمفتوح (بوصفه وطابع بدئه) محفوظين، وتاريخ البدء باقي، والكروت مخفيّة عن القوائم", async () => {
     if (skip()) return;
     const companiesActions = await import("@/server/actions/companies");
     const co = await prisma.company.create({
@@ -413,16 +416,46 @@ describe("[OP-15] «أوقف النشر» (pauseCompanyPublishing) مقابل §
     const designs = await prisma.task.findMany({ where: { companyId: co.id, stage: "DESIGN", type: "POST" }, orderBy: { pieceNo: "asc" } });
     expect(designs.length).toBe(2);
     const at = new Date(2026, 8, 5, 12);
-    await prisma.task.update({ where: { id: designs[0].id }, data: { status: "READY", board: "DONE", startedAt: at, finishedAt: at, completedAt: at } });
-    await prisma.task.update({ where: { id: designs[1].id }, data: { brief: "وصف كتبته القائدة للبوست ٢", status: "IN_PROGRESS", board: "DOING", startedAt: at } });
+    doneId = designs[0].id;
+    openId = designs[1].id;
+    await prisma.task.update({ where: { id: doneId }, data: { status: "READY", board: "DONE", startedAt: at, finishedAt: at, completedAt: at } });
+    await prisma.task.update({ where: { id: openId }, data: { brief: "وصف كتبته القائدة للبوست ٢", status: "IN_PROGRESS", board: "DOING", startedAt: at } });
 
     const r = await companiesActions.pauseCompanyPublishing(co.id);
     expect(r.ok).toBe(true);
-    // المنجَز بيضل؛ المفتوح (ومعه الوصف وطابع البدء) بينمحى من القاعدة — مو «محفوظ ومخفي».
-    expect(await prisma.task.count({ where: { id: designs[0].id } })).toBe(1);
-    expect(await prisma.task.count({ where: { id: designs[1].id } })).toBe(0);
-    expect(await prisma.task.count({ where: { companyId: co.id, brief: { not: null } } })).toBe(0);
+    expect(await prisma.task.count({ where: { id: { in: [doneId, openId] } } })).toBe(2);
+    const open = await prisma.task.findUniqueOrThrow({ where: { id: openId } });
+    expect([open.status, open.brief]).toEqual(["IN_PROGRESS", "وصف كتبته القائدة للبوست ٢"]);
     const after = await prisma.company.findUniqueOrThrow({ where: { id: co.id } });
-    expect([after.status, after.publishStartDate]).toEqual(["paused", null]);
+    expect(after.status).toBe("paused");
+    expect(after.publishStartDate).not.toBeNull();
+    const { hideDormantCompanyWork } = await import("@/lib/company-visibility");
+    const rows: { companyId: string | null; status: string; board: string | null; completedAt: Date | null; finishedAt: Date | null }[] =
+      await prisma.task.findMany({ where: { companyId: co.id } });
+    const live = hideDormantCompanyWork(rows, [after]);
+    expect(live.filter((t) => !constants.isTaskDoneState(t))).toEqual([]);
+  });
+
+  it("الرجوع بتاريخ: الباقي بس بيتجدول منه (بوصفه وحالته ورقمه)، والمنجز بمكانه", async () => {
+    if (skip()) return;
+    const companiesActions = await import("@/server/actions/companies");
+    const before = await prisma.task.findUniqueOrThrow({ where: { id: doneId } });
+    const r = await companiesActions.resumeCompanyPublishing(pausedCoId, "2026-11-01");
+    expect(r.ok, (r as { error?: string }).error).toBe(true);
+    // «باقي» = قطعة نشرها مو منجز: بوست ١ تصميمه خالص بس لسا ما انتشر.
+    expect((r as { remaining?: number }).remaining).toBe(2);
+    const co = await prisma.company.findUniqueOrThrow({ where: { id: pausedCoId } });
+    expect(co.status).toBe("active");
+    const pieces: { pieceNo: number | null; stage: string | null; status: string; brief: string | null; workDate: Date | null; publishDate: Date | null }[] =
+      await prisma.task.findMany({ where: { companyId: pausedCoId, type: "POST" }, orderBy: [{ pieceNo: "asc" }, { stage: "asc" }] });
+    const done = pieces.find((t) => t.pieceNo === 1 && t.stage === "DESIGN")!;
+    expect([done.status, done.workDate?.getTime()]).toEqual(["READY", before.workDate?.getTime()]);
+    const open = pieces.find((t) => t.pieceNo === 2 && t.stage === "DESIGN")!;
+    expect([open.status, open.brief]).toEqual(["IN_PROGRESS", "وصف كتبته القائدة للبوست ٢"]);
+    for (const no of [1, 2]) {
+      const pub = pieces.find((t) => t.pieceNo === no && t.stage === "PUBLISH")!;
+      expect(pub.publishDate!.getTime(), `بوست ${no}`).toBeGreaterThanOrEqual(new Date(2026, 10, 1).getTime());
+    }
+    expect(open.workDate!.getTime()).toBeGreaterThanOrEqual(new Date(2026, 10, 1).getTime());
   });
 });

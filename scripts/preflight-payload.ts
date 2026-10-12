@@ -221,7 +221,12 @@ for (const file of files) {
           (t) =>
             t.type === TYPE_OF[f] &&
             Number(t.pieceNo) > next &&
-            (t.status !== "NOT_STARTED" || t.board !== "TODO" || String(t.brief ?? "").trim()),
+            t.status !== "CANCELED" &&
+            (t.status !== "NOT_STARTED" ||
+              t.board !== "TODO" ||
+              String(t.brief ?? "").trim() ||
+              String(t.notes ?? "").trim() ||
+              t.reviewedAt != null),
         );
         if (touched.length) {
           console.log(`   ✗ تقليل ${f} إلى ${next} بيشيل ${touched.length} كرت عليه شغل أو وصف`);

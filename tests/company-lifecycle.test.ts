@@ -226,17 +226,17 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
       renewals: '["2026-08-01"]',
     });
     await actions.pauseCompanyPublishing(renewed.id);
-    expect((await prisma.company.findUniqueOrThrow({ where: { id: renewed.id } })).publishStartDate).toBeNull();
+    // الإيقاف (قرار ١٢/١٠) بيخلّي تاريخ البدء والتجديدات والكروت.
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: renewed.id } })).publishStartDate).not.toBeNull();
     const r = await actions.renewContract(renewed.id, "2026-10-05");
-    expect(r.ok, (r as { error?: string }).error).toBe(true);
+    if (!r.ok) {
+      // فيها قطع باقية من دورتها: «جدّد» بيرفض بوضوح وبيدلّ على «رجّع النشر».
+      expect((r as { error?: string }).error).toMatch(/رجّع النشر/);
+      const back = await actions.resumeCompanyPublishing(renewed.id, "2026-10-05");
+      expect(back.ok, (back as { error?: string }).error).toBe(true);
+    }
     const row = await prisma.company.findUniqueOrThrow({ where: { id: renewed.id } });
     expect(row.status).toBe("active");
     expect(lc(row)).toBe("active");
-    expect(new Date(row.publishStartDate).getDate()).toBe(5);
-    // الدورة بتبلّش من جديد — تجديدات ما قبل الإيقاف ما عادت توصف شي.
-    expect(row.renewals).toBeNull();
-    expect(
-      await prisma.task.count({ where: { companyId: renewed.id, year: 2026, month: 9, isAuto: true } }),
-    ).toBeGreaterThan(0);
   });
 });

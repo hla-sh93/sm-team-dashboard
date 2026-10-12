@@ -77,14 +77,23 @@ afterAll(async () => {
 });
 
 describe.skipIf(!HAS_DB)("[SA-03] تحديثات ضايعة على الكروت", () => {
-  it("[SA-03 مُصلَح] نافذة تعديل مفتوحة (قيم قديمة) بتحفظ بعد ما الكرت انسكّر من اللوح → الحفظ بينرفض والكرت بيضل منجز", async () => {
+  it("[SA-03 مُصلَح] نافذة تعديل مفتوحة (قيم قديمة) بتحفظ بعد ما الكرت انسكّر من اللوح → الكرت بيضل منجز", async () => {
     const card = await openCard({ stage: "DESIGN" });
-    // الموظف أ فتح «تعديل» — النموذج بيبعت يلي تغيّر بس + نسخة الكرت يلي انفتح عليها
-    const form = { title: `${card.title} (معدّل)`, expectedUpdatedAt: card.updatedAt.toISOString() };
+    // الموظف أ فتح «تعديل» وغيّر العنوان بس — النموذج بيبعت يلي تغيّر + الحالة يلي انفتح عليها
+    const form = { title: `${card.title} (معدّل)`, expectedStatus: card.status };
     // الموظف ب خلّص الكرت من اللوح
     expect((await tasks.moveCard(card.id, "DONE")).ok).toBe(true);
-    // أ بيحفظ النافذة
     const r = await tasks.updateTaskDetails([card.id], form);
+    const after = await prisma.task.findUnique({ where: { id: card.id } });
+    expect(r.ok).toBe(true);
+    expect(after.board).toBe("DONE");
+    expect(after.title).toBe(form.title);
+  });
+
+  it("[SA-03 مُصلَح] …ولو النافذة القديمة غيّرت الحالة كمان → الحفظ بينرفض والكرت بيضل منجز", async () => {
+    const card = await openCard({ stage: "DESIGN" });
+    expect((await tasks.moveCard(card.id, "DONE")).ok).toBe(true);
+    const r = await tasks.updateTaskDetails([card.id], { status: "IN_PROGRESS", expectedStatus: card.status });
     const after = await prisma.task.findUnique({ where: { id: card.id } });
     expect(r.ok).toBe(false);
     expect(after.board).toBe("DONE");

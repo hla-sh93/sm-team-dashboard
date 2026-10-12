@@ -132,7 +132,7 @@ describe("التجديد — WORK_RULES §٩: رقم السجلّ لآخر دو�
 
 describe("الإيقاف ثم الإرجاع — توصيف السلوك الحالي (RG-10 قرار قائدة = OP-15) + RG-05", () => {
   const CO = "c_pause";
-  it("السلوك الحالي (RG-10): الإيقاف بيمحي الكروت المولَّدة المفتوحة (والملغاة) وبيخلّي المنجزة؛ الإرجاع بيعيد بناء الدورة والمنجز بيرجع برقمه", async () => {
+  it("[RG-10 مُصلَح] الإيقاف بيخفي ولا بيمحي (المفتوح بوصفه والملغى بيضلّوا)؛ والرجوع بيكمّل الباقي بأرقامه وأوصافه", async () => {
     await makeCompany(prisma, CO);
     await genOk(Y, M);
     const p1 = (await pieceCards(prisma, CO, "POST", 1)).production!;
@@ -144,22 +144,21 @@ describe("الإيقاف ثم الإرجاع — توصيف السلوك الح�
     const manual = await prisma.task.create({
       data: { id: "manual_pause", kind: "ADHOC", title: "يدوي", companyId: CO, year: Y, month: M, isAuto: false, hours: 8 },
     });
+    const beforePause = await autoCards(prisma, CO, Y, M);
 
     const paused = await companies.pauseCompanyPublishing(CO);
     expect(paused.ok, (paused as { error?: string }).error).toBe(true);
     const left = await autoCards(prisma, CO, Y, M);
-    // [RG-10] الموجود بعد الإيقاف: المنجز بس — المفتوح **انمحى** (مو مخفي)، ومعه
-    // الوصف المستورد على بوست ٢ والإلغاء المثبّت على بوست ٣.
-    expect(left.every((c) => c.board === "DONE")).toBe(true);
-    expect(left.some((c) => c.id === p1.id)).toBe(true);
-    expect(left.find((c) => c.pieceNo === 2 && c.stage === "DESIGN")).toBeUndefined();
-    expect(left.find((c) => c.pieceNo === 3)).toBeUndefined();
+    // [RG-10] كل الكروت بتضل: المنجز، والمفتوح بوصفه، والإلغاء المثبّت.
+    expect(left.map((c) => c.id).sort()).toEqual(beforePause.map((c) => c.id).sort());
+    expect(left.find((c) => c.pieceNo === 2 && c.stage === "DESIGN")!.brief).toBe("وصف بوست ٢ من خطة الزبون");
+    expect(left.filter((c) => c.pieceNo === 3).every((c) => c.status === "CANCELED")).toBe(true);
     expect(await prisma.task.findUnique({ where: { id: manual.id } })).not.toBeNull();
     const co = await prisma.company.findUniqueOrThrow({ where: { id: CO } });
-    expect([co.status, co.publishStartDate]).toEqual(["paused", null]);
-    // [RG-05] كرت الكتابة المفتوح انمحى وكرت التصميم المنجز لسا بيأشّر عليه: مؤشّر معلّق
-    const dangling = (await relationViolations(prisma)).filter((v) => v.includes(CO));
-    expect(dangling).toEqual([`${p1.id}: blockedById معلّق (${Y}_${M}_w_${CO}_DESIGN)`]);
+    expect(co.status).toBe("paused");
+    expect(co.publishStartDate).not.toBeNull();
+    // [RG-05] ما في محي، فما في مؤشّر معلّق.
+    expect((await relationViolations(prisma)).filter((v) => v.includes(CO))).toEqual([]);
 
     // وقت الإيقاف المحرّك ما بيلمس الشركة الموقوفة: توليد الدلو كله ما بيغيّر صفوفها
     const frozen = await tableSnapshot(prisma, { companyId: CO });
@@ -174,20 +173,20 @@ describe("الإيقاف ثم الإرجاع — توصيف السلوك الح�
     expect(numsOf(rebuilt, "POST")).toEqual([1, 2, 3]);
     const p1After = (await pieceCards(prisma, CO, "POST", 1)).production!;
     expect([p1After.board, p1After.status]).toEqual(["DONE", "READY"]);
-    // [RG-10] بعد الإرجاع: وصف بوست ٢ ضاع، وبوست ٣ الملغى رجع مفتوحاً
-    expect((await pieceCards(prisma, CO, "POST", 2)).production!.brief).toBeNull();
-    expect((await pieceCards(prisma, CO, "POST", 3)).production!.status).toBe("NOT_STARTED");
+    // [RG-10] بعد الرجوع: وصف بوست ٢ باقي، وبوست ٣ الملغى بيضل ملغى.
+    expect((await pieceCards(prisma, CO, "POST", 2)).production!.brief).toBe("وصف بوست ٢ من خطة الزبون");
+    expect((await pieceCards(prisma, CO, "POST", 3)).production!.status).toBe("CANCELED");
     const coAfter = await prisma.company.findUniqueOrThrow({ where: { id: CO } });
-    expect(day(coAfter.publishStartDate)).toBe("2026-09-15");
-    // لا كرت مفتوح قبل بداية النشر الجديدة
+    expect(coAfter.status).toBe("active");
+    // لا كرت مفتوح قبل يوم الرجوع
     for (const c of rebuilt) {
-      if (c.board === "DONE" || !c.publishDate) continue;
+      if (c.board === "DONE" || c.status === "CANCELED" || !c.publishDate) continue;
       expect(day(c.publishDate)! >= "2026-09-15", `${c.type}#${c.pieceNo} ${c.stage}`).toBe(true);
     }
     await stable(Y, M);
   });
 
-  it.fails("[RG-05] الإيقاف ما بيترك مؤشّر حجز معلّق: المنجز يلي حاجزه كرت كتابة مفتوح انمحى بينفكّ عنه", async () => {
+  it("[RG-05 مُصلَح] الإيقاف ما بيترك مؤشّر حجز معلّق (ما في محي أصلاً)", async () => {
     // PROJECT.md «Paused companies»: محو الشغل غير المطلوب بيصفّر `blockedById`
     // الضالّ أولاً (الخطوة ١١)؛ و`tests/data-integrity.test.ts` بيرفض أي مؤشّر معلّق.
     const CO2 = "c_pause_rel";
