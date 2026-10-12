@@ -18,7 +18,7 @@ import { isDormantCompany } from "@/lib/company-visibility";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { isTaskDoneState } from "@/lib/constants";
-import { buildSchedule } from "@/lib/scheduler";
+import { buildSchedule, signingPrepOf } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
 import {
@@ -375,6 +375,14 @@ async function generateScheduleOnce(
       d
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
         : null;
+    // أسبوع التحضير من التوقيع (١٢/١٠): كرت الخطة من يوم التوقيع، جاهز بعد يومين عمل.
+    const writeWindowISO = (id: string) => {
+      const co = state.companies.find((c) => c.id === id);
+      const prep = co ? signingPrepOf(co, year, month, writerWorkDays) : null;
+      if (!prep) return null;
+      const start = forwardWorkday(prep.signedAt, writerWorkDays);
+      return { start: iso(start)!, end: iso(prep.writeReady)! };
+    };
 
     const items = result.tasks
       .filter((t) => t.kind === "CONTENT" && t.companyId && t.type)
@@ -404,6 +412,7 @@ async function generateScheduleOnce(
       skipWritingForCompany: trainerSuppliedContent,
       skipPublishForCompany: notPublishingYet,
       notBeforeISO,
+      writeWindowISO,
       publisherWorkDays,
     });
     applyAchievements(pipe, await achievementsFor(year, month));

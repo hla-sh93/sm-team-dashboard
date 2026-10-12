@@ -656,3 +656,24 @@ describe("رفع عدد القطع ما بيورّث حالة قطعة قديم�
     expect(designNo(pipe, 3).notes).toBe("منجز ٣");
   });
 });
+
+describe("كرت الخطة بأسبوع التحضير من التوقيع (قرار القائدة ١٢/١٠)", () => {
+  it("نافذة صريحة: الكتابة من يوم التوقيع، والخطة جاهزة بعد يومين عمل — قبل تاريخ البدء", () => {
+    const pipe = expandPipeline(
+      [{ ...baseItem, id: "c|POST|2026-11-12|1", publishDate: "2026-11-12", workDate: "2026-11-09", readyDate: "2026-11-10" }],
+      { ...opts, writeWindowISO: (co: string) => (co === "c" ? { start: "2026-11-01", end: "2026-11-03" } : null) },
+    );
+    const write = pipe.find((t) => t.stage === "WRITE")!;
+    expect(write.workDate).toBe("2026-11-01");
+    expect(write.readyDate).toBe("2026-11-03");
+  });
+
+  it("بلا نافذة: نفس القاعدة القديمة (يومين عمل قبل أول إنتاج)", () => {
+    const pipe = expandPipeline(
+      [{ ...baseItem, id: "c|POST|2026-11-12|1", publishDate: "2026-11-12", workDate: "2026-11-09", readyDate: "2026-11-10" }],
+      opts,
+    );
+    const write = pipe.find((t) => t.stage === "WRITE")!;
+    expect(write.readyDate).toBe("2026-11-09");
+  });
+});

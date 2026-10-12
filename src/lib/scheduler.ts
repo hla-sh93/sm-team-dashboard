@@ -27,6 +27,7 @@ import {
 import { hoursPerItem, ratePerDay } from "./capacity";
 import {
   addWorkingDays,
+  WORK_WEEK,
   backWorkday,
   forwardWorkday,
   packingWindowDays,
@@ -188,6 +189,52 @@ const PREP_PRODUCTION_WORKDAYS = 3;
 const PREP_PUBLISH_DAYS = 7;
 const PREP_WEEK_RULE_FROM = new Date(2026, 6, 20);
 
+/**
+ * أسبوع التحضير **من التوقيع** — قرار القائدة ١٢/١٠/٢٠٢٦:
+ * «من تاريخ التوقيع منبدأ اسبوع لحتى نعطيه البلان ويوافق عليها بشكل نهائي لنبدأ
+ * توزيع مهام للفريق… بشكل افتراضي هو اسبوع»، والدورة (٣٠ يوم) **من تاريخ البدء**
+ * (`publishStartDate`، افتراضياً التوقيع + ٧ وقابل للتعديل).
+ *
+ * يعني التحضير صار **قبل** الدورة: كرت الخطة للكاتبة من يوم التوقيع (يومين عمل)،
+ * والباقي من الأسبوع موافقة الزبون؛ ومن تاريخ البدء الإنتاج، والنشر بعد مهلة
+ * إنتاج كل نوع — **ولا أسبوع تحضير تاني جوّا الدورة** (المحرّك كان يحسب التحضير
+ * من بدء النشر، فعقد موقّع ١/١٠ وبدايته ٨/١٠ كان أول نشره ١٧/١٠ — SC-15).
+ *
+ * محصورة بأول دورة بالعقد يلي بدايتها من ١٣/١٠/٢٠٢٦ وطالع وإلها توقيع: الدورات
+ * الأقدم انخطّطت بالقاعدة القديمة وما بتنعاد. ودورة بعد فجوة تجديد (ما في توقيع
+ * جديد) بتضل على قاعدة الكتابة جوّا الدورة.
+ */
+const SIGNING_PREP_RULE_FROM = new Date(2026, 9, 13);
+/** يومين عمل للكاتبة لتسلّم الخطة من يوم التوقيع. */
+export const SIGNING_WRITE_WORKDAYS = 2;
+
+export type SigningPrep = {
+  /** يوم التوقيع — كرت الخطة بيبلّش منه. */
+  signedAt: Date;
+  /** الخطة جاهزة للموافقة. */
+  writeReady: Date;
+  /** أول يوم إنتاج = max(تاريخ البدء، جهوزية الخطة). */
+  productionFloor: Date;
+};
+
+/** أسبوع التحضير من التوقيع لدورة هالدلو، أو null لما القاعدة ما بتنطبق. */
+export function signingPrepOf(
+  co: Pick<CompanyInput, "contractStartDate" | "publishStartDate" | "renewals" | "contractEndedAt">,
+  year: number,
+  month: number,
+  writerWorkDays: number[] = WORK_WEEK,
+): SigningPrep | null {
+  const cyc = cycleForBucket(co, year, month);
+  if (!cyc || cyc.index !== 0 || !co.contractStartDate) return null;
+  if (cyc.start.getTime() < SIGNING_PREP_RULE_FROM.getTime()) return null;
+  const raw = new Date(co.contractStartDate);
+  const signedAt = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
+  if (signedAt.getTime() > cyc.start.getTime()) return null;
+  const writeReady = addWorkingDays(signedAt, SIGNING_WRITE_WORKDAYS, writerWorkDays);
+  const productionFloor = writeReady.getTime() > cyc.start.getTime() ? writeReady : new Date(cyc.start);
+  return { signedAt, writeReady, productionFloor };
+}
+
 const PLAN_KEYS: Record<ContentType, "posts" | "reels" | "stories" | "aiReels"> = {
   POST: "posts",
   REEL: "reels",
@@ -299,19 +346,24 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     // begins after a renewal GAP (nobody wrote a plan while the contract sat
     // unrenewed) — gets the full pipeline lead, measured from THIS cycle's start.
     const firstCycle = cyc.coldStart;
+    // أسبوع التحضير من التوقيع (١٢/١٠) — بيغلب القاعدتين القديمتين تحت.
+    const signingPrep = signingPrepOf(co, year, month);
     // Contracts started on/after the rule's adoption date get the PREP WEEK;
     // older ones keep the leads they were planned under (see the constants).
-    const prepWeek = firstCycle && cyc.start.getTime() >= PREP_WEEK_RULE_FROM.getTime();
+    const prepWeek =
+      !signingPrep && firstCycle && cyc.start.getTime() >= PREP_WEEK_RULE_FROM.getTime();
     // Production can start only after the plan is WRITTEN (cold-start cycle) —
     // and under the prep-week rule, only after the client has also APPROVED it,
     // which is counted in working days rather than calendar days.
     // A warm (contiguous) cycle keeps the plain contract-start floor, which is
     // a no-op for ongoing clients and preserves their prior-month prep.
-    const productionFloor = prepWeek
-      ? addWorkingDays(cyc.start, PREP_PRODUCTION_WORKDAYS)
-      : firstCycle
-        ? shiftDays(cyc.start, WRITE_LEAD_DAYS)
-        : csMidnight;
+    const productionFloor = signingPrep
+      ? signingPrep.productionFloor
+      : prepWeek
+        ? addWorkingDays(cyc.start, PREP_PRODUCTION_WORKDAYS)
+        : firstCycle
+          ? shiftDays(cyc.start, WRITE_LEAD_DAYS)
+          : csMidnight;
     if (productionFloor) productionFloorByCompany.set(co.id, productionFloor);
     // Publishing days = the cycle window minus Fridays (no Friday publishing).
     // النشر بيمرق بأيام الدوام + السبت (قرار القائدة ١/٩: «السبت مسموح للنشر
@@ -324,7 +376,20 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     // REEL 2 (scenario) + 3 (shoot→publish). Applies to a brand-new contract
     // AND to a cycle resumed after a renewal gap.
     const minIdxOf: Record<ContentType, number> = { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0 };
-    if (firstCycle) {
+    if (signingPrep) {
+      // الخطة انكتبت بأسبوع التحضير: النشر بعد مهلة **الإنتاج** بس، من أول يوم إنتاج.
+      const offs: Record<ContentType, number> = {
+        POST: LEAD.POST,
+        AI_REEL: LEAD.AI_REEL,
+        STORY: LEAD.STORY,
+        REEL: LEAD.REEL + SHOOT_BEFORE_MONTAGE.max,
+      };
+      for (const ty of TYPE_ORDER) {
+        const minDate = shiftDays(signingPrep.productionFloor, offs[ty]);
+        const idx = cycleDays.findIndex((d) => d.getTime() >= minDate.getTime());
+        minIdxOf[ty] = idx >= 0 ? idx : 0;
+      }
+    } else if (firstCycle) {
       const offs: Record<ContentType, number> = {
         POST: WRITE_LEAD_DAYS + LEAD.POST,
         AI_REEL: WRITE_LEAD_DAYS + LEAD.AI_REEL,

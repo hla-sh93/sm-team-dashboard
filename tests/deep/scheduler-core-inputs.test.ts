@@ -119,3 +119,51 @@ describe("تاريخ التوقيع مقابل بدء النشر", () => {
     expect(r.tasks.every((t) => t.publishDate! >= addDays(D("2026-10-08"), 7))).toBe(true);
   });
 });
+
+describe("[SC-15 مُصلَح] أسبوع التحضير من التوقيع (قرار القائدة ١٢/١٠) — للدورات من ١٣/١٠/٢٠٢٦", () => {
+  const minDate = (ds: (Date | null)[]): string =>
+    iso(new Date(Math.min(...ds.filter((d): d is Date => !!d).map((d) => d.getTime())))) ?? "";
+  const run = (cs: string | null, start: string) =>
+    buildSchedule(
+      st({
+        year: 2026,
+        month: 10, // دلو تشرين التاني = شهر بداية الدورة
+        companies: [company("c", "جديدة", PLANS.bw, { contractStartDate: cs ? D(cs) : null, publishStartDate: D(start) })],
+      }),
+    );
+
+  it("توقيع ١/١١ وتاريخ البدء ٨/١١: الإنتاج من ٨/١١، والنشر بعد مهلة الإنتاج بس (ولا أسبوع تحضير تاني)", () => {
+    const r = run("2026-11-01", "2026-11-08");
+    // الشغل الروتيني بينحشر «أقرب للموعد» (JIT)، فالمهم الأرضية: ولا شغل ولا جلسة قبل ٨/١١.
+    const firstWork = minDate(r.tasks.map((t) => t.workDate));
+    expect(firstWork >= "2026-11-08" && firstWork <= "2026-11-10", firstWork).toBe(true);
+    expect(minDate(r.sessions.map((x) => x.shootDate)) >= "2026-11-08").toBe(true);
+    // POST مهلته يومين: أول نشر ≤ ١٠/١١ + يوم للدوران — مو ١٥/١١ متل القاعدة القديمة.
+    const first = minDate(r.tasks.map((t) => t.publishDate));
+    expect(first >= "2026-11-10").toBe(true);
+    expect(first <= "2026-11-12").toBe(true);
+    // ولا قطعة قبل يوم الإنتاج الأول + مهلتها.
+    for (const t of r.tasks) {
+      if (!t.publishDate || !t.type) continue;
+      expect(toISODate(t.publishDate) >= "2026-11-09", `${t.type} ${toISODate(t.publishDate)}`).toBe(true);
+    }
+  });
+
+  it("التوقيع بيفرق هلّق: نفس تاريخ البدء بلا توقيع = القاعدة القديمة (تحضير جوّا الدورة، أول نشر ≥ ١٥/١١)", () => {
+    const withSigning = run("2026-11-01", "2026-11-08");
+    const without = run(null, "2026-11-08");
+    expect(minDate(without.tasks.map((t) => t.publishDate)) >= "2026-11-15").toBe(true);
+    expect(minDate(withSigning.tasks.map((t) => t.publishDate)) < minDate(without.tasks.map((t) => t.publishDate))).toBe(true);
+  });
+
+  it("تاريخ البدء = يوم التوقيع: الإنتاج بعد يومين عمل للخطة", () => {
+    const r = run("2026-11-08", "2026-11-08");
+    expect(minDate(r.tasks.map((t) => t.workDate))).toBe("2026-11-10");
+  });
+
+  it("الدورات قبل ١٣/١٠ ما بتتغيّر (عقود قايمة ما بتنعاد تخطيطها)", () => {
+    const a = buildSchedule(st({ companies: [company("c", "قايمة", PLANS.bw, { contractStartDate: D("2026-10-01"), publishStartDate: D("2026-10-08") })] }));
+    const b = buildSchedule(st({ companies: [company("c", "قايمة", PLANS.bw, { contractStartDate: null, publishStartDate: D("2026-10-08") })] }));
+    expect(canon(a)).toBe(canon(b));
+  });
+});

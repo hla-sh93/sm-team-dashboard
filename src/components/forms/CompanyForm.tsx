@@ -89,6 +89,9 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
     register,
     handleSubmit,
     watch,
+    setValue,
+    getValues,
+    getFieldState,
     formState: { errors },
     reset,
   } = useForm<CompanyInput>({
@@ -109,6 +112,18 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
   }, [company, open]);
 
   const managed = watch("managed");
+  // أسبوع التحضير من التوقيع (قرار القائدة ١٢/١٠): تاريخ البدء الافتراضي = التوقيع + ٧
+  // — بيتعبّى لحاله لما يكون فاضي، والقائدة بتعدّله حسب الزبون. بس لما **تغيّر**
+  // التوقيع هلّق: شركة موقّعة والنشر فاضي عن قصد (Siizen) ما بيتعبّالها شي بمجرّد
+  // فتح النموذج — وإلا بيصير إلها دورة من تاريخ قديم.
+  const signedOn = watch("contractStartDate");
+  useEffect(() => {
+    if (!signedOn || getValues("publishStartDate")) return;
+    if (!getFieldState("contractStartDate").isDirty) return;
+    const [y, m, d] = signedOn.split("-").map(Number);
+    if (!y || !m || !d) return;
+    setValue("publishStartDate", toISODate(new Date(y, m - 1, d + 7)), { shouldDirty: true });
+  }, [signedOn, getValues, getFieldState, setValue]);
 
   const onSubmit = (data: CompanyInput) => {
     const payload = {
@@ -177,16 +192,19 @@ export default function CompanyForm({ open, onOpenChange, company, employees }: 
               <div className="space-y-1.5">
                 <Label>تاريخ توقيع العقد</Label>
                 <Input type="date" {...register("contractStartDate")} />
-                <p className="text-[11px] text-fg-dim">أسبوع التحضير بيمشي منه</p>
+                <p className="text-[11px] text-fg-dim">
+                  أسبوع التحضير منه: كرت الخطة للكاتبة، وموافقة الزبون
+                </p>
               </div>
               <div className="space-y-1.5">
-                <Label>تاريخ بدء النشر</Label>
+                <Label>تاريخ البدء (بداية الدورة وتوزيع المهام)</Label>
                 <Input type="date" {...register("publishStartDate")} />
                 {/* الحقل يلي بيمنع «التأخيرات الوهمية»: الدورة والخطة بتنبنيا منه،
                     وفراغه مع عقد موقّع بيعني إنّ الزبون لسا ما بلّش — فما بينحسب
                     علينا تأخير ولا بينولّد شغل. */}
                 <p className="text-[11px] text-fg-dim">
-                  الخطة شهر من هالتاريخ. فاضي = الزبون لسا ما بلّش → ولا تأخير علينا
+                  افتراضياً التوقيع + ٧ أيام. الدورة شهر من هالتاريخ، والنشر بعد مهلة الإنتاج.
+                  فاضي = الزبون لسا ما بلّش → ولا تأخير علينا
                 </p>
               </div>
               <div className="space-y-1.5">

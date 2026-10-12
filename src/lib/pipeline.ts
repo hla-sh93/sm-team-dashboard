@@ -177,6 +177,11 @@ export function expandPipeline(
     // Optional: floor date (YYYY-MM-DD) per company — the WRITE card's start is
     // clamped to it so writing never begins before the contract start date.
     notBeforeISO?: (companyId: string) => string | null;
+    /**
+     * نافذة كرت الخطة الصريحة — أسبوع التحضير من التوقيع (قرار ١٢/١٠): الكاتبة
+     * بتبلّش يوم التوقيع والخطة جاهزة بعد يومين عمل، قبل تاريخ البدء.
+     */
+    writeWindowISO?: (companyId: string) => { start: string; end: string } | null;
   },
 ): PipelineTask[] {
   const out: PipelineTask[] = [];
@@ -209,8 +214,9 @@ export function expandPipeline(
   const writeId = (co: string, scope: string) => `${pfx}w_${co}_${scope}`;
   for (const [co, scopes] of scopesByCompany) {
     for (const scope of scopes) {
-      const end = earliestStart.get(`${co}|${scope}`) ?? null;
-      let start = end ? backWorkdays(end, 2, opts.writerWorkDays) : null;
+      const window = opts.writeWindowISO?.(co) ?? null;
+      const end = window ? window.end : (earliestStart.get(`${co}|${scope}`) ?? null);
+      let start = window ? window.start : end ? backWorkdays(end, 2, opts.writerWorkDays) : null;
       // Writing can start with the contract, never before it (first cycle).
       const nb = opts.notBeforeISO?.(co) ?? null;
       if (start && nb && start < nb) start = nb;

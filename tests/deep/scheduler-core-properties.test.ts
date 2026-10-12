@@ -7,7 +7,7 @@
  * موجودة آخر الملف بصيغة `it.fails` — بتفشل اليوم عن قصد وبتنقلب أول ما تنصلح.
  */
 import { describe, expect, it } from "vitest";
-import { buildSchedule, type ScheduledTask, type SchedulerState } from "@/lib/scheduler";
+import { buildSchedule, signingPrepOf, type ScheduledTask, type SchedulerState } from "@/lib/scheduler";
 import { cycleForBucket } from "@/lib/contract";
 import { addWorkdaysFor, addWorkingDays, backWorkday, parseWorkDays, toISODate } from "@/lib/dates";
 import { expandPipeline, type PipelineContentItem } from "@/lib/pipeline";
@@ -54,10 +54,34 @@ const content = (c: Case) => c.r.tasks.filter((t) => t.kind === "CONTENT" && t.t
  * تاريخ اعتماد القاعدة — فطلعت «مخالفات» هي القاعدة القديمة نفسها (التقرير §2).
  */
 const PREP_WEEK_RULE_FROM = new Date(2026, 6, 20);
-type ColdRule = "prep" | "legacy" | null;
-const coldRuleOf = (cyc: ReturnType<typeof cycleForBucket>): ColdRule =>
-  !cyc || !cyc.coldStart ? null : cyc.start.getTime() >= PREP_WEEK_RULE_FROM.getTime() ? "prep" : "legacy";
-const floorsOf = (cyc: NonNullable<ReturnType<typeof cycleForBucket>>, rule: Exclude<ColdRule, null>) => {
+type ColdRule = "signing" | "prep" | "legacy" | null;
+// «signing» = أسبوع التحضير من التوقيع (قرار القائدة ١٢/١٠): أول دورة بالعقد من ١٣/١٠/٢٠٢٦
+// وإلها توقيع — التحضير قبل الدورة، والإنتاج من max(تاريخ البدء، التوقيع + يومين عمل).
+const coldRuleOf = (
+  cyc: ReturnType<typeof cycleForBucket>,
+  co?: SchedulerState["companies"][number],
+  y?: number,
+  m?: number,
+): ColdRule =>
+  !cyc || !cyc.coldStart
+    ? null
+    : co && y != null && m != null && signingPrepOf(co, y, m)
+      ? "signing"
+      : cyc.start.getTime() >= PREP_WEEK_RULE_FROM.getTime()
+        ? "prep"
+        : "legacy";
+const floorsOf = (
+  cyc: NonNullable<ReturnType<typeof cycleForBucket>>,
+  rule: Exclude<ColdRule, null>,
+  co?: SchedulerState["companies"][number],
+  y?: number,
+  m?: number,
+) => {
+  if (rule === "signing") {
+    const production = signingPrepOf(co!, y!, m!)!.productionFloor;
+    const publish = (ty: keyof typeof LEAD) => addDays(production, LEAD[ty] + (ty === "REEL" ? SHOOT_BEFORE_MONTAGE.max : 0));
+    return { production, publish };
+  }
   const production = rule === "prep" ? addWorkingDays(cyc.start, 3) : addDays(cyc.start, 2);
   const legacyOff = (ty: keyof typeof LEAD) => 2 + LEAD[ty] + (ty === "REEL" ? SHOOT_BEFORE_MONTAGE.max : 0);
   const publish = (ty: keyof typeof LEAD) => addDays(cyc.start, rule === "prep" ? Math.max(7, legacyOff(ty)) : legacyOff(ty));
@@ -67,8 +91,8 @@ const floorsOf = (cyc: NonNullable<ReturnType<typeof cycleForBucket>>, rule: Exc
 const prodFloor = (c: Case, coId: string) => {
   const co = c.state.companies.find((x) => x.id === coId)!;
   const cyc = cycleForBucket(co, c.state.year, c.state.month);
-  const rule = coldRuleOf(cyc);
-  return cyc && rule ? floorsOf(cyc, rule).production : null;
+  const rule = coldRuleOf(cyc, co, c.state.year, c.state.month);
+  return cyc && rule ? floorsOf(cyc, rule, co, c.state.year, c.state.month).production : null;
 };
 
 describe("نواة الجدولة — خصائص ثابتة على مدخلات عشوائية", () => {
@@ -272,8 +296,8 @@ describe("نواة الجدولة — خصائص ثابتة على مدخلات 
     for (const c of CASES) {
       for (const co of c.state.companies) {
         const cyc = cycleForBucket(co, c.state.year, c.state.month);
-        if (!cyc || coldRuleOf(cyc) !== want) continue;
-        const f = floorsOf(cyc, want);
+        if (!cyc || coldRuleOf(cyc, co, c.state.year, c.state.month) !== want) continue;
+        const f = floorsOf(cyc, want, co, c.state.year, c.state.month);
         for (const t of c.r.tasks.filter((t) => t.companyId === co.id && t.type)) {
           checked++;
           const pf = f.publish(t.type as keyof typeof LEAD);
@@ -287,9 +311,15 @@ describe("نواة الجدولة — خصائص ثابتة على مدخلات 
     return { bad, checked };
   };
 
-  it("أول دورة من 20/7/2026 وطالع (أسبوع التحضير): لا إنتاج ولا جلسة قبل ٣ أيام عمل من البداية، ولا نشر لأي نوع قبل ٧ أيام تقويمية", () => {
+  it("أول دورة من 20/7/2026 وطالع (أسبوع التحضير جوّا الدورة): لا إنتاج ولا جلسة قبل ٣ أيام عمل من البداية، ولا نشر لأي نوع قبل ٧ أيام تقويمية", () => {
     const { bad, checked } = coldFloorViolations("prep");
-    expect(checked).toBeGreaterThan(300); // الخاصية مو فاضية
+    expect(checked).toBeGreaterThan(100); // الخاصية مو فاضية
+    expect(bad).toEqual([]);
+  });
+
+  it("أول دورة من 13/10/2026 وإلها توقيع (أسبوع التحضير من التوقيع، قرار ١٢/١٠): لا إنتاج ولا جلسة قبل max(البدء، التوقيع+يومين عمل)، والنشر بعد مهلة الإنتاج بس", () => {
+    const { bad, checked } = coldFloorViolations("signing");
+    expect(checked).toBeGreaterThan(100);
     expect(bad).toEqual([]);
   });
 
@@ -354,10 +384,10 @@ describe("نواة الجدولة — خصائص ثابتة على مدخلات 
       for (const co of c.state.companies) {
         const cyc = cycleForBucket(co, c.state.year, c.state.month);
         if (!cyc) continue;
-        const rule = coldRuleOf(cyc);
+        const rule = coldRuleOf(cyc, co, c.state.year, c.state.month);
         const feedTypes = (["POST", "REEL", "AI_REEL"] as const).filter((ty) => co[({ POST: "posts", REEL: "reels", AI_REEL: "aiReels" } as const)[ty]] > 0);
         if (!feedTypes.length) continue;
-        const floor = rule ? new Date(Math.min(...feedTypes.map((ty) => floorsOf(cyc, rule).publish(ty).getTime()))) : cyc.start;
+        const floor = rule ? new Date(Math.min(...feedTypes.map((ty) => floorsOf(cyc, rule, co, c.state.year, c.state.month).publish(ty).getTime()))) : cyc.start;
         const pub = cyc.days.filter(isPublishableDay).map(toISODate);
         const avail = cyc.days.filter((d) => isPublishableDay(d) && d.getTime() >= floor.getTime()).length;
         const feed = content(c)
