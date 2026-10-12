@@ -1,0 +1,272 @@
+/**
+ * فحص عميق ١٢/١٠/٢٠٢٦ — محور security-api: مصفوفة الصلاحيات لأفعال الخادم.
+ *
+ * القاعدة (PROJECT.md §2 + قرار القائدة المحفوظ بالذاكرة): منطقة الموظفين بلا
+ * دخول **بالتصميم**؛ أفعال الإدارة (الشركات، الفريق، استيراد JSON، إعادة الجدولة،
+ * تلغرام، تغيير كلمة المرور) لازم تتحقّق من الجلسة **جوّا الفعل نفسه**.
+ *
+ * المنهج: كل فعل إداري بيننده أربع مرّات — بلا كوكي، كوكي مزوّرة، كوكي منتهية،
+ * كوكي صحيحة. «وصل للمنطق» بينقاس بعدد استعلامات Prisma (البوابة نفسها بلا أي
+ * استعلام لأنّ `AUTH_SECRET` بالبيئة)، أو برسالة غير «غير مصرّح» للأفعال يلي
+ * بتتحقّق من المدخل قبل القاعدة. والقاعدة كلها لازم ما تتغيّر بالمحاولات المرفوضة.
+ *
+ * القاعدة: نسخة `prisma/dev.db` → `prisma/test-deep-security-matrix-<pid>.db`؛
+ * بلاها الفحوص يلي بدها قاعدة بتتخطّى. ولا اتصال شبكة (fetch محجوب، وتلغرام مزيّف).
+ */
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const jar = vi.hoisted(() => ({ value: undefined as string | undefined }));
+const q = vi.hoisted(() => ({ count: 0 }));
+const scratch = vi.hoisted(() => ({ target: "", available: false }));
+
+vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("next/navigation", () => ({
+  redirect: (to: string) => {
+    throw new Error(`REDIRECT ${to}`);
+  },
+}));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) =>
+      name === "sm_admin" && jar.value !== undefined ? { name, value: jar.value } : undefined,
+    set: () => {},
+  }),
+}));
+vi.mock("@/lib/telegram/client", async (orig) => ({
+  ...(await orig<typeof import("@/lib/telegram/client")>()),
+  getMe: async () => ({ ok: false, error: "stub" }),
+  getWebhookInfo: async () => ({ ok: false, error: "stub" }),
+  setWebhook: async () => ({ ok: false, error: "stub" }),
+  sendMessage: async () => ({ ok: false, error: "stub" }),
+  webhookSecret: () => null,
+}));
+vi.mock("@/lib/telegram/service", async (orig) => ({
+  ...(await orig<typeof import("@/lib/telegram/service")>()),
+  sendDailyBrief: async () => ({ ok: false, error: "stub" }),
+}));
+vi.mock("@/lib/db", async () => {
+  const g = globalThis as any;
+  if (!g.__secMatrixPrisma) {
+    const { PrismaClient } = await import("@prisma/client");
+    const { assertIsolatedTestDatabaseUrl } = await import("../_helpers/test-database");
+    const { copyDevDb, fileUrl } = await import("./security-fixture");
+    const copy = copyDevDb("matrix");
+    scratch.target = copy.target;
+    scratch.available = copy.available;
+    const client = new PrismaClient({
+      datasources: { db: { url: assertIsolatedTestDatabaseUrl(fileUrl(copy.target)) } },
+      log: [{ emit: "event", level: "query" }],
+    });
+    (client as any).$on("query", () => {
+      q.count += 1;
+    });
+    g.__secMatrixPrisma = client;
+  }
+  return { prisma: g.__secMatrixPrisma };
+});
+
+import { removeDb, signToken } from "./security-fixture";
+
+const SECRET = "matrix-secret";
+let prisma: any;
+const skip = () => !scratch.available;
+
+type Spec = {
+  name: string;
+  call: () => Promise<unknown>;
+  /** كيف منعرف إنّ الكوكي الصحيحة مرّقت البوابة. */
+  reached: "queries" | "message";
+};
+let specs: Spec[] = [];
+
+async function fingerprint() {
+  const tables = ["Task", "Company", "Employee", "Setting", "PhotoSession", "TelegramChat", "TelegramMessage"];
+  const out: Record<string, string> = {};
+  for (const t of tables) {
+    const rows: any[] = await prisma.$queryRawUnsafe(
+      t === "TelegramMessage"
+        ? `SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(COALESCE(taskId,''))),0) || '-' || COALESCE(SUM(confirmed),0) AS m FROM "${t}"`
+        : `SELECT COUNT(*) AS n, MAX(updatedAt) AS m FROM "${t}"`,
+    );
+    out[t] = `${rows[0].n}|${rows[0].m}`;
+  }
+  return out;
+}
+
+async function outcome(fn: () => Promise<unknown>) {
+  q.count = 0;
+  try {
+    const r: any = await fn();
+    return { threw: false, ok: r?.ok, error: r?.error as string | undefined, queries: q.count };
+  } catch (e) {
+    return { threw: true, ok: false, error: e instanceof Error ? e.message : String(e), queries: q.count };
+  }
+}
+
+beforeAll(async () => {
+  vi.stubEnv("AUTH_SECRET", SECRET);
+  vi.stubGlobal("fetch", async () => {
+    throw new Error("network blocked in security-authz-matrix");
+  });
+  prisma = (await import("@/lib/db")).prisma;
+  if (skip()) return;
+  const companies = await import("@/server/actions/companies");
+  const employees = await import("@/server/actions/employees");
+  const plans = await import("@/server/actions/plans");
+  const schedule = await import("@/server/actions/schedule");
+  const telegram = await import("@/server/actions/telegram");
+  const auth = await import("@/server/actions/auth");
+  const NOPE = "c_security_matrix_does_not_exist";
+  specs = [
+    { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
+    { name: "updateCompany", call: () => companies.updateCompany(NOPE, {} as never), reached: "message" },
+    { name: "deleteCompany", call: () => companies.deleteCompany(NOPE), reached: "queries" },
+    { name: "renewContract", call: () => companies.renewContract(NOPE, "2026-11-01"), reached: "queries" },
+    { name: "correctLatestRenewal", call: () => companies.correctLatestRenewal(NOPE, "2026-11-01"), reached: "queries" },
+    { name: "removeLatestRenewal", call: () => companies.removeLatestRenewal(NOPE), reached: "queries" },
+    { name: "endContract", call: () => companies.endContract(NOPE), reached: "queries" },
+    { name: "archiveCompany", call: () => companies.archiveCompany(NOPE), reached: "queries" },
+    { name: "reorderCompanies", call: () => companies.reorderCompanies([]), reached: "message" },
+    { name: "pauseCompanyPublishing", call: () => companies.pauseCompanyPublishing(NOPE), reached: "queries" },
+    { name: "resumeCompanyPublishing", call: () => companies.resumeCompanyPublishing(NOPE, "2026-11-01"), reached: "queries" },
+    { name: "regenerateCompanyCurrentCycle", call: () => companies.regenerateCompanyCurrentCycle(NOPE), reached: "queries" },
+    { name: "purgeOrphanCards", call: () => companies.purgeOrphanCards(NOPE), reached: "queries" },
+    { name: "createEmployee", call: () => employees.createEmployee({} as never), reached: "message" },
+    { name: "updateEmployee", call: () => employees.updateEmployee(NOPE, {} as never), reached: "message" },
+    { name: "deleteEmployee", call: () => employees.deleteEmployee(NOPE), reached: "queries" },
+    { name: "applyCompanyPlanUpdate", call: () => plans.applyCompanyPlanUpdate({ companyName: NOPE, year: 2026, month: 9, pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", evidence: "دليل للفحص" }] }), reached: "queries" },
+    // التوليد بالكوكي الصحيحة مغطّى بـtests/schedule-authorization.test.ts — هون الرفض بس.
+    { name: "generateSchedule", call: () => schedule.generateSchedule(2026, 9), reached: "queries" },
+    { name: "generateCompanySchedule", call: () => schedule.generateCompanySchedule(NOPE, 2026, 9), reached: "queries" },
+    { name: "linkChatToCompany", call: () => telegram.linkChatToCompany(NOPE, null), reached: "queries" },
+    { name: "markChatAsTeam", call: () => telegram.markChatAsTeam(NOPE, true), reached: "queries" },
+    { name: "setBriefRecipient", call: () => telegram.setBriefRecipient("not-a-chat-id"), reached: "message" },
+    { name: "sendBriefNow", call: () => telegram.sendBriefNow(), reached: "message" },
+    { name: "undoMatch", call: () => telegram.undoMatch(NOPE), reached: "queries" },
+    { name: "registerWebhook", call: () => telegram.registerWebhook("https://example.test"), reached: "message" },
+    { name: "telegramStatus", call: () => telegram.telegramStatus(), reached: "message" },
+    { name: "changePasswordAction", call: () => auth.changePasswordAction("x", "y"), reached: "message" },
+  ];
+});
+
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  const g = globalThis as any;
+  await prisma?.$disconnect();
+  delete g.__secMatrixPrisma;
+  if (scratch.target) removeDb(scratch.target);
+});
+
+const UNAUTH = new Set(["غير مصرّح", "يلزم تسجيل الدخول", "فشل حذف الشركة", "فشل أرشفة الشركة", "فشل حذف الموظف", "فشلت إعادة الجدولة"]);
+
+describe("أفعال الإدارة: بلا جلسة صحيحة ما في ولا استعلام ولا كتابة", () => {
+  const forged = () => [
+    { label: "بلا كوكي", value: undefined },
+    { label: "توقيع غلط", value: `${Date.now() + 60_000}.${"ab".repeat(32)}` },
+    { label: "سرّ غلط", value: signToken("not-the-secret", Date.now() + 60_000) },
+    { label: "منتهية", value: signToken(SECRET, Date.now() - 1_000) },
+    { label: "قمامة", value: "garbage" },
+  ];
+
+  it("كل فعل إداري × ٥ كوكيز مزوّرة → مرفوض، صفر استعلامات بعد البوابة، والقاعدة ما تغيّرت", async () => {
+    if (skip()) return;
+    const before = await fingerprint();
+    const leaks: string[] = [];
+    for (const spec of specs) {
+      for (const c of forged()) {
+        jar.value = c.value;
+        const r = await outcome(spec.call);
+        const refused = r.ok === false && (r.threw || UNAUTH.has(r.error ?? ""));
+        if (!refused || r.queries !== 0) leaks.push(`${spec.name} [${c.label}] → ${JSON.stringify(r)}`);
+      }
+    }
+    expect(leaks).toEqual([]);
+    expect(await fingerprint()).toEqual(before);
+  }, 60_000);
+
+  it("بالكوكي الصحيحة كل فعل بيمرق البوابة (وصل للمنطق)", async () => {
+    if (skip()) return;
+    jar.value = signToken(SECRET, Date.now() + 60_000);
+    const blocked: string[] = [];
+    for (const spec of specs) {
+      if (spec.name === "generateSchedule" || spec.name === "generateCompanySchedule") continue;
+      const r = await outcome(spec.call);
+      const passed = spec.reached === "queries" ? r.queries > 0 : !UNAUTH.has(r.error ?? "") && !r.threw;
+      if (!passed) blocked.push(`${spec.name} → ${JSON.stringify(r)}`);
+    }
+    expect(blocked).toEqual([]);
+  }, 120_000);
+});
+
+describe("أفعال الموظف: مفتوحة بقرار القائدة (توصيف، مو باغ)", () => {
+  it("بلا أي كوكي: togglePin وupdateTaskStatus بيكتبوا على الكرت", async () => {
+    if (skip()) return;
+    jar.value = undefined;
+    const tasks = await import("@/server/actions/tasks");
+    const card = await prisma.task.findFirst({ where: { isAuto: true, status: "NOT_STARTED" } });
+    expect(card).toBeTruthy();
+    const pin = await tasks.togglePin(card.id);
+    expect(pin.ok).toBe(true);
+    const status = await tasks.updateTaskStatus(card.id, "IN_PROGRESS");
+    expect(status.ok).toBe(true);
+    const after = await prisma.task.findUnique({ where: { id: card.id } });
+    expect(after.status).toBe("IN_PROGRESS");
+    expect(after.isPinned).toBe(!card.isPinned);
+  });
+});
+
+/** ثابت: أي تصدير من ملف "use server" = نقطة نهاية. */
+function useServerExports() {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const full = join(dir, n);
+      if (statSync(full).isDirectory()) return walk(full);
+      return /\.(ts|tsx)$/.test(full) ? [full] : [];
+    });
+  const all = walk("src");
+  const isServer = (f: string) => /^["']use server["'];?$/.test(readFileSync(f, "utf8").split("\n")[0].trim());
+  const isClient = (f: string) => /^["']use client["'];?$/.test(readFileSync(f, "utf8").split("\n")[0].trim());
+  const clientSources = all.filter(isClient).map((f) => readFileSync(f, "utf8"));
+  const out: { file: string; name: string; guarded: boolean; clientUsed: boolean }[] = [];
+  for (const file of all.filter(isServer)) {
+    const src = readFileSync(file, "utf8");
+    const hits = [...src.matchAll(/export async function (\w+)/g)];
+    hits.forEach((m, k) => {
+      const body = src.slice(m.index!, k + 1 < hits.length ? hits[k + 1].index! : src.length);
+      const guarded = /assertAdmin\(\)|await guard\(\)/.test(body);
+      const clientUsed = clientSources.some((s) => new RegExp(`\\b${m[1]}\\b`).test(s));
+      out.push({ file: file.split("\\").join("/"), name: m[1], guarded, clientUsed });
+    });
+  }
+  return out;
+}
+
+describe("خريطة التصديرات (ثابت)", () => {
+  it("المحروس = بالضبط أفعال الإدارة المتوقّعة", () => {
+    const guarded = useServerExports().filter((e) => e.guarded).map((e) => e.name).sort();
+    expect(guarded).toEqual(
+      [
+        "applyCompanyPlanUpdate", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
+        "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
+        "generateCompanySchedule", "generateSchedule", "linkChatToCompany", "markChatAsTeam",
+        "pauseCompanyPublishing", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
+        "registerWebhook", "removeLatestRenewal", "renewContract", "reorderCompanies",
+        "resumeCompanyPublishing", "sendBriefNow", "setBriefRecipient", "telegramStatus",
+        "undoMatch", "updateCompany", "updateEmployee",
+      ].sort(),
+    );
+  });
+
+  it.fails("[SA-08] كل تصدير مفتوح من ملف \"use server\" لازم يكون مستعمَلاً من شاشة (وإلا ينشال من ملف الأفعال)", () => {
+    const orphans = useServerExports()
+      .filter((e) => !e.guarded && !e.clientUsed)
+      .map((e) => e.name)
+      .sort();
+    // اليوم: completeProductionForPublishedTask · deleteTask · markPiecesPublished ·
+    // reassignTask · setPieceReviewed · setStageDone · togglePin
+    expect(orphans).toEqual([]);
+  });
+});
