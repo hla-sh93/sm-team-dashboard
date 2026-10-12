@@ -48,13 +48,13 @@ const FIELDS = ["status", "board", "assigneeId", "workDate", "readyDate", "publi
 const sig = (t: Record<string, unknown>) =>
   FIELDS.map((f) => (t[f] instanceof Date ? (t[f] as Date).toISOString() : String(t[f]))).join("|");
 
-describe.skipIf(!HAS_DB)("[SA-15] createTask بلا جلسة بيعيد توليد أي دلو", () => {
+describe.skipIf(!HAS_DB)("[SA-15] createTask بلا جلسة ما بيعيد توليد دلو مسكّر", () => {
   it("مدخل الإدارة محروس (B01) — بلا كوكي generateSchedule بيرفض", async () => {
     const { generateSchedule } = await import("@/server/actions/schedule");
     expect(await generateSchedule(2026, 7)).toEqual({ ok: false, error: "غير مصرّح" });
   });
 
-  it.fails("[SA-15] كرت يدوي بدلو دورة مسكّرة (آب ٢٠٢٦) لازم ما يمسّ ولا صف تاني بالدلو", async () => {
+  it("[SA-15 مُصلَح] كرت يدوي بدلو دورة مسكّرة (آب ٢٠٢٦) ما بيمسّ ولا صف تاني بالدلو", async () => {
     const { prisma } = await import("@/lib/db");
     const { createTask } = await import("@/server/actions/tasks");
     const where = { year: 2026, month: 7 };

@@ -94,7 +94,7 @@ function run(p: Piece) {
 }
 
 describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج المنجز", () => {
-  it("عبادة ريل ١ — السلوك الحالي (RG-03): منجز ومثبّت ومتّسق مع يوم النشر الحقيقي (٢٨/٩)، بس يوم النشر على كرته قديم (٢٢/٩) → بينسحب لـ١٧/٩", () => {
+  it("[RG-03 مُصلَح] عبادة ريل ١: منجز ومثبّت، ويوم النشر على كرته قديم (٢٢/٩) — المثبّت ما بيتحرّك عن ٢٧/٩", () => {
     const edit = run({
       shootFinishedAt: "2026-09-16",
       editWork: "2026-09-27",
@@ -103,12 +103,12 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
       publishBoard: "DONE",
       publishDate: "2026-09-28",
     });
-    expect(edit.workDate).toBe("2026-09-17");
-    expect(edit.readyDate).toBe("2026-09-17");
+    expect(edit.workDate).toBe("2026-09-27");
+    expect(edit.readyDate).toBe("2026-09-27");
     expect(edit.board).toBe("DONE");
   });
 
-  it.fails("[RG-03] …والصحيح: المرساة يوم نشر **القطعة** (كرت النشر ٢٨/٩)، فالمونتاج المنجز المثبّت ٢٧/٩ بيضل مكانه", () => {
+  it("[RG-03 مُصلَح] …والمونتاج المنجز المثبّت ٢٧/٩ بيضل مكانه (يوم نشر القطعة ٢٨/٩ من كرت النشر)", () => {
     const edit = run({
       shootFinishedAt: "2026-09-16",
       editWork: "2026-09-27",
@@ -120,7 +120,7 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
     expect(edit.workDate).toBe("2026-09-27");
   });
 
-  it("…ونفس الكرت ما بيتحرّك لو يوم النشر على كرته = يوم كرت النشر (٢٨/٩): المحرّك بيقرأ المرساة من كرت المونتاج لا من كرت النشر", () => {
+  it("…ونفس الكرت ما بيتحرّك لو يوم النشر على كرته = يوم كرت النشر (٢٨/٩)", () => {
     const edit = run({
       shootFinishedAt: "2026-09-16",
       editWork: "2026-09-27",
@@ -132,7 +132,7 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
     expect(edit.workDate).toBe("2026-09-27");
   });
 
-  it("RG-06 · فونيتيك ريل ٣: مونتاج منجز مثبّت ٣٠/٩ وتصويره «أُنهي» ١/١٠ وقطعته ما نُشرت → بينسحب لأول دوام بعد التصوير (الأحد ٤/١٠)", () => {
+  it("[RG-06 مُصلَح] فونيتيك ريل ٣: مونتاج منجز **مثبّت** ٣٠/٩ وتصويره «أُنهي» ١/١٠ — المثبّت ما بيتحرّك", () => {
     const edit = run({
       shootFinishedAt: "2026-10-01",
       editWork: "2026-09-30",
@@ -141,10 +141,10 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
       publishBoard: "TODO",
       publishDate: "2026-10-13",
     });
-    expect(edit.workDate).toBe("2026-10-04");
+    expect(edit.workDate).toBe("2026-09-30");
   });
 
-  it("RG-06 · التوظيف ريل ٣: مونتاج منجز مثبّت ٢٠/٩، تصويره أُنهي ٦/١٠، نُشر ٢٢/٩ → بينقصّ على يوم النشر ٢٢/٩", () => {
+  it("[RG-06 مُصلَح] التوظيف ريل ٣: مونتاج منجز **مثبّت** ٢٠/٩، تصويره أُنهي ٦/١٠، نُشر ٢٢/٩ — المثبّت ما بيتحرّك", () => {
     const edit = run({
       shootFinishedAt: "2026-10-06",
       editWork: "2026-09-20",
@@ -153,7 +153,7 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
       publishBoard: "DONE",
       publishDate: "2026-09-22",
     });
-    expect(edit.workDate).toBe("2026-09-22");
+    expect(edit.workDate).toBe("2026-09-20");
   });
 
   it("الحالة المتّسقة (تصوير ١٥/٩ → مونتاج ١٧/٩ → نشر ٢٠/٩) ما بتتحرّك، مثبّتة أو لا", () => {
@@ -200,5 +200,36 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
     expect(edit.startedAt ?? edit.finishedAt ?? edit.completedAt).toBeNull();
     // الملاحظات (دليل التسليم) بتضل على الكرت رغم فتحه — بس الأختام راحت
     expect(edit.notes).toBe("سُلّم");
+  });
+});
+
+describe("[DA-08 مُصلَح] مونتاج بيسكّره التوليد لأنّ قطعته انتشرت", () => {
+  it("طابعه يومه (مو لحظة التوليد)، ومحصور بيوم نشر القطعة، ومعه سطر دليل", () => {
+    const shoot = card({
+      stage: "SHOOT",
+      board: "DONE",
+      status: "READY",
+      finishedAt: at("2026-06-10"),
+      workDate: "2026-06-10",
+      readyDate: "2026-06-10",
+      publishDate: "2026-06-12",
+    });
+    // مرحلة المونتاج جديدة على قطعة قديمة: ما إلها سجلّ، فمفتوحة بالتوليد.
+    const edit = card({ stage: "EDIT", workDate: "2026-06-11", readyDate: "2026-06-11", publishDate: "2026-06-12" });
+    const publish = card({
+      stage: "PUBLISH",
+      board: "DONE",
+      status: "PUBLISHED",
+      publishDate: "2026-06-12",
+      readyDate: "2026-06-12",
+      workDate: "2026-06-12",
+    });
+    const before = Date.now();
+    retimeEditsAfterActualShoot([shoot, edit, publish], WEEK);
+    expect(edit.board).toBe("DONE");
+    expect(edit.workDate! <= "2026-06-12").toBe(true);
+    expect(edit.finishedAt).toBeInstanceOf(Date);
+    expect(edit.finishedAt!.getTime()).toBeLessThan(before);
+    expect(edit.notes ?? "").toMatch(/انسكّر مع نشر القطعة/);
   });
 });

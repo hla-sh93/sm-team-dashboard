@@ -243,7 +243,7 @@ describe("RG-03 · عبادة ريل ١: مونتاج منجز مثبّت متّ
     expect(day((await prisma.task.findUniqueOrThrow({ where: { id: editId } })).workDate)).toBe("2026-09-27");
   });
 
-  it.fails("[RG-03] إعادة التوليد ما بتحرّك المونتاج المنجز المثبّت عن ٢٧/٩ (اليوم: ١٧/٩)", async () => {
+  it("[RG-03 مُصلَح] إعادة التوليد ما بتحرّك المونتاج المنجز المثبّت عن ٢٧/٩", async () => {
     await genOk(Y, M, null);
     const edit = (await pieceCards(prisma, CO, "REEL", 1)).edit!;
     expect(edit.board).toBe("DONE");
@@ -296,7 +296,7 @@ describe("RG-04 · رابط ملف تلغرام بينتقل لقطعة تاني
     await genOk(Y, M, null);
   });
 
-  it.fails("[RG-04] الملف بيضل مربوطاً بتصميم بوست ٢ نفسه (اليوم: بيأشّر على بوست ١)", async () => {
+  it("[RG-04 مُصلَح] الملف بيضل مربوطاً بتصميم بوست ٢ نفسه", async () => {
     const msg = await prisma.telegramMessage.findUniqueOrThrow({ where: { id: "chat:1" } });
     const t = msg.taskId ? await prisma.task.findUnique({ where: { id: msg.taskId } }) : null;
     expect(t ? `${t.companyId} ${t.type}#${t.pieceNo} ${t.stage}` : `معلّق (${linkedTo})`).toBe(

@@ -135,7 +135,9 @@ describe("ملف Word للخطة (previewCompanyPlanDocx — بلا بوابة،
       expect(r.ok).toBe(false);
       // رفض سريع بسبب الحجم، بلا فكّ كامل ولا تحليل.
       expect(r.error).toMatch(/حجم|كبير|size/i);
-      expect(ms).toBeLessThan(100);
+      // الفكّ الكامل كان ~٢.٥ ثانية و+١GB؛ الرفض بالحجم أسرع بكتير — بس التوقيت تحت
+      // حمل الطقم الكامل بيتأرجح، فالحدّ واسع والرسالة هي الفاصل الحقيقي.
+      expect(ms).toBeLessThan(1000);
     },
     60_000,
   );

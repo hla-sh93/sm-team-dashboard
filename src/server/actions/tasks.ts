@@ -21,7 +21,7 @@ import {
 // المحرّك مباشرةً لا الأكشن المحروس: عمليات الكروت هون **عامّة بقرار موثّق**
 // (الموظف بيعدّل بلا جلسة إدارة)، وإعادة الجدولة بعدها جزء داخلي من العملية
 // مو استدعاء مستقل من المتصفح. حراستها كانت بتكسر شغل الفريق كلّه (B01).
-import { generateScheduleInternal } from "@/server/schedule-engine";
+import { generateScheduleInternal, isLiveBucket } from "@/server/schedule-engine";
 import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 // عمليات داخلية مو نقاط نهاية للمتصفّح (فحص ١٢/١٠، SA-08) — بملف عادي.
 import { completeProductionForPublishedTask } from "@/server/task-ops";
@@ -71,8 +71,9 @@ export async function createTask(input: TaskInput) {
         completedAt: doneAt,
       },
     });
-    // Re-schedule the month so the new task lands in the right slot.
-    await generateScheduleInternal(d.year, d.month, null);
+    // Re-schedule the month so the new task lands in the right slot — only a LIVE
+    // bucket; a closed cycle is history and is never rewritten from here (SA-15).
+    if (await isLiveBucket(d.year, d.month)) await generateScheduleInternal(d.year, d.month, null);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -263,7 +264,9 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       datesTouched ||
       input.days != null ||
       input.quantity != null;
-    if (reschedule) await generateScheduleInternal(before.year, before.month, null);
+    if (reschedule && (await isLiveBucket(before.year, before.month))) {
+      await generateScheduleInternal(before.year, before.month, null);
+    }
 
     revalidateAll();
     return { ok: true as const };
@@ -343,7 +346,9 @@ export async function deleteTasks(ids: string[]) {
       );
     }
 
-    if (first) await generateScheduleInternal(first.year, first.month, null);
+    if (first && (await isLiveBucket(first.year, first.month))) {
+      await generateScheduleInternal(first.year, first.month, null);
+    }
     revalidateAll();
     return { ok: true as const };
   } catch {

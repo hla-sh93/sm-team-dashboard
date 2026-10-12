@@ -43,8 +43,21 @@ export function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays
       .filter((t) => t.stage === "PUBLISH" && (t.board === "DONE" || t.status === "PUBLISHED"))
       .map((t) => t.pipelineKey),
   );
+  // يوم نشر **القطعة** — من كرت نشرها. كان يوم النشر المخزّن على كرت المونتاج
+  // نفسه هو المرساة، فمونتاج عبادة ريل ١ المنجز المثبّت (٢٧/٩، والنشر ٢٨/٩)
+  // كان يشوف «نشر ٢٢/٩» القديم وينسحب لـ١٧/٩ (فحص ١٢/١٠، RG-03).
+  const pieceOut = new Map<string, string>();
+  for (const t of pipe) {
+    if (t.stage !== "PUBLISH" || !t.pipelineKey || !t.publishDate) continue;
+    if (publishedKeys.has(t.pipelineKey)) pieceOut.set(t.pipelineKey, t.publishDate);
+  }
+  // مونتاج بيسكّره **هالتوليد** لأنّ قطعته انتشرت (ما إله سجلّ محفوظ): يومه
+  // مستنتج، فبيتأرّخ تحت، وطابعه بيكون يومه هو — مو لحظة التوليد (DA-08: توليد
+  // حزيران كان يخلق ٦ مونتاجات «منجزة الآن» لأليسار).
+  const inferredDone = new Set<PipelineTask>();
   for (const t of pipe) {
     if (t.stage !== "EDIT" || !publishedKeys.has(t.pipelineKey)) continue;
+    if (t.board !== "DONE") inferredDone.add(t);
     t.board = "DONE";
     t.status = "READY";
   }
@@ -110,32 +123,60 @@ export function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays
   // exists — the honest reading is that the montage is simply late too.
   for (const t of pipe) {
     if (t.stage !== "EDIT" || !t.pipelineKey) continue;
+    // الكرت **المثبّت** قرار قائدة — المحرّك ما بيعيد تأريخه **أبداً**. ختم «إنهاء»
+    // التصوير مو دايماً يوم تصوير: إقفال متأخّر، ملف مونتاج انطابق على كرت التصوير،
+    // أو تتابع من النشر — وكل مرّة كان مونتاج منجز مثبّت ينسحب ويمحي يوم شغل
+    // أليسار الحقيقي (فحص ١٢/١٠، RG-06: فونيتيك ريل ٣ و٤، والتوظيف ريل ٣؛ RG-03:
+    // عبادة ريل ١). التناقض إن وُجد بيطلع بالفحص العميق، وبيتصلّح بقرار.
+    if (t.isPinned && !inferredDone.has(t)) continue;
     const done = shotAt.get(t.pipelineKey);
-    if (!done) continue;
+    const out = pieceOut.get(t.pipelineKey) ?? null;
+    if (!done && !inferredDone.has(t)) continue;
+    // المنجز **غير المثبّت** سجلّ واقع: تاريخه بيثبت ما دام صادقاً مع تواريخه هو —
+    // يوم التصوير الفعلي أو بعده، ومو بعد يوم النشر المسجّل عليه لقطعة انتشرت.
+    // بنصلّح بس المستحيل: مونتاج قبل وجود المادة، أو بعد النشر (استيراد حزيران
+    // أخد ختم يوم الاستيراد). المقارنة مع تواريخه هو عن قصد: «الواقع المسجّل بيصمد»
+    // (`regen-reality`) — تناقض قديم بين مراحل القطعة بيطلع بالفحص، ما بيتصلّح بصمت.
     const isPublished = publishedKeys.has(t.pipelineKey);
-    // الكرت **المحسوم** — منجز (سجلّ واقع) أو مثبّت (قرار قائدة) — تاريخه
-    // بيثبت ما دام صادقاً: يوم التصوير الفعلي أو بعده، ومو بعد نشر قطعة
-    // انتشرت. بنصلّح بس المستحيل: مونتاج مؤرّخ قبل وجود المادة، أو بعد يوم
-    // النشر (كروت حزيران المستوردة أخدت ختم يوم الاستيراد لا يوم القص).
     if (
-      (t.board === "DONE" || t.isPinned) &&
+      t.board === "DONE" &&
+      !inferredDone.has(t) &&
       t.workDate &&
-      t.workDate >= isoOf(done) &&
+      (!done || t.workDate >= isoOf(done)) &&
       !(isPublished && t.publishDate && t.workDate > t.publishDate)
     )
       continue;
-    const d = new Date(done);
-    let guard = 0;
-    do {
-      d.setDate(d.getDate() + 1);
-      guard++;
-    } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
-    const iso = isoOf(d);
-    // …لكن أبداً بعد يوم النشر **لقطعة انتشرت فعلاً**: كروت حزيران المنشورة
+    const ceiling = inferredDone.has(t) ? out : isPublished ? (t.publishDate ?? null) : null;
+    let iso: string | null = null;
+    if (done) {
+      const d = new Date(done);
+      let guard = 0;
+      do {
+        d.setDate(d.getDate() + 1);
+        guard++;
+      } while (!editorWorkDays.includes(d.getDay()) && guard < 14);
+      iso = isoOf(d);
+    }
+    // …لكن أبداً بعد يوم نشر **القطعة** لما انتشرت فعلاً: كروت حزيران المنشورة
     // إجاها `finishedAt` من يوم استيراد الأرشيف (5/7) مو من يوم التصوير، فطلع
     // مونتاج برو مؤرّخ 5/7 لريل انتشر 12/6.
-    t.workDate = isPublished && t.publishDate && iso > t.publishDate ? t.publishDate : iso;
-    t.readyDate = t.workDate;
+    if (ceiling && (!iso || iso > ceiling)) iso = ceiling;
+    if (!iso) continue;
+    t.workDate = iso;
+    t.readyDate = iso;
+  }
+
+  // المونتاج المستنتج من النشر: طابعه يومه، وسطر دليل بيقول من وين إجا (§٢).
+  for (const t of inferredDone) {
+    const day = D(t.workDate ?? t.readyDate ?? pieceOut.get(t.pipelineKey ?? "") ?? null);
+    if (!day) continue;
+    t.startedAt = t.startedAt ?? day;
+    t.finishedAt = t.finishedAt ?? day;
+    t.completedAt = t.completedAt ?? day;
+    const line = `انسكّر مع نشر القطعة (${isoOf(day)})`;
+    const kept = (t.notes ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!kept.includes(line)) kept.push(line);
+    t.notes = kept.join("\n");
   }
 }
 

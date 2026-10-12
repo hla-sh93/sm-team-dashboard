@@ -346,7 +346,8 @@ export default function OverviewClient({
           <h1 className="display-font text-2xl">نظرة عامة</h1>
           <p className="text-sm text-fg-dim">لوحة إدارة فريق السوشال ميديا</p>
         </div>
-        <MonthBar year={year} month={month} showGenerate />
+        {/* «إعادة الجدولة» فعل أدمن (B01): عند الموظفين كانت دايماً «غير مصرّح» — فبتظهر بالأدمن بس. */}
+        <MonthBar year={year} month={month} showGenerate={pathname.startsWith("/admin")} />
       </header>
 
       {/* KPIs */}

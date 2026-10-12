@@ -207,6 +207,36 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
  * after adding/editing tasks, companies or plans — it reschedules everyone.
  */
 /**
+ * دلو «حيّ» = فيه دورة شركة مُدارة نشطة لسا ما خلصت، أو هو شهر اليوم أو بعده.
+ *
+ * أفعال الكروت (منطقة الموظفين، بلا دخول) كانت تعيد توليد **أي** دلو بعتلها
+ * النموذج — حتى دورة مسكّرة: آب ٢٠٢٦ انكتب كلّه بمعرّفات جديدة (٤١ كرت منجز)،
+ * وروابط تلغرام انقطعت، وحزيران انخلق فيه ٦ مونتاجات «منجزة الآن» (فحص ١٢/١٠،
+ * SA-15). الدلو المسكّر تاريخ: التعديل على كرت فيه بينحفظ، بس ما في إعادة توليد.
+ * «إعادة الجدولة» الصريحة من الأدمن ما بتمرق من هون.
+ */
+export async function isLiveBucket(year: number, month: number, now = new Date()): Promise<boolean> {
+  if (year * 12 + month >= now.getFullYear() * 12 + now.getMonth()) return true;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const companies = await prisma.company.findMany({
+    where: { managed: true },
+    select: {
+      status: true,
+      managed: true,
+      contractStartDate: true,
+      publishStartDate: true,
+      renewals: true,
+      contractEndedAt: true,
+    },
+  });
+  return companies.some((co) => {
+    if (isDormantCompany(co)) return false;
+    const cyc = cycleForBucket(co, year, month);
+    return cyc != null && cyc.end.getTime() > today.getTime();
+  });
+}
+
+/**
  * كرت تغيّر بين قراءة «الحفظ» وكتابة الاستبدال — التوليد بيعيد نفسه من الأول
  * بدل ما يكتب فوقه حالة قديمة (فحص ١٢/١٠، SA-03ج).
  */
@@ -556,6 +586,48 @@ async function generateScheduleOnce(
       }
       // Replace generated cards + auto sessions (keep ad-hoc, isAuto=false).
       await tx.task.deleteMany({ where: replaceScope });
+      // روابط ملفات تلغرام بتنتقل مع **هوية** القطعة: المعرّف موضعي بالدلو كله
+      // (`y_m_d_co_type_seq`)، فأي قطعة زيادة أو ناقصة عند شركة قبل بتبدّل معرّفات
+      // غيرها — والرابط كان يضل على المعرّف القديم: يا بيصير يتيم، يا بيأشّر على
+      // **قطعة تانية** (فحص ١٢/١٠، RG-04: ٦٦ من ١٩٩ رابط معلّق، و٣٦ على قطعة غلط).
+      const identityOf = (t: {
+        companyId: string | null;
+        type: string | null;
+        pieceNo?: number | null;
+        stage: string | null;
+        pipelineKey: string | null;
+      }) =>
+        t.pieceNo != null && t.companyId && t.type && t.stage && t.stage !== "WRITE"
+          ? `p|${t.companyId}|${t.type}|${t.pieceNo}|${t.stage}`
+          : t.pipelineKey && t.stage
+            ? `k|${t.pipelineKey}|${t.stage}`
+            : null;
+      const newIdByIdentity = new Map<string, string>();
+      for (const t of pipeToWrite) {
+        const k = identityOf(t);
+        if (k) newIdByIdentity.set(k, t.id);
+      }
+      const remap = new Map<string, string>();
+      for (const row of existing) {
+        if (row.companyId && protectedSet.has(row.companyId)) continue;
+        if (onlyCompanyId && row.companyId !== onlyCompanyId) continue;
+        const k = identityOf(row);
+        const next = k ? newIdByIdentity.get(k) : undefined;
+        if (next && next !== row.id) remap.set(row.id, next);
+      }
+      if (remap.size > 0) {
+        const linked = await tx.telegramMessage.findMany({
+          where: { taskId: { in: [...remap.keys()] } },
+          select: { id: true, taskId: true },
+        });
+        // كل رسالة لحالها على معرّفها الجديد — بلا تبادل وسيط (أ←ب وب←أ بنفس الجولة).
+        for (const msg of linked) {
+          await tx.telegramMessage.update({
+            where: { id: msg.id },
+            data: { taskId: remap.get(msg.taskId!)! },
+          });
+        }
+      }
       await tx.photoSession.deleteMany({ where: replaceScope });
 
       const now = new Date();
