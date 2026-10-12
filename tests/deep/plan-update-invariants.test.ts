@@ -116,8 +116,8 @@ describe("الذرّية — بند واحد غلط = ولا صف يتغيّر",
     }
   });
 
-  it.fails("PU-01: instagramHandle ما لازم ينكتب لما ترفض باقي الحمولة", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-01 مُصلَح: instagramHandle ما بينكتب لما ترفض باقي الحمولة", async () => {
+    if (skip()) return;
     const r = await apply(payload({ instagramHandle: "leaked.handle", pieceStates: [{ type: "POST", pieceNo: 99, stage: "DESIGN", evidence: EV }] }));
     expect(r.ok).toBe(false);
     const co = await prisma.company.findUnique({ where: { id: A.id } });
@@ -125,9 +125,26 @@ describe("الذرّية — بند واحد غلط = ولا صف يتغيّر",
   });
 });
 
+describe("التزامن — تطبيقان بنفس اللحظة (PU-20 مُصلَح)", () => {
+  it("دليلان مختلفان على نفس الكرت بنفس اللحظة → السطرين بيضلّوا", async () => {
+    if (skip()) return;
+    const id = key("a_d_post_3");
+    await prisma.task.update({ where: { id }, data: { notes: null } });
+    const [r1, r2] = await Promise.all([
+      apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", evidence: `${EV} — دليل متوازٍ أ` }] })),
+      apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", evidence: `${EV} — دليل متوازٍ ب` }] })),
+    ]);
+    expect(r1.ok && r2.ok, `${r1.error ?? ""} ${r2.error ?? ""}`).toBe(true);
+    const notes = (await prisma.task.findUnique({ where: { id } })).notes ?? "";
+    expect(notes).toContain("دليل متوازٍ أ");
+    expect(notes).toContain("دليل متوازٍ ب");
+    await prisma.task.update({ where: { id }, data: { notes: null } });
+  });
+});
+
 describe("المطابقة — صفّ واحد بالضبط", () => {
-  it.fails("PU-03: صفّان بنفس (النوع·الرقم·المرحلة) → الحمولة لازم تنرفض متل ما بيقول الفحص المسبق", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-03 مُصلَح: صفّان بنفس (النوع·الرقم·المرحلة) → الحمولة بتنرفض متل الفحص المسبق", async () => {
+    if (skip()) return;
     const orig = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
     const { id: _i, ...rest } = orig;
     await prisma.task.create({ data: { ...rest, id: key("a_d_post_3_dup") } });
@@ -243,14 +260,14 @@ describe("الحالة ↔ الطوابع", () => {
       expect(toISODate(t.completedAt), id).toBe("2026-09-25");
     }
   });
-  it.fails("PU-11: الإقفال التتابعي لازم يكتب دليلاً على الكرت المُقفَل (قاعدة ٢)", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-11 مُصلَح: الإقفال التتابعي بيكتب دليلاً على الكرت المُقفَل (قاعدة ٢)", async () => {
+    if (skip()) return;
     const t = await prisma.task.findUnique({ where: { id: key("a_e_reel_1") } });
     expect(t.status).toBe("READY");
     expect((t.notes ?? "").trim()).not.toBe("");
   });
-  it.fails("PU-06: READY على كرت النشر (بتتطبّع PUBLISHED) لازم تسكّر الإنتاج قبلها كمان", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-06 مُصلَح: READY على كرت النشر (بتتطبّع PUBLISHED) بتسكّر الإنتاج قبلها كمان", async () => {
+    if (skip()) return;
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 2, stage: "PUBLISH", status: "READY", date: "2026-09-26", evidence: `${EV} جاهز` }] }));
     expect(r.ok, r.error).toBe(true);
     const pub = await prisma.task.findUnique({ where: { id: key("a_p_post_2") } });

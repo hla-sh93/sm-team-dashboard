@@ -71,6 +71,9 @@ export type PipelineTask = {
   brief?: string | null;
   /** ليش الكرت بهالحالة (دليل التسليم مثلاً) — بينحفظ متل البريف. */
   notes?: string | null;
+  /** مراجعة القائدة للقطعة — بتنحفظ متل البريف (فحص ١٢/١٠، RG-07). */
+  reviewedAt?: Date | null;
+  reviewedById?: string | null;
   month: number; // 0-based
   year: number;
 };

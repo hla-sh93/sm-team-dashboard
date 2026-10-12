@@ -207,6 +207,8 @@ export const taskDetailsSchema = z
     days: z.coerce.number().min(0).max(60).nullable().optional(),
     quantity: z.coerce.number().int().min(1).max(10_000).nullable().optional(),
     isPinned: z.boolean().optional(),
+    /** نسخة الكرت يلي انفتح عليها النموذج — قفل تفاؤلي (SA-03أ). */
+    expectedUpdatedAt: z.string().datetime().optional(),
   })
   .strict();
 

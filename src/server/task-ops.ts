@@ -11,7 +11,8 @@
  * `assertAdmin` إذا بيكتب باسم القائدة.
  */
 import { prisma } from "@/lib/db";
-import { fromISODate } from "@/lib/dates";
+import { fromISODate, toISODate } from "@/lib/dates";
+import { withEvidenceLine } from "@/lib/evidence";
 import { DONE_STATUSES, type Status } from "@/lib/constants";
 import { revalidateAll } from "@/lib/revalidate";
 
@@ -38,6 +39,10 @@ function taskIsFinished(t: {
  *
  * `by`: يوم النشر. الشغل صار **قبله** لا اليوم، فختمه بتاريخ اليوم بيكذب على
  * تقرير الإنجاز ويخلّي القطعة تبيّن «خلصت بعد ما انتشرت».
+ *
+ * كل مرحلة بتنسكّر هون بتاخد سطر دليل (WORK_RULES §٢) — كانت بتنسكّر بلا أثر
+ * (فحص ١٢/١٠، OP-06 · PU-11). الصياغة **مو** «أُغلق تلقائياً/إدارياً»: هاي العبارات
+ * بيشيلها تقرير الفترة (§١٠) من إنجاز صاحب المرحلة، والقطعة فعلاً انتشرت.
  */
 export async function completeProductionForPublishedTask(
   task: {
@@ -59,6 +64,7 @@ export async function completeProductionForPublishedTask(
   if (links.length === 0) return;
 
   const now = by ?? new Date();
+  const line = `انسكّر مع نشر القطعة (${toISODate(now)})`;
   const predecessors = await prisma.task.findMany({
     where: {
       status: { not: "CANCELED" },
@@ -78,6 +84,7 @@ export async function completeProductionForPublishedTask(
           startedAt: item.startedAt ?? now,
           finishedAt: item.finishedAt ?? now,
           completedAt: item.completedAt ?? now,
+          notes: withEvidenceLine(item.notes, line),
         },
       }),
     ),
@@ -113,7 +120,7 @@ export async function setStageDone(id: string, done: boolean) {
             completedAt: null,
           },
     });
-    if (done) await completeProductionForPublishedTask(t);
+    if (done) await completeProductionForPublishedTask(t, t.completedAt ?? now);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -216,7 +223,7 @@ export async function markPiecesPublished(ids: string[], date?: string) {
             .join(" · "),
         },
       });
-      await completeProductionForPublishedTask(t);
+      await completeProductionForPublishedTask(t, when);
     }
     revalidateAll();
     return { ok: true as const, count: cards.length };

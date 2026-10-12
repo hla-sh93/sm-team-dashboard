@@ -20,7 +20,15 @@ export const SNAPSHOT_SCHEMA = "social-media-team-dashboard/v1";
 
 /** مفاتيح الدخول ما بتنسخ أبداً: نسخة فيها هاش كلمة سرّ بيئة تانية بتقدر
  *  تستبدل مالك الحساب لو انستوردت بالغلط. */
-export const AUTH_KEYS = new Set(["authSecret", "adminPasswordHash", "adminEmail"]);
+// مفاتيح الدخول وحالة الجلسات — ما بتطلع بأي لقطة ولا بتنكتب فوقها باستيراد:
+// `authEpoch`/`revokedSessions` لو رجعوا لقيمة قديمة، الكوكيز يلي انسكّرت بترجع صالحة.
+export const AUTH_KEYS = new Set([
+  "authSecret",
+  "adminPasswordHash",
+  "adminEmail",
+  "authEpoch",
+  "revokedSessions",
+]);
 
 export type SnapshotCounts = {
   employees: number;

@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import {
   assertAdmin,
   claimAdminEmail,
+  claimFirstAdmin,
   createSession,
   destroySession,
   getAdminEmail,
@@ -87,10 +88,9 @@ export async function loginAction(
       return { ok: false, error: `اختر كلمة مرور من ${MIN_PASSWORD} أحرف على الأقل` };
     }
     // «إنشاء» مرّة وحدة: طلبان متزامنان كانوا ياخدوا التنين جلسة أدمن (SA-07).
-    if (!(await claimAdminEmail(em))) {
+    if (!(await claimFirstAdmin(em, pw))) {
       return { ok: false, error: "حساب الإدارة أُنشئ للتو — سجّل الدخول به" };
     }
-    await setAdminPassword(pw);
     await createSession();
     return { ok: true };
   }

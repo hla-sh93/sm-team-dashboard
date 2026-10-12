@@ -35,6 +35,9 @@ export type ExistingPipelineTaskState = {
   notes?: string | null;
   // Stable piece identity — see PIECE-KEY note in applyPipelinePreservation.
   pieceNo?: number | null;
+  // مراجعة القائدة — كانت بتنمحى بأول إعادة توليد (RG-07).
+  reviewedAt?: Date | null;
+  reviewedById?: string | null;
 };
 
 type CanceledPiece = {
@@ -74,10 +77,22 @@ function cancelPipelinePiece(pipe: PipelineTask[], pipelineKey: string) {
   }
 }
 
+/**
+ * Cancelled pieces that must be re-applied by SCHEDULE — i.e. only the legacy
+ * rows that carry no piece number.
+ *
+ * A numbered cancelled piece is restored by its number in the main loop (status
+ * CANCELED + pin, like any saved state). Re-applying it here through its OLD
+ * `pipelineKey` / plan date — which both move on every re-time — used to land
+ * on a DIFFERENT piece, and the last resort («the first piece of the plan»)
+ * cancelled whatever came first, finished pieces included: shifting a contract
+ * by 5 days turned a DONE post into TODO/CANCELED (فحص ١٢/١٠، RG-01).
+ */
 function collectCanceledPieces(existing: ExistingPipelineTaskState[]): CanceledPiece[] {
   const byKey = new Map<string, CanceledPiece>();
   for (const task of existing) {
     if (task.status !== "CANCELED") continue;
+    if (task.pieceNo != null) continue;
     if (!task.pipelineKey || !task.companyId || !task.type || !isPieceStage(task.stage)) continue;
     byKey.set(task.pipelineKey, {
       pipelineKey: task.pipelineKey,
@@ -131,10 +146,17 @@ function applyCanceledPieces(pipe: PipelineTask[], canceledPieces: CanceledPiece
     }
   }
 
+  // A piece that already carries a saved state (matched by number) or is done
+  // is never a cancellation target — a schedule key can only guess.
+  const settledKeys = new Set(
+    pipe
+      .filter((t) => isPieceTask(t) && (t.status === "CANCELED" || t.board === "DONE" || t.startedAt || t.finishedAt))
+      .map((t) => t.pipelineKey!),
+  );
   const canceledNow = new Set<string>();
   const cancelFirstAvailable = (keys: string[] | undefined): boolean => {
     for (const key of keys ?? []) {
-      if (canceledNow.has(key)) continue;
+      if (canceledNow.has(key) || settledKeys.has(key)) continue;
       cancelPipelinePiece(pipe, key);
       canceledNow.add(key);
       return true;
@@ -154,6 +176,8 @@ function applyCanceledPieces(pipe: PipelineTask[], canceledPieces: CanceledPiece
     if (oldPiece.publishDate && cancelFirstAvailable(piecesByPlanDate.get(`${plan}|${oldPiece.publishDate}`))) {
       continue;
     }
+    // Legacy (unnumbered) rows only: keep the plan's deleted-piece count by
+    // cancelling the first piece still untouched — never a settled one.
     cancelFirstAvailable(piecesByPlan.get(plan));
   }
 }
@@ -172,10 +196,16 @@ function pieceKeyOf(row: {
   return `${row.companyId}|${row.type}|${row.pieceNo}|${row.stage}`;
 }
 
+/**
+ * Returns the saved rows that were handed to a card of this run. A saved row
+ * NOT in the set is about to be replaced by nothing — the engine refuses to do
+ * that silently when the row carries work or a plan text (RG-02).
+ */
 export function applyPipelinePreservation(
   pipe: PipelineTask[],
   existing: ExistingPipelineTaskState[],
-) {
+): Set<ExistingPipelineTaskState> {
+  const matched = new Set<ExistingPipelineTaskState>();
   // Several saved rows can sit behind one schedule key (two pieces publishing
   // the same day share the plan-date key), so the schedule maps keep every
   // candidate in order and the lookup takes the first one still available.
@@ -222,17 +252,24 @@ export function applyPipelinePreservation(
   // number, because the engine re-spreads the whole cycle. POST#7 came back
   // wearing POST#3's «فُتح من جديد» notes line that way; had POST#3 been READY,
   // #7 would have been born finished — completed work that never happened.
-  // Only rows no numbered card claims (cards without a number, pieces that left
-  // the plan) may still be handed out by schedule.
   const claimedByNumber = new Set<string>();
   for (const task of pipe) {
     const key = pieceKeyOf(task);
     if (key && byPiece.has(key)) claimedByNumber.add(key);
   }
-  const firstUnclaimed = (rows: ExistingPipelineTaskState[] | undefined) =>
+  // A NUMBERED card of this run takes a schedule match only from rows that carry
+  // no number (the WRITE card, legacy rows from before numbering). A numbered
+  // row belongs to its number: in this run it is claimed above, and when its
+  // number is NOT in this run (the count went down) the piece left the plan —
+  // its state goes to nobody. Handing it out by date cancelled post 1 because
+  // cancelled post 3's old date was post 1's new one (فحص ١٢/١٠، RG-01).
+  // A card WITHOUT a number (never produced by the engine for a typed piece)
+  // keeps the 11/10 rule: any row no numbered card claims.
+  const firstUnclaimed = (rows: ExistingPipelineTaskState[] | undefined, numbered: boolean) =>
     rows?.find((row) => {
       const key = pieceKeyOf(row);
-      return key == null || !claimedByNumber.has(key);
+      if (key == null) return true;
+      return !numbered && !claimedByNumber.has(key);
     });
 
   // Order matters, most precise first. The PIECE key beats the plan-date key:
@@ -256,11 +293,13 @@ export function applyPipelinePreservation(
       if (byNo) return byNo;
     }
     // Schedule keys only ever see rows that no numbered card already owns.
-    const direct = firstUnclaimed(byPipelineStage.get(`${task.pipelineKey}|${task.stage}`));
+    const numbered = pieceKey != null;
+    const direct = firstUnclaimed(byPipelineStage.get(`${task.pipelineKey}|${task.stage}`), numbered);
     if (direct) return direct;
     if (task.companyId && task.type && task.stage !== "WRITE" && task.publishDate)
       return firstUnclaimed(
         byPlanDateStage.get(`${task.companyId}|${task.type}|${task.publishDate}|${task.stage}`),
+        numbered,
       );
     return undefined;
   };
@@ -268,6 +307,7 @@ export function applyPipelinePreservation(
   for (const task of pipe) {
     const saved = preservedStateOf(task);
     if (!saved) continue;
+    matched.add(saved);
     task.board = saved.board as PipelineTask["board"];
     task.status = saved.status;
     task.startedAt = saved.startedAt ?? null;
@@ -277,6 +317,10 @@ export function applyPipelinePreservation(
     // manual edit, and re-importing the .docx every month is not a real option.
     if (saved.brief != null) task.brief = saved.brief;
     if (saved.notes != null) task.notes = saved.notes;
+    if (saved.reviewedAt != null) {
+      task.reviewedAt = saved.reviewedAt;
+      task.reviewedById = saved.reviewedById ?? null;
+    }
     // كرت **منجز** موعده تاريخ، مو خطة — بينحفظ ولو ما كان مثبّتاً. الاسترجاع
     // كان مشروطاً بالتثبيت، فمونتاج توظيف ريل ٢ المنجز يوم 2/8 (بلا تثبيت) رجع
     // من التوليد مؤرّخاً 9/8 — يوم الخطة، مو يوم الشغل الحقيقي. `finishedAt`
@@ -310,4 +354,5 @@ export function applyPipelinePreservation(
   }
 
   applyCanceledPieces(pipe, collectCanceledPieces(existing));
+  return matched;
 }

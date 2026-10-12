@@ -20,6 +20,7 @@ import { generateCompanySchedule } from "./schedule";
 // نوصل هون — بننادي المحرّك مباشرةً بدل حراسة تانية بلا معنى.
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { revalidateAll } from "@/lib/revalidate";
+import { planReductionBlocker } from "@/server/cycle-plan";
 
 
 /** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */
@@ -121,11 +122,16 @@ export async function updateCompany(id: string, input: CompanyInput) {
   }
   try {
     const d = parsed.data;
-    const before = await prisma.company.findUnique({
-      where: { id },
-      select: { status: true, contractEndedAt: true },
-    });
+    const before = await prisma.company.findUnique({ where: { id } });
     if (!before) return { ok: false as const, error: "الشركة غير موجودة" };
+    // نفس حارس §٩ تبع حمولة `planCounts` (RG-02).
+    const blocker = await planReductionBlocker(before, {
+      posts: d.posts,
+      reels: d.reels,
+      aiReels: d.aiReels,
+      stories: d.stories,
+    });
+    if (blocker) return { ok: false as const, error: blocker };
     // شركة لم تجدّد ما بترجع نشطة من حقل الحالة: الرجوع بـ«جدّد» بتاريخ دورة
     // جديدة، وإلا بتصير نشطة بلا دورة وبقرار انتهاء لسا مسجَّل.
     if (d.status === "active" && contractHasEnded(before)) {

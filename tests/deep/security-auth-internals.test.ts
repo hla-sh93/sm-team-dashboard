@@ -288,3 +288,58 @@ describe("أول تشغيل (إنشاء الأدمن)", () => {
     expect(row).toBeNull();
   });
 });
+
+describe("مراجعة المرحلة A — حالات الحدّ (فحص ١٢/١٠)", () => {
+  it("صفّ إيميل بلا كلمة مرور (إعادة ضبط، أو طلب انقطع بالنص) → «إنشاء» لسا ممكن، مو قفل للأبد", async () => {
+    await prisma.setting.create({ data: { key: "adminEmail", value: "old@example.test" } });
+    const { actions, lib } = await freshInstance();
+    const r = await actions.loginAction(EMAIL, PASS);
+    expect(r.ok).toBe(true);
+    expect(await lib.getAdminEmail()).toBe(EMAIL);
+    expect(await lib.isAuthenticated()).toBe(true);
+  });
+
+  it("خروجان بنفس اللحظة من جلستين → التنتين بيبطلوا", async () => {
+    const { lib, actions } = await configureAdmin();
+    await actions.loginAction(EMAIL, PASS);
+    const a = jar.value!;
+    await actions.loginAction(EMAIL, PASS);
+    const b = jar.value!;
+    expect(a).not.toBe(b);
+    const outA = (async () => {
+      const inst = await import("@/lib/auth");
+      jar.value = a;
+      await inst.destroySession();
+    })();
+    jar.value = b;
+    const outB = lib.destroySession();
+    await Promise.all([outA, outB]);
+    jar.value = a;
+    expect(await lib.isAuthenticated()).toBe(false);
+    jar.value = b;
+    expect(await lib.isAuthenticated()).toBe(false);
+  });
+
+  it("بعد تغيير كلمة المرور على A، الجلسة **الجديدة** صالحة على نسخة B الدافية", async () => {
+    const A = await freshInstance();
+    await A.actions.loginAction(EMAIL, PASS);
+    const B = await freshInstance();
+    expect(await B.lib.isAuthenticated()).toBe(true); // B خبّت السرّ
+    expect((await A.actions.changePasswordAction(PASS, "brand-new-pass")).ok).toBe(true);
+    // الكوكي الجديدة صادرة من A — لازم تمرق على B كمان.
+    expect(await B.lib.isAuthenticated()).toBe(true);
+  });
+
+  it("مفاتيح حالة الجلسات ما بتطلع بلقطة النسخ الاحتياطي ولا بتنكتب فوقها باستيراد", async () => {
+    const { AUTH_KEYS } = await import("@/lib/backup");
+    for (const k of ["authSecret", "adminPasswordHash", "adminEmail", "authEpoch", "revokedSessions"]) {
+      expect(AUTH_KEYS.has(k), k).toBe(true);
+    }
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["scripts/export-local-snapshot.ts", "scripts/import-snapshot-to-postgres.ts"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toContain('"authEpoch"');
+      expect(src, f).toContain('"revokedSessions"');
+    }
+  });
+});

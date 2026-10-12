@@ -103,18 +103,24 @@ export default function TaskForm({
     }
     startTransition(async () => {
       if (isEdit) {
+        // بس يلي تغيّر + نسخة الكرت: النافذة القديمة كانت تبعت كل الحقول، فلو
+        // حدا سكّر الكرت من اللوح وهي مفتوحة، الحفظ كان يرجّعه مفتوحاً (SA-03).
+        const initial = fromTask(task!);
+        const changed = (k: keyof typeof initial) => form[k] !== initial[k];
         const result = await updateTaskDetails(ids ?? [task!.id], {
-          title: form.title.trim(),
-          workDate: form.workDate || null,
-          readyDate: form.readyDate || null,
-          publishDate: isPublishCard ? form.publishDate || null : undefined,
-          assigneeId: form.assigneeId || null,
-          priority: form.priority,
-          status: form.status,
+          expectedUpdatedAt: new Date(task!.updatedAt).toISOString(),
+          ...(changed("title") ? { title: form.title.trim() } : {}),
+          ...(changed("workDate") ? { workDate: form.workDate || null } : {}),
+          ...(changed("readyDate") ? { readyDate: form.readyDate || null } : {}),
+          ...(isPublishCard && changed("publishDate") ? { publishDate: form.publishDate || null } : {}),
+          ...(changed("assigneeId") ? { assigneeId: form.assigneeId || null } : {}),
+          ...(changed("priority") ? { priority: form.priority } : {}),
+          ...(changed("status") ? { status: form.status } : {}),
           // Effort floor: a 0-day task would vanish from workload math.
-          days: isAdhoc ? Math.max(0.5, Number(form.days) || 0) : undefined,
-          quantity: isDesignUnitEditable ? Math.max(1, Math.round(Number(form.quantity) || 1)) : undefined,
-          isPinned: form.isPinned,
+          ...(isAdhoc && changed("days") ? { days: Math.max(0.5, Number(form.days) || 0) } : {}),
+          ...(isDesignUnitEditable && changed("quantity")
+            ? { quantity: Math.max(1, Math.round(Number(form.quantity) || 1)) }
+            : {}),
         });
         if (result.ok) {
           toast("تم تحديث المهمة");

@@ -183,14 +183,16 @@ describe("عدد القطع — قاعدة ٩", () => {
     expect(r.ok, r.error).toBe(true);
     expect((await posts(A, 9)).map((t: any) => t.pieceNo)).toEqual([1, 2]);
   });
-  it("القطعة الملغاة بتمنع التقليل برسالة «عليها شغل» (PU-15، توثيق)", async () => {
+  it("[PU-15 مُصلَح] القطعة الملغاة ما بتمنع التقليل — بتنشال مع رقمها", async () => {
     if (skip()) return;
     await apply(counts(9, { posts: 3 }));
     await prisma.task.updateMany({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 }, data: { status: "CANCELED" } });
     const r = await apply(counts(9, { posts: 2 }));
-    expect(r.ok).toBe(false);
-    expect(r.error).toContain("عليها شغل أو وصف");
-    await prisma.task.updateMany({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 }, data: { status: "NOT_STARTED" } });
+    expect(r.ok, r.error).toBe(true);
+    expect(await prisma.task.count({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 } })).toBe(0);
+    // ولا قطعة تانية انلغت بدالها (RG-01).
+    expect(await prisma.task.count({ where: { companyId: A, year: 2026, month: 9, type: "POST", status: "CANCELED" } })).toBe(0);
+    await apply(counts(9, { posts: 3 }));
   });
   it("الصفر مرفوض، ودلو بلا دورة مرفوض", async () => {
     if (skip()) return;

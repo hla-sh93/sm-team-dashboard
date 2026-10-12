@@ -13,8 +13,9 @@
  *  - First run has NO default credential: until a password is configured the
  *    login screen asks the owner to CREATE one.
  *  - Password hashed with scrypt (`salt:hash`), compared in constant time.
- *  - Session = an HttpOnly, Secure, SameSite=Lax cookie holding `exp.HMAC`,
- *    signed with the secret. Verified server-side on every admin render/action.
+ *  - Session = an HttpOnly, Secure, SameSite=Lax cookie holding
+ *    `exp.epoch.sid.HMAC`, signed with the secret. Verified server-side on every
+ *    admin render/action against the session epoch + revoked list (Setting).
  *
  * Enforcement layers (defence in depth):
  *  - `middleware.ts` redirects any `/admin/*` request with no session cookie.
@@ -91,7 +92,8 @@ async function currentEpoch(): Promise<string> {
 /**
  * Invalidate EVERY issued session at once (password change). Bumps the epoch —
  * which works whatever the secret source and on every server instance, because
- * the epoch is read from the DB on each check — and rotates a DB-managed secret.
+ * the epoch is read from the DB on each check. The secret itself is NOT rotated:
+ * warm instances cache it, so a rotation made the lead's NEW session fail there.
  */
 export async function invalidateAllSessions(): Promise<void> {
   const next = String((Number(await currentEpoch()) || 0) + 1);
@@ -100,7 +102,6 @@ export async function invalidateAllSessions(): Promise<void> {
     update: { value: next },
     create: { key: EPOCH_KEY, value: next },
   });
-  await rotateAuthSecret();
 }
 
 function parseRevoked(value: string | null | undefined): Record<string, number> {
@@ -216,11 +217,32 @@ export async function isAdminConfigured(): Promise<boolean> {
 }
 
 /**
- * First-run claim of the admin email — create-if-absent on the Setting's unique
- * key, so two simultaneous "create admin" requests can't BOTH win (SA-07).
- * Returns false when an email already exists. With `ADMIN_EMAIL` in the env
- * there is nothing to claim.
+ * First-run claim — create-if-absent on the PASSWORD row (the Setting key is
+ * unique), so two simultaneous "create admin" requests can't BOTH win (SA-07).
+ * Locking on the password (not the email) means a leftover email row — a reset
+ * that deleted only the password, or a request that died between the two
+ * writes — can never lock the owner out. The email is then saved (unless the
+ * env controls it). Returns false when a password already exists.
  */
+export async function claimFirstAdmin(email: string, password: string): Promise<boolean> {
+  if (process.env.ADMIN_PASSWORD) return false;
+  try {
+    await prisma.setting.create({ data: { key: PASSWORD_KEY, value: hashPassword(password) } });
+  } catch {
+    return false;
+  }
+  if (!process.env.ADMIN_EMAIL) {
+    const value = email.trim().toLowerCase();
+    await prisma.setting.upsert({
+      where: { key: EMAIL_KEY },
+      update: { value },
+      create: { key: EMAIL_KEY, value },
+    });
+  }
+  return true;
+}
+
+/** Save the admin email when none is stored yet (create-if-absent). */
 export async function claimAdminEmail(email: string): Promise<boolean> {
   if (process.env.ADMIN_EMAIL) return false;
   try {
@@ -275,22 +297,36 @@ async function isValidToken(token: string | undefined): Promise<boolean> {
   return revoked[parsed.sid] == null;
 }
 
-/** Revoke ONE session (logout): its sid joins the revoked list until it expires. */
+/**
+ * Revoke ONE session (logout): its sid joins the revoked list until it expires.
+ * The write is conditional on the list it was computed from, retried a few
+ * times, so two logouts at the same moment both stick.
+ */
 async function revokeToken(token: string | undefined): Promise<void> {
   const parsed = await parseSignedToken(token);
   if (!parsed) return;
-  const row = await prisma.setting.findUnique({ where: { key: REVOKED_KEY } });
-  const now = Date.now();
-  const revoked = Object.fromEntries(
-    Object.entries(parseRevoked(row?.value)).filter(([, exp]) => Number(exp) >= now),
-  );
-  revoked[parsed.sid] = parsed.exp;
-  const value = JSON.stringify(revoked);
-  await prisma.setting.upsert({
-    where: { key: REVOKED_KEY },
-    update: { value },
-    create: { key: REVOKED_KEY, value },
-  });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const row = await prisma.setting.findUnique({ where: { key: REVOKED_KEY } });
+    const now = Date.now();
+    const revoked = Object.fromEntries(
+      Object.entries(parseRevoked(row?.value)).filter(([, exp]) => Number(exp) >= now),
+    );
+    revoked[parsed.sid] = parsed.exp;
+    const value = JSON.stringify(revoked);
+    if (!row) {
+      try {
+        await prisma.setting.create({ data: { key: REVOKED_KEY, value } });
+        return;
+      } catch {
+        continue; // someone created it meanwhile — re-read and merge
+      }
+    }
+    const written = await prisma.setting.updateMany({
+      where: { key: REVOKED_KEY, value: row.value },
+      data: { value },
+    });
+    if (written.count > 0) return;
+  }
 }
 
 // --- session cookie ---------------------------------------------------------
@@ -310,7 +346,11 @@ export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   // الخروج كان يمسح الكوكي من المتصفّح بس — نسخة مسروقة منها كانت تضل صالحة
   // ٧ أيام (SA-04). هلّق الجلسة نفسها بتنسكّر بالقاعدة.
-  await revokeToken(cookieStore.get(SESSION_COOKIE)?.value);
+  try {
+    await revokeToken(cookieStore.get(SESSION_COOKIE)?.value);
+  } catch (e) {
+    console.error("session revoke failed", e);
+  }
   cookieStore.set(SESSION_COOKIE, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

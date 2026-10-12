@@ -110,8 +110,8 @@ describe("RG-01 · الإلغاء بيتسرّب بعد إعادة التوقي�
     ]);
   });
 
-  it.fails(
-    "[RG-01] زحزحة العقد ١…١٤ يوم: ولا قطعة غير الملغاة بتتغيّر حالتها (اليوم: زحزحة ٥ بتلغي بوست ٢ المنجز)",
+  it(
+    "[RG-01 مُصلَح] زحزحة العقد ١…١٤ يوم: ولا قطعة غير الملغاة بتتغيّر حالتها",
     async () => {
       const leaks: string[] = [];
       for (let shift = 1; shift <= 14; shift++) {
@@ -133,13 +133,13 @@ describe("RG-01 · الإلغاء بيتسرّب بعد إعادة التوقي�
 // ═══════════════════════════════════════════════════════════════════════════
 // RG-02 · P0 — تقليل العدد من نموذج الشركة بيمحي قطعاً منجزة بأول إعادة توليد
 // ═══════════════════════════════════════════════════════════════════════════
-describe("RG-02 · نموذج الشركة بيقلّل العدد بلا حارس §٩، والتوليد بيمحي المنجز", () => {
+describe("RG-02 مُصلَح · نموذج الشركة بيرفض التقليل فوق قطعة عليها شغل، والمحرّك ما بيمحي المنجز بصمت", () => {
   const CO = "c_form_cut";
   const Y = 2032;
   const M = 2;
   let doneId = "";
 
-  it("الإعداد: بوست ٣ منجز وعليه وصف، ونموذج الشركة بيقبل posts 3→2 بلا اعتراض", async () => {
+  it("[RG-02] بوست ٣ منجز وعليه وصف: نموذج الشركة بيرفض posts 3→2 (نفس حارس planCounts)", async () => {
     await makeCompany(prisma, CO, {
       posts: 3,
       reels: 0,
@@ -170,16 +170,33 @@ describe("RG-02 · نموذج الشركة بيقلّل العدد بلا حار
       defaultOwnerId: TEAM.designer.id,
       photographerId: TEAM.photographer.id,
     } as never);
-    expect(r.ok, (r as { error?: string }).error).toBe(true);
-    // حمولة planCounts نفسها كانت رح ترفض: «تقليل … يحذف قطعاً عليها شغل أو وصف»
+    expect(r.ok).toBe(false);
+    expect((r as { error?: string }).error).toMatch(/يحذف قطعاً عليها شغل أو وصف/);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: CO } })).posts).toBe(3);
   });
 
-  it.fails("[RG-02] أول إعادة توليد بعد الحفظ (أي تعديل كرت بالدلو) ما بتمحي بوست ٣ المنجز ووصفه", async () => {
+  it("[RG-02] إعادة توليد الدلو بعدها ما بتمحي بوست ٣ المنجز ووصفه", async () => {
     await genOk(Y, M, null);
     const kept = await prisma.task.findFirst({
       where: { companyId: CO, type: "POST", stage: "DESIGN", board: "DONE", brief: "خطة الزبون — بوست ٣" },
     });
     expect(kept, `الكرت المنجز ${doneId} انمحى مع وصفه`).not.toBeNull();
+  });
+
+  it("[RG-02] آخر خط: لو العدد انقلّ من برّا النموذج، المحرّك بيفشل بصوت وما بيمحي المنجز", async () => {
+    await prisma.company.update({ where: { id: CO }, data: { posts: 2 } });
+    try {
+      const { generateScheduleInternal } = await import("@/server/schedule-engine");
+      const r = await generateScheduleInternal(Y, M, null);
+      expect(r.ok).toBe(false);
+      expect((r as { error?: string }).error).toMatch(/عليه شغل أو وصف/);
+      const kept = await prisma.task.findFirst({
+        where: { companyId: CO, type: "POST", pieceNo: 3, stage: "DESIGN", board: "DONE" },
+      });
+      expect(kept).not.toBeNull();
+    } finally {
+      await prisma.company.update({ where: { id: CO }, data: { posts: 3 } });
+    }
   });
 });
 
@@ -312,7 +329,7 @@ describe("RG-07 · مراجعة القائدة (setPieceReviewed) بتنمحى �
     expect(t.reviewedById).toBe(TEAM.publisher.id);
   });
 
-  it.fails("[RG-07] الختم بيصمد على إعادة التوليد", async () => {
+  it("[RG-07 مُصلَح] الختم بيصمد على إعادة التوليد", async () => {
     await genOk(Y, M, null);
     const t = await prisma.task.findUniqueOrThrow({ where: { id: publishId } });
     expect(t.reviewedAt).not.toBeNull();

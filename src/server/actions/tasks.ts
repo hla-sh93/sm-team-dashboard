@@ -1,7 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { forwardWorkday, fromISODate, parseWorkDays, shiftDays, WORK_WEEK } from "@/lib/dates";
+import { forwardWorkday, fromISODate, parseWorkDays, shiftDays, toISODate, WORK_WEEK } from "@/lib/dates";
+import { withEvidenceLine } from "@/lib/evidence";
 import {
   DONE_STATUSES,
   inferHistoricalCompletionDate,
@@ -94,7 +95,62 @@ export type TaskDetailsInput = {
   days?: number | null; // ad-hoc effort in working days
   quantity?: number | null; // production work units, e.g. carousel slide count
   isPinned?: boolean;
+  /**
+   * `updatedAt` of the card as the form loaded it (ISO). When the card changed
+   * since — someone finished it from the board while this dialog was open — the
+   * save is refused instead of writing the stale values back over that work
+   * (فحص ١٢/١٠، SA-03أ).
+   */
+  expectedUpdatedAt?: string;
 };
+
+const CONFLICT = "الكرت تغيّر من وقت ما فتحتي التعديل — حدّثي الصفحة وجرّبي مرّة تانية";
+
+type TaskRow = NonNullable<Awaited<ReturnType<typeof prisma.task.findUnique>>>;
+
+/**
+ * Status + work-history stamps for one card, computed the same way for the
+ * primary card and every other card of a batched edit (OP-14: the batch used to
+ * flip the status with NO stamps, so a reopened card still counted as done).
+ */
+function statusPatch(
+  before: TaskRow,
+  input: TaskDetailsInput,
+  dates: { workDate: Date | null; readyDate: Date | null; publishDate: Date | null },
+  now: Date,
+) {
+  const status = normalizeStatusForStage(input.status ?? before.status, before.stage);
+  const done = isDone(status);
+  // «جاهز» بتاريخ جهوزية بالمستقبل كان بيختم الإنجاز بالمستقبل: الكرت المنجز
+  // اليوم ما كان بينحسب من يوم صاحبه، وكان بينعدّ بتقرير شهر جاي (OP-07). الختم
+  // ما بيتجاوز هلّق أبداً.
+  const inferred = done
+    ? input.publishDate !== undefined && dates.publishDate
+      ? dates.publishDate
+      : inferHistoricalCompletionDate({ ...before, readyDate: dates.readyDate, workDate: dates.workDate }, now)
+    : null;
+  const doneAt = inferred && inferred.getTime() > now.getTime() ? now : inferred;
+  let startedAt = before.startedAt;
+  let finishedAt = before.finishedAt;
+  if (status === "NOT_STARTED") {
+    startedAt = null;
+    finishedAt = null;
+  } else {
+    if (!startedAt) startedAt = done ? (dates.workDate && dates.workDate <= now ? dates.workDate : doneAt) : now;
+    finishedAt = done ? doneAt : null;
+  }
+  return {
+    done,
+    doneAt,
+    data: {
+      status,
+      board: statusToBoard(status),
+      startedAt,
+      finishedAt,
+      completedAt: doneAt,
+    },
+  };
+}
 
 /**
  * Edit a card's task(s) from the board/calendar: name, start/end dates, owner,
@@ -102,6 +158,10 @@ export type TaskDetailsInput = {
  * a batched card; name/dates apply to the primary. The edit is PINNED so it
  * survives إعادة الجدولة (which preserves pinned fields). When priority/dates/
  * duration change, the month is rescheduled so workloads + placement update.
+ *
+ * Only the fields actually SENT are written (SA-03ب): two people editing two
+ * different fields of one card at the same moment both keep their change. And
+ * the write is conditional on the card not having changed since it was read.
  */
 export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) {
   const primary = ids[0];
@@ -117,86 +177,90 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
   try {
     const before = await prisma.task.findUnique({ where: { id: primary } });
     if (!before) return { ok: false as const, error: "المهمة غير موجودة" };
+    if (input.expectedUpdatedAt && before.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+      return { ok: false as const, error: CONFLICT };
+    }
 
     const now = new Date();
-    const status = normalizeStatusForStage(input.status ?? before.status, before.stage);
-    const done = isDone(status);
     const setDate = (iso: string | null | undefined, cur: Date | null) =>
       iso === undefined ? cur : iso ? fromISODate(iso) : null;
-    const workDate = setDate(input.workDate, before.workDate);
-    const readyDate = setDate(input.readyDate, before.readyDate);
-    const publishDate = setDate(input.publishDate, before.publishDate);
-    const doneAt = done
-      ? input.publishDate !== undefined && publishDate
-        ? publishDate
-        : inferHistoricalCompletionDate({ ...before, readyDate, workDate }, now)
-      : null;
-    let startedAt = before.startedAt;
-    let finishedAt = before.finishedAt;
-    if (status === "NOT_STARTED") {
-      startedAt = null;
-      finishedAt = null;
-    } else {
-      if (!startedAt) startedAt = done ? (workDate ?? doneAt) : now;
-      finishedAt = done ? doneAt : null;
-    }
-    const board = statusToBoard(status);
+    const dates = {
+      workDate: setDate(input.workDate, before.workDate),
+      readyDate: setDate(input.readyDate, before.readyDate),
+      publishDate: setDate(input.publishDate, before.publishDate),
+    };
+    const datesTouched =
+      input.workDate !== undefined || input.readyDate !== undefined || input.publishDate !== undefined;
+    // الحالة وطوابعها بتنحسب لما الحالة تنبعت، أو لما كرت منجز تتغيّر تواريخه
+    // (القائدة بتصحّح يوم الشغل الحقيقي).
+    const touchStatus = input.status !== undefined || (isDone(before.status) && datesTouched);
+    const patch = touchStatus ? statusPatch(before, input, dates, now) : null;
+
     // A manual edit is ALWAYS pinned so it survives إعادة الجدولة (the regen
-    // preserves pinned cards' title/dates/owner/priority). The form's checkbox
-    // no longer needs to be ticked for the edit to stick.
-    const pinned = true;
+    // preserves pinned cards' title/dates/owner/priority).
+    const data: Record<string, unknown> = { isPinned: true };
+    if (input.title !== undefined) data.title = input.title;
+    if (input.workDate !== undefined) data.workDate = dates.workDate;
+    if (input.readyDate !== undefined) data.readyDate = dates.readyDate;
+    if (input.publishDate !== undefined) data.publishDate = dates.publishDate;
+    if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId || null;
+    if (input.priority !== undefined) data.priority = input.priority;
     // Ad-hoc effort floor: a 0-day task would cost nothing in workload math and
     // silently disappear from capacity — clamp to at least half a working day.
-    const hours =
-      input.days != null && before.kind === "ADHOC"
-        ? Math.round(Math.max(0.5, input.days) * 8 * 10) / 10
-        : before.hours;
-    const quantity =
-      input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH"
-        ? Math.max(1, Math.round(input.quantity))
-        : before.quantity;
+    if (input.days != null && before.kind === "ADHOC") {
+      data.hours = Math.round(Math.max(0.5, input.days) * 8 * 10) / 10;
+    }
+    if (input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH") {
+      data.quantity = Math.max(1, Math.round(input.quantity));
+    }
+    if (patch) Object.assign(data, patch.data);
 
-    await prisma.task.update({
-      where: { id: primary },
-      data: {
-        title: input.title !== undefined ? input.title : before.title,
-        workDate,
-        readyDate,
-        publishDate,
-        assigneeId:
-          input.assigneeId !== undefined ? input.assigneeId || null : before.assigneeId,
-        priority: input.priority ?? before.priority,
-        status,
-        board,
-        startedAt,
-        finishedAt,
-        completedAt: doneAt,
-        hours,
-        quantity,
-        isPinned: pinned,
-      },
+    // مع نسخة من النموذج: الكتابة مشروطة إنّ الكرت ما تغيّر لحظة الحفظ كمان.
+    // بلا نسخة (تعديل حقل واحد): بتنكتب الحقول المرسلة بس، فتعديلان متوازيان على
+    // حقلين مختلفين بيضلّوا التنين.
+    const written = await prisma.task.updateMany({
+      where: input.expectedUpdatedAt ? { id: primary, updatedAt: before.updatedAt } : { id: primary },
+      data,
     });
-    if (done) await completeProductionForPublishedTask(before);
+    if (written.count === 0) return { ok: false as const, error: CONFLICT };
+    // إقفال النشر بيسكّر المراحل السابقة **بيوم النشر**، مو بهلّق (OP-09).
+    if (patch?.done) await completeProductionForPublishedTask(before, patch.doneAt);
 
-    const rest = ids.slice(1);
-    if (rest.length > 0) {
+    // Shared fields on the other cards of a batched edit — with the SAME status
+    // stamping as the primary (OP-14).
+    for (const id of ids.slice(1)) {
+      const other = await prisma.task.findUnique({ where: { id } });
+      if (!other) continue;
+      const shared: TaskDetailsInput = {
+        ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      };
+      const otherPatch =
+        shared.status !== undefined
+          ? statusPatch(
+              other,
+              shared,
+              { workDate: other.workDate, readyDate: other.readyDate, publishDate: other.publishDate },
+              now,
+            )
+          : null;
       await prisma.task.updateMany({
-        where: { id: { in: rest } },
+        where: { id },
         data: {
-          ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId || null } : {}),
-          ...(input.priority !== undefined ? { priority: input.priority } : {}),
-          ...(input.status !== undefined ? { status, board } : {}),
-          isPinned: pinned,
+          isPinned: true,
+          ...(shared.assigneeId !== undefined ? { assigneeId: shared.assigneeId || null } : {}),
+          ...(shared.priority !== undefined ? { priority: shared.priority } : {}),
+          ...(otherPatch ? otherPatch.data : {}),
         },
       });
+      if (otherPatch?.done) await completeProductionForPublishedTask(other, otherPatch.doneAt);
     }
 
     // Reschedule when scheduling-relevant fields changed (pins are preserved).
     const reschedule =
       input.priority !== undefined ||
-      input.workDate !== undefined ||
-      input.readyDate !== undefined ||
-      input.publishDate !== undefined ||
+      datesTouched ||
       input.days != null ||
       input.quantity != null;
     if (reschedule) await generateScheduleInternal(before.year, before.month, null);
@@ -263,10 +327,20 @@ export async function deleteTasks(ids: string[]) {
       await prisma.task.deleteMany({ where: { id: { in: manualIds } } });
     }
     if (autoIds.length > 0) {
-      await prisma.task.updateMany({
+      // الإلغاء إقفال آلي — بسطر دليل متل غيره (WORK_RULES §٢، فحص ١٢/١٠ OP-08).
+      const line = `أُلغي مع حذف القطعة (${toISODate(new Date())})`;
+      const rows = await prisma.task.findMany({
         where: { id: { in: autoIds } },
-        data: { status: "CANCELED", isPinned: true },
+        select: { id: true, notes: true },
       });
+      await prisma.$transaction(
+        rows.map((row) =>
+          prisma.task.update({
+            where: { id: row.id },
+            data: { status: "CANCELED", isPinned: true, notes: withEvidenceLine(row.notes, line) },
+          }),
+        ),
+      );
     }
 
     if (first) await generateScheduleInternal(first.year, first.month, null);
@@ -309,7 +383,7 @@ export async function updateTaskStatus(id: string, status: string) {
         completedAt: done ? (before.completedAt ?? now) : null,
       },
     });
-    if (done) await completeProductionForPublishedTask(before);
+    if (done) await completeProductionForPublishedTask(before, before.completedAt ?? now);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -348,7 +422,7 @@ export async function moveCard(id: string, board: string) {
         completedAt: board === "DONE" ? (t.completedAt ?? now) : null,
       },
     });
-    if (board === "DONE") await completeProductionForPublishedTask(t);
+    if (board === "DONE") await completeProductionForPublishedTask(t, t.completedAt ?? now);
     revalidateAll();
     return { ok: true as const };
   } catch {

@@ -21,7 +21,7 @@ import {
 import { formatDateShort, fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
 import { cycleForBucket, cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
 import { hasLaterCycle, planTotal, type PlanCounts } from "@/lib/cycle-plan";
-import { bucketKey, existingPieceCounts } from "@/server/cycle-plan";
+import { bucketKey, existingPieceCounts, planReductionBlocker } from "@/server/cycle-plan";
 import { companyLifecycle } from "@/lib/company-visibility";
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { COURSE_SLUG, courseCardBucket, planCourseCards } from "@/lib/course-cards";
@@ -438,7 +438,6 @@ export function parsePlanUpdatePayload(input: unknown) {
   return planUpdateSchema.safeParse(input);
 }
 
-/** سطر دليل بينضاف لملاحظات الكرت مرة وحدة — نفس قاعدة `stateUpdateFor`. */
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
 const stageKeyOf = (item: { type: string; pieceNo: number; stage: string }) =>
   `${keyOf(item)}|${item.stage}`;
@@ -570,12 +569,21 @@ export async function applyPlanUpdatePayload(input: unknown) {
       : await prisma.company.findUnique({ where: { name: data.companyName! } });
     if (!company) return { ok: false as const, error: "الشركة غير موجودة" };
     const companyId = company.id;
-    if (data.instagramHandle && data.instagramHandle !== company.instagramHandle) {
-      await prisma.company.update({
-        where: { id: companyId },
-        data: { instagramHandle: data.instagramHandle },
-      });
-    }
+    // حساب إنستغرام بينكتب **مع** الحمولة الناجحة بس — كان بينكتب قبل التحقّق،
+    // فحمولة مرفوضة كانت تغيّر سجلّ الشركة والقائدة بتفكر ما تغيّر شي (فحص ١٢/١٠،
+    // PU-01). `handleWrite` وعد Prisma كسول: ما بيتنفّذ لحدّ ما ينطلب.
+    const handleWrite =
+      data.instagramHandle && data.instagramHandle !== company.instagramHandle
+        ? () =>
+            prisma.company.update({
+              where: { id: companyId },
+              data: { instagramHandle: data.instagramHandle },
+            })
+        : null;
+    const succeed = async <T,>(result: T): Promise<T> => {
+      if (handleWrite) await handleWrite();
+      return result;
+    };
 
     // حمولتا التجديد وعدد القطع ما بيلمسوا كرتاً بعينه — عدّادات الخطة كلها صفر.
     const none = {
@@ -611,14 +619,14 @@ export async function applyPlanUpdatePayload(input: unknown) {
           where: { companyId, year: data.year, month: data.month, isAuto: true, status: { not: "CANCELED" } },
         });
       if (existing.some((d) => d.getTime() === start.getTime())) {
-        return {
+        return succeed({
           ok: true as const,
           company: company.name,
           ...none,
           renewed: false,
           generatedCards: await countCards(),
           affectedRows: 0,
-        };
+        });
       }
       const cycles = cyclesOf(company);
       const last = cycles[cycles.length - 1];
@@ -640,20 +648,18 @@ export async function applyPlanUpdatePayload(input: unknown) {
       }
       const generatedCards = await countCards();
       revalidateAll();
-      return {
+      return succeed({
         ok: true as const,
         company: company.name,
         ...none,
         renewed: true,
         generatedCards,
         affectedRows: generatedCards,
-      };
+      });
     }
 
     if (data.planCounts) {
       const fields = ["posts", "reels", "aiReels", "stories"] as const;
-      const TYPE_OF = { posts: "POST", reels: "REEL", aiReels: "AI_REEL", stories: "STORY" } as const;
-      const LABEL = { posts: "البوستات", reels: "الريلات", aiReels: "ريلات AI", stories: "الستوريات" } as const;
       const record: PlanCounts = {
         posts: company.posts,
         reels: company.reels,
@@ -693,37 +699,27 @@ export async function applyPlanUpdatePayload(input: unknown) {
         });
       // السجلّ والكروت الاتنين على العدد المطلوب → إعادة تطبيق، ما بتعمل شي.
       if (fields.every((f) => next[f] === record[f] && next[f] === existing[f])) {
-        return {
+        return succeed({
           ok: true as const,
           company: company.name,
           ...none,
           renewed: false,
           generatedCards: await countCards(),
           affectedRows: 0,
-        };
+        });
       }
       // التقليل بيشيل القطع صاحبة الأرقام الأعلى (الترقيم بترتيب النشر، والحفظ
       // بيطابق بالرقم). قطعة عليها شغل أو وصف ما بتنشال بحمولة عدد.
-      for (const field of fields) {
-        if (next[field] >= existing[field]) continue;
-        const dropped = await prisma.task.findMany({
-          where: {
-            companyId,
-            year: data.year,
-            month: data.month,
-            isAuto: true,
-            type: TYPE_OF[field],
-            pieceNo: { gt: next[field] },
-          },
-          select: { status: true, board: true, brief: true },
-        });
-        if (dropped.some((t) => t.status !== "NOT_STARTED" || t.board !== "TODO" || Boolean(t.brief?.trim()))) {
-          return {
-            ok: false as const,
-            error: `تقليل ${LABEL[field]} إلى ${next[field]} يحذف قطعاً عليها شغل أو وصف — عالجي كروتها أولاً`,
-          };
-        }
-      }
+      // نفس الحارس بنموذج الشركة (`planReductionBlocker`)؛ الملغاة ما بتمنع (PU-15).
+      const lowerThanCards = Object.fromEntries(
+        fields.filter((f) => next[f] < existing[f]).map((f) => [f, next[f]]),
+      );
+      const blocker = await planReductionBlocker(
+        { ...company, ...existing },
+        lowerThanCards,
+        { year: data.year, month: data.month },
+      );
+      if (blocker) return { ok: false as const, error: blocker };
       await prisma.company.update({ where: { id: companyId }, data: next });
       const built = await generateScheduleInternal(data.year, data.month, companyId);
       if (!built.ok) {
@@ -735,7 +731,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
       }
       const generatedCards = await countCards();
       revalidateAll();
-      return {
+      return succeed({
         ok: true as const,
         company: company.name,
         ...none,
@@ -743,7 +739,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
         planCountsChanged: true,
         generatedCards,
         affectedRows: generatedCards,
-      };
+      });
     }
 
     const tasks = await prisma.task.findMany({
@@ -1276,6 +1272,15 @@ export async function applyPlanUpdatePayload(input: unknown) {
     // يمحيها. الكرت المنجز موعده **تاريخ** لا خطة، فمنكتب يوم التسليم الفعلي
     // على `workDate`/`readyDate` — والحفظ بيصونهم عبر إعادة التوليد.
     let stateTargets: { id: string; notes: string | null }[] = [];
+    // كتابات الدليل المشروطة — لو تطبيق تاني بنفس اللحظة غيّر ملاحظات الكرت بين
+    // القراءة والكتابة، الشرط بيفشل (count 0) فمنعيد حساب السطر على الملاحظات
+    // الجديدة بدل ما يمحي واحد التاني (فحص ١٢/١٠، PU-20: سطر دليل كان يضيع).
+    const noteWrites: {
+      index: number;
+      id: string;
+      spec: Parameters<typeof stateUpdateFor>[0];
+      extra?: Record<string, unknown>;
+    }[] = [];
     let stateTargetsFull: {
       id: string; type: string | null; pieceNo: number | null; stage: string | null;
       kind: string; blockedById: string | null; pipelineKey: string | null;
@@ -1296,6 +1301,21 @@ export async function applyPlanUpdatePayload(input: unknown) {
         },
         select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
       });
+      // بند واحد = صفّ واحد بالضبط. بصفّين كان التطبيق يكتب عليهن التنين بينما
+      // الفحص المسبق بيرفض (فحص ١٢/١٠، PU-03).
+      const perKey = new Map<string, number>();
+      for (const task of targets) {
+        const k = stageKeyOf({ type: task.type ?? "", pieceNo: task.pieceNo!, stage: task.stage ?? "" });
+        perKey.set(k, (perKey.get(k) ?? 0) + 1);
+      }
+      const ambiguous = [...perKey.entries()].find(([, n]) => n > 1);
+      if (ambiguous) {
+        const [type, pieceNo, stage] = ambiguous[0].split("|");
+        return {
+          ok: false as const,
+          error: `${type}#${pieceNo} ${stage}: طابق ${ambiguous[1]} صف — البند لازم يطابق كرتاً واحداً`,
+        };
+      }
       stateTargets = targets.map((t) => ({ id: t.id, notes: t.notes }));
       stateTargetsFull = targets;
       const specByKey = new Map(stateSpecs.map((spec) => [stageKeyOf(spec), spec]));
@@ -1304,25 +1324,54 @@ export async function applyPlanUpdatePayload(input: unknown) {
           stageKeyOf({ type: task.type ?? "", pieceNo: task.pieceNo!, stage: task.stage ?? "" }),
         );
         if (!spec) continue;
+        noteWrites.push({ index: writes.length, id: task.id, spec });
         writes.push(
           prisma.task.updateMany({
-            where: { id: task.id },
+            // مشروطة بالملاحظات يلي انحسب منها السطر الجديد (PU-20).
+            where: { id: task.id, notes: task.notes },
             data: stateUpdateFor(spec, task),
           }),
         );
       }
     }
 
+    const adhocExtra = (spec: (typeof adhocSpecs)[number]) => ({
+      ...(spec.hours != null ? { hours: spec.hours } : {}),
+      ...(spec.assignee ? { assigneeId: adhocAssignees.get(spec.assignee) } : {}),
+    });
     for (const { spec, task } of adhocResolved) {
-      const update = stateUpdateFor(spec, task);
-      if (spec.hours != null) update.hours = spec.hours;
-      if (spec.assignee) update.assigneeId = adhocAssignees.get(spec.assignee);
-      writes.push(prisma.task.updateMany({ where: { id: task.id }, data: update }));
+      const update = { ...stateUpdateFor(spec, task), ...adhocExtra(spec) };
+      noteWrites.push({ index: writes.length, id: task.id, spec, extra: adhocExtra(spec) });
+      writes.push(prisma.task.updateMany({ where: { id: task.id, notes: task.notes }, data: update }));
     }
 
     // كروت الدورات آخر المعاملة — الشرائح المحسوبة فوق (الإقفال والاستعادة)
     // بتعتمد على مواضع الكتابات السابقة.
-    const results = (await prisma.$transaction([...writes, ...adhocCardOps, ...courseOps])) as { count?: number }[];
+    const results = (await prisma.$transaction([
+      ...writes,
+      ...adhocCardOps,
+      ...courseOps,
+      ...(handleWrite ? [handleWrite()] : []),
+    ])) as { count?: number }[];
+
+    for (const w of noteWrites) {
+      if ((results[w.index]?.count ?? 0) > 0) continue;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const fresh = await prisma.task.findUnique({
+          where: { id: w.id },
+          select: { notes: true, startedAt: true },
+        });
+        if (!fresh) break;
+        const redone = await prisma.task.updateMany({
+          where: { id: w.id, notes: fresh.notes },
+          data: { ...stateUpdateFor(w.spec, fresh), ...(w.extra ?? {}) },
+        });
+        if (redone.count > 0) {
+          results[w.index] = redone;
+          break;
+        }
+      }
+    }
 
     // قطعة انتشرت = كل مراحلها خلصت. الحمولة بتلمس الكرت المطلوب وحده، فبلا
     // هالخطوة بيضل المونتاج أو التصميم مفتوحاً والقطعة منشورة — حالة مستحيلة
@@ -1330,7 +1379,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
     // بتنفّذ **بعد** المعاملة: القراءة بدها الحالة الجديدة، والإقفال بيتختم
     // بيوم النشر لا بيوم اليوم.
     for (const spec of [...stateSpecs, ...adhocSpecs]) {
-      if (spec.stage !== "PUBLISH" || spec.status !== "PUBLISHED") continue;
+      // الحالة **بعد** التطبيع: «READY» على النشر = «PUBLISHED» (PU-06).
+      if (spec.stage !== "PUBLISH" || !spec.status) continue;
+      if (normalizeStatusForStage(spec.status, spec.stage) !== "PUBLISHED") continue;
       const target =
         "pieceNo" in spec
           ? stateTargetsFull.find(

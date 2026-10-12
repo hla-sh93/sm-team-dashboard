@@ -77,19 +77,20 @@ afterAll(async () => {
 });
 
 describe.skipIf(!HAS_DB)("[SA-03] تحديثات ضايعة على الكروت", () => {
-  it.fails("[SA-03] نافذة تعديل مفتوحة (قيم قديمة) بتحفظ بعد ما الكرت انسكّر من اللوح → لازم يضل منجز أو ينرفض الحفظ", async () => {
+  it("[SA-03 مُصلَح] نافذة تعديل مفتوحة (قيم قديمة) بتحفظ بعد ما الكرت انسكّر من اللوح → الحفظ بينرفض والكرت بيضل منجز", async () => {
     const card = await openCard({ stage: "DESIGN" });
-    // الموظف أ فتح «تعديل» — النموذج حمل الحالة NOT_STARTED
-    const form = { title: `${card.title} (معدّل)`, status: card.status, priority: card.priority, assigneeId: card.assigneeId };
+    // الموظف أ فتح «تعديل» — النموذج بيبعت يلي تغيّر بس + نسخة الكرت يلي انفتح عليها
+    const form = { title: `${card.title} (معدّل)`, expectedUpdatedAt: card.updatedAt.toISOString() };
     // الموظف ب خلّص الكرت من اللوح
     expect((await tasks.moveCard(card.id, "DONE")).ok).toBe(true);
-    // أ بيحفظ النافذة (TaskForm بيبعت كل الحقول دايماً)
+    // أ بيحفظ النافذة
     const r = await tasks.updateTaskDetails([card.id], form);
     const after = await prisma.task.findUnique({ where: { id: card.id } });
-    expect(r.ok === false || after.board === "DONE").toBe(true);
+    expect(r.ok).toBe(false);
+    expect(after.board).toBe("DONE");
   });
 
-  it.fails("[SA-03] تعديلان جزئيان متوازيان (عنوان + مسؤول) → لازم يضلّوا التنين", async () => {
+  it("[SA-03 مُصلَح] تعديلان جزئيان متوازيان (عنوان + مسؤول) → بيضلّوا التنين", async () => {
     const card = await openCard({ assigneeId: { not: null } });
     const other = await prisma.employee.findFirst({ where: { id: { not: card.assigneeId } } });
     const [a, b] = await Promise.all([
@@ -102,7 +103,7 @@ describe.skipIf(!HAS_DB)("[SA-03] تحديثات ضايعة على الكروت"
     expect(after.assigneeId).toBe(other.id);
   });
 
-  it.fails("[SA-03] كرت انسكّر بين قراءة «الحفظ» وكتابة إعادة الجدولة → الإعادة لازم ما ترجّعه مفتوح", async () => {
+  it("[SA-03 مُصلَح] كرت انسكّر بين قراءة «الحفظ» وكتابة إعادة الجدولة → الإعادة ما بترجّعه مفتوح", async () => {
     const card = await openCard({ stage: "DESIGN" });
     // نفس الترتيب الحقيقي: المحرّك بيقرأ الكروت الموجودة (للحفظ) خارج المعاملة،
     // بعدها بيقرأ جلسات التصوير، بعدها المعاملة. أي كتابة بهالنافذة بتضيع.

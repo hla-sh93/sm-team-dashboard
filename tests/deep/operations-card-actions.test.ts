@@ -206,8 +206,8 @@ describe("إقفال آلي — النشر بيسكّر المراحل السا�
     expect(pub.status).toBe("PUBLISHED");
   });
 
-  it.fails("[OP-06] الإقفال الآلي للمراحل السابقة لازم يحمل سطر دليل على notes (§٢) — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-06 مُصلَح] الإقفال الآلي للمراحل السابقة بيحمل سطر دليل على notes (§٢)", async () => {
+    if (skip()) return;
     const shoot = await find("SHOOT", "REEL");
     const edit = await find("EDIT", "REEL");
     expect(shoot.notes ?? "").not.toBe("");
@@ -226,8 +226,8 @@ describe("تعديل الكرت (updateTaskDetails) — دايماً مثبّت"
     expect(after.title).toBe(`${uniq}-عنوان`);
   });
 
-  it.fails("[OP-07] وسم الكرت منجزاً من نموذج التعديل بيختمه بتاريخ الجهوزية ولو كان بالمستقبل — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-07 مُصلَح] وسم الكرت منجزاً من نموذج التعديل ما بيختمه بالمستقبل ولو تاريخ الجهوزية بالمستقبل", async () => {
+    if (skip()) return;
     const design = await find("DESIGN", "POST");
     await ops.setStageDone(design.id, false); // رجّعه مفتوحاً
     const r = await actions.updateTaskDetails([design.id], { status: "READY", readyDate: "2026-12-01" });
@@ -256,8 +256,8 @@ describe("الحذف (§6.1)", () => {
     expect(await prisma.task.count({ where: { companyId, type: "POST", status: { not: "CANCELED" } } })).toBe(0);
   });
 
-  it.fails("[OP-08] إلغاء القطعة بالحذف إقفال آلي بلا سطر دليل على notes (§٢) — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-08 مُصلَح] إلغاء القطعة بالحذف بيحمل سطر دليل على notes (§٢)", async () => {
+    if (skip()) return;
     const canceled = await prisma.task.findMany({ where: { companyId, type: "POST", status: "CANCELED" } });
     expect(canceled.length).toBeGreaterThan(0);
     for (const t of canceled) expect(t.notes ?? "").not.toBe("");
@@ -343,7 +343,7 @@ describe("[OP-09] نشر بتاريخ سابق من نموذج التعديل �
   let designId: string;
   let publishId: string;
 
-  it("نموذج التعديل على كرت نشر (status=PUBLISHED + publishDate ماضي): النشر بينختم بيومه والتصميم المفتوح بينسكّر", async () => {
+  it("[OP-09 مُصلَح] نموذج التعديل على كرت نشر (status=PUBLISHED + publishDate ماضي): النشر بينختم بيومه والتصميم المفتوح بينسكّر بنفس اليوم", async () => {
     if (skip()) return;
     designId = (await prisma.task.create({ data: { id: `${uniq}-op09-d`, kind: "CONTENT", stage: "DESIGN", type: "POST", title: "بوست يدوي", hours: 0, year: Y, month: M, status: "NOT_STARTED", board: "TODO", isAuto: false, assigneeId: designerId, companyId, workDate: new Date(2026, 8, 8), readyDate: new Date(2026, 8, 8), publishDate: new Date(2026, 8, 10) } })).id;
     publishId = (await prisma.task.create({ data: { id: `${uniq}-op09-p`, kind: "PUBLISH", stage: "PUBLISH", type: "POST", title: "نشر بوست يدوي", hours: 0, year: Y, month: M, status: "NOT_STARTED", board: "TODO", isAuto: false, assigneeId: designerId, companyId, blockedById: designId, readyDate: new Date(2026, 8, 10), publishDate: new Date(2026, 8, 10) } })).id;
@@ -355,13 +355,14 @@ describe("[OP-09] نشر بتاريخ سابق من نموذج التعديل �
     expect(pub.status).toBe("PUBLISHED");
     expect(pub.finishedAt.getDate()).toBe(10);
     expect(design.status).toBe("READY");
-    // الأثر الجانبي: التصميم صار «منجَز اليوم» للمصمّم — بياكل من سعة يومه الحقيقي.
+    expect(design.finishedAt.getDate()).toBe(10);
+    // ما صار «منجَز اليوم» للمصمّم — ما بياكل من سعة يومه الحقيقي.
     const { toISODate } = await import("@/lib/dates");
-    expect(daily.isFinishedOnDay(design, toISODate(new Date()))).toBe(true);
+    expect(daily.isFinishedOnDay(design, toISODate(new Date()))).toBe(false);
   });
 
-  it.fails("[OP-09] المرحلة السابقة لازم تنختم ≤ تاريخ النشر («ما بينشر شي قبل ما يخلص» §٤ ووعد completeProductionForPublishedTask) — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-09 مُصلَح] المرحلة السابقة بتنختم ≤ تاريخ النشر («ما بينشر شي قبل ما يخلص» §٤)", async () => {
+    if (skip()) return;
     const pub = await prisma.task.findUniqueOrThrow({ where: { id: publishId } });
     const design = await prisma.task.findUniqueOrThrow({ where: { id: designId } });
     expect(design.finishedAt.getTime()).toBeLessThanOrEqual(pub.finishedAt.getTime());
@@ -372,7 +373,7 @@ describe("[OP-14] تعديل جماعي (updateTaskDetails بأكتر من مع�
   let aId: string;
   let bId: string;
 
-  it("إرجاع كرتين لـ«لم يبدأ» دفعة وحدة: الكرت التاني بياخد الحالة والعمود بس", async () => {
+  it("[OP-14 مُصلَح] إرجاع كرتين لـ«لم يبدأ» دفعة وحدة: الكرت التاني بياخد الحالة وطوابعها", async () => {
     if (skip()) return;
     aId = (await prisma.task.create({ data: { id: `${uniq}-op14-a`, kind: "ADHOC", title: "أ", hours: 4, year: Y, month: M, status: "NOT_STARTED", board: "TODO", isAuto: false, assigneeId: designerId, companyId } })).id;
     const at = new Date(2026, 8, 9, 12);
@@ -380,11 +381,12 @@ describe("[OP-14] تعديل جماعي (updateTaskDetails بأكتر من مع�
     expect((await actions.updateTaskDetails([aId, bId], { status: "NOT_STARTED" })).ok).toBe(true);
     const b = await prisma.task.findUniqueOrThrow({ where: { id: bId } });
     expect([b.status, b.board]).toEqual(["NOT_STARTED", "TODO"]);
-    expect(b.finishedAt).not.toBeNull(); // الطابع ضلّ
+    expect(b.finishedAt).toBeNull();
+    expect(b.completedAt).toBeNull();
   });
 
-  it.fails("[OP-14] الكرت المُعاد فتحه دفعة لازم يطلع مفتوحاً بكل المصنِّفات (isTaskDoneState) — عطل كامن (ما في واجهة بتبعت أكتر من معرّف اليوم)", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-14 مُصلَح] الكرت المُعاد فتحه دفعة بيطلع مفتوحاً بكل المصنِّفات (isTaskDoneState)", async () => {
+    if (skip()) return;
     const b = await prisma.task.findUniqueOrThrow({ where: { id: bId } });
     expect(constants.isTaskDoneState(b)).toBe(false);
   });

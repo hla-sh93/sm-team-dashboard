@@ -277,6 +277,43 @@ describe("pipeline expansion", () => {
   });
 });
 
+describe("الإلغاء المرقّم ما بيتسرّب لقطعة تانية (فحص ١٢/١٠، RG-01)", () => {
+  const numbered = (pieceNo: number, publishDate: string, extra: Partial<ExistingPipelineTaskState> = {}) =>
+    saved({ pipelineKey: `c|POST|${publishDate}|1`, publishDate: new Date(`${publishDate}T00:00:00`), pieceNo, ...extra });
+
+  it("قطعة ملغاة رقمها ما عاد بالخطة (تقليل العدد): ما في قطعة تانية بتنلغى بدالها", () => {
+    const pipe = expandPipeline(
+      [
+        { ...baseItem, id: "c|POST|2026-07-09|1", publishDate: "2026-07-09" },
+        { ...baseItem, id: "c|POST|2026-07-10|1", publishDate: "2026-07-10" },
+      ],
+      opts,
+    );
+    applyPipelinePreservation(pipe, [numbered(3, "2026-07-09", { status: "CANCELED", isPinned: true })]);
+    expect(pipe.filter((t) => t.status === "CANCELED")).toHaveLength(0);
+  });
+
+  it("قطعة ملغاة برقمها بتضل هي الملغاة ولو تاريخها القديم صار تاريخ قطعة منجزة", () => {
+    const pipe = expandPipeline(
+      [
+        { ...baseItem, id: "c|POST|2026-07-09|1", publishDate: "2026-07-09" },
+        { ...baseItem, id: "c|POST|2026-07-12|1", publishDate: "2026-07-12" },
+      ],
+      opts,
+    );
+    applyPipelinePreservation(pipe, [
+      numbered(1, "2026-07-05", { stage: "DESIGN", board: "DONE", status: "READY" }),
+      numbered(1, "2026-07-05", { stage: "PUBLISH", board: "DONE", status: "PUBLISHED" }),
+      // تاريخ الملغاة القديم = تاريخ القطعة الأولى الجديد.
+      numbered(2, "2026-07-09", { stage: "DESIGN", status: "CANCELED", isPinned: true }),
+      numbered(2, "2026-07-09", { stage: "PUBLISH", status: "CANCELED", isPinned: true }),
+    ]);
+    const byNo = (n: number) => pipe.filter((t) => t.pieceNo === n && t.stage !== "WRITE").map((t) => t.status);
+    expect(byNo(1)).toEqual(["READY", "PUBLISHED"]);
+    expect(byNo(2)).toEqual(["CANCELED", "CANCELED"]);
+  });
+});
+
 /**
  * «أي مهمة بيصورها ماجد لازم تنتقل لعند أليسار للمونتاج» (القائدة 2/8/2026).
  * قبل هالمرحلة كان الريل يمشي تصوير ← نشر، فالمونتيرة ما إلها ولا كرت بالنظام

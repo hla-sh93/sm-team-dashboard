@@ -35,7 +35,7 @@ import {
 } from "@/lib/dates";
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
 import { planTotal } from "@/lib/cycle-plan";
-import { frozenPlanCounts } from "@/server/cycle-plan";
+import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
 import { revalidateAll } from "@/lib/revalidate";
 
 
@@ -206,7 +206,39 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
  * kept; only their computed workDate/overflow are written back. Re-run anytime
  * after adding/editing tasks, companies or plans — it reschedules everyone.
  */
+/**
+ * كرت تغيّر بين قراءة «الحفظ» وكتابة الاستبدال — التوليد بيعيد نفسه من الأول
+ * بدل ما يكتب فوقه حالة قديمة (فحص ١٢/١٠، SA-03ج).
+ */
+class StaleBucketError extends Error {
+  constructor() {
+    super("stale bucket");
+  }
+}
+
+const STALE_RETRIES = 3;
+
 export async function generateScheduleInternal(
+  year: number,
+  month: number,
+  onlyCompanyId: string | null,
+  allowEmptyRebuild = false,
+) {
+  for (let attempt = 1; ; attempt++) {
+    const result = await generateScheduleOnce(year, month, onlyCompanyId, allowEmptyRebuild);
+    if (!("stale" in result) || attempt >= STALE_RETRIES) {
+      if ("stale" in result) {
+        return {
+          ok: false as const,
+          error: "الكروت عم تتعدّل بنفس اللحظة — جرّبي إعادة الجدولة كمان شوي",
+        };
+      }
+      return result;
+    }
+  }
+}
+
+async function generateScheduleOnce(
   year: number,
   month: number,
   onlyCompanyId: string | null,
@@ -350,14 +382,17 @@ export async function generateScheduleInternal(
     // Board/status are always kept; for cards the user PINNED (manual edit via
     // the card's تعديل) we also keep their title / dates / owner / priority so
     // hitting إعادة الجدولة never throws the edit away.
+    const existingWhere = {
+      isAuto: true,
+      year,
+      month,
+      ...(onlyCompanyId ? { companyId: onlyCompanyId } : {}),
+    };
     const existing = await prisma.task.findMany({
-      where: {
-        isAuto: true,
-        year,
-        month,
-        ...(onlyCompanyId ? { companyId: onlyCompanyId } : {}),
-      },
+      where: existingWhere,
       select: {
+        id: true,
+        updatedAt: true,
         pipelineKey: true,
         stage: true,
         board: true,
@@ -384,9 +419,12 @@ export async function generateScheduleInternal(
         notes: true,
         // Piece identity — survives a re-timing that moves every date.
         pieceNo: true,
+        // مراجعة القائدة (RG-07).
+        reviewedAt: true,
+        reviewedById: true,
       },
     });
-    applyPipelinePreservation(pipe, existing);
+    const matchedRows = applyPipelinePreservation(pipe, existing);
     // المونتاج بيتبع **التصوير الفعلي** مو المخطط: ريل مجدول تصويره 1/6 وانتصوّر
     // 5/7 كان كرت مونتاجه بيطلع مستحق 2/6 — متأخر شهر قبل ما تنوجد المادة أصلاً.
     // بعد ما رجّعت خطوة الحفظ `finishedAt` على كرت التصوير، منعيد تأريخ المونتاج
@@ -461,6 +499,34 @@ export async function generateScheduleInternal(
       };
     }
 
+    // ═══ الحارس الثالث: ولا شغل ولا وصف بينمحى بصمت ═══
+    //
+    // صفّ محفوظ عليه شغل (بداية/إنجاز) أو نصّ خطة، وما في كرت من هالتوليد أخده،
+    // كان بينمحى بخطوة الاستبدال تحت — هيك ضاع بوست منجز ووصفه بعد تقليل العدد
+    // من نموذج الشركة (فحص ١٢/١٠، RG-02). الحرّاس بنموذج الشركة وبحمولة
+    // `planCounts` بيمنعوا الحالة من أساسها؛ هون آخر خط: فشل بصوت بدل المحو.
+    const protectedSet = new Set(protectedIds);
+    const lostRows = existing.filter(
+      (row) =>
+        !matchedRows.has(row) &&
+        row.companyId != null &&
+        !protectedSet.has(row.companyId) &&
+        (!onlyCompanyId || row.companyId === onlyCompanyId) &&
+        pieceHasWorkOrBrief(row),
+    );
+    if (lostRows.length > 0) {
+      const sample = lostRows
+        .slice(0, 4)
+        .map((row) => `${coName(row.companyId!)} ${row.type ?? ""} ${row.pieceNo != null ? `#${row.pieceNo}` : ""} ${row.stage ?? ""}`.replace(/\s+/g, " ").trim())
+        .join(" · ");
+      return {
+        ok: false as const,
+        error:
+          `إعادة الجدولة رح تمحي ${lostRows.length} كرت عليه شغل أو وصف وما إله مكان بالخطة الحالية (${sample}) — ` +
+          "رجّعي العدد أو عالجي هالكروت أولاً.",
+      };
+    }
+
     const replaceScope = onlyCompanyId
       ? { isAuto: true, year, month, companyId: onlyCompanyId }
       : {
@@ -473,7 +539,21 @@ export async function generateScheduleInternal(
       ? result.sessions.filter((session) => session.companyId === onlyCompanyId)
       : result.sessions;
 
+    // بصمة يلي انقرى للحفظ: أي كرت انضاف أو انمحى أو تعدّل بعدها (حدا سكّر
+    // كرت من اللوح بنفس اللحظة) بيخلّي الاستبدال يكتب حالة قديمة فوق شغله.
+    const readStamp = new Map(existing.map((row) => [row.id, row.updatedAt.getTime()]));
+
     await prisma.$transaction(async (tx) => {
+      const current = await tx.task.findMany({
+        where: existingWhere,
+        select: { id: true, updatedAt: true },
+      });
+      if (
+        current.length !== readStamp.size ||
+        current.some((row) => readStamp.get(row.id) !== row.updatedAt.getTime())
+      ) {
+        throw new StaleBucketError();
+      }
       // Replace generated cards + auto sessions (keep ad-hoc, isAuto=false).
       await tx.task.deleteMany({ where: replaceScope });
       await tx.photoSession.deleteMany({ where: replaceScope });
@@ -513,6 +593,8 @@ export async function generateScheduleInternal(
             isPinned: t.isPinned ?? false,
             brief: t.brief ?? null,
             notes: t.notes ?? null,
+            reviewedAt: t.reviewedAt ?? null,
+            reviewedById: t.reviewedById ?? null,
             startedAt,
             finishedAt,
             completedAt: done ? (t.completedAt ?? finishedAt) : null,
@@ -562,8 +644,9 @@ export async function generateScheduleInternal(
       // لما صارت عطلة الفريق جمعة+سبت: ٦ كروت ادهوك منجزة فعلاً يوم سبت كانت
       // رح تنسحب للخميس، فيصير السجل يكذب عن يوم الشغل الحقيقي.
       if (isTaskDoneState({ status: a.status })) continue;
-      await prisma.task.update({
-        where: { id: a.sourceId },
+      // `updateMany` بشرط «لسا مو منجز»: كرت انسكّر بعد قراءة المحرّك ما بيتزحزح يومه.
+      await prisma.task.updateMany({
+        where: { id: a.sourceId, status: { notIn: ["READY", "PUBLISHED"] }, board: { not: "DONE" } },
         data: { workDate: a.workDate, overflow: a.overflow },
       });
     }
@@ -577,6 +660,7 @@ export async function generateScheduleInternal(
     };
     return { ok: true as const, stages, warnings: result.warnings };
   } catch (e) {
+    if (e instanceof StaleBucketError) return { ok: false as const, stale: true as const };
     console.error(e);
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };

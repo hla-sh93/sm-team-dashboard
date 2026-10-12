@@ -67,7 +67,7 @@ const ENGINE_OWNED = new Set([
 ]);
 
 /** الفجوة المعروفة — شوف رأس الملف. */
-const KNOWN_GAPS = ["reviewedAt", "reviewedById"];
+const KNOWN_GAPS: string[] = []; // كانت reviewedAt/reviewedById — انسدّت (RG-07)
 
 describe("WORK_RULES §٣ — حقول Task المكتوبة من برّا المحرّك بتمرق بالأماكن الأربعة", () => {
   const columns = taskColumns();
