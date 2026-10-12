@@ -27,7 +27,7 @@ import { ARABIC_DAYS, toISODate } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { assetNameForTask, companySlug } from "@/lib/asset-name";
 import { buildContentNumbers, comparePieceSequence } from "@/lib/cards";
-import type { Company, Employee, Task, TelegramMessage } from "@/types";
+import type { Company, Employee, Task, TelegramMessage, PublicEmployee, PublicCompany } from "@/types";
 
 /** Publish dates within this many days count as "about to slip". */
 const AT_RISK_DAYS = 2;
@@ -54,8 +54,8 @@ export default function TodayClient({
   ignoredChatIds = [],
 }: {
   todayISO: string;
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   tasks: Task[];
   deliveries: TelegramMessage[];
   /** Chats marked «مو تبع شركة» — their traffic never counts as unlinked. */

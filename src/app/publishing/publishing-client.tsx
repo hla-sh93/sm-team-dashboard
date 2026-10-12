@@ -22,7 +22,7 @@ import { buildReelNumbers, comparePieceSequence } from "@/lib/cards";
 import { calendarPublishItems, publishesInMonth } from "@/lib/publish-calendar";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
-import type { Company, Employee, Task } from "@/types";
+import type { Company, Employee, Task, PublicEmployee, PublicCompany } from "@/types";
 import { assetNameForTask } from "@/lib/asset-name";
 import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 
@@ -37,8 +37,8 @@ export default function PublishingClient({
 }: {
   year: number;
   month: number;
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   tasks: Task[];
 }) {
   const router = useRouter();

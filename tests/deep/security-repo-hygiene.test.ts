@@ -36,12 +36,12 @@ function isSqlite(path: string): boolean {
 }
 
 describe.skipIf(!HAS_GIT)("[SA-02] أسرار ومواد حسّاسة بالملفات المتتبَّعة", () => {
-  it.fails("[SA-02] ولا ملف بيئة متتبَّع غير .env.example (اليوم: .env.bak-20260911)", () => {
+  it("[SA-02 مُصلَح] ولا ملف بيئة متتبَّع غير .env.example", () => {
     const envLike = tracked!.filter((f) => /(^|\/)\.env(\.|$)|\.env$/.test(f) && !f.endsWith(".env.example"));
     expect(envLike).toEqual([]);
   });
 
-  it.fails("[SA-02] ولا قاعدة SQLite متتبَّعة (اليوم: نسخة ٨/٧ فيها authSecret وبصمة كلمة المرور)", () => {
+  it("[SA-02 مُصلَح] ولا قاعدة SQLite متتبَّعة", () => {
     const dbs = tracked!.filter((f) => /\.(db|bak|sqlite)$/i.test(f) || /dev\.db/.test(f)).filter(isSqlite);
     expect(dbs).toEqual([]);
   });
@@ -68,7 +68,7 @@ describe.skipIf(!HAS_GIT)("[SA-02] أسرار ومواد حسّاسة بالمل
     }
   });
 
-  it.fails("[SA-02] .gitignore لازم يغطّي أي .env.* (اليوم .env.bak-* بيفلت)", () => {
+  it("[SA-02 مُصلَح] .gitignore بيغطّي أي .env.* (ما عدا القالب)", () => {
     let ok = false;
     try {
       execFileSync("git", ["check-ignore", "-q", "--no-index", ".env.bak-20990101"]);

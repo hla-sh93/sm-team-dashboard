@@ -29,7 +29,7 @@ import {
 import { formatDateShort } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { toast } from "@/components/ui/toaster";
-import type { Employee, Company, Task, PhotoSession } from "@/types";
+import type { Employee, Company, Task, PhotoSession, PublicEmployee, PublicCompany } from "@/types";
 import {
   AlertTriangle,
   CalendarDays,
@@ -73,8 +73,8 @@ export default function TasksClient({
 }: {
   year: number;
   month: number;
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   tasks: Task[];
   sessions: PhotoSession[];
   // Deep-linked initial filter from the server page's searchParams (e.g. the home

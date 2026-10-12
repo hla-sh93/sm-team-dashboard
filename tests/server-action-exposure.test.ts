@@ -31,18 +31,11 @@ const INTENTIONALLY_PUBLIC = new Set([
   // شاشات الموظف: تحديث حالة كرت وتحريكه وإسناده — بلا تسجيل دخول بقرار القائدة
   "createTask",
   "updateTaskDetails",
-  "deleteTask",
   "deleteTasks",
   "updateTaskStatus",
   "moveCard",
-  "setStageDone",
-  "setPieceReviewed",
-  "reassignTask",
   "updateDailyTasks",
-  "togglePin",
   "updatePhotoSessionStatus",
-  "markPiecesPublished",
-  "completeProductionForPublishedTask",
   // خطة الشهر من Word: نوال بتنزّل القالب وبترفعه من صفحة الشركات عند
   // الموظفين (قرار القائدة ١٨/٩)، وهي مو أدمن. المعاينة قراءة فقط، والتطبيق
   // بيمرق من نفس تحقّق `applyPlanUpdatePayload` كل-أو-لا-شي وبيكتب سطر دليل

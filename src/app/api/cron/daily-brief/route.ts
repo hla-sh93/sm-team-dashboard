@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { sendDailyBrief, type BriefWave } from "@/lib/telegram/service";
+import { bearerMatches } from "@/lib/secret-compare";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
   if (!secret)
     return NextResponse.json({ ok: false, error: "cron_not_configured" }, { status: 503 });
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${secret}`)
+  if (!bearerMatches(auth, secret))
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   // One scheduled call a day (see vercel.json): ?wave=general at 07:45 — توزيع

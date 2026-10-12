@@ -39,6 +39,7 @@ vi.mock("@/lib/db", async () => {
 
 let prisma: any;
 let actions: typeof import("@/server/actions/tasks");
+let ops: typeof import("@/server/task-ops");
 let engine: typeof import("@/server/schedule-engine");
 let daily: typeof import("@/lib/daily-work");
 let constants: typeof import("@/lib/constants");
@@ -62,6 +63,7 @@ beforeAll(async () => {
   if (skip()) return;
   prisma = (await import("@/lib/db")).prisma;
   actions = await import("@/server/actions/tasks");
+  ops = await import("@/server/task-ops");
   engine = await import("@/server/schedule-engine");
   daily = await import("@/lib/daily-work");
   constants = await import("@/lib/constants");
@@ -151,7 +153,7 @@ describe("آلة الحالات — قطعة بوست", () => {
   it("لما تنسكّر كتابة الدورة، كرت النشر بينفكّ (الحجز المباشر وبالسلسلة)", async () => {
     if (skip()) return;
     const design = await find("DESIGN", "POST");
-    expect((await actions.setStageDone(design.blockedById, true)).ok).toBe(true);
+    expect((await ops.setStageDone(design.blockedById, true)).ok).toBe(true);
     const publish = await find("PUBLISH", "POST");
     expect(daily.makeBlockedPredicate(await cardsOf())(publish)).toBe(false);
     expect(daily.makeHeldReason(await cardsOf(), "2026-09-15")(publish)).toBeNull();
@@ -227,7 +229,7 @@ describe("تعديل الكرت (updateTaskDetails) — دايماً مثبّت"
   it.fails("[OP-07] وسم الكرت منجزاً من نموذج التعديل بيختمه بتاريخ الجهوزية ولو كان بالمستقبل — عطل مفتوح", async () => {
     if (skip()) throw new Error("skipped — it.fails needs a failure");
     const design = await find("DESIGN", "POST");
-    await actions.setStageDone(design.id, false); // رجّعه مفتوحاً
+    await ops.setStageDone(design.id, false); // رجّعه مفتوحاً
     const r = await actions.updateTaskDetails([design.id], { status: "READY", readyDate: "2026-12-01" });
     expect(r.ok).toBe(true);
     const after = await prisma.task.findUniqueOrThrow({ where: { id: design.id } });
@@ -322,14 +324,14 @@ describe("تأكيد نشر يدوي (markPiecesPublished)", () => {
   it("بيختم بتاريخ النشر الفعلي وبيكتب الدليل، والنداء التاني ما بيكرّر شي", async () => {
     if (skip()) return;
     const pub = await prisma.task.create({ data: { id: `${uniq}-pub-manual`, kind: "PUBLISH", stage: "PUBLISH", type: "STORY", year: Y, month: M, status: "NOT_STARTED", board: "TODO", isAuto: false, assigneeId: designerId, companyId, publishDate: new Date(2026, 8, 20) } });
-    const r1 = await actions.markPiecesPublished([pub.id], "2026-09-25");
+    const r1 = await ops.markPiecesPublished([pub.id], "2026-09-25");
     expect(r1.ok).toBe(true);
     const a = await prisma.task.findUniqueOrThrow({ where: { id: pub.id } });
     expect(a.status).toBe("PUBLISHED");
     expect(a.finishedAt.getDate()).toBe(25);
     expect(a.notes).toContain("تأكيد نشر يدوي");
     expect(a.isPinned).toBe(true);
-    const r2 = await actions.markPiecesPublished([pub.id], "2026-09-28");
+    const r2 = await ops.markPiecesPublished([pub.id], "2026-09-28");
     expect(r2.ok).toBe(true);
     const b = await prisma.task.findUniqueOrThrow({ where: { id: pub.id } });
     expect(b.finishedAt.getTime()).toBe(a.finishedAt.getTime());

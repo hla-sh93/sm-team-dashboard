@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
 import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { isTaskDoneState } from "@/lib/constants";
 import { hideDormantCompanyWork, isDormantCompany } from "@/lib/company-visibility";
@@ -18,8 +19,8 @@ export default async function OverviewView({
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
   const [employees, companies, bucketTasks, continuationRaw, carryover] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    prisma.employee.findMany({ select: publicEmployeeSelect, orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
     prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
     prisma.task.findMany({ where: monthContinuationWhere(year, month) }),
     prisma.task.findMany({ where: openCarryoverWhere(year, month) }),

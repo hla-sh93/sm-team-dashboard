@@ -1,13 +1,15 @@
 "use server";
 
 import { revalidateSafely } from "@/lib/revalidate";
+import { headers } from "next/headers";
 import {
   assertAdmin,
+  claimAdminEmail,
   createSession,
   destroySession,
+  getAdminEmail,
+  invalidateAllSessions,
   isAdminConfigured,
-  rotateAuthSecret,
-  setAdminEmail,
   setAdminPassword,
   verifyAdminEmail,
   verifyAdminPassword,
@@ -33,14 +35,36 @@ function loginLockedFor(email: string): number {
   return Math.max(0, entry.lockedUntil - Date.now());
 }
 
-function recordLoginFailure(email: string): void {
-  const entry = failedLogins.get(email) ?? { count: 0, lockedUntil: 0 };
+/**
+ * Reserve the attempt BEFORE any await: it counts as a failure until it is
+ * proven right. Recording after the check let 20 parallel guesses all be
+ * evaluated with zero locked (فحص ١٢/١٠، SA-05) — every request passed the lock
+ * check before any of them had recorded its failure.
+ */
+function reserveLoginAttempt(key: string): void {
+  const entry = failedLogins.get(key) ?? { count: 0, lockedUntil: 0 };
   entry.count += 1;
   if (entry.count >= LOCK_AFTER) {
     const factor = Math.min(2 ** (entry.count - LOCK_AFTER), LOCK_MAX_MS / LOCK_BASE_MS);
     entry.lockedUntil = Date.now() + LOCK_BASE_MS * factor;
   }
-  failedLogins.set(email, entry);
+  failedLogins.set(key, entry);
+}
+
+/**
+ * Throttle key = email + client address. Keyed by email alone, anyone who knew
+ * the lead's email could lock HER out with five bad guesses (SA-05). Vercel sets
+ * `x-forwarded-for`; without it (local) the key degrades to the email.
+ */
+async function throttleKeyFor(email: string): Promise<string> {
+  let ip = "";
+  try {
+    const h = await headers();
+    ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "";
+  } catch {
+    ip = "";
+  }
+  return `${email.toLowerCase()}|${ip}`;
 }
 
 /**
@@ -62,13 +86,16 @@ export async function loginAction(
     if (pw.length < MIN_PASSWORD) {
       return { ok: false, error: `اختر كلمة مرور من ${MIN_PASSWORD} أحرف على الأقل` };
     }
-    await setAdminEmail(em);
+    // «إنشاء» مرّة وحدة: طلبان متزامنان كانوا ياخدوا التنين جلسة أدمن (SA-07).
+    if (!(await claimAdminEmail(em))) {
+      return { ok: false, error: "حساب الإدارة أُنشئ للتو — سجّل الدخول به" };
+    }
     await setAdminPassword(pw);
     await createSession();
     return { ok: true };
   }
 
-  const throttleKey = em.toLowerCase();
+  const throttleKey = await throttleKeyFor(em);
   const lockedMs = loginLockedFor(throttleKey);
   if (lockedMs > 0) {
     return {
@@ -76,11 +103,17 @@ export async function loginAction(
       error: `محاولات كثيرة خاطئة — انتظر ${Math.ceil(lockedMs / 1000)} ثانية ثم أعد المحاولة`,
     };
   }
-  if (!(await verifyAdminEmail(em)) || !(await verifyAdminPassword(pw))) {
-    recordLoginFailure(throttleKey);
+  reserveLoginAttempt(throttleKey);
+  // الاتنين بيتحقّقوا دايماً: إيميل غلط كان يرجع قبل scrypt، فزمن الردّ كان
+  // يكشف الإيميل الصحيح (SA-06).
+  const emailOk = await verifyAdminEmail(em);
+  const passwordOk = await verifyAdminPassword(pw);
+  if (!emailOk || !passwordOk) {
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
   failedLogins.delete(throttleKey);
+  // كلمة موجودة بلا إيميل (تثبيت قديم): أول دخول صحيح بيثبّت الإيميل.
+  if (!(await getAdminEmail()) && EMAIL_RE.test(em)) await claimAdminEmail(em);
   await createSession();
   return { ok: true };
 }
@@ -111,9 +144,10 @@ export async function changePasswordAction(
     return { ok: false, error: `كلمة المرور الجديدة قصيرة (${MIN_PASSWORD} أحرف على الأقل)` };
   }
   await setAdminPassword(next);
-  // Rotate the signing secret so EVERY existing session (including any stolen
-  // cookie the password change was meant to shut out) is invalidated at once…
-  await rotateAuthSecret();
+  // EVERY existing session (including any stolen cookie the password change was
+  // meant to shut out) is invalidated at once — on every server instance and
+  // whatever the secret source (SA-04)…
+  await invalidateAllSessions();
   await createSession(); // …then re-issue the current admin's session under it.
   return { ok: true };
 }

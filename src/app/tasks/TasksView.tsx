@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
 import { resolveActiveMonth } from "@/lib/month";
 import { loadLiveTasks } from "@/lib/live-tasks";
 import TasksClient from "./tasks-client";
@@ -15,8 +16,8 @@ export default async function TasksView({
   // اللوح يتصرّف غير التقرير: دورة سايزن الشغّالة دلوها آب واللوح بيفتح على
   // أيلول، فشغلها المفتوح كان يوصل كـ«متأخر» ومنجزها لأ.
   const [employees, companies, tasks, sessions] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    prisma.employee.findMany({ select: publicEmployeeSelect, orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
     loadLiveTasks(year, month),
     prisma.photoSession.findMany({ where: { year, month } }),
   ]);

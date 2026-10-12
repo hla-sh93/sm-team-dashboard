@@ -1,7 +1,7 @@
 import { isTaskDoneState, PRIORITY_RANK } from "@/lib/constants";
 import { adhocDays, cardDurationDays } from "@/lib/capacity";
 import { parseWorkDays, toISODate } from "@/lib/dates";
-import type { Company, Employee, Task } from "@/types";
+import type { Company, Employee, Task, PublicEmployee, PublicCompany } from "@/types";
 
 const EPS = 1e-9;
 
@@ -300,10 +300,10 @@ export function selectDailyWork({
   companies,
   today = new Date(),
 }: {
-  employee: Employee;
+  employee: PublicEmployee;
   tasks: Task[];
   allTasks?: Task[];
-  companies: Company[];
+  companies: PublicCompany[];
   today?: Date;
 }): DailyWork {
   const todayISO = toISODate(today);

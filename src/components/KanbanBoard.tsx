@@ -31,7 +31,7 @@ import { assetNameForTask } from "@/lib/asset-name";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
-import type { Task, Employee, Company } from "@/types";
+import type { Task, Employee, Company, PublicEmployee, PublicCompany } from "@/types";
 import {
   Clock,
   CalendarDays,
@@ -81,8 +81,8 @@ export default function KanbanBoard({
 }: {
   tasks: Task[];
   allTasks: Task[];
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   groupBy?: BoardGroupBy;
   /** The cycle bucket being viewed — cards from OTHER buckets (carryover of
    *  unfinished work) get a «متبقّي من دورة …» badge so they're never mistaken

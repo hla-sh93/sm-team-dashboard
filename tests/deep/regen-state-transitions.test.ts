@@ -52,6 +52,7 @@ type Prisma = import("@prisma/client").PrismaClient;
 let prisma: Prisma;
 let gen: (y: number, m: number, only: string | null) => Promise<{ ok: boolean; error?: string }>;
 let actions: typeof import("@/server/actions/tasks");
+let ops: typeof import("@/server/task-ops");
 
 const Y = 2026;
 const M = 8; // أيلول (0-based)
@@ -75,6 +76,7 @@ beforeAll(async () => {
   await seedTeam(prisma);
   ({ generateScheduleInternal: gen } = (await import("@/server/schedule-engine")) as never);
   actions = await import("@/server/actions/tasks");
+  ops = await import("@/server/task-ops");
   await makeCompany(prisma, CO);
   const r = await gen(Y, M, null);
   expect(r.ok, r.error).toBe(true);
@@ -136,7 +138,7 @@ describe("إعادة التوليد — انتقالات حالة الكرت ع�
   it("نشر ريل: إنتاجه بينسكر، ويوم النشر بيتجمّد على كل مراحله حتى لو تزحزحت الخطة — والمونتاج المسكّر بالتتابع بيقعد على يوم النشر (RG-06)", async () => {
     const before = await pieceCards(prisma, CO, "REEL", 1);
     const plannedPublish = day(before.publish!.publishDate)!;
-    expect((await actions.setStageDone(before.publish!.id, true)).ok).toBe(true);
+    expect((await ops.setStageDone(before.publish!.id, true)).ok).toBe(true);
     const closed = await pieceCards(prisma, CO, "REEL", 1);
     expect([closed.publish!.board, closed.publish!.status]).toEqual(["DONE", "PUBLISHED"]);
     expect(closed.production!.board).toBe("DONE");
@@ -170,7 +172,7 @@ describe("إعادة التوليد — انتقالات حالة الكرت ع�
 
   it("إعادة فتح كرت النشر: بيرجع مفتوحاً وبيضل مفتوحاً بعد التوليد، والإنتاج المنجز ما بينفتح معه", async () => {
     const piece = await pieceCards(prisma, CO, "REEL", 1);
-    expect((await actions.setStageDone(piece.publish!.id, false)).ok).toBe(true);
+    expect((await ops.setStageDone(piece.publish!.id, false)).ok).toBe(true);
     await regenTwiceStable();
     const after = await pieceCards(prisma, CO, "REEL", 1);
     expect([after.publish!.board, after.publish!.status]).toEqual(["TODO", "NOT_STARTED"]);

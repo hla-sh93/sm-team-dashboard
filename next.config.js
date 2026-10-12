@@ -17,6 +17,12 @@ const nextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000',
           },
+          // CSP أدنى بلا ما يلمس السكربتات (Next بيحقن سكربتات inline): ممنوع
+          // تضمين الموقع بإطار، ولا plugins، ولا base تانية (فحص ١٢/١٠، SA-13).
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+          },
         ],
       },
     ];

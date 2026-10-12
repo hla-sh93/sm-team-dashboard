@@ -55,6 +55,7 @@ let gen: (
   allowEmpty?: boolean,
 ) => Promise<{ ok: boolean; error?: string }>;
 let tasks: typeof import("@/server/actions/tasks");
+let ops: typeof import("@/server/task-ops");
 let companies: typeof import("@/server/actions/companies");
 let lifecycle: typeof import("@/server/company-lifecycle");
 
@@ -83,6 +84,7 @@ beforeAll(async () => {
   await seedTeam(prisma);
   ({ generateScheduleInternal: gen } = (await import("@/server/schedule-engine")) as never);
   tasks = await import("@/server/actions/tasks");
+  ops = await import("@/server/task-ops");
   companies = await import("@/server/actions/companies");
   lifecycle = await import("@/server/company-lifecycle");
 }, 60_000);
@@ -264,7 +266,7 @@ describe("إنجازات Setting — بتنطبق بالتوليد، والحا�
     expect(write?.board).toBe("DONE");
     await stable(Y, M);
     // إعادة فتح نشر بوست ١ يدوياً: التوليد التالي ما بيرجّع يسكّره من الـSetting
-    expect((await tasks.setStageDone(p1.publish!.id, false)).ok).toBe(true);
+    expect((await ops.setStageDone(p1.publish!.id, false)).ok).toBe(true);
     await genOk(Y, M);
     expect((await pieceCards(prisma, CO, "POST", 1)).publish!.board).toBe("TODO");
     await prisma.setting.delete({ where: { key: `achievements:${Y}-${M}` } });

@@ -90,9 +90,9 @@ function leakedKeys(props: Record<string, any>) {
   };
 }
 
-describe("[SA-01] صفحات الموظفين بتسلّم المكوّن العميل صفوف الموظفين والشركات كاملة", () => {
+describe("[SA-01 مُصلَح] صفحات الموظفين بتسلّم المكوّن العميل صفوفاً بلا مالية", () => {
   for (const route of ["/", "/tasks", "/today", "/publishing"]) {
-    it.skipIf(!HAS_DB).fails(`[SA-01] ${route}: props المكوّن العميل لازم ما تحمل الرواتب ولا قيم العقود`, () => {
+    it.skipIf(!HAS_DB)(`[SA-01] ${route}: props المكوّن العميل ما بتحمل الرواتب ولا قيم العقود`, () => {
       const c = captured.get(route)!;
       expect(c.clientIsUseClient).toBe(true);
       const leak = leakedKeys(c.props);
@@ -101,11 +101,21 @@ describe("[SA-01] صفحات الموظفين بتسلّم المكوّن الع
     });
   }
 
-  it("(دليل) الأرقام نفسها موجودة بالـprops — مو بس أسماء حقول فاضية", () => {
+  it("ولا رقم مالي بالـprops — ولا هوية تلغرام الرقمية", async () => {
     if (skip()) return;
-    const leak = leakedKeys(captured.get("/publishing")!.props);
-    expect(leak.nonZeroSalaries).toBeGreaterThan(0);
-    expect(leak.nonZeroContracts).toBeGreaterThan(0);
+    // اللقطة فيها رواتب وعقود فعلاً — الفحص مو فاضي.
+    expect(await prisma.employee.count({ where: { salary: { gt: 0 } } })).toBeGreaterThan(0);
+    expect(await prisma.company.count({ where: { contractValue: { gt: 0 } } })).toBeGreaterThan(0);
+    for (const route of ["/", "/tasks", "/today", "/publishing"]) {
+      const props = captured.get(route)!.props;
+      const leak = leakedKeys(props);
+      expect(leak.nonZeroSalaries, route).toBe(0);
+      expect(leak.nonZeroContracts, route).toBe(0);
+      for (const e of (props.employees ?? []) as Record<string, unknown>[]) {
+        expect(e, route).not.toHaveProperty("telegramUserId");
+        expect(e, route).not.toHaveProperty("telegramAliases");
+      }
+    }
   });
 });
 
@@ -125,8 +135,8 @@ describe("المقارنة: صفحة الشركات عند الموظفين بت
   });
 });
 
-describe("ثابت (بلا قاعدة): مكوّنات خادم الموظفين بتجيب الموظفين والشركات بلا select", () => {
-  it.fails("[SA-01] كل findMany للموظفين/الشركات بصفحات الموظفين لازم يكون فيه select", () => {
+describe("ثابت (بلا قاعدة): مكوّنات خادم الموظفين بتجيب الموظفين والشركات بقائمة مسموحات", () => {
+  it("[SA-01] كل findMany للموظفين/الشركات بصفحات الموظفين فيه select", () => {
     const files = ["src/app/OverviewView.tsx", "src/app/tasks/TasksView.tsx", "src/app/TodayView.tsx", "src/app/publishing/page.tsx"];
     const unselected: string[] = [];
     for (const f of files) {

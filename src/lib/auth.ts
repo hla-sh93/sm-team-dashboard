@@ -36,6 +36,14 @@ import { prisma } from "./db";
 const SECRET_KEY = "authSecret";
 const PASSWORD_KEY = "adminPasswordHash";
 const EMAIL_KEY = "adminEmail";
+/**
+ * «جيل» الجلسات: رقم بيندمج بالتوقيع، وبيزيد مع تغيير كلمة المرور فبيبطل **كل**
+ * الجلسات فوراً — حتى لما السرّ من البيئة (`AUTH_SECRET`) وحتى على نسخ خادم دافية
+ * خبّت السرّ (بينقرا من القاعدة بكل فحص، بلا كاش). فحص ١٢/١٠، SA-04.
+ */
+const EPOCH_KEY = "authEpoch";
+/** جلسات انسكّرت بالخروج: `{sid: exp}` — بتنحذف من القائمة لما تنتهي صلاحيتها. */
+const REVOKED_KEY = "revokedSessions";
 export const SESSION_COOKIE = "sm_admin";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -61,10 +69,9 @@ async function getSecret(): Promise<string> {
   return secret;
 }
 
-/** Rotate the session-signing secret. Called on password change so every
- *  previously issued cookie (possibly stolen) is invalidated at once — without
- *  this, changing the password did NOT log out existing sessions. No-op when
- *  the host controls the secret via AUTH_SECRET. */
+/** Rotate the session-signing secret (DB-managed secret only — no-op when the
+ *  host controls it via AUTH_SECRET). Used together with the epoch bump in
+ *  `invalidateAllSessions`. */
 export async function rotateAuthSecret(): Promise<void> {
   if (process.env.AUTH_SECRET) return;
   const secret = randomBytes(32).toString("hex");
@@ -74,6 +81,36 @@ export async function rotateAuthSecret(): Promise<void> {
     create: { key: SECRET_KEY, value: secret },
   });
   cachedSecret = secret;
+}
+
+async function currentEpoch(): Promise<string> {
+  const row = await prisma.setting.findUnique({ where: { key: EPOCH_KEY } });
+  return row?.value || "0";
+}
+
+/**
+ * Invalidate EVERY issued session at once (password change). Bumps the epoch —
+ * which works whatever the secret source and on every server instance, because
+ * the epoch is read from the DB on each check — and rotates a DB-managed secret.
+ */
+export async function invalidateAllSessions(): Promise<void> {
+  const next = String((Number(await currentEpoch()) || 0) + 1);
+  await prisma.setting.upsert({
+    where: { key: EPOCH_KEY },
+    update: { value: next },
+    create: { key: EPOCH_KEY, value: next },
+  });
+  await rotateAuthSecret();
+}
+
+function parseRevoked(value: string | null | undefined): Record<string, number> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
 }
 
 // --- password ---------------------------------------------------------------
@@ -165,10 +202,33 @@ export async function verifyAdminEmail(email: string): Promise<boolean> {
   return (email ?? "").trim().toLowerCase() === stored.trim().toLowerCase();
 }
 
-/** True once BOTH an email and a password are configured. Until then the login
- *  screen runs its first-time "create admin" flow. */
+/**
+ * True once a password exists (env or DB). Until then the login screen runs its
+ * first-time "create admin" flow.
+ *
+ * كانت بتطلب إيميل + كلمة سوا، فكلمة موجودة بلا إيميل (تثبيت قبل حقل الإيميل، أو
+ * `ADMIN_PASSWORD` بالبيئة بلا `ADMIN_EMAIL`) كانت بتفتح شاشة «إنشاء» لأي زائر —
+ * بتكتب فوق كلمة المرور أو بتسجّل إيميل الزائر (فحص ١٢/١٠، SA-07). هلّق الكلمة
+ * لحالها كافية لإغلاق «الإنشاء»، والإيميل بينحفظ بأول دخول صحيح.
+ */
 export async function isAdminConfigured(): Promise<boolean> {
-  return (await isPasswordConfigured()) && (await getAdminEmail()) != null;
+  return isPasswordConfigured();
+}
+
+/**
+ * First-run claim of the admin email — create-if-absent on the Setting's unique
+ * key, so two simultaneous "create admin" requests can't BOTH win (SA-07).
+ * Returns false when an email already exists. With `ADMIN_EMAIL` in the env
+ * there is nothing to claim.
+ */
+export async function claimAdminEmail(email: string): Promise<boolean> {
+  if (process.env.ADMIN_EMAIL) return false;
+  try {
+    await prisma.setting.create({ data: { key: EMAIL_KEY, value: email.trim().toLowerCase() } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- session token ----------------------------------------------------------
@@ -178,19 +238,59 @@ async function sign(payload: string): Promise<string> {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
+/**
+ * Token = `exp.epoch.sid.HMAC(exp.epoch.sid)`. `sid` is random per login so a
+ * single session can be revoked on logout without touching the others; `epoch`
+ * ties the token to the current session generation (password change).
+ */
 async function makeToken(): Promise<string> {
   const exp = String(Date.now() + SESSION_TTL_MS);
-  return `${exp}.${await sign(exp)}`;
+  const payload = `${exp}.${await currentEpoch()}.${randomBytes(12).toString("hex")}`;
+  return `${payload}.${await sign(payload)}`;
+}
+
+type ParsedToken = { exp: number; epoch: string; sid: string };
+
+/** Signature + expiry only (no DB state). */
+async function parseSignedToken(token: string | undefined): Promise<ParsedToken | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4) return null;
+  const [exp, epoch, sid, mac] = parts;
+  if (!exp || !epoch || !sid || !mac) return null;
+  if (!(Number(exp) >= Date.now())) return null;
+  const expected = Buffer.from(await sign(`${exp}.${epoch}.${sid}`), "hex");
+  const actual = Buffer.from(mac, "hex");
+  if (!(expected.length === actual.length && timingSafeEqual(expected, actual))) return null;
+  return { exp: Number(exp), epoch, sid };
 }
 
 async function isValidToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
-  const [exp, mac] = token.split(".");
-  if (!exp || !mac) return false;
-  if (Number(exp) < Date.now()) return false;
-  const expected = Buffer.from(await sign(exp), "hex");
-  const actual = Buffer.from(mac, "hex");
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  const parsed = await parseSignedToken(token);
+  if (!parsed) return false;
+  const rows = await prisma.setting.findMany({ where: { key: { in: [EPOCH_KEY, REVOKED_KEY] } } });
+  const epoch = rows.find((r) => r.key === EPOCH_KEY)?.value || "0";
+  if (parsed.epoch !== epoch) return false;
+  const revoked = parseRevoked(rows.find((r) => r.key === REVOKED_KEY)?.value);
+  return revoked[parsed.sid] == null;
+}
+
+/** Revoke ONE session (logout): its sid joins the revoked list until it expires. */
+async function revokeToken(token: string | undefined): Promise<void> {
+  const parsed = await parseSignedToken(token);
+  if (!parsed) return;
+  const row = await prisma.setting.findUnique({ where: { key: REVOKED_KEY } });
+  const now = Date.now();
+  const revoked = Object.fromEntries(
+    Object.entries(parseRevoked(row?.value)).filter(([, exp]) => Number(exp) >= now),
+  );
+  revoked[parsed.sid] = parsed.exp;
+  const value = JSON.stringify(revoked);
+  await prisma.setting.upsert({
+    where: { key: REVOKED_KEY },
+    update: { value },
+    create: { key: REVOKED_KEY, value },
+  });
 }
 
 // --- session cookie ---------------------------------------------------------
@@ -208,6 +308,9 @@ export async function createSession(): Promise<void> {
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
+  // الخروج كان يمسح الكوكي من المتصفّح بس — نسخة مسروقة منها كانت تضل صالحة
+  // ٧ أيام (SA-04). هلّق الجلسة نفسها بتنسكّر بالقاعدة.
+  await revokeToken(cookieStore.get(SESSION_COOKIE)?.value);
   cookieStore.set(SESSION_COOKIE, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

@@ -122,13 +122,13 @@ afterAll(async () => {
 });
 
 describe("الكوكي: الصيغة والأعلام (PROJECT.md §2)", () => {
-  it("الكوكي = exp.HMAC فقط — لا بصمة كلمة مرور ولا السرّ؛ HttpOnly + SameSite=Lax + Path=/ + ٧ أيام", async () => {
+  it("الكوكي = exp.epoch.sid.HMAC فقط — لا بصمة كلمة مرور ولا السرّ؛ HttpOnly + SameSite=Lax + Path=/ + ٧ أيام", async () => {
     const { actions } = await freshInstance();
     expect((await actions.loginAction(EMAIL, PASS)).ok).toBe(true);
     const set = jar.sets.find((s) => s.name === "sm_admin")!;
-    expect(set.value).toMatch(/^\d{13}\.[0-9a-f]{64}$/);
+    expect(set.value).toMatch(/^\d{13}\.\d+\.[0-9a-f]{24}\.[0-9a-f]{64}$/);
     const rows: { key: string; value: string }[] = await prisma.setting.findMany();
-    for (const row of rows) expect(set.value).not.toContain(row.value);
+    for (const row of rows.filter((r) => r.key !== "authEpoch")) expect(set.value).not.toContain(row.value);
     expect(set.opts).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/", maxAge: 7 * 24 * 3600 });
     // Secure مربوط بالإنتاج بس (HTTP محلي) — بالفحص NODE_ENV=test.
     expect(set.opts.secure).toBe(false);
@@ -177,7 +177,7 @@ describe("التحقّق من الجلسة", () => {
     expect((await actions.loginAction(EMAIL, "env-pass-123")).ok).toBe(true);
   });
 
-  it.fails("[SA-04] الخروج بيبطل الجلسة: نفس الكوكي بعد logout لازم تنرفض", async () => {
+  it("[SA-04 مُصلَح] الخروج بيبطل الجلسة: نفس الكوكي بعد logout بتنرفض", async () => {
     const { lib, actions } = await freshInstance();
     await actions.loginAction(EMAIL, PASS);
     const stolen = jar.value!;
@@ -187,7 +187,7 @@ describe("التحقّق من الجلسة", () => {
     expect(await lib.isAuthenticated()).toBe(false);
   });
 
-  it.fails("[SA-04] تغيير كلمة المرور مع AUTH_SECRET بالبيئة لازم يبطل الجلسات القديمة", async () => {
+  it("[SA-04 مُصلَح] تغيير كلمة المرور مع AUTH_SECRET بالبيئة بيبطل الجلسات القديمة", async () => {
     vi.stubEnv("AUTH_SECRET", "host-controlled-secret");
     const { lib, actions } = await freshInstance();
     await actions.loginAction(EMAIL, PASS);
@@ -209,7 +209,7 @@ describe("التحقّق من الجلسة", () => {
     expect(await lib.isAuthenticated()).toBe(true);
   });
 
-  it.fails("[SA-04] تغيير كلمة المرور على نسخة خادم A لازم يبطل الكوكي على نسخة B الدافية", async () => {
+  it("[SA-04 مُصلَح] تغيير كلمة المرور على نسخة خادم A بيبطل الكوكي على نسخة B الدافية", async () => {
     const A = await freshInstance();
     await A.actions.loginAction(EMAIL, PASS);
     const stolen = jar.value!;
@@ -219,7 +219,7 @@ describe("التحقّق من الجلسة", () => {
     expect((await A.actions.changePasswordAction(PASS, "brand-new-pass")).ok).toBe(true);
     jar.value = stolen;
     expect(await A.lib.isAuthenticated()).toBe(false); // A تمام
-    expect(await B.lib.isAuthenticated()).toBe(false); // B لسا بتقبل المسروقة
+    expect(await B.lib.isAuthenticated()).toBe(false); // B كمان: الجيل من القاعدة
   });
 });
 
@@ -232,7 +232,7 @@ describe("قفل المحاولات (actions/auth.ts: ٥ محاولات ثم ق�
     expect(((await actions.loginAction(EMAIL, "bad-6-xx")) as { error?: string }).error).toMatch(/محاولات كثيرة/);
   });
 
-  it.fails("[SA-05] بالتوازي: ٢٠ محاولة دفعة وحدة لازم ما يتقيّم منها أكتر من ٥", async () => {
+  it("[SA-05 مُصلَح] بالتوازي: ٢٠ محاولة دفعة وحدة ما بيتقيّم منها أكتر من ٥", async () => {
     const { actions } = await configureAdmin();
     const results = await Promise.all(
       Array.from({ length: 20 }, (_, i) => actions.loginAction(EMAIL, `parallel-${i}-x`)),
@@ -249,7 +249,7 @@ describe("قفل المحاولات (actions/auth.ts: ٥ محاولات ثم ق�
     expect(legit.ok === false && legit.error).toMatch(/محاولات كثيرة/);
   });
 
-  it.fails("[SA-06] الإيميل الغلط والكلمة الغلط لازم يكلّفوا نفس عدد حسابات scrypt (قناة توقيت)", async () => {
+  it("[SA-06 مُصلَح] الإيميل الغلط والكلمة الغلط بيكلّفوا نفس عدد حسابات scrypt", async () => {
     const { actions } = await configureAdmin();
     counters.scrypt = 0;
     await actions.loginAction("someone-else@example.test", "whatever-1");
@@ -263,7 +263,7 @@ describe("قفل المحاولات (actions/auth.ts: ٥ محاولات ثم ق�
 });
 
 describe("أول تشغيل (إنشاء الأدمن)", () => {
-  it.fails("[SA-07] طلبا إنشاء متزامنان: التاني لازم ينرفض بدل ما ياخد جلسة أدمن", async () => {
+  it("[SA-07 مُصلَح] طلبا إنشاء متزامنان: التاني بينرفض", async () => {
     const { actions } = await freshInstance();
     const [a, b] = await Promise.all([
       actions.loginAction("owner@example.test", "owner-pass-1"),
@@ -272,7 +272,7 @@ describe("أول تشغيل (إنشاء الأدمن)", () => {
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
   });
 
-  it.fails("[SA-07] كلمة مرور موجودة بلا إيميل → شاشة «إنشاء» بتكتب فوق كلمة المرور بلا ما تطلب القديمة", async () => {
+  it("[SA-07 مُصلَح] كلمة مرور موجودة بلا إيميل → ما في شاشة «إنشاء» بتكتب فوقها", async () => {
     const { lib } = await freshInstance();
     await lib.setAdminPassword(PASS); // تثبيت قديم قبل حقل الإيميل، أو صفّ إيميل انمحى
     const { actions } = await freshInstance();
@@ -280,7 +280,7 @@ describe("أول تشغيل (إنشاء الأدمن)", () => {
     expect(r.ok).toBe(false);
   });
 
-  it.fails("[SA-07] ADMIN_PASSWORD بالبيئة بلا إيميل: أول زائر لازم ما يقدر يسجّل إيميله", async () => {
+  it("[SA-07 مُصلَح] ADMIN_PASSWORD بالبيئة بلا إيميل: الزائر ما بيقدر يسجّل إيميله", async () => {
     vi.stubEnv("ADMIN_PASSWORD", "env-pass-123");
     const { actions } = await freshInstance();
     await actions.loginAction("intruder@example.test", "anything-1").catch(() => null);

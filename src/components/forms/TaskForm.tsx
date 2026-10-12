@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Task, Employee, Company } from "@/types";
+import type { Task, Employee, Company, PublicEmployee, PublicCompany } from "@/types";
 import { createTask, updateTaskDetails } from "@/server/actions/tasks";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Label } from "@/components/ui/input";
@@ -29,8 +29,8 @@ interface TaskFormProps {
   task?: Task | null;
   ids?: string[]; // tasks of the card being edited (batched → all)
   displayLabel?: string; // computed label, used to seed the name when none
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   year: number;
   month: number;
 }

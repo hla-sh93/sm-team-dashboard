@@ -11,6 +11,7 @@ import { revalidateSafely } from "@/lib/revalidate";
 import { webhookSecret } from "@/lib/telegram/client";
 import { ingestUpdate } from "@/lib/telegram/ingest";
 import type { TelegramUpdate } from "@/lib/telegram/client";
+import { safeEqual } from "@/lib/secret-compare";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
   if (!secret) {
     return NextResponse.json({ ok: false }, { status: 503 });
   }
-  if (req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+  if (!safeEqual(req.headers.get("x-telegram-bot-api-secret-token"), secret)) {
     // Not Telegram — refuse without leaking whether the endpoint exists.
     return NextResponse.json({ ok: false }, { status: 401 });
   }
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
  */
 export async function GET(req: Request) {
   const secret = webhookSecret();
-  if (!secret || req.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+  if (!secret || !safeEqual(req.headers.get("x-telegram-bot-api-secret-token"), secret)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const { prisma } = await import("@/lib/db");

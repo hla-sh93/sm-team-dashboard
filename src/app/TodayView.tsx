@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
 import { loadLiveTasks } from "@/lib/live-tasks";
 import TodayClient from "./today/today-client";
 
@@ -12,8 +13,8 @@ export default async function TodayView() {
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const [employees, companies, tasks, deliveries, ignoredChats] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    prisma.employee.findMany({ select: publicEmployeeSelect, orderBy: { createdAt: "asc" } }),
+    prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
     loadLiveTasks(today.getFullYear(), today.getMonth()),
     // Today's group traffic — what the team actually delivered.
     prisma.telegramMessage.findMany({

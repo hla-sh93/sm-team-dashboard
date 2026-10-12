@@ -4,6 +4,10 @@ out/
 .env
 .env.local
 .env.*.local
+# أي نسخة بيئة (`.env.bak-…`، `.env.production`…) — `.env.bak-20260911` انتبع بالغلط
+# وظلّ بالمستودع شهراً (فحص ١٢/١٠، SA-02). القالب بس متتبَّع.
+.env.*
+!.env.example
 # Catch-all: any *.env / *.env.local scratch file (a secret pasted into
 # `telegram.env.local` slipped past the patterns above once — never again).
 *.env
@@ -34,6 +38,9 @@ tmp/
 # multi-megabyte SQLite binaries that only matter on this machine. `*.db` above
 # misses them because they carry a suffix (dev.db.before-…).
 backups/dev.db.*
+# أي نسخة قاعدة أو `.bak` — نسخة ٨/٧ كانت متتبَّعة وفيها سرّ جلسات الأدمن وبصمة كلمة مروره.
+backups/*.bak
+backups/*.db
 # لقطات الإنتاج وسجلّاتها: فيها الداتا كاملة (شركات وكروت وموظفين). أي `git add -A`
 # بعد نسخة يومية كان بيرفع قاعدة الزبائن للمستودع — فبتنتجاهل من المصدر.
 backups/prod-*.json

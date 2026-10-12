@@ -202,19 +202,17 @@ describe("أفعال الإدارة: بلا جلسة صحيحة ما في ولا
 });
 
 describe("أفعال الموظف: مفتوحة بقرار القائدة (توصيف، مو باغ)", () => {
-  it("بلا أي كوكي: togglePin وupdateTaskStatus بيكتبوا على الكرت", async () => {
+  it("بلا أي كوكي: updateTaskStatus بيكتب على الكرت (و«togglePin» ما عاد نقطة نهاية — SA-08)", async () => {
     if (skip()) return;
     jar.value = undefined;
     const tasks = await import("@/server/actions/tasks");
+    expect((tasks as Record<string, unknown>).togglePin).toBeUndefined();
     const card = await prisma.task.findFirst({ where: { isAuto: true, status: "NOT_STARTED" } });
     expect(card).toBeTruthy();
-    const pin = await tasks.togglePin(card.id);
-    expect(pin.ok).toBe(true);
     const status = await tasks.updateTaskStatus(card.id, "IN_PROGRESS");
     expect(status.ok).toBe(true);
     const after = await prisma.task.findUnique({ where: { id: card.id } });
     expect(after.status).toBe("IN_PROGRESS");
-    expect(after.isPinned).toBe(!card.isPinned);
   });
 });
 
@@ -260,13 +258,11 @@ describe("خريطة التصديرات (ثابت)", () => {
     );
   });
 
-  it.fails("[SA-08] كل تصدير مفتوح من ملف \"use server\" لازم يكون مستعمَلاً من شاشة (وإلا ينشال من ملف الأفعال)", () => {
+  it("[SA-08 مُصلَح] كل تصدير مفتوح من ملف \"use server\" مستعمَل من شاشة", () => {
     const orphans = useServerExports()
       .filter((e) => !e.guarded && !e.clientUsed)
       .map((e) => e.name)
       .sort();
-    // اليوم: completeProductionForPublishedTask · deleteTask · markPiecesPublished ·
-    // reassignTask · setPieceReviewed · setStageDone · togglePin
     expect(orphans).toEqual([]);
   });
 });

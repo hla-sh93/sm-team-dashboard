@@ -38,8 +38,11 @@ export function removeDb(target: string): void {
 export const SETTING_DDL =
   'CREATE TABLE IF NOT EXISTS "Setting" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL)';
 
-/** توقيع كوكي جلسة بسرّ معروف (نفس صيغة `makeToken`: `exp.HMAC(exp)`). */
-export function signToken(secret: string, exp: number | string): string {
-  const e = String(exp);
-  return `${e}.${createHmac("sha256", secret).update(e).digest("hex")}`;
+/**
+ * توقيع كوكي جلسة بسرّ معروف — نفس صيغة `makeToken`: `exp.epoch.sid.HMAC(exp.epoch.sid)`
+ * (الجيل `"0"` = قاعدة ما فيها `authEpoch`، متل نسخة اللقطة).
+ */
+export function signToken(secret: string, exp: number | string, epoch = "0", sid = "qa0session"): string {
+  const payload = `${String(exp)}.${epoch}.${sid}`;
+  return `${payload}.${createHmac("sha256", secret).update(payload).digest("hex")}`;
 }

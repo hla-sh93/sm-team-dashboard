@@ -106,7 +106,7 @@ describe("تصدير النسخة الاحتياطية /api/backup/export", () =
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(Object.keys(backupRoute).filter((k) => /^(POST|PUT|PATCH|DELETE)$/.test(k))).toEqual([]);
   });
-  it.fails("[SA-12] فشل التصدير لازم ما يرجّع نصّ الخطأ الداخلي (اسم المضيف/المستخدم) بالجواب", async () => {
+  it("[SA-12 مُصلَح] فشل التصدير ما بيرجّع نصّ الخطأ الداخلي بالجواب", async () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     mocks.buildSnapshot.mockRejectedValue(new Error("Can't reach database server at `db-internal.example:5432` user=app_owner"));
     const r = await backupRoute.GET(req("/api/backup/export", { headers: { authorization: `Bearer ${SECRET}` } }));
@@ -140,10 +140,10 @@ describe("ويبهوك تلغرام", () => {
 describe("مسار الإدارة /admin/api/plan-update", () => {
   it("بلا كوكي → مرفوض «غير مصرّح» قبل أي منطق", async () => {
     const r = await planUpdateRoute.POST(req("/admin/api/plan-update", { method: "POST", body: JSON.stringify({}) }));
-    expect(r.status).toBe(400);
+    expect(r.status).toBe(401);
     expect((await r.json()).error).toBe("غير مصرّح");
   });
-  it.fails("[SA-12] الرفض لعدم الصلاحية لازم يرجع 401/403 مو 400", async () => {
+  it("[SA-12 مُصلَح] الرفض لعدم الصلاحية بيرجع 401/403 مو 400", async () => {
     const r = await planUpdateRoute.POST(req("/admin/api/plan-update", { method: "POST", body: JSON.stringify({}) }));
     expect([401, 403]).toContain(r.status);
   });
@@ -185,7 +185,7 @@ describe("ترويسات الأمان (next.config.js)", () => {
     expect(h["permissions-policy"]).toContain("camera=()");
     expect(h["strict-transport-security"]).toMatch(/max-age=31536000/);
   });
-  it.fails("[SA-13] في Content-Security-Policy (أقلّه frame-ancestors/object-src/base-uri)", async () => {
+  it("[SA-13 مُصلَح] في Content-Security-Policy (أقلّه frame-ancestors/object-src/base-uri)", async () => {
     const [rule] = await nextConfig.headers();
     const keys = rule.headers.map((x: { key: string }) => x.key.toLowerCase());
     expect(keys).toContain("content-security-policy");
@@ -193,7 +193,7 @@ describe("ترويسات الأمان (next.config.js)", () => {
 });
 
 describe("مقارنة الأسرار (ثابت)", () => {
-  it.fails("[SA-13] مقارنة CRON_SECRET وسرّ الويبهوك لازم تكون ثابتة الزمن (timingSafeEqual)", () => {
+  it("[SA-13 مُصلَح] مقارنة CRON_SECRET وسرّ الويبهوك ثابتة الزمن", () => {
     const files = [
       "src/app/api/backup/export/route.ts",
       "src/app/api/cron/daily-brief/route.ts",

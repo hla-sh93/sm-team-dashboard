@@ -148,6 +148,24 @@ export type CompanyInput = z.infer<typeof companySchema>;
 // ============================================
 // AD-HOC / CONTENT TASK  (§4.8)
 // ============================================
+
+/**
+ * يوم تقويمي حقيقي `YYYY-MM-DD` بمدى سنين معقول. الـregex لحالها كانت تقبل
+ * `2026-02-30` (بينقلب ٢ آذار بالصمت) و`0026-01-01` (بيصير 1926 بـ`fromISODate`)
+ * — فحص ١٢/١٠، SA-10.
+ */
+export function isCalendarDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  if (y < 2020 || y > 2100) return false;
+  const at = new Date(Date.UTC(y, m - 1, d));
+  return at.getUTCFullYear() === y && at.getUTCMonth() === m - 1 && at.getUTCDate() === d;
+}
+const calendarDay = z.string().refine(isCalendarDay, "تاريخ غير صالح");
+
+/** سقف الملاحظات — بتتراكم أسطر دليل، بس مليون حرف من زائر مو ملاحظة. */
+export const NOTES_MAX = 5000;
+
 export const taskSchema = z.object({
   title: z.string().min(1, "عنوان المهمة مطلوب").max(200),
   kind: z.enum(["ADHOC", "CONTENT", "PHOTOSHOOT", "REPORT", "CONTENT_WRITING"]).default("ADHOC"),
@@ -161,20 +179,16 @@ export const taskSchema = z.object({
   status: z.enum(STATUSES).default("NOT_STARTED"),
   assigneeId: optId,
   companyId: optId,
-  readyDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+  readyDate: calendarDay
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
-  workDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح")
+  workDate: calendarDay
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
   isPinned: z.boolean().default(false),
-  notes: z.string().nullable().optional(),
+  notes: z.string().max(NOTES_MAX).nullable().optional(),
   month: z.coerce.number().int().min(0).max(11),
   year: z.coerce.number().int().min(2020).max(2100),
 });
@@ -183,10 +197,10 @@ export type TaskInput = z.infer<typeof taskSchema>;
 /** Direct server-action boundary for edits to existing cards. */
 export const taskDetailsSchema = z
   .object({
-    title: z.string().max(200).nullable().optional(),
-    workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
-    readyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
-    publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ غير صالح").nullable().optional(),
+    title: z.string().trim().min(1, "عنوان المهمة مطلوب").max(200).nullable().optional(),
+    workDate: calendarDay.nullable().optional(),
+    readyDate: calendarDay.nullable().optional(),
+    publishDate: calendarDay.nullable().optional(),
     assigneeId: z.string().min(1).nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
     status: z.enum(STATUSES).optional(),

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
 import { resolvePublishMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { keepOtherCycleCard } from "@/lib/publish-calendar";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
@@ -11,8 +12,8 @@ export default async function PublishingPage({
 }) {
   const { year, month } = await resolvePublishMonth(await searchParams);
   const [employees, companies, bucketTasks, continuationRaw, carryover] = await Promise.all([
-    prisma.employee.findMany(),
-    prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    prisma.employee.findMany({ select: publicEmployeeSelect }),
+    prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
     prisma.task.findMany({
       where: { year, month, stage: "PUBLISH", status: { not: "CANCELED" } },
     }),

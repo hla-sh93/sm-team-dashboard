@@ -6,6 +6,7 @@
  */
 import { NextResponse } from "next/server";
 import { sendShootAppointments } from "@/lib/telegram/service";
+import { bearerMatches } from "@/lib/secret-compare";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret)
     return NextResponse.json({ ok: false, error: "cron_not_configured" }, { status: 503 });
-  if (req.headers.get("authorization") !== `Bearer ${secret}`)
+  if (!bearerMatches(req.headers.get("authorization"), secret))
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   const res = await sendShootAppointments(new Date());

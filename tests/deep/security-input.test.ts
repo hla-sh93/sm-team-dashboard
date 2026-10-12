@@ -65,16 +65,16 @@ describe("مخطّط إنشاء المهمة (createTask — مفتوح للزو
     }
   });
 
-  it.fails("[SA-10] الملاحظات بلا حدّ أعلى: ١ مليون حرف لازم ينرفض", () => {
+  it("[SA-10 مُصلَح] الملاحظات بحدّ أعلى: ١ مليون حرف بينرفض", () => {
     expect(taskSchema.safeParse({ ...baseTask, notes: "ن".repeat(1_000_000) }).success).toBe(false);
   });
 
-  it.fails("[SA-10] تاريخ مستحيل (30 شباط) لازم ينرفض بدل ما ينقلب لـ2 آذار بالصمت", () => {
+  it("[SA-10 مُصلَح] تاريخ مستحيل (30 شباط) بينرفض بدل ما ينقلب لـ2 آذار بالصمت", () => {
     expect(fromISODate("2026-02-30").getMonth()).toBe(2); // الدليل: بينقلب لآذار
     expect(taskSchema.safeParse({ ...baseTask, readyDate: "2026-02-30" }).success).toBe(false);
   });
 
-  it.fails("[SA-10] سنة بخانتين بالتاريخ (0026-01-01) لازم تنرفض — fromISODate بيعطيها 1926", () => {
+  it("[SA-10 مُصلَح] سنة بخانتين بالتاريخ (0026-01-01) بتنرفض", () => {
     expect(fromISODate("0026-01-01").getFullYear()).toBe(1926);
     expect(taskSchema.safeParse({ ...baseTask, workDate: "0026-01-01" }).success).toBe(false);
   });
@@ -85,7 +85,7 @@ describe("مخطّط تعديل الكرت (updateTaskDetails — صارم، QA-
     expect(taskDetailsSchema.safeParse({ title: "x", companyId: "c_other" }).success).toBe(false);
     expect(taskDetailsSchema.safeParse({ notes: "x" }).success).toBe(false);
   });
-  it.fails("[SA-10] عنوان فاضي لازم ينرفض (اليوم بيقبل \"\" فبيصير كرت بلا اسم)", () => {
+  it("[SA-10 مُصلَح] عنوان فاضي بينرفض (\"\" كان بيصير كرت بلا اسم)", () => {
     expect(taskDetailsSchema.safeParse({ title: "" }).success).toBe(false);
   });
 });
@@ -106,7 +106,7 @@ describe("CSV (QA-006)", () => {
     expect(lines.slice(0, 6).every((l) => l.startsWith("'") || l.startsWith("\"'"))).toBe(true);
     expect(lines[6]).toBe("-5");
   });
-  it.fails("[SA-11] خانة فيها «;» لازم تنحاط بين علامتي تنصيص — Excel بلغة فاصلها «;» بيقسمها ويقيّم الصيغة", () => {
+  it("[SA-11 مُصلَح] خانة فيها «;» بتنحاط بين علامتي تنصيص — Excel بلغة فاصلها «;» ما بيقسمها", () => {
     const csv = toCSV(["h"], [["x;=1+1"]]);
     const line = csv.replace(/^﻿/, "").split("\r\n")[1];
     expect(line.startsWith("\"")).toBe(true);
@@ -114,8 +114,8 @@ describe("CSV (QA-006)", () => {
 });
 
 describe("ملف Word للخطة (previewCompanyPlanDocx — بلا بوابة، PU-18)", () => {
-  it.skipIf(!HAS_DB).fails(
-    "[SA-09] ملف صغير (<٢٠٠KB) بيفكّ لـ٦٤MB XML: القارئ لازم يرفض الحجم قبل ما يفكّ",
+  it.skipIf(!HAS_DB)(
+    "[SA-09 مُصلَح] ملف صغير (<٢٠٠KB) بيفكّ لـ٦٤MB XML: القارئ بيرفض الحجم قبل ما يفكّ",
     async () => {
       const { prisma } = await import("@/lib/db");
       const { currentCycleBucket } = await import("@/lib/contract");
@@ -133,7 +133,7 @@ describe("ملف Word للخطة (previewCompanyPlanDocx — بلا بوابة،
       const r: any = await previewCompanyPlanDocx(company!.id, b64);
       const ms = performance.now() - t0;
       expect(r.ok).toBe(false);
-      // المطلوب: رفض سريع بسبب الحجم. اليوم: فكّ كامل + تحليل مئات آلاف الفقرات.
+      // رفض سريع بسبب الحجم، بلا فكّ كامل ولا تحليل.
       expect(r.error).toMatch(/حجم|كبير|size/i);
       expect(ms).toBeLessThan(100);
     },

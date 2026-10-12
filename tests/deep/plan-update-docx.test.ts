@@ -160,7 +160,7 @@ describe("الرفع على القاعدة", () => {
     const p2 = await preview(companyId, file);
     expect(p2.month).toBe(9);
   });
-  it.fails("PU-14: إقفال كرت الكتابة بالرفع لازم يضيف الدليل لا يمحي الملاحظات الموجودة (قاعدة ٢)", async () => {
+  it("PU-14 مُصلَح: إقفال كرت الكتابة بالرفع بيضيف الدليل وما بيمحي الملاحظات الموجودة (قاعدة ٢)", async () => {
     if (skip()) throw new Error("skip");
     const w = await prisma.task.findUnique({ where: { id: `${P}_w_8` } });
     expect(w.status).toBe("READY");

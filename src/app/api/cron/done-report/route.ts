@@ -9,6 +9,7 @@
  */
 import { NextResponse } from "next/server";
 import { sendDailyDoneReport } from "@/lib/telegram/service";
+import { bearerMatches } from "@/lib/secret-compare";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
   if (!secret)
     return NextResponse.json({ ok: false, error: "cron_not_configured" }, { status: 503 });
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${secret}`)
+  if (!bearerMatches(auth, secret))
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const res = await sendDailyDoneReport(new Date());
   return NextResponse.json(res, { status: res.ok ? 200 : 500 });

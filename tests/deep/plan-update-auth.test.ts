@@ -80,7 +80,7 @@ describe("بوابة الأدمن", () => {
   it("كوكي صحيحة → البوابة بتمرّق والمنطق هو يلي بيردّ (الشركة غير موجودة)", async () => {
     if (skip()) return;
     const exp = String(Date.now() + 60_000);
-    jar.value = `${exp}.${sign(exp)}`;
+    jar.value = `${exp}.0.qa0session.${sign(`${exp}.0.qa0session`)}`;
     const r = await applyGuarded(payload);
     expect(r.ok).toBe(false);
     expect(r.error).toBe("الشركة غير موجودة");

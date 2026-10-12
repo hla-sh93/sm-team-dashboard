@@ -74,6 +74,15 @@ export type Company = {
   updatedAt: Date;
 };
 
+/**
+ * الموظف كما بيوصل لصفحات الموظفين المفتوحة — بلا المالية ولا هوية تلغرام الرقمية
+ * (`src/server/public-rows.ts`، SA-01).
+ */
+export type PublicEmployee = Omit<Employee, "salary" | "costPerReel" | "telegramUserId">;
+
+/** الشركة كما بتوصل لصفحات الموظفين المفتوحة — بلا قيمة العقد (SA-01). */
+export type PublicCompany = Omit<Company, "contractValue">;
+
 export type Task = {
   id: string;
   kind: TaskKind | string;

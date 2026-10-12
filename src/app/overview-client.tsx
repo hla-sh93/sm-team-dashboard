@@ -44,7 +44,7 @@ import {
 import { CyclePill } from "@/components/ui/pills";
 import { updateDailyTasks } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
-import type { Employee, Company, Task } from "@/types";
+import type { Employee, Company, Task, PublicEmployee, PublicCompany } from "@/types";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -70,8 +70,8 @@ export default function OverviewClient({
 }: {
   year: number;
   month: number;
-  employees: Employee[];
-  companies: Company[];
+  employees: PublicEmployee[];
+  companies: PublicCompany[];
   tasks: Task[];
   companyProgress: CompanyProgress[];
 }) {
@@ -116,7 +116,7 @@ export default function OverviewClient({
   // ممتلئة بمهام الإدارة، والباقي للمهام الإضافية»)، فنصف الدونات عندها محجوز
   // ومعدود دايماً، والنصف التاني بيتحرّك مع مهامها الإضافية. كانت بتطلع 0%
   // لأنّ إدارة الفريق ما إلها كروت تنعدّ.
-  const isLead = (e: Employee) => /تيم ليدر|team ?lead/i.test(e.role);
+  const isLead = (e: PublicEmployee) => /تيم ليدر|team ?lead/i.test(e.role);
   const LEAD_ADMIN_SHARE = 0.5;
   const achievement = employees
     .map((e) => {
@@ -243,7 +243,7 @@ export default function OverviewClient({
     }
     return m;
   })();
-  const loadOf = (card: GroupedCard, emp: Employee) =>
+  const loadOf = (card: GroupedCard, emp: PublicEmployee) =>
     dailyTaskEffortDays(emp, card.repr, scopeCounts);
 
   // Ticked cards while the editor is open (id set). Seeded with today's cards.

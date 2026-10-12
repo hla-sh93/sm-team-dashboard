@@ -10,6 +10,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { withEvidenceLine } from "@/lib/evidence";
 import { assertAdmin } from "@/lib/auth";
 import {
   DONE_STATUSES,
@@ -24,7 +25,7 @@ import { bucketKey, existingPieceCounts } from "@/server/cycle-plan";
 import { companyLifecycle } from "@/lib/company-visibility";
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { COURSE_SLUG, courseCardBucket, planCourseCards } from "@/lib/course-cards";
-import { completeProductionForPublishedTask } from "@/server/actions/tasks";
+import { completeProductionForPublishedTask } from "@/server/task-ops";
 import { revalidateAll } from "@/lib/revalidate";
 
 const contentType = z.enum(["POST", "REEL", "AI_REEL", "STORY"]);
@@ -438,16 +439,6 @@ export function parsePlanUpdatePayload(input: unknown) {
 }
 
 /** سطر دليل بينضاف لملاحظات الكرت مرة وحدة — نفس قاعدة `stateUpdateFor`. */
-function withEvidenceLine(notes: string | null | undefined, evidence: string) {
-  const line = evidence.trim();
-  const kept = (notes ?? "")
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (!kept.includes(line)) kept.push(line);
-  return kept.join("\n");
-}
-
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
 const stageKeyOf = (item: { type: string; pieceNo: number; stage: string }) =>
   `${keyOf(item)}|${item.stage}`;

@@ -27,6 +27,7 @@ import {
   type PlanDocxPiece,
 } from "@/lib/plan-docx";
 import { applyPlanUpdatePayload } from "@/server/plan-update";
+import { withEvidenceLine } from "@/lib/evidence";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 
 /** نطاق الكتابة يلي بيغطّيه كل نوع — نفس تقسيم `pipeline.ts`. */
@@ -62,14 +63,65 @@ function headline(piece: PlanDocxPiece): string {
   return (line ?? "").trim().slice(0, 120);
 }
 
-async function readDocx(fileBase64: string): Promise<string | null> {
+/**
+ * أكبر نصّ مستند بنقبله بعد الفكّ. ملف خطة حقيقي (١٠ بوست + ١٤ ستوري بأوصافها)
+ * بيطلع بعشرات الكيلوبايت؛ ٥MB هامش كبير. الحدّ لازم: الملف المضغوط بيوصل لحدّ
+ * ٢MB، وملف صغير (١.٢MB) كان ينفكّ لـ٢٥٦MB نصّ و~١GB ذاكرة بلا دخول (فحص ١٢/١٠، SA-09).
+ */
+export const MAX_DOCX_XML_BYTES = 5 * 1024 * 1024;
+
+type DocxRead = { ok: true; xml: string } | { ok: false; error: string };
+
+const NOT_DOCX = "الملف ليس مستند Word صالحاً (.docx)";
+const TOO_BIG = "حجم الملف بعد الفكّ كبير جداً — هذا ليس ملف خطة عادياً";
+
+/** اسم الملف من المتّصل بينكتب بسطر الدليل — بحدّ طول، وبلا أسطر جديدة. */
+function safeFileName(name: string): string {
+  const flat = (name ?? "").replace(/[\r\n\t]+/g, " ").trim();
+  return flat.length > 120 ? `${flat.slice(0, 117)}…` : flat;
+}
+
+/** فكّ `word/document.xml` **بحدّ**: بيوقف أول ما يتجاوز `MAX_DOCX_XML_BYTES`. */
+async function readDocx(fileBase64: string): Promise<DocxRead> {
+  let zip: JSZip;
   try {
-    const zip = await JSZip.loadAsync(Buffer.from(fileBase64, "base64"));
-    const entry = zip.file("word/document.xml");
-    return entry ? entry.async("string") : null;
+    zip = await JSZip.loadAsync(Buffer.from(fileBase64, "base64"));
   } catch {
-    return null;
+    return { ok: false, error: NOT_DOCX };
   }
+  const entry = zip.file("word/document.xml");
+  if (!entry) return { ok: false, error: NOT_DOCX };
+  // الحجم المعلَن بالأرشيف — رفض فوري بلا ولا بايت فكّ. (حقل داخلي بـJSZip؛
+  // الفكّ المحدود تحت هو الضمانة لو الحقل غايب أو كاذب.)
+  const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+    ?.uncompressedSize;
+  if (typeof declared === "number" && declared > MAX_DOCX_XML_BYTES) {
+    return { ok: false, error: TOO_BIG };
+  }
+  return new Promise<DocxRead>((resolve) => {
+    const parts: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    const settle = (value: DocxRead) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const stream = entry.nodeStream("nodebuffer");
+    stream
+      .on("data", (chunk: Buffer) => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > MAX_DOCX_XML_BYTES) {
+          stream.pause();
+          settle({ ok: false, error: TOO_BIG });
+          return;
+        }
+        parts.push(chunk);
+      })
+      .on("error", () => settle({ ok: false, error: NOT_DOCX }))
+      .on("end", () => settle({ ok: true, xml: Buffer.concat(parts).toString("utf8") }));
+  });
 }
 
 /**
@@ -82,6 +134,22 @@ export async function previewPlanDocx(
   companyId: string,
   fileBase64: string,
 ): Promise<PlanDocxPreview | PlanDocxFailure> {
+  const read = await readPlanDocx(companyId, fileBase64);
+  return "preview" in read ? read.preview : read;
+}
+
+type PlanDocxRead = {
+  preview: PlanDocxPreview;
+  pieces: PlanDocxPiece[];
+  /** ملاحظات كرت الكتابة كما هي — الدليل بينضاف عليها، ما بيمحيها (PU-14). */
+  writeNotes: Map<string, string | null>;
+};
+
+/** المعاينة + القطع المقروءة — الملف بينفكّ **مرّة وحدة** للمعاينة والتطبيق (SA-09). */
+async function readPlanDocx(
+  companyId: string,
+  fileBase64: string,
+): Promise<PlanDocxRead | PlanDocxFailure> {
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) return fail("الشركة غير موجودة");
   if (!company.managed) return fail("هذه الشركة تصميم-فقط، ولا دورة محتوى لها");
@@ -96,10 +164,10 @@ export async function previewPlanDocx(
   if (!bucket) return fail("لا توجد دورة شغّالة لهذه الشركة — حدّثي تاريخ بدء النشر أو التجديد أولاً");
   const cycle = cycleForBucket(company, bucket.year, bucket.month);
 
-  const xml = await readDocx(fileBase64);
-  if (!xml) return fail("الملف ليس مستند Word صالحاً (.docx)");
+  const read = await readDocx(fileBase64);
+  if (!read.ok) return fail(read.error);
 
-  const parsed = parsePlanDocument(extractDocxBlocks(xml));
+  const parsed = parsePlanDocument(extractDocxBlocks(read.xml));
   if (!parsed.ok) return fail(parsed.error);
 
   const found = summarisePieces(parsed.pieces);
@@ -152,7 +220,7 @@ export async function previewPlanDocx(
       alreadyDone: task.board === "DONE" || DONE_STATUSES.includes(task.status as never),
     }));
 
-  return {
+  const preview: PlanDocxPreview = {
     ok: true,
     company: company.name,
     companyId,
@@ -168,6 +236,11 @@ export async function previewPlanDocx(
     })),
     writeCards,
     warnings,
+  };
+  return {
+    preview,
+    pieces: parsed.pieces,
+    writeNotes: new Map(writeRows.map((task) => [task.id, task.notes])),
   };
 }
 
@@ -194,13 +267,9 @@ export async function applyPlanDocx(input: {
   source: string;
   at?: Date;
 }): Promise<PlanDocxApplyResult | PlanDocxFailure> {
-  const preview = await previewPlanDocx(input.companyId, input.fileBase64);
-  if (!preview.ok) return preview;
-
-  const xml = await readDocx(input.fileBase64);
-  if (!xml) return fail("الملف ليس مستند Word صالحاً (.docx)");
-  const parsed = parsePlanDocument(extractDocxBlocks(xml));
-  if (!parsed.ok) return fail(parsed.error);
+  const read = await readPlanDocx(input.companyId, input.fileBase64);
+  if (!("preview" in read)) return read;
+  const { preview, pieces, writeNotes } = read;
 
   const at = input.at ?? new Date();
   const dayLabel = toISODate(at).split("-").reverse().join("/");
@@ -209,14 +278,14 @@ export async function applyPlanDocx(input: {
     .map((row) => `${row.label} ${row.inFile}/${row.inContract}`)
     .join(" · ");
   const evidence =
-    `خطة الشهر وصلت كملف Word «${input.fileName}» (${input.source}) بتاريخ ${dayLabel}` +
+    `خطة الشهر وصلت كملف Word «${safeFileName(input.fileName)}» (${input.source}) بتاريخ ${dayLabel}` +
     (shortfall ? ` — العدد مقابل العقد: ${shortfall}` : "");
 
   const result = await applyPlanUpdatePayload({
     companyId: input.companyId,
     year: preview.year,
     month: preview.month,
-    items: piecesToPayloadItems(parsed.pieces),
+    items: piecesToPayloadItems(pieces),
   });
   if (!result.ok) return fail(result.error);
 
@@ -234,7 +303,7 @@ export async function applyPlanDocx(input: {
             finishedAt: at,
             completedAt: at,
             isPinned: true,
-            notes: evidence,
+            notes: withEvidenceLine(writeNotes.get(card.id), evidence),
           },
         }),
       ),
@@ -244,7 +313,7 @@ export async function applyPlanDocx(input: {
   return {
     ok: true,
     company: preview.company,
-    describedPieces: parsed.pieces.length,
+    describedPieces: pieces.length,
     closedWriteCards: toClose.length,
     warnings: preview.warnings,
   };

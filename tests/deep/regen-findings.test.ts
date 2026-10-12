@@ -36,6 +36,7 @@ type Prisma = import("@prisma/client").PrismaClient;
 let prisma: Prisma;
 let gen: (y: number, m: number, only: string | null) => Promise<{ ok: boolean; error?: string }>;
 let actions: typeof import("@/server/actions/tasks");
+let ops: typeof import("@/server/task-ops");
 let companies: typeof import("@/server/actions/companies");
 
 async function genOk(y: number, m: number, only: string | null = null) {
@@ -52,6 +53,7 @@ beforeAll(async () => {
   await seedTeam(prisma);
   ({ generateScheduleInternal: gen } = (await import("@/server/schedule-engine")) as never);
   actions = await import("@/server/actions/tasks");
+  ops = await import("@/server/task-ops");
   companies = await import("@/server/actions/companies");
 }, 60_000);
 
@@ -304,7 +306,7 @@ describe("RG-07 · مراجعة القائدة (setPieceReviewed) بتنمحى �
     });
     await genOk(Y, M, null);
     publishId = (await pieceCards(prisma, CO, "POST", 1)).publish!.id;
-    expect((await actions.setPieceReviewed(publishId, true, TEAM.publisher.id)).ok).toBe(true);
+    expect((await ops.setPieceReviewed(publishId, true, TEAM.publisher.id)).ok).toBe(true);
     const t = await prisma.task.findUniqueOrThrow({ where: { id: publishId } });
     expect(t.reviewedAt).not.toBeNull();
     expect(t.reviewedById).toBe(TEAM.publisher.id);

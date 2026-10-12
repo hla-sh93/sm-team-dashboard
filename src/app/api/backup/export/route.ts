@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { buildSnapshot } from "@/lib/backup";
+import { bearerMatches } from "@/lib/secret-compare";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   if (!secret)
     return NextResponse.json({ ok: false, error: "backup_not_configured" }, { status: 503 });
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${secret}`)
+  if (!bearerMatches(auth, secret))
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   try {
@@ -34,7 +35,8 @@ export async function GET(req: Request) {
       headers: { "cache-control": "no-store" },
     });
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: `export_failed: ${detail}` }, { status: 500 });
+    // التفصيل بالسجلّ بس: رسالة Prisma فيها اسم مضيف القاعدة ومستخدمها (SA-12).
+    console.error("backup export failed", e);
+    return NextResponse.json({ ok: false, error: "export_failed" }, { status: 500 });
   }
 }

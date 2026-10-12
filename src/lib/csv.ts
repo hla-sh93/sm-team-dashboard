@@ -10,7 +10,10 @@ function escapeCell(v: unknown): string {
   // formulas. Exported names/titles are untrusted text, so prefix an apostrophe
   // (the standard spreadsheet literal marker). Numeric values stay numeric.
   const s = typeof v === "string" && /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  // تنصيص أي خانة فيها فاصل بأي لغة إكسل (« , » أو « ; » أو tab) أو نهاية سطر
+  // (CR لحاله كمان) — وإلا الخانة بتنقسم والصيغة بعد الفاصل بتتقيّم (فحص ١٢/١٠،
+  // SA-11 · TR-21).
+  if (/[",;\t\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
