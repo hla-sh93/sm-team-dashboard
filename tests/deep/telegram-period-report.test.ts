@@ -49,9 +49,11 @@ const build = (tasks: ReportTask[], p = SEPT(), deliveries: { taskId: string; se
 const who = (r: ReturnType<typeof build>, id: string) => r.people.find((x) => x.id === id)!;
 
 const ORIGINAL_TZ = process.env.TZ;
+// محو TZ بعد ما تغيّر ما بيرجّع منطقة الجهاز — بيترك Node على UTC، فالتجهيزات المبنية
+// وقت التحميل (بمنطقة الجهاز) بتنقرا بيوم تاني بالاختبارات يلي بعدها. منرجّعها صراحةً.
+const SYSTEM_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 afterEach(() => {
-  if (ORIGINAL_TZ === undefined) delete process.env.TZ;
-  else process.env.TZ = ORIGINAL_TZ;
+  process.env.TZ = ORIGINAL_TZ ?? SYSTEM_TZ;
 });
 
 describe("§١٠ الفترات — حدود", () => {
@@ -109,11 +111,11 @@ describe("§١٠ الاستبعاد الإداري — جدول قرار", () =>
       expect(isAdministrativeClosure({ notes: n })).toBe(false);
   });
 
-  it.fails("[TR-17] «إقفال إداري بقرار القائدة ٥/٩» (الصيغة يلي بالداتا على تصوير التوظيف ٧ و٨) إقفال إداري", () => {
+  it("[TR-17] «إقفال إداري بقرار القائدة ٥/٩» (الصيغة يلي بالداتا على تصوير التوظيف ٧ و٨) إقفال إداري", () => {
     expect(isAdministrativeClosure({ notes: "إقفال إداري بقرار القائدة ٥/٩: مهام تصوير الدورة السابقة بتنسكّر كلها" })).toBe(true);
   });
 
-  it.fails("[TR-17] نفس العبارة بتنوين قبل الألف «إداريًا» أو بلا ضمة «أغلق تلقائياً» إقفال إداري", () => {
+  it("[TR-17] نفس العبارة بتنوين قبل الألف «إداريًا» أو بلا ضمة «أغلق تلقائياً» إقفال إداري", () => {
     expect(isAdministrativeClosure({ notes: "أُغلق إداريًا بقرار القائدة" })).toBe(true);
     expect(isAdministrativeClosure({ notes: "أغلق تلقائياً: لم يجدد العقد" })).toBe(true);
   });
@@ -133,7 +135,7 @@ describe("§١٠ الالتزام بالموعد", () => {
     expect(who(build([done({ readyDate: "2026-09-02T00:00:00Z", finishedAt: "2026-09-20T10:00:00Z", notes: null })]), "d").measured).toBe(0);
   });
 
-  it.fails("[TR-19] ملاحظة جدولة (مو سطر دليل) ما بتخلّي الإقفال «مقاساً» — «بلا وقت تسليم ما بينقاس»", () => {
+  it("[TR-19] ملاحظة جدولة (مو سطر دليل) ما بتخلّي الإقفال «مقاساً» — «بلا وقت تسليم ما بينقاس»", () => {
     // باللقطة: ٦ إقفالات تصميم/مونتاج بأيلول و٦ بتشرين ملاحظتها جدولة فقط («المونتاج الاثنين ٢١/٩ — …
     // كان مؤرَّخاً ١٧/٩»، «أُضيف بقرار القائدة …») وانحسبت مقاسة بطابع الكبسة.
     const r = build([done({ stage: "EDIT", type: "REEL", assigneeId: "e", readyDate: "2026-09-02T00:00:00Z", finishedAt: "2026-09-20T10:00:00Z", notes: "المونتاج الاثنين ٢١/٩ — الأحد ٢٠/٩ ممتلئ. كان مؤرَّخاً ١٧/٩." })]);
@@ -148,7 +150,7 @@ describe("§١٠ الالتزام بالموعد", () => {
 });
 
 describe("§١٠ قسم الشركات", () => {
-  it.fails("[TR-18] قطعة نشر انسكّرت إدارياً («نفدت منتجات الزبون فلن يُنشر») ما بتنعدّ «منشورة» بقسم الشركة", () => {
+  it("[TR-18] قطعة نشر انسكّرت إدارياً («نفدت منتجات الزبون فلن يُنشر») ما بتنعدّ «منشورة» بقسم الشركة", () => {
     // عبادة ستوري ١٠ (٢٠/٩): كرت النشر PUBLISHED بسطر «أُغلق إدارياً» → تقرير أيلول بيقول ١٠/١٠ منشور.
     const r = build([
       done({ kind: "PUBLISH", stage: "PUBLISH", assigneeId: "o", status: "PUBLISHED", publishDate: "2026-09-20T00:00:00Z", finishedAt: "2026-09-20T00:00:00Z", notes: "أُغلق بقرار القائدة ٢٠/٩: نفدت منتجات الزبون فلن يُنشر الستوري — أُغلق إدارياً." }),

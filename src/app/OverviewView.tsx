@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/db";
 import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
-import { resolveActiveMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
-import { isTaskDoneState } from "@/lib/constants";
-import { hideDormantCompanyWork, isDormantCompany } from "@/lib/company-visibility";
+import { resolveActiveMonth } from "@/lib/month";
+import { isDormantCompany } from "@/lib/company-visibility";
 import { achievementSpanLabel, latestCycleBucket } from "@/lib/contract";
-import { planTotal } from "@/lib/cycle-plan";
+import { displayedCyclePlan, planTotal } from "@/lib/cycle-plan";
+import { loadLiveTasks } from "@/lib/live-tasks";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
@@ -18,33 +18,19 @@ export default async function OverviewView({
   searchParams: { y?: string; m?: string };
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
-  const [employees, companies, bucketTasks, continuationRaw, carryover] = await Promise.all([
+  // The daily queue and urgent panels must see the SAME live work as the tasks
+  // board, «اليوم» and the brief — one loader for all of them (`loadLiveTasks`):
+  // the bucket, open tails and carryover, the FULL bucket of every cycle still
+  // running today, minus paused/archived companies (the lead's 15/9 decision).
+  // The home page used to build its own set without the running-cycle buckets,
+  // so work finished today in a cycle that started last month vanished here:
+  // أليسار saw three reels queued after delivering hers, and the team donut read
+  // 45٪ for أيمن against 56٪ on the board (فحص ١٢/١٠، OP-01).
+  const [employees, companies, tasks] = await Promise.all([
     prisma.employee.findMany({ select: publicEmployeeSelect, orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
-    prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),
-    prisma.task.findMany({ where: monthContinuationWhere(year, month) }),
-    prisma.task.findMany({ where: openCarryoverWhere(year, month) }),
+    loadLiveTasks(year, month),
   ]);
-
-  // The daily queue and urgent panels must see the SAME live work as the tasks
-  // board: the bucket, the open tails of other cycles landing in this calendar
-  // month (المول's 20→20 spill), and all still-open work carried over from
-  // earlier buckets (overdue June cards). Done work stays archived.
-  const continuation = continuationRaw.filter((t) => !isTaskDoneState(t));
-  const seen = new Set(bucketTasks.map((t) => t.id));
-  const extras = [...continuation, ...carryover].filter((t) => {
-    if (seen.has(t.id)) return false;
-    seen.add(t.id);
-    return true;
-  });
-  // A paused or archived company is not being worked on: Siizen has not started
-  // («لسا ما بلشنا», and it is late-exempt) and المول الصيني did not renew. Their
-  // cards are KEPT in the database — regeneration must never delete them — but
-  // the dashboard is «شو لازم يتعمل اليوم», and they were surfacing as أيمن's
-  // overdue work: 26 Siizen cards + 56 المول. Since 15/9 the same rule applies
-  // to every live screen (board, today, publishing, brief) through
-  // `company-visibility.ts` — the lead's decision: a paused company shows nothing.
-  const tasks = hideDormantCompanyWork([...bucketTasks, ...extras], companies);
 
   // ---- إنجاز الشركات ------------------------------------------------------
   // Deliberately NOT computed from `tasks` above. That set is the live board:
@@ -73,7 +59,7 @@ export default async function OverviewView({
   const frozenPlans = await frozenPlanCounts(tracked, (co) => latestCycleBucket(co, now));
   const companyProgress: CompanyProgress[] = tracked.map((co) => ({
     companyId: co.id,
-    plan: planTotal(frozenPlans.get(co.id) ?? co),
+    plan: planTotal(displayedCyclePlan(frozenPlans, co)),
     published: completedCompanyPlanCount(cycleTasks, co.id),
     produced: producedCompanyPlanCount(cycleTasks, co.id),
     cycleLabel: achievementSpanLabel(co, now),

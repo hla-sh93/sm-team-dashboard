@@ -37,7 +37,8 @@ import { isDormantCompany } from "@/lib/company-visibility";
 import { assetNameForTask } from "@/lib/asset-name";
 import { hasStartedPublishing } from "@/lib/contract";
 import { buildContentNumbers } from "@/lib/cards";
-import { makeBlockedPredicate, selectDailyWorkTasks } from "@/lib/daily-work";
+import { selectDailyWorkTasks } from "@/lib/daily-work";
+import { makeLatePredicate } from "@/lib/late";
 import { countByCompany, typesByCompany } from "./summary";
 
 export type BriefMessage = {
@@ -201,17 +202,10 @@ export function buildDailyBrief({
       .filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim())
       .map((c) => c.id),
   );
-  // كرت محجوز ما بينحسب متأخر: أليسار كانت تطلع «Makhbar 7-4 متأخر 15 يوم»
-  // لريل ماجد لسا ما صوّرو. المتأخر هو التصوير، والمونتاج ما فيه يبلّش أصلاً.
-  const isBlocked = makeBlockedPredicate(tasks);
-  const late = open.filter(
-    (t) =>
-      isTaskLateState(t, today) &&
-      !isBlocked(t) &&
-      !(t.companyId && lateExempt.has(t.companyId)) &&
-      // الموقوفة مركونة بانتظار الزبون — ما بتطلع «متأخر» بولا تقرير (5/8).
-      !(t.companyId && dormant.has(t.companyId)),
-  );
+  // «متأخر» بتعريف كل الشاشات (`lib/late.ts`): كرت محجوز ما بينحسب متأخر (أليسار
+  // كانت تطلع «Makhbar 7-4 متأخر 15 يوم» لريل ماجد لسا ما صوّرو)، والموقوفة والمعفاة
+  // ما بتطلع «متأخر» بولا تقرير (5/8).
+  const late = open.filter(makeLatePredicate(tasks, companies, today));
   const publishingToday = open.filter(
     (t) => t.stage === "PUBLISH" && dISO(t.publishDate) === todayISO,
   );
@@ -240,9 +234,12 @@ export function buildDailyBrief({
     t.stage === "PUBLISH" && !!t.companyId && !lateExempt.has(t.companyId);
   for (const emp of employees) {
     const mineLate = late.filter((t) => t.assigneeId === emp.id);
-    // Off today → not on today's list at all. A freelancer has no standing
-    // schedule either; they appear only when work is actually on them.
-    if (!workingToday(emp) && !mineLate.length) continue;
+    // Off today → not on today's list at all, even with overdue work: the group
+    // message is «who does what today», and the overdue list is in the 08:00
+    // detail and her own risk report (PROJECT.md §14; فحص ١٢/١٠، TR-15). A
+    // freelancer has no standing schedule either; they appear only when work is
+    // actually on them.
+    if (!workingToday(emp)) continue;
     if (isFreelance(emp) && !mineLate.length) continue;
     const todays = selectDailyWorkTasks({
       employee: emp,
@@ -268,7 +265,11 @@ export function buildDailyBrief({
       // المهام بالشركة والعدد والنوع، بلا ترقيم كل بوست (القائدة ١٦/٩):
       // «التوظيف 3 بوست · التدريب 2 تصميم، ومتأخر: البلسم 3 ستوري».
       headline = countByCompany(todays, coName);
-      const chase = owed.length ? `ومتأخر: ${countByCompany(owed, coName, 3)}` : "";
+      // المطاردة: شركتين بالكتير، وشركة انذكرت بنصّ اليوم ما بتنعاد — «أليسار مخبر د.نور 3
+      // ريل، ومتأخر: مخبر د.نور 1 ريل» كانت بتنقرا مكرّرة (PROJECT.md §14؛ TR-25).
+      const todayCompanies = new Set(todays.map((t) => t.companyId).filter(Boolean));
+      const chased = owed.filter((t) => !t.companyId || !todayCompanies.has(t.companyId));
+      const chase = chased.length ? `ومتأخر: ${countByCompany(chased, coName, 2)}` : "";
       if (chase) headline = headline ? `${headline}، ${chase}` : chase.replace(/^و/, "");
     }
     // Nothing today and nothing owed → not worth a line. Idle capacity is real

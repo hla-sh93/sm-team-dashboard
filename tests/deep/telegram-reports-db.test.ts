@@ -157,7 +157,7 @@ describe.skipIf(!scratch.available)("التقارير المرسلة — على 
       expect(sent.map((s) => s.body.text).join("\n")).toContain(`${uniq} مصمّم: ${uniq} كيلو`);
     });
 
-    it.fails("[TR-23] متبقّي الدورة السابقة وتحضير الدورة الجاية المنجزين اليوم بينعدّوا كمان (٣ بوست مو ١)", async () => {
+    it("[TR-23] متبقّي الدورة السابقة وتحضير الدورة الجاية المنجزين اليوم بينعدّوا كمان (٣ بوست مو ١)", async () => {
       const { sendDailyDoneReport } = await import("@/lib/telegram/service");
       await sendDailyDoneReport(new Date(2026, 9, 12, 20, 0));
       expect(sent.map((s) => s.body.text).join("\n")).toContain(`${uniq} مصمّم: ${uniq} كيلو 3 بوست`);

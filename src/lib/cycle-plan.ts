@@ -24,6 +24,19 @@ const FIELD_OF: Record<string, keyof PlanCounts> = {
 
 export const planTotal = (c: PlanCounts) => c.posts + c.reels + c.aiReels + c.stories;
 
+/**
+ * خطة الدورة المعروضة: رقم السجلّ، إلا لو انسجّلت بعد الدورة دورة تانية (تجديد مبكر
+ * بعدد مختلف) — وقتها خطتها عدد قطعها هي (§٩؛ `frozenPlanCounts`). الرئيسية والتقارير
+ * لازم يقرؤوا نفس الرقم: صفحة التقارير كانت تاخد السجلّ فطلعت فونيتيك «بوست 1/10 ·
+ * ستوري 0/14» على دورة خطتها ٤/٤/٠ (فحص ١٢/١٠، OP-11/UI-01).
+ */
+export function displayedCyclePlan(
+  frozen: Map<string, PlanCounts>,
+  co: { id: string } & PlanCounts,
+): PlanCounts {
+  return frozen.get(co.id) ?? co;
+}
+
 /** هل انسجّلت دورة بعد دورة هالدلو؟ (شركة على شهر التقويم ما إلها دورات → لا.) */
 export function hasLaterCycle(co: ContractCompany, year: number, month: number): boolean {
   const cycle = cycleForBucket(co, year, month);

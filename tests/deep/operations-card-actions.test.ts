@@ -139,15 +139,24 @@ describe("آلة الحالات — قطعة بوست", () => {
     expect(done.finishedAt.getTime()).toBeGreaterThanOrEqual(done.startedAt.getTime());
     expect(done.completedAt).toBeTruthy();
     expect(constants.isTaskDoneState(done)).toBe(true);
-    // السلوك الحالي (موثَّق OP-10): التصميم خلص بس كرت النشر لسا «بانتظار» كتابة الدورة.
-    const held = daily.makeHeldReason(await cardsOf(), "2026-09-15")(publish);
-    expect(held?.blockedBy?.id).toBe(write.id);
+    // OP-10 (مُصلَح): التصميم خلص، فكرت النشر ما عاد «بانتظار» كتابة الدورة — جواب
+    // الاستبعاد والاستبعاد نفسه متطابقين.
+    expect(daily.makeHeldReason(await cardsOf(), "2026-09-15")(publish)).toBeNull();
   });
 
-  it.fails("[OP-10] تصميم منجز + كتابة الدورة مفتوحة (حالة مشروعة §٦) → كرت النشر لازم ينفكّ؛ السلسلة بتعبر المنجز وبتحجزه — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-10] تصميم منجز + كتابة الدورة مفتوحة (حالة مشروعة §٦) → كرت النشر بينفكّ؛ السلسلة ما بتعبر المنجز لكرت الكتابة", async () => {
+    if (skip()) return;
     const publish = await find("PUBLISH", "POST");
     expect(daily.makeBlockedPredicate(await cardsOf())(publish)).toBe(false);
+  });
+
+  it("[OP-10] بس التصميم نفسه (قبل ما يخلص) بيضل محجوز بكتابة الدورة — «الخطة أول مرحلة»", async () => {
+    if (skip()) return;
+    const design = await find("DESIGN", "POST");
+    const write = await prisma.task.findUniqueOrThrow({ where: { id: design.blockedById } });
+    const fresh = { ...design, status: "NOT_STARTED", board: "TODO", finishedAt: null, completedAt: null };
+    expect(daily.makeBlockedPredicate(await cardsOf())(fresh)).toBe(true);
+    expect(daily.makeHeldReason(await cardsOf(), "2026-09-15")(fresh)?.blockedBy?.id).toBe(write.id);
   });
 
   it("لما تنسكّر كتابة الدورة، كرت النشر بينفكّ (الحجز المباشر وبالسلسلة)", async () => {

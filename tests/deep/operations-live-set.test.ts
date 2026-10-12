@@ -3,8 +3,9 @@
  *
  * السؤال: هل الصفحة الرئيسية («مهام اليوم» + «إنجاز الفريق») بتشوف نفس الكروت
  * يلي بيشوفها اللوح و«اليوم» والبريف (`loadLiveTasks`)؟
- * `OverviewView.tsx` عندو استعلام مكتوب لحاله (دلو + امتداد مفتوح + متبقّي مفتوح)
- * بلا قاعدة «الدلو الكامل للدورة الشغّالة» يلي انضافت لـ`live-tasks.ts` ١٦/٩.
+ * كان `OverviewView.tsx` عندو استعلام مكتوب لحاله (دلو + امتداد مفتوح + متبقّي مفتوح)
+ * بلا قاعدة «الدلو الكامل للدورة الشغّالة» يلي انضافت لـ`live-tasks.ts` ١٦/٩ (OP-01،
+ * انصلح ١٢/١٠: الرئيسية صارت تقرا `loadLiveTasks` نفسها).
  *
  * قاعدة معزولة: نسخة من `prisma/dev.db` بتنحذف بالآخر؛ الكروت مصطنعة بالكامل
  * (شركة + مصمّم جديدَين) فالنتيجة ما بتعتمد على محتوى اللقطة.
@@ -37,31 +38,14 @@ vi.mock("@/lib/db", async () => {
 
 let prisma: any;
 let live: typeof import("@/lib/live-tasks");
-let month: typeof import("@/lib/month");
 let constants: typeof import("@/lib/constants");
-let visibility: typeof import("@/lib/company-visibility");
 let daily: typeof import("@/lib/daily-work");
 
 const uniq = `deep-ops-live-${process.pid}`;
 const skip = () => !scratch.available;
 
-/** نفس استعلام `OverviewView.tsx` حرفياً (مو مُصدَّر، فمنعكسه هون). */
-async function overviewLiveSet(year: number, month_: number) {
-  const [companies, bucketTasks, continuationRaw, carryover] = await Promise.all([
-    prisma.company.findMany(),
-    prisma.task.findMany({ where: { year, month: month_, status: { not: "CANCELED" } } }),
-    prisma.task.findMany({ where: month.monthContinuationWhere(year, month_) }),
-    prisma.task.findMany({ where: month.openCarryoverWhere(year, month_) }),
-  ]);
-  const continuation = continuationRaw.filter((t: unknown) => !constants.isTaskDoneState(t as never));
-  const seen = new Set(bucketTasks.map((t: { id: string }) => t.id));
-  const extras = [...continuation, ...carryover].filter((t: { id: string }) => {
-    if (seen.has(t.id)) return false;
-    seen.add(t.id);
-    return true;
-  });
-  return visibility.hideDormantCompanyWork([...bucketTasks, ...extras], companies);
-}
+/** مصدر الشاشة نفسه، مقروء من الملف — حارس إنّ الرئيسية ما ترجع تبني مجموعتها لحالها. */
+const source = async (path: string) => (await import("node:fs")).readFileSync(path, "utf8");
 
 const AT = new Date(2026, 9, 11, 9, 0, 0); // الأحد ١١/١٠ — دلو الشاشة تشرين (m=9)
 let designerId: string;
@@ -74,9 +58,7 @@ beforeAll(async () => {
   if (skip()) return;
   prisma = (await import("@/lib/db")).prisma;
   live = await import("@/lib/live-tasks");
-  month = await import("@/lib/month");
   constants = await import("@/lib/constants");
-  visibility = await import("@/lib/company-visibility");
   daily = await import("@/lib/daily-work");
 
   const designer = await prisma.employee.create({
@@ -193,58 +175,35 @@ describe("المجموعة الحيّة — اللوح/اليوم/البريف �
     expect(ids.has(openId)).toBe(true);
   });
 
-  it("استعلام الرئيسية بيجيب المفتوح بس — المنجَز اليوم من الدورة الشغّالة بدلو تاني غايب", async () => {
-    if (skip()) return;
-    const B = await overviewLiveSet(2026, 9);
-    const ids = new Set(B.map((t: { id: string }) => t.id));
-    expect(ids.has(openId)).toBe(true);
-    // هاد هو الانحراف نفسه (موثَّق OP-01): بيصير حقيقة بالداتا، مو تفسير.
-    expect(ids.has(doneTodayId)).toBe(false);
+  it("[OP-01] الرئيسية بتقرا نفس المجموعة الحيّة (`loadLiveTasks`) — ولا استعلام خاص فيها", async () => {
+    const view = await source("src/app/OverviewView.tsx");
+    expect(view).toMatch(/loadLiveTasks\(year, month\)/);
+    expect(view).not.toMatch(/openCarryoverWhere|monthContinuationWhere/);
   });
 
-  it("السلوك الحالي: اللوح بيسكّر يوم المصمّم، والرئيسية بتعطيه الكرت التاني وكأنّ ما خلص شي", async () => {
+  it("[OP-01] «مهام اليوم» على المجموعة الحيّة: إقفال اليوم بيسكّر اليوم (اللوح والرئيسية سوا)", async () => {
     if (skip()) return;
     const designer = await prisma.employee.findUniqueOrThrow({ where: { id: designerId } });
     const companies = await prisma.company.findMany();
     const A = await live.loadLiveTasks(2026, 9, AT);
-    const B = await overviewLiveSet(2026, 9);
-    const onA = daily.selectDailyWork({ employee: designer, tasks: A as never, allTasks: A as never, companies, today: AT });
-    const onB = daily.selectDailyWork({ employee: designer, tasks: B as never, allTasks: B as never, companies, today: AT });
-    expect([onA.doneToday.map((t) => t.id), onA.dayFull, onA.queue.length]).toEqual([[doneTodayId], true, 0]);
-    expect([onB.doneToday.length, onB.dayFull, onB.queue.map((t) => t.id)]).toEqual([0, false, [openId]]);
+    const day = daily.selectDailyWork({ employee: designer, tasks: A as never, allTasks: A as never, companies, today: AT });
+    expect(day.doneToday.map((t) => t.id)).toEqual([doneTodayId]);
+    expect(day.dayFull).toBe(true);
+    expect(day.queue).toEqual([]);
   });
 
-  it.fails("[OP-01] «مهام اليوم» بالرئيسية لازم تشوف إقفال اليوم متل اللوح (اليوم بيسكّر) — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
-    const designer = await prisma.employee.findUniqueOrThrow({ where: { id: designerId } });
-    const companies = await prisma.company.findMany();
+  it("[OP-01] «إنجاز الفريق» (الدونات) بيعدّ منجز الدورة الشغّالة بدلو تاني", async () => {
+    if (skip()) return;
     const A = await live.loadLiveTasks(2026, 9, AT);
-    const B = await overviewLiveSet(2026, 9);
-    const onA = daily.selectDailyWork({ employee: designer, tasks: A as never, allTasks: A as never, companies, today: AT });
-    const onB = daily.selectDailyWork({ employee: designer, tasks: B as never, allTasks: B as never, companies, today: AT });
-    // اللوح/البريف: المنجَز اليوم محسوب، اليوم ممتلئ، الطابور فاضي.
-    expect(onA.doneToday.map((t) => t.id)).toEqual([doneTodayId]);
-    expect(onA.dayFull).toBe(true);
-    expect(onA.queue).toEqual([]);
-    // الرئيسية لازم تقول نفس الشي — وهي حالياً بتعرض الكرت التاني وكأنّ ما خلص شي.
-    expect(onB.doneToday.map((t) => t.id)).toEqual([doneTodayId]);
-    expect(onB.queue).toEqual([]);
-  });
-
-  it.fails("[OP-01] «إنجاز الفريق» (الدونات) بالرئيسية لازم يعدّ منجز الدورة الشغّالة متل اللوح — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
-    const A = await live.loadLiveTasks(2026, 9, AT);
-    const B = await overviewLiveSet(2026, 9);
     const doneOf = (set: { assigneeId: string | null }[]) =>
       set.filter((t) => t.assigneeId === designerId && constants.isTaskDoneState(t as never)).length;
     expect(doneOf(A as never)).toBe(1);
-    expect(doneOf(B as never)).toBe(doneOf(A as never));
   });
 });
 
 describe("[OP-11] خطة الدورة الشغّالة — التقارير مقابل الرئيسية (§٩، UI-01)", () => {
-  /** reports/page.tsx: `const plan = co[pt.key] ?? 0` — حرفياً. */
-  const reportsPlan = (co: Record<string, number>) => ({ posts: co.posts ?? 0, reels: co.reels ?? 0, stories: co.stories ?? 0 });
+  /** رقم السجلّ (خطة الدورة الجاية بعد التجديد المبكر). */
+  const recordPlan = (co: Record<string, number>) => ({ posts: co.posts ?? 0, reels: co.reels ?? 0, stories: co.stories ?? 0 });
 
   it("الرئيسية (OverviewView → frozenPlanCounts) بتاخد خطة الدورة من كروتها: ٤ بوست · ٤ ريل · ٠ ستوري", async () => {
     if (skip()) return;
@@ -258,15 +217,22 @@ describe("[OP-11] خطة الدورة الشغّالة — التقارير مق
     const frozen = await frozenPlanCounts([co], (c) => contract.latestCycleBucket(c, AT));
     const f = frozen.get(phoeniId);
     expect([f?.posts, f?.reels, f?.stories ?? 0]).toEqual([4, 4, 0]);
-    expect(reportsPlan(co)).toEqual({ posts: 10, reels: 4, stories: 14 });
+    expect(recordPlan(co)).toEqual({ posts: 10, reels: 4, stories: 14 });
   });
 
-  it.fails("[OP-11] صفحة التقارير لازم تقيس نفس الدورة بنفس الخطة — هلّق بتاخد رقم السجلّ (خطة تشرين) → «بوست 1/10 · ستوري 0/14» — عطل مفتوح", async () => {
-    if (skip()) throw new Error("skipped — it.fails needs a failure");
+  it("[OP-11] صفحة التقارير بتقيس نفس الدورة بنفس الخطة يلي على الرئيسية (`displayedCyclePlan`)", async () => {
+    if (skip()) return;
     const contract = await import("@/lib/contract");
+    const { displayedCyclePlan } = await import("@/lib/cycle-plan");
     const { frozenPlanCounts } = await import("@/server/cycle-plan");
     const co = await prisma.company.findUniqueOrThrow({ where: { id: phoeniId } });
-    const f = (await frozenPlanCounts([co], (c) => contract.latestCycleBucket(c, AT))).get(phoeniId);
-    expect(reportsPlan(co)).toEqual({ posts: f?.posts ?? 0, reels: f?.reels ?? 0, stories: f?.stories ?? 0 });
+    const frozen = await frozenPlanCounts([co], (c) => contract.latestCycleBucket(c, AT));
+    const shown = displayedCyclePlan(frozen, co);
+    expect([shown.posts, shown.reels, shown.stories]).toEqual([4, 4, 0]);
+    const page = await source("src/app/reports/page.tsx");
+    expect(page).toMatch(/displayedCyclePlan\(frozenPlans, co\)/);
+    expect(page).not.toMatch(/const plan = co\[pt\.key\]/);
+    const view = await source("src/app/OverviewView.tsx");
+    expect(view).toMatch(/displayedCyclePlan\(frozenPlans, co\)/);
   });
 });

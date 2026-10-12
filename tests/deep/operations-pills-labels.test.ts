@@ -24,7 +24,8 @@ import {
   isCarryoverFromPastCycle,
 } from "@/lib/contract";
 import { CONTENT_TYPE_LABELS } from "@/lib/constants";
-import { cardLabelFor } from "@/lib/cards";
+import { cardLabelFor, publishTypeLabel } from "@/lib/cards";
+import { readFileSync } from "node:fs";
 import { formatDateShort, toISODate } from "@/lib/dates";
 
 const AT = new Date(2026, 9, 11, 9, 0, 0);
@@ -60,11 +61,23 @@ describe("(أ) شارة الدورة — «متبقّي» للدورة السا�
     expect(text).toBe("دورة 23/9 → 22/10");
   });
 
-  it.fails("[OP-02] نداء شريط «متأخر النشر» (publishing-client:264) وطابور الرئيسية (overview-client:697) بلا carryover → «متبقّي» على دورة شغّالة — عطل مفتوح", () => {
-    // التعبير الحرفي من الصفحتين: <CyclePill cycleLabel={…} late /> — بلا carryover.
+  it("[OP-02] نداء بلا carryover ما بيقول «متبقّي» (الافتراضي «لأ»)", () => {
     const stripText = pillText({ cycleLabel: cycleSpanLabel(noor, 2026, 8), late: true });
-    const expected = isCarryoverFromPastCycle(noor, 2026, 8, AT) ? "متبقّي من دورة 23/9 → 22/10" : "دورة 23/9 → 22/10";
-    expect(stripText).toBe(expected);
+    expect(stripText).toBe("دورة 23/9 → 22/10");
+  });
+
+  it("[OP-02] كل نداء لـCyclePill بالشاشات بيمرّر carryover من isCarryoverFromPastCycle", () => {
+    const files = [
+      "src/app/publishing/publishing-client.tsx",
+      "src/app/overview-client.tsx",
+      "src/components/KanbanBoard.tsx",
+    ];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      const calls = src.match(/<CyclePill[\s\S]*?\/>/g) ?? [];
+      expect(calls.length, file).toBeGreaterThan(0);
+      for (const call of calls) expect(call, file).toMatch(/carryover=\{isCarryoverFromPastCycle\(/);
+    }
   });
 });
 
@@ -83,12 +96,11 @@ describe("(ج) تسمية كرت نشر بلا نوع", () => {
     expect(cardLabelFor(course, 1, new Map(), () => "التدريب")).toContain("نشر إعلان");
   });
 
-  it.fails("[OP-03] صفحة النشر (seqLabel = `${CONTENT_TYPE_LABELS[t.type] ?? t.type}`) بتطبع «null» لكرت بلا نوع — عطل مفتوح", () => {
-    // التعبير الحرفي من publishing-client.tsx:149-121.
-    const typeLabel = (t: { type: string | null }) =>
-      CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? t.type;
-    const seqLabel = `${typeLabel(course)}`;
-    expect(seqLabel).not.toBe("null");
+  it("[OP-03] صفحة النشر بتسمّي كرت النشر بلا نوع بعنوانه (`publishTypeLabel`) — مو «null»", () => {
+    expect(publishTypeLabel(course)).toContain("نشر إعلان");
+    expect(publishTypeLabel({ type: "POST", title: null })).toBe(CONTENT_TYPE_LABELS.POST);
+    expect(publishTypeLabel({ type: null, title: null })).toBe("نشر");
+    expect(readFileSync("src/app/publishing/publishing-client.tsx", "utf8")).toMatch(/publishTypeLabel\(t\)/);
   });
 });
 

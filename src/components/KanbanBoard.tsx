@@ -18,6 +18,7 @@ import {
 } from "@/lib/constants";
 import { ARABIC_MONTHS, formatDateShort } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
+import { makeLatePredicate } from "@/lib/late";
 import { cycleForBucket, cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { cardDurationDays, daysLabel } from "@/lib/capacity";
 import {
@@ -245,21 +246,11 @@ export default function KanbanBoard({
     const today = new Date();
     return today >= cyc.start && today < cyc.end;
   };
-  const isLate = (t: Task) => {
-    if (!isTaskLateState(t)) return false;
-    // شركة موقوفة = شغل مركون بانتظار الزبون، مو شغل متأخر علينا. Siizen خطتها
-    // جاهزة والزبون لسا ما بلّش — القائدة (5/8): «مشان ما تحسبها تأخير، بس يبدأ
-    // النشر بيبدأ عداد المهام». التأخير بيبلّش مع تفعيل الشركة وتاريخ نشرها.
-    const co = t.companyId ? coById.get(t.companyId) : null;
-    if (co && isDormantCompany(co)) return false;
-    // A still-open contract cycle (e.g. المول 20/6 → 20/7) is not stale
-    // carry-over just because the bucket is حزيران. Plain waiting work stays
-    // queued; in-progress work past delivery still shows as late.
-    if (isActiveContractCycle(t) && t.board === "TODO" && t.status === "NOT_STARTED") {
-      return false;
-    }
-    return true;
-  };
+  // «متأخر» بتعريف كل الشاشات (`lib/late.ts`): الشركة الموقوفة أو المعفاة مش متأخرة
+  // علينا، والمحجوز خلف مرحلة مفتوحة الدور فيه على صاحبها. كان هون استثناء لكل كرت
+  // «لم يبدأ» بدورة شغّالة (المول ٢٠/٦) — عملياً ألغى التأخير الحقيقي: صفر متأخر على
+  // اللوح والبريف بيقول ٨ (فحص ١٢/١٠، OP-16).
+  const isLate = useMemo(() => makeLatePredicate(tasks, companies), [tasks, companies]);
   const dateMs = (value: Date | string | null | undefined) =>
     value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
   const cardDateMs = (t: Task) => {

@@ -199,19 +199,33 @@ export function compareDailyWorkTasks(
  */
 export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean {
   const byId = new Map(allTasks.map((t) => [t.id, t]));
-  return (task: Task): boolean => {
-    const seen = new Set<string>();
-    let cur: Task | undefined = task;
-    while (cur?.blockedById) {
-      if (seen.has(cur.id)) break; // a cycle in the data must not hang the caller
-      seen.add(cur.id);
-      const blocker: Task | undefined = byId.get(cur.blockedById);
-      if (!blocker) return false; // blocker archived/deleted → no longer a gate
-      if (!isTaskDoneState(blocker)) return true;
-      cur = blocker;
-    }
-    return false;
-  };
+  return (task: Task): boolean => firstOpenBlocker(byId, task) != null;
+}
+
+/**
+ * أول حاجز **مفتوح** بسلسلة الحجز — الكرت يلي الدور عليه فعلاً. `null` = ولا شي حاجز.
+ *
+ * …بس كرت **كتابة** الدورة (WRITE) ورا مرحلة منجزة ما عاد بيحجز (فحص ١٢/١٠، OP-10):
+ * §٦ بيقول «منجز وحاجزه مفتوح» حسب كرت الكتابة حالة **مشروعة** — كرت دورة بيحجب كل
+ * القطع، بس قطعة صوّرها المصوّر ومنتجتها المونتيرة عدّت الكتابة فعلاً. كانت السلسلة
+ * تعبر المونتاج المنجز لكرت الكتابة المفتوح، فريل جاهز انخفى عن الناشر يوم نشره وما
+ * طلع متأخر بولا قائمة (والتقرير الدوري بيعدّه متأخر). غير هيك — مونتاج منجز
+ * وتصويره مفتوح — تناقض بالداتا بيضل حاجز متل قبل.
+ */
+function firstOpenBlocker(byId: Map<string, Task>, task: Task): Task | null {
+  const seen = new Set<string>();
+  let cur: Task | undefined = task;
+  let passedDone = false;
+  while (cur?.blockedById) {
+    if (seen.has(cur.id)) break; // a cycle in the data must not hang the caller
+    seen.add(cur.id);
+    const blocker: Task | undefined = byId.get(cur.blockedById);
+    if (!blocker) return null; // blocker archived/deleted → no longer a gate
+    if (!isTaskDoneState(blocker)) return passedDone && blocker.stage === "WRITE" ? null : blocker;
+    passedDone = true;
+    cur = blocker;
+  }
+  return null;
 }
 
 export type HeldReason = {
@@ -234,23 +248,11 @@ export type HeldReason = {
  */
 export function makeHeldReason(allTasks: Task[], todayISO: string): (task: Task) => HeldReason | null {
   const byId = new Map(allTasks.map((t) => [t.id, t]));
-  const openBlocker = (task: Task): Task | null => {
-    const seen = new Set<string>();
-    let cur: Task | undefined = task;
-    while (cur?.blockedById) {
-      if (seen.has(cur.id)) break;
-      seen.add(cur.id);
-      const blocker: Task | undefined = byId.get(cur.blockedById);
-      if (!blocker) return null; // حاجز مؤرشف/محذوف → ما عاد بوابة (متل makeBlockedPredicate)
-      if (!isTaskDoneState(blocker)) return blocker;
-      cur = blocker;
-    }
-    return null;
-  };
   return (task) => {
     const fixed = fixedDayISO(task);
     const parkedUntil = fixed != null && fixed > todayISO ? fixed : null;
-    const blockedBy = openBlocker(task);
+    // نفس قاعدة `makeBlockedPredicate` حرفياً — جواب الاستبعاد والاستبعاد نفسه ما بيفترقوا.
+    const blockedBy = firstOpenBlocker(byId, task);
     if (parkedUntil == null && blockedBy == null) return null;
     return { parkedUntil, blockedBy };
   };

@@ -14,6 +14,7 @@ import { buildWeeklyPublishDigest } from "./weekly";
 import { buildDailyDoneReport } from "./done-report";
 import { sendMessage, isTelegramConfigured, splitForTelegram, TG_CHUNK } from "./client";
 import { DELIVERY_MATCH_KINDS } from "./match";
+import { dayKeyOf } from "@/lib/period-report";
 
 export const LEAD_CHAT_KEY = "telegram.leadChatId";
 
@@ -141,11 +142,28 @@ export async function sendDailyDoneReport(today = new Date()): Promise<SendBrief
   const offTeam = await prisma.employee.findMany({ select: { workDays: true } });
   if (isTeamOffDay(offTeam, today)) return { ok: true, sent: 0, skipped: "عطلة" };
 
-  const [employees, companies, tasks] = await Promise.all([
+  // المنجز اليوم من **كل** الدلاء — متبقّي الدورة السابقة وتحضير الدورة الجاية كمان.
+  // المجموعة الحيّة لحالها (للمفتوح والمتأخر) ما بتشوفهن: ٤١ إقفال على ١٣ يوم كانوا
+  // غايبين عن تقرير المسا (فحص ١٢/١٠، TR-23). اليوم بتوقيت دمشق (UTC+3 ثابت).
+  const dayKey = dayKeyOf(today);
+  const dayStart = new Date(Date.parse(`${dayKey}T00:00:00Z`) - 3 * 3_600_000);
+  const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+  const [employees, companies, live, finishedToday] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     loadLiveTasks(today.getFullYear(), today.getMonth()),
+    prisma.task.findMany({
+      where: {
+        status: { not: "CANCELED" },
+        OR: [
+          { finishedAt: { gte: dayStart, lt: dayEnd } },
+          { completedAt: { gte: dayStart, lt: dayEnd } },
+        ],
+      },
+    }),
   ]);
+  const seen = new Set(live.map((t) => t.id));
+  const tasks = [...live, ...finishedToday.filter((t) => !seen.has(t.id))];
   const report = buildDailyDoneReport(today, employees as never, companies as never, tasks as never);
   if (!report.text) return { ok: true, sent: 0 };
 

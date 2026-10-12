@@ -19,6 +19,8 @@ import { computeWorkload } from "@/lib/workload";
 import { buildReelNumbers, cardLabelFor, groupTasksIntoCards } from "@/lib/cards";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import { achievementSpanLabel, hasStartedPublishing, latestCycleBucket } from "@/lib/contract";
+import { displayedCyclePlan } from "@/lib/cycle-plan";
+import { frozenPlanCounts } from "@/server/cycle-plan";
 import { dormantCompanyIds, isDormantCompany } from "@/lib/company-visibility";
 import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { workRoster } from "@/lib/team";
@@ -122,13 +124,17 @@ export default async function ReportsPage({
           }),
     );
   }
-  const companyPlan = companies
-    .filter((c) => c.managed && !isDormantCompany(c))
+  // نفس خطة الدورة يلي على الرئيسية (`displayedCyclePlan`، §٩ — OP-11).
+  const planNow = new Date();
+  const plannedCompanies = companies.filter((c) => c.managed && !isDormantCompany(c));
+  const frozenPlans = await frozenPlanCounts(plannedCompanies, (co) => latestCycleBucket(co, planNow));
+  const companyPlan = plannedCompanies
     .sort((a, b) => a.priority - b.priority)
     .map((co) => {
       const cycleTasks = cycleTaskCache.get(co.id) ?? [];
+      const cyclePlan = displayedCyclePlan(frozenPlans, co);
       const rows = PLAN_TYPES.map((pt) => {
-        const plan = co[pt.key] ?? 0;
+        const plan = cyclePlan[pt.key] ?? 0;
         const d = completedCompanyPlanCount(cycleTasks, co.id, pt.type);
         // «منتَج» = الإنتاج خالص (تصميم/تصوير/مونتاج) حتى لو النشر لسا — شغل
         // موجود فعلاً وما لازم يقرأ كأنّه ما انعمل.

@@ -8,15 +8,8 @@
  * خالص بلا قاعدة بيانات — بينفحص بالاختبارات.
  */
 import type { Company, Employee, Task } from "@/types";
-import {
-  CONTENT_TYPE_LABELS,
-  isTaskDoneState,
-  isTaskLateState,
-  type ContentType,
-} from "@/lib/constants";
-import { isDormantCompany } from "@/lib/company-visibility";
-import { hasStartedPublishing } from "@/lib/contract";
-import { makeBlockedPredicate } from "@/lib/daily-work";
+import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/constants";
+import { makeLatePredicate } from "@/lib/late";
 
 export type NameOf = (t: Task) => string;
 
@@ -97,19 +90,8 @@ export function typesByCompany(list: Task[], coName: NameOf): string {
  * وبلا المعفاة (تأخير الزبون)، وبلا المحجوز وراء مرحلة سابقة.
  */
 export function openLateTasks(tasks: Task[], companies: Company[], today: Date): Task[] {
-  const dormant = new Set(companies.filter((c) => isDormantCompany(c)).map((c) => c.id));
-  const exempt = new Set(
-    companies.filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim()).map((c) => c.id),
-  );
-  const isBlocked = makeBlockedPredicate(tasks);
-  return tasks.filter(
-    (t) =>
-      !isTaskDoneState(t) &&
-      t.status !== "CANCELED" &&
-      !(t.companyId && (dormant.has(t.companyId) || exempt.has(t.companyId))) &&
-      isTaskLateState(t, today) &&
-      !isBlocked(t),
-  );
+  // التعريف نفسه يلي بتقراه كل الشاشات (`lib/late.ts`).
+  return tasks.filter(makeLatePredicate(tasks, companies, today));
 }
 
 /** «35 — البلسم 8 · التوظيف 7 · …» — عدد المتأخر بالشركة، الأكثر أولاً. */

@@ -10,6 +10,16 @@
  * Writing stays one card per company (Nawal writes the whole batch).
  */
 import type { Task } from "@/types";
+import { CONTENT_TYPE_LABELS } from "@/lib/constants";
+
+/**
+ * كلمة القطعة بصفحة النشر: «بوست» · «ريل» · … — والكرت بلا نوع (إعلان دورة تدريبية)
+ * بعنوانه. كانت بتطبع «null · التدريب» (فحص ١٢/١٠، OP-03).
+ */
+export function publishTypeLabel(t: Pick<Task, "type" | "title">): string {
+  const typed = t.type ? CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] : undefined;
+  return typed ?? (t.type || t.title?.trim() || "نشر");
+}
 
 // Content pieces are never batched anymore; everything is an individual card.
 export const isGroupableCard = (_t: Task) => false;

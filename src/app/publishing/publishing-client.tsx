@@ -1,6 +1,8 @@
 "use client";
 
-import { cycleSpanLabel } from "@/lib/contract";
+import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
+import { makeLateClassifier } from "@/lib/late";
+import { makeHeldReason } from "@/lib/daily-work";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -11,14 +13,16 @@ import {
   CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
   CONTENT_TYPE_COLORS,
+  STAGE_LABELS,
   STATUS_LABELS,
   isTaskDoneState,
   type ContentType,
+  type Stage,
   type Status,
 } from "@/lib/constants";
 import { updateTaskStatus } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
-import { buildReelNumbers, comparePieceSequence } from "@/lib/cards";
+import { buildReelNumbers, comparePieceSequence, publishTypeLabel } from "@/lib/cards";
 import { calendarPublishItems, publishesInMonth } from "@/lib/publish-calendar";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
@@ -79,13 +83,18 @@ export default function PublishingClient({
   /** كرت ما إلو خانة بالشبكة: لا من دورة هالشهر ولا يوم نشره جوّاه. */
   const offGrid = (t: Task) =>
     !(t.year === year && t.month === month) && !publishesInMonth(t, year, month);
+  // «متأخر» بتعريف كل الشاشات (`lib/late.ts`) — والقطعة يلي فات موعدها وهي **محجوزة**
+  // خلف مرحلة مفتوحة بتطلع «بانتظار <المرحلة> — <صاحبها>»، مش «انشريها»: كان الشريط
+  // يطلب من عمر ينشر ريل مونتاجه لسا مفتوح (فحص ١٢/١٠، OP-12).
+  const lateClass = useMemo(() => makeLateClassifier(tasks, companies), [tasks, companies]);
+  const heldReason = useMemo(() => makeHeldReason(tasks, todayISO), [tasks, todayISO]);
   const overdue = useMemo(
     () =>
       pubTasks
         .filter((t) => {
           if (isTaskDoneState(t)) return false;
+          if (lateClass(t) != null) return true;
           const due = toISODate(new Date(t.publishDate!));
-          if (due < todayISO) return true;
           // مستحقّ **اليوم** وجاي من دورة سابقة = ما إلو خانة بالشبكة ولا بيحقّق
           // شرط «تجاوز موعده»، فكان بيختفي من الصفحة كلها. صار فعلاً: خمس قطع
           // بلسم من بكت آب أُعيد تأريخ نشرها لـ٢١/٩ فما ظهرت لا بالشبكة ولا هون،
@@ -99,8 +108,11 @@ export default function PublishingClient({
             comparePieceSequence(a, b) ||
             a.id.localeCompare(b.id),
         ),
-    [pubTasks, todayISO, year, month],
+    // `offGrid` بيتبع year/month بس، وهنّي بالقائمة.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pubTasks, todayISO, year, month, lateClass],
   );
+  const waitingCount = overdue.filter((t) => lateClass(t) === "waiting").length;
 
   // الشبكة بتعرض كل قطعة يوم نشرها بهالشهر — من أي دورة — مش بس كروت دورة
   // الشهر. شوف `calendarPublishItems`.
@@ -146,8 +158,7 @@ export default function PublishingClient({
 
   const typeColor = (t: Task) =>
     CONTENT_TYPE_COLORS[(t.type as ContentType) ?? "POST"] ?? "#C8A84E";
-  const typeLabel = (t: Task) =>
-    CONTENT_TYPE_LABELS[t.type as keyof typeof CONTENT_TYPE_LABELS] ?? t.type;
+  const typeLabel = (t: Task) => publishTypeLabel(t);
   const assetLabel = (t: Task) =>
     assetNameForTask(t.companyId ? companies.find((c) => c.id === t.companyId) : null, t, seqOf);
 
@@ -242,7 +253,8 @@ export default function PublishingClient({
           <div className="flex items-center gap-2 mb-2">
             <CalendarClock className="w-4 h-4 text-danger" />
             <span className="text-sm font-semibold text-danger">
-              متأخر النشر ومستحقّ اليوم · {overdue.length}
+              متأخر النشر ومستحقّ اليوم · {overdue.length - waitingCount}
+              {waitingCount > 0 ? ` · ${waitingCount} بانتظار مرحلة قبلها` : ""}
             </span>
             <span className="text-[11px] text-fg-muted">
               كل قطعة مفتوحة تجاوزت موعد نشرها، ومعها المستحقّ اليوم من دورة سابقة —
@@ -261,19 +273,41 @@ export default function PublishingClient({
                     {seqLabel(t)} · {coName(t.companyId)}
                   </span>
                   {(t.year !== year || t.month !== month) && (
-                    <CyclePill cycleLabel={cycleLabelFor(t.companyId, t.year, t.month)} late />
+                    <CyclePill
+                      carryover={isCarryoverFromPastCycle(
+                        t.companyId ? companies.find((c) => c.id === t.companyId) : null,
+                        t.year,
+                        t.month,
+                      )}
+                      cycleLabel={cycleLabelFor(t.companyId, t.year, t.month)}
+                      late={lateClass(t) === "late"}
+                    />
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
                   {toISODate(new Date(t.publishDate!)) === todayISO ? (
                     <span className="text-fg font-semibold">موعدها اليوم</span>
                   ) : (
-                    <span className="text-danger font-semibold">
+                    <span
+                      className={
+                        lateClass(t) === "waiting" ? "text-fg-muted" : "text-danger font-semibold"
+                      }
+                    >
                       موعدها {formatDateShort(new Date(t.publishDate!))}
                     </span>
                   )}
                   <span className="text-fg-muted">· {empName(t.assigneeId)}</span>
                 </div>
+                {lateClass(t) === "waiting" &&
+                  (() => {
+                    const on = heldReason(t)?.blockedBy;
+                    return (
+                      <div className="text-[10px] text-warning">
+                        بانتظار {on?.stage ? (STAGE_LABELS[on.stage as Stage] ?? "مرحلة قبلها") : "مرحلة قبلها"}
+                        {on ? ` — ${empName(on.assigneeId)}` : ""}
+                      </div>
+                    );
+                  })()}
                 <Select
                   className="w-full h-7 text-[11px] py-0.5"
                   value={t.status === "READY" ? "PUBLISHED" : t.status}

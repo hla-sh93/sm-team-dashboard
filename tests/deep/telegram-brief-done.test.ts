@@ -24,9 +24,11 @@ const task = (o: Record<string, unknown>) =>
   ({ id: `t${++seq}`, kind: "CONTENT", type: "POST", stage: "DESIGN", status: "NOT_STARTED", board: "TODO", month: 9, year: 2026, pieceNo: seq, quantity: 1, hours: 1.33, isPinned: false, companyId: "c1", pipelineKey: `c1|POST|${seq}`, ...o }) as unknown as Task;
 
 const ORIGINAL_TZ = process.env.TZ;
+// محو TZ بعد ما تغيّر ما بيرجّع منطقة الجهاز — بيترك Node على UTC، فالتجهيزات المبنية
+// وقت التحميل (بمنطقة الجهاز) بتنقرا بيوم تاني بالاختبارات يلي بعدها. منرجّعها صراحةً.
+const SYSTEM_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 afterEach(() => {
-  if (ORIGINAL_TZ === undefined) delete process.env.TZ;
-  else process.env.TZ = ORIGINAL_TZ;
+  process.env.TZ = ORIGINAL_TZ ?? SYSTEM_TZ;
 });
 
 describe("٠٧:٤٥ — الموجة العامة", () => {
@@ -87,15 +89,15 @@ describe("٠٧:٤٥ — الموجة العامة", () => {
     const run = (tasks: Task[]) =>
       buildDailyBrief({ today: SUNDAY, companies: cos, employees: [EMPS[0]], tasks }).schedule.text;
 
-    it.fails("[TR-25] شركة انذكرت بنصّ اليوم ما بتنعاد بالمطاردة", () => {
+    it("[TR-25] شركة انذكرت بنصّ اليوم ما بتنعاد بالمطاردة", () => {
       // باللقطة ١١/١٠: «‏أليسار مخبر د.نور 3 ريل، ومتأخر: مخبر د.نور 1 ريل».
       const text = run(["c1", "c2", "c5", "c6", "c6", "c5", "c2", "c1"].map((c, k) => late(c, k)));
       const [today, chase = ""] = text.split("، ومتأخر: ");
-      for (const name of chase.split(" · ").map((p) => p.replace(/ \d+ .*/, "")))
+      for (const name of chase.split(" · ").filter(Boolean).map((p) => p.replace(/ \d+ .*/, "")))
         expect(today, name).not.toContain(name);
     });
 
-    it.fails("[TR-25] حد أقصى شركتين بالمطاردة (الكود ٣)", () => {
+    it("[TR-25] حد أقصى شركتين بالمطاردة (الكود ٣)", () => {
       // ستّ متأخرات وصل الأقدم بتعبّي اليوم، والباقي بثلاث شركات تانية.
       const text = run([...Array.from({ length: 6 }, (_, k) => late("c1", k)), late("c2", 10, 3), late("c5", 11, 3), late("c6", 12, 3)]);
       const chase = text.split("، ومتأخر: ")[1] ?? "";
@@ -104,7 +106,7 @@ describe("٠٧:٤٥ — الموجة العامة", () => {
     });
   });
 
-  it.fails("[TR-15] الشخص يلي بعطلته اليوم ما بياخد سطر — ولو عليه متأخر", () => {
+  it("[TR-15] الشخص يلي بعطلته اليوم ما بياخد سطر — ولو عليه متأخر", () => {
     // سابين دوامها الاثنين→الخميس بهالسيناريو، فالأحد عطلتها.
     const offSunday = EMPS.map((e) => (e.id === "s" ? emp("s", "سابين", { workDays: "[1,2,3,4]" }) : e));
     expect(brief(offSunday)).not.toContain("سابين");
@@ -124,7 +126,7 @@ describe("٢٠:٠٠ — تقرير المنجز", () => {
     expect(r.text).toContain("بلا إنجاز مسجَّل اليوم: مونتيرة · مصوّر");
   });
 
-  it.fails("[TR-16] على خادم UTC (Vercel) مونتاج انسلّم ١:٠٩ بعد منتصف ليل دمشق بينعدّ بتقرير يومه", () => {
+  it("[TR-16] على خادم UTC (Vercel) مونتاج انسلّم ١:٠٩ بعد منتصف ليل دمشق بينعدّ بتقرير يومه", () => {
     // BW ريل ٣ مونتاج: ٢٣/٩ ٠١:٠٩ دمشق = ٢٢/٩ ٢٢:٠٩Z. التقرير بينبعت ١٧:٠٠Z (٢٠:٠٠ دمشق) يوم ٢٣/٩.
     process.env.TZ = "UTC";
     const r = buildDailyDoneReport(new Date("2026-09-23T17:00:00Z"), EMPS, COS, [
@@ -133,7 +135,7 @@ describe("٢٠:٠٠ — تقرير المنجز", () => {
     expect(r.count).toBe(1);
   });
 
-  it.fails("[TR-16] نفس اليوم بتقريرين: الإقفال الإداري ما بينعدّ إنجازاً بتقرير ٢٠:٠٠ متل التقرير اليومي (§١٠)", () => {
+  it("[TR-16] نفس اليوم بتقريرين: الإقفال الإداري ما بينعدّ إنجازاً بتقرير ٢٠:٠٠ متل التقرير اليومي (§١٠)", () => {
     const tasks = [
       doneAt("2026-09-20T09:00:00Z", { notes: "أُغلق بقرار القائدة: نفدت منتجات الزبون فلن يُنتَج الستوري — أُغلق إدارياً." }),
       doneAt("2026-09-20T10:00:00Z", { notes: "سُلّم على تلغرام (بالاسم): wasl-post-9-3.jpg" }),
@@ -149,7 +151,7 @@ describe("٢٠:٠٠ — تقرير المنجز", () => {
     expect(evening.count).toBe(daily.team.productionUnits + daily.team.published);
   });
 
-  it.fails("[TR-16] «متأخر مفتوح» بتقرير ٢٠:٠٠ ما بيعدّ ستوري لسا جوّا دورتها (الستوري بالعدد لا بالترتيب، §١٠)", () => {
+  it("[TR-16] «متأخر مفتوح» بتقرير ٢٠:٠٠ ما بيعدّ ستوري لسا جوّا دورتها (الستوري بالعدد لا بالترتيب، §١٠)", () => {
     // ستوري تصميمها بتاريخ المحرّك ٥/١٠ ودورتها ١/١٠ → ٣١/١٠: التقرير الدوري ما بيعدّها متأخرة،
     // وسطر ٢٠:٠٠ بيعدّها (باللقطة: ١٣/١٠ «24» مقابل ٢٢ بالتقرير اليومي — ستوري فونيتيك ١ وعبادة ٤/٧).
     const r = buildDailyDoneReport(new Date(2026, 9, 12, 20, 0), EMPS, COS, [
@@ -158,7 +160,7 @@ describe("٢٠:٠٠ — تقرير المنجز", () => {
     expect(r.text ?? "").not.toContain("متأخر مفتوح");
   });
 
-  it.fails("[TR-16] تصوير مسجَّل على المونتيرة بينحسب لمصوّر الشركة بتقرير ٢٠:٠٠ متل §١٠", () => {
+  it("[TR-16] تصوير مسجَّل على المونتيرة بينحسب لمصوّر الشركة بتقرير ٢٠:٠٠ متل §١٠", () => {
     const r = buildDailyDoneReport(new Date(2026, 8, 20, 20, 0), EMPS, COS, [
       doneAt("2026-09-20T09:00:00Z", { assigneeId: "e", type: "REEL", stage: "SHOOT" }),
     ]);

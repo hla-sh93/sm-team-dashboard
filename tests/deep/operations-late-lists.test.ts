@@ -6,20 +6,21 @@
  *
  *   البريف + لوحة الرئيسية + ملخّص تلغرام → `openLateTasks` (summary.ts) / `makeBlockedPredicate`
  *   «متابعة اليوم» (/today)               → today-client.tsx (الفلتر منسوخ حرفياً)
- *   شريط «متأخر النشر» (/publishing)      → publishing-client.tsx (الفلتر منسوخ حرفياً)
- *   شارة «متأخّر» على اللوح               → KanbanBoard.tsx `isLate` (منسوخ حرفياً)
+ *   شريط «متأخر النشر» (/publishing)      → `makeLateClassifier` (lib/late.ts، من ١٢/١٠)
+ *   شارة «متأخّر» على اللوح               → `makeLatePredicate` (lib/late.ts، من ١٢/١٠)
  *   تقرير الإنجاز الدوري (§١٠)            → `buildPeriodReport`
  *
  * الاصطلاح: `it.fails` = عطل مفتوح موثَّق ([OP-nn])؛ اقلبه لـ`it` لما ينصلح.
  * التقرير: `docs/qa/deep-test-2026-10-11/operations.md`.
  */
 import { describe, expect, it } from "vitest";
-import { isTaskDoneState, isTaskLateState } from "@/lib/constants";
+import { isTaskDoneState } from "@/lib/constants";
 import { isDormantCompany } from "@/lib/company-visibility";
-import { cycleForBucket } from "@/lib/contract";
 import { toISODate } from "@/lib/dates";
 import { buildPeriodReport, resolvePeriod } from "@/lib/period-report";
 import { openLateTasks } from "@/lib/telegram/summary";
+import { makeLateClassifier, makeLatePredicate } from "@/lib/late";
+import { readFileSync } from "node:fs";
 import type { Company, Task } from "@/types";
 
 const TODAY = new Date(2026, 9, 11, 9, 0, 0); // الأحد ١١/١٠
@@ -105,20 +106,12 @@ const todayOverdue = (ts: Task[]) => {
       return dl != null && dl < TODAY_ISO;
     });
 };
-/** publishing-client.tsx `overdue` (الشقّ «تجاوز موعده»). */
+/** شريط «متأخر النشر»: كروت النشر المصنّفة «متأخر» (والمحجوز «بانتظار»، مو متأخر). */
+const classify = makeLateClassifier(tasks, companies, TODAY);
 const publishingStrip = (ts: Task[]) =>
-  ts.filter(
-    (t) => t.stage === "PUBLISH" && t.publishDate && !isTaskDoneState(t) && toISODate(new Date(t.publishDate)) < TODAY_ISO,
-  );
-/** KanbanBoard.tsx `isLate` (مع اليوم الثابت بدل `new Date()`). */
-const boardIsLate = (t: Task) => {
-  if (!isTaskLateState(t, TODAY)) return false;
-  if (isDormantCompany(company)) return false;
-  const cyc = cycleForBucket(company, t.year, t.month);
-  const activeCycle = !!cyc && TODAY >= cyc.start && TODAY < cyc.end;
-  if (activeCycle && t.board === "TODO" && t.status === "NOT_STARTED") return false;
-  return true;
-};
+  ts.filter((t) => t.stage === "PUBLISH" && t.publishDate && classify(t) === "late");
+/** شارة «متأخّر» على اللوح. */
+const boardIsLate = makeLatePredicate(tasks, companies, TODAY);
 const ids = (ts: Task[]) => ts.map((t) => t.id).sort();
 
 const employees = ["nawal", "majed", "alissar", "omar", "sabine"].map((id) => ({
@@ -143,10 +136,10 @@ const periodReport = () => {
 
 describe("لوحة تعريفات «متأخر» — السلوك الحالي (مرجع للمقارنة)", () => {
   it("كل شاشة بتطلّع مجموعتها هيك اليوم", () => {
-    expect(ids(openLateTasks(tasks, companies, TODAY))).toEqual(["designLate"]);
+    expect(ids(openLateTasks(tasks, companies, TODAY))).toEqual(["designLate", "pubChain"]);
     expect(ids(todayOverdue(tasks))).toEqual(["designLate", "pinnedLater", "pubBlocked", "pubChain"]);
-    expect(ids(publishingStrip(tasks))).toEqual(["pubBlocked", "pubChain"]);
-    expect(ids(tasks.filter(boardIsLate))).toEqual([]);
+    expect(ids(publishingStrip(tasks))).toEqual(["pubChain"]);
+    expect(ids(tasks.filter(boardIsLate))).toEqual(["designLate", "pubChain"]);
     const rep = periodReport();
     expect(rep.team.openLate).toBe(2); // designLate + pubChain
     const per = Object.fromEntries(rep.people.map((p) => [p.id, p.openLate]));
@@ -159,14 +152,20 @@ describe("[OP-12] «متابعة اليوم» وشريط «متأخر النشر
     expect(ids(todayOverdue(tasks))).toEqual(ids(openLateTasks(tasks, companies, TODAY)));
   });
 
-  it.fails("[OP-12] /publishing «متأخر النشر» ما لازم يطلب نشر قطعة مونتاجها لسا مفتوح — عطل مفتوح", () => {
+  it("[OP-12] /publishing «متأخر النشر» ما بيطلب نشر قطعة مونتاجها لسا مفتوح — بتطلع «بانتظار»", () => {
     expect(ids(publishingStrip(tasks))).not.toContain("pubBlocked");
+    expect(classify(tasks.find((t) => t.id === "pubBlocked")!)).toBe("waiting");
+    const src = readFileSync("src/app/publishing/publishing-client.tsx", "utf8");
+    expect(src).toMatch(/makeLateClassifier\(tasks, companies\)/);
   });
 });
 
 describe("[OP-16] شارة «متأخّر» على اللوح بتسكت عن كل كرت «لم يبدأ» بدورة شغّالة", () => {
-  it.fails("[OP-16] تصميم موعده ٥/١٠ ولا شي بيحجزه: البريف والرئيسية و§١٠ بيقولوا متأخر، واللوح لازم يقول متلهن — عطل مفتوح", () => {
+  it("[OP-16] تصميم موعده ٥/١٠ ولا شي بيحجزه: البريف والرئيسية و§١٠ واللوح كلهن بيقولوا متأخر", () => {
     expect(boardIsLate(tasks.find((t) => t.id === "designLate")!)).toBe(true);
+    const src = readFileSync("src/components/KanbanBoard.tsx", "utf8");
+    expect(src).toMatch(/makeLatePredicate\(tasks, companies\)/);
+    expect(src).not.toMatch(/t\.board === "TODO" && t\.status === "NOT_STARTED"\) \{\s*return false/);
   });
 });
 
@@ -176,7 +175,7 @@ describe("[OP-10] الحجز «بالسلسلة» (البريف/الرئيسية
     expect(rep.people.find((p) => p.id === "omar")?.openLate).toBe(1);
   });
 
-  it.fails("[OP-10] البريف/الرئيسية لازم يشوفوا نفس الكرت متأخر — السلسلة بتعبر المونتاج المنجز لكتابة الدورة المفتوحة — عطل مفتوح", () => {
+  it("[OP-10] البريف/الرئيسية بيشوفوا نفس الكرت متأخر — السلسلة ما بتعبر المونتاج المنجز لكتابة الدورة المفتوحة", () => {
     expect(ids(openLateTasks(tasks, companies, TODAY))).toContain("pubChain");
   });
 });

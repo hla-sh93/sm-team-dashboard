@@ -246,10 +246,33 @@ export function roleCategory(e: Pick<ReportEmployee, "role" | "isPhotographer"> 
  * مهام الدورات السابقة منجزة»، «الكتابة منجزة من طرفه (الزبون)». تقرير أيلول
  * اليدوي عدّها إنجازاً بالبداية.
  */
-const ADMIN_CLOSURE = /إدارياً|أُغلق تلقائياً|اعتُبرت كل مهام الدورات السابقة منجزة|الكتابة منجزة من طرفه|لفكّ الحجز/;
+/**
+ * التشكيل والهمزات ما بيغيّروا المعنى: «إداريًا» (تنوين قبل الألف) و«أغلق تلقائياً» (بلا
+ * ضمّة) و«إقفال إداري» كانوا يمرقوا كإنجاز لأنّ المطابقة حرفية (فحص ١٢/١٠، TR-17) —
+ * كرتا تصوير التوظيف ٧ و٨ انحسبوا تصويرين لماجد.
+ */
+const plainArabic = (s: string) => s.replace(/[\u064B-\u0652\u0670\u0640]/g, "").replace(/[أإآ]/g, "ا");
+const ADMIN_PHRASE =
+  /اغلق(?:ت)? تلقائيا|اعتبرت كل مهام الدورات السابقة منجزة|الكتابة منجزة من طرفه|لفك الحجز/;
+/** «إداري/إدارياً» ككلمة لحالها — مو «الإدارة» ولا «الإدارية». */
+const ADMIN_WORD = /(?:^|[^\p{L}])اداري(?:ا)?(?![\p{L}])/u;
+const CLOSE_WORD = /اغلق|اقفال|انسكر|مسكر|سكرت/;
 
 export function isAdministrativeClosure(t: { notes: string | null }): boolean {
-  return ADMIN_CLOSURE.test(t.notes ?? "");
+  const notes = plainArabic(t.notes ?? "");
+  return ADMIN_PHRASE.test(notes) || (ADMIN_WORD.test(notes) && CLOSE_WORD.test(notes));
+}
+
+/**
+ * سطر بيقول **إمتى انسلّم** فعلاً: ملف تلغرام («سُلّم على تلغرام…»)، تأكيد القائدة
+ * («أكّدت القائدة…»)، أو اسم ملف. كانت أي ملاحظة تكفي، فملاحظة جدولة («المونتاج الاثنين
+ * ٢١/٩ — كان مؤرَّخاً ١٧/٩») خلّت الإقفال «مقاساً» بطابع الكبسة (فحص ١٢/١٠، TR-19).
+ */
+const DELIVERY_EVIDENCE =
+  /سلم على تلغرام|اكدت القائدة|\.(?:jpe?g|png|webp|heic|mp4|mov|docx?|pdf|pptx?)(?![A-Za-z])/i;
+
+export function hasDeliveryEvidenceLine(notes: string | null): boolean {
+  return DELIVERY_EVIDENCE.test(plainArabic(notes ?? ""));
 }
 
 /** موقوف بطلب الزبون — التأخير مو على الفريق. */
@@ -377,14 +400,40 @@ function itemLabel(t: ReportTask): string {
 // البناء
 // ---------------------------------------------------------------------------
 
-export function buildPeriodReport(input: {
+export type PeriodInput2 = {
   period: ReportPeriod;
   tasks: ReportTask[];
   employees: ReportEmployee[];
   companies: ReportCompany[];
   deliveries: ReportDelivery[];
   now: Date;
-}): PeriodReport {
+};
+
+/** كرت منجز بالفترة: لمين انحسب، وأي فئة، وأي يوم، وكم يوم تأخير لو انقاس. */
+export type LedgerDone<T extends ReportTask = ReportTask> = {
+  t: T;
+  who: string | null;
+  cat: WorkCategory;
+  dayKey: string;
+  lateDays: number | null;
+};
+
+/**
+ * دفتر الفترة — «شو انعمل» و«شو متأخر ومفتوح» بقواعد §١٠ كاملة (يوم دمشق، الإداري
+ * مستبعد، التصوير لمصوّر الشركة، الستوري على نهاية دورتها، حالة الشركة وقت الفترة).
+ *
+ * مُصدَّر لحاله لأنّ تقرير ٢٠:٠٠ لازم يعدّ **نفس** الشي: كانوا تقريرين بقاعدتين
+ * فطلع رقمان لنفس اليوم (فحص ١٢/١٠، TR-16).
+ */
+export function periodLedger<T extends ReportTask>(
+  input: Omit<PeriodInput2, "tasks"> & { tasks: T[] },
+): {
+  asOfKey: string;
+  doneInPeriod: LedgerDone<T>[];
+  openLate: { t: T; who: string | null }[];
+  /** دورة الكرت (حسب دلوه) — لعنوان دورات الشركة. */
+  cycleOf: (t: ReportTask) => { start: string; last: string } | null;
+} {
   const { period, tasks, employees, companies, deliveries, now } = input;
   const todayKey = dayKeyOf(now);
   // المتأخر المفتوح: بنهاية الفترة لو خلصت، وإلا لهاليوم.
@@ -394,7 +443,6 @@ export function buildPeriodReport(input: {
   const empById = new Map(employees.map((e) => [e.id, e]));
   const coById = new Map(companies.map((c) => [c.id, c]));
   const taskById = new Map(tasks.map((t) => [t.id, t]));
-  const coName = (id: string | null) => (id ? coById.get(id)?.name ?? "—" : "بلا شركة");
 
   /** كروت إلها ملف مربوط على تلغرام — دليل إنها انسلّمت فعلاً. */
   const delivered = new Set(deliveries.map((d) => d.taskId));
@@ -460,7 +508,7 @@ export function buildPeriodReport(input: {
   }
 
   function hasDeliveryEvidence(t: ReportTask): boolean {
-    return delivered.has(t.id) || Boolean(t.notes?.trim());
+    return delivered.has(t.id) || hasDeliveryEvidenceLine(t.notes);
   }
 
   /** مفتوح وقت `asOfKey`: ما انسكّر، أو انسكّر بعد نهاية الفترة. */
@@ -472,8 +520,7 @@ export function buildPeriodReport(input: {
   }
 
   // ---- المنجز بالفترة ----
-  type Done = { t: ReportTask; who: string | null; cat: WorkCategory; dayKey: string; lateDays: number | null };
-  const doneInPeriod: Done[] = [];
+  const doneInPeriod: LedgerDone<T>[] = [];
   for (const t of tasks) {
     if (!isDone(t) || isAdministrativeClosure(t)) continue;
     const at = doneAt(t);
@@ -502,7 +549,7 @@ export function buildPeriodReport(input: {
   const exempt = new Set(
     companies.filter((c) => !hasStartedPublishing(c) && !changedAfter(c, period.to)).map((c) => c.id),
   );
-  const openLate: { t: ReportTask; who: string | null }[] = [];
+  const openLate: { t: T; who: string | null }[] = [];
   for (const t of tasks) {
     if (!openAtAsOf(t)) continue;
     const deadline = deadlineOf(t);
@@ -515,6 +562,16 @@ export function buildPeriodReport(input: {
     if (before && openAtAsOf(before)) continue;
     openLate.push({ t, who: creditOf(t) });
   }
+
+  return { asOfKey, doneInPeriod, openLate, cycleOf };
+}
+
+export function buildPeriodReport(input: PeriodInput2): PeriodReport {
+  const { period, tasks, employees, companies, now } = input;
+  const { asOfKey, doneInPeriod, openLate, cycleOf } = periodLedger(input);
+  type Done = LedgerDone;
+  const coById = new Map(companies.map((c) => [c.id, c]));
+  const coName = (id: string | null) => (id ? coById.get(id)?.name ?? "—" : "بلا شركة");
 
   // ---- الأفراد ----
   const credited = new Set(doneInPeriod.map((d) => d.who).filter(Boolean) as string[]);
@@ -596,7 +653,9 @@ export function buildPeriodReport(input: {
       production: PRODUCTION.reduce((s, c) => s + byCategory[c], 0),
       published: byCategory.publish,
       planDue: due.length,
-      planPublished: due.filter((t) => isDone(t)).length,
+      // «منشور حسب المنصة» = انتشر فعلاً: إقفال إداري («نفدت منتجات الزبون فلن يُنشر»)
+      // مش نشر، فكان «١٠/١٠ منشور» لشهر فيه ستوري ما انتشرت (فحص ١٢/١٠، TR-18).
+      planPublished: due.filter((t) => isDone(t) && !isAdministrativeClosure(t)).length,
     });
   }
   companyReports.sort(

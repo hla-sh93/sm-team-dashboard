@@ -696,6 +696,13 @@ export default function OverviewClient({
                         </span>
                         {(card.repr.year !== year || card.repr.month !== month) && (
                           <CyclePill
+                            carryover={isCarryoverFromPastCycle(
+                              card.repr.companyId
+                                ? companies.find((c) => c.id === card.repr.companyId)
+                                : null,
+                              card.repr.year,
+                              card.repr.month,
+                            )}
                             cycleLabel={cycleLabelFor(card.repr.companyId, card.repr.year, card.repr.month)}
                             late={isTaskLateState(card.repr)}
                           />
