@@ -199,7 +199,7 @@ export function buildDailyBrief({
   // deadlines underneath are untouched; clearing the reason restores them.
   const lateExempt = new Set(
     companies
-      .filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim())
+      .filter((c) => !hasStartedPublishing(c))
       .map((c) => c.id),
   );
   // «متأخر» بتعريف كل الشاشات (`lib/late.ts`): كرت محجوز ما بينحسب متأخر (أليسار

@@ -8,7 +8,11 @@
  *
  * متأخر = مش منجز ولا ملغى · موعده فات (`isTaskLateState`، والمثبّت ليوم لاحق مش
  * متأخر) · مش محجوز خلف مرحلة مفتوحة (الدور على صاحبها، `makeBlockedPredicate`) ·
- * وشركته مش موقوفة/مؤرشفة ولا معفاة (لسا ما بلّشت نشر، أو تأخير من الزبون).
+ * وشركته مش موقوفة/مؤرشفة ولا لسا ما بلّشت نشر.
+ *
+ * نصّ «سبب الإعفاء» ما بيعفي لحاله: بينكتب بس مع «أوقف النشر» وبينمحى مع «رجّع النشر»
+ * (القائدة ١٣/١٠: «إذا شغّالة ما بيصير ينكتب سبب الإيقاف، فقط حالة الإيقاف»)، والموقوفة
+ * مستبعدة أصلاً. نفس قاعدة تقرير ٢٠:٠٠ (§١٠، قرار ١٥/٩) — رقم واحد الصبح والمسا.
  */
 import { isTaskDoneState, isTaskLateState } from "@/lib/constants";
 import { isDormantCompany, type LifecycleCompany } from "@/lib/company-visibility";
@@ -33,7 +37,7 @@ export function makeLateClassifier(
 ): (task: Task) => LateClass {
   const dormant = new Set(companies.filter((c) => isDormantCompany(c, today)).map((c) => c.id));
   const exempt = new Set(
-    companies.filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim()).map((c) => c.id),
+    companies.filter((c) => !hasStartedPublishing(c)).map((c) => c.id),
   );
   const isBlocked = makeBlockedPredicate(allTasks);
   return (t: Task) => {

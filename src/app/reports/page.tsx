@@ -53,7 +53,7 @@ export default async function ReportsPage({
   // كانت صفحة التقارير بتعدّ كروت جدارات (موقوفة) ونور (بلا دورة) كتأخير.
   const lateExempt = new Set(
     companies
-      .filter((c) => !hasStartedPublishing(c) || c.lateExemptReason?.trim())
+      .filter((c) => !hasStartedPublishing(c))
       .map((c) => c.id),
   );
 

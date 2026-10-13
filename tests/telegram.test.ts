@@ -560,8 +560,10 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     expect(line.length).toBeLessThan(150);
   });
 
-  it("drops a company whose delay is the client's fault, not ours", () => {
-    const blocked = company({
+  it("نصّ «سبب الإعفاء» لحاله ما بيعفي شركة شغّالة — نفس قاعدة تقرير ٢٠:٠٠ (القائدة ١٣/١٠)", () => {
+    // السبب بينكتب بس مع «أوقف النشر» وبينمحى مع «رجّع النشر»؛ والموقوفة مستبعدة أصلاً.
+    // سطر باقي على شركة شغّالة (داتا قديمة) ما بيخبّي تأخيرها الصبح وهو بينعدّ المسا.
+    const leftover = company({
       id: "co4",
       name: "جدارات",
       slug: "Jadarat",
@@ -570,26 +572,19 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
     });
     const tasks = reels([
       { id: "r1", co: wasl, day: 1 },
-      { id: "r2", co: blocked, day: 1 }, // overdue, but not our fault
-      { id: "r3", co: blocked, day: 11 }, // due today → its sheet is rendered
+      { id: "r2", co: leftover, day: 1 },
+      { id: "r3", co: leftover, day: 11 },
     ]);
     const brief = buildDailyBrief({
       today: workday,
-      companies: [company(), wasl, blocked],
+      companies: [company(), wasl, leftover],
       employees: [photographer],
       tasks,
     });
-    // Still real work that still has to be shot — it just never counts as late,
-    // so it stays out of the chase clause and out of her overdue list.
     expect(brief.schedule.text).toMatch(/جدارات \d+ ريل/);
-    expect(brief.schedule.text).not.toMatch(/متأخر[^\n]*جدارات/);
-    // Both reels are past due, but only وصل's is counted — جدارات's is the
-    // client's hold-up, so it is absent from her overdue list entirely.
-    expect(brief.lead.text).toContain("متأخرات (1)");
-    expect(brief.lead.text).not.toContain("جدارات");
-    // …and its own company sheet says why it shows nothing overdue.
+    expect(brief.lead.text).toContain("متأخرات (2)");
     const sheet = brief.companies.find((c) => c.title === "جدارات");
-    expect(sheet?.text).toContain("التأخير مو محسوب");
+    expect(sheet?.text).not.toContain("التأخير مو محسوب");
   });
 
   it("leaves idle people out of the group message but tells the lead privately", () => {
