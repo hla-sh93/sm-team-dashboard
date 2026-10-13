@@ -208,7 +208,8 @@ export const taskDetailsSchema = z
     quantity: z.coerce.number().int().min(1).max(10_000).nullable().optional(),
     isPinned: z.boolean().optional(),
     /** حالة الكرت يلي انفتح عليها النموذج — قفل تفاؤلي على تغيير الحالة (SA-03أ). */
-    expectedStatus: z.enum(STATUSES).optional(),
+    // بيتقارن بس — كرت ملغى (CANCELED، مو من `STATUSES`) لازم ينفتح للتعديل بلا رفض.
+    expectedStatus: z.enum([...STATUSES, "CANCELED"]).optional(),
   })
   .strict();
 

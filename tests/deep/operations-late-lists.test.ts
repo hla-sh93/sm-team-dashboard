@@ -164,7 +164,7 @@ describe("[OP-16] شارة «متأخّر» على اللوح بتسكت عن ك
   it("[OP-16] تصميم موعده ٥/١٠ ولا شي بيحجزه: البريف والرئيسية و§١٠ واللوح كلهن بيقولوا متأخر", () => {
     expect(boardIsLate(tasks.find((t) => t.id === "designLate")!)).toBe(true);
     const src = readFileSync("src/components/KanbanBoard.tsx", "utf8");
-    expect(src).toMatch(/makeLatePredicate\(tasks, companies\)/);
+    expect(src).toMatch(/makeLatePredicate\(allTasks, companies\)/);
     expect(src).not.toMatch(/t\.board === "TODO" && t\.status === "NOT_STARTED"\) \{\s*return false/);
   });
 });
@@ -229,5 +229,15 @@ describe("[مراجعة F–H] تقويم صفحة المهام بتعريف `la
     expect(src).toMatch(/makeLatePredicate\(tasks, companies\)/);
     expect(src).not.toMatch(/Date\.now\(\) > due/);
     expect(src).toMatch(/dayKeyOf\(new Date\(t\.finishedAt\)\) > toISODate\(new Date\(t\.readyDate\)\)/);
+  });
+});
+
+describe("[مراجعة نهائية ١٣/١٠] اللوح المفلتر بيحسب «متأخر» من كل الكروت", () => {
+  it("مونتاج محجوز خلف تصوير مش بالقائمة المفلترة → «بانتظار»، مو «متأخر»", () => {
+    const filtered = tasks.filter((t) => t.id === "pubBlocked");
+    expect(makeLatePredicate(filtered, companies, TODAY)(filtered[0])).toBe(true); // هيك كان اللوح المفلتر
+    expect(makeLatePredicate(tasks, companies, TODAY)(filtered[0])).toBe(false);
+    const src = readFileSync("src/components/KanbanBoard.tsx", "utf8");
+    expect(src).toMatch(/makeLatePredicate\(allTasks, companies\)/);
   });
 });

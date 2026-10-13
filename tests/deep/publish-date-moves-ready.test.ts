@@ -79,4 +79,24 @@ describe.skipIf(!scratch.available)("تأجيل يوم النشر بيحرّك �
     const t = await prisma.task.findUnique({ where: { id: `${P}_pub` } });
     expect([toISODate(t.publishDate), toISODate(t.readyDate)]).toEqual(["2025-01-25", "2025-01-24"]);
   });
+
+  it("كرت نشر منجز: تصحيح يوم الجهوزية ما بيمحي طابع النشر الحقيقي (انأكّد متأخر)", async () => {
+    const at = new Date(Date.UTC(2025, 0, 27));
+    await prisma.task.update({
+      where: { id: `${P}_pub` },
+      data: { status: "PUBLISHED", board: "DONE", completedAt: at, finishedAt: at, publishDate: new Date(2025, 0, 25) },
+    });
+    const r = await update([`${P}_pub`], { readyDate: "2025-01-23" });
+    expect(r.ok, (r as { error?: string }).error).toBe(true);
+    const t = await prisma.task.findUnique({ where: { id: `${P}_pub` } });
+    expect(toISODate(t.completedAt)).toBe("2025-01-27");
+  });
+
+  it("مسح يوم النشر ما بيمسح يوم الجهوزية", async () => {
+    await prisma.task.update({ where: { id: `${P}_pub` }, data: { status: "NOT_STARTED", board: "TODO", completedAt: null, finishedAt: null } });
+    const r = await update([`${P}_pub`], { publishDate: null });
+    expect(r.ok).toBe(true);
+    const t = await prisma.task.findUnique({ where: { id: `${P}_pub` } });
+    expect(t.readyDate).not.toBeNull();
+  });
 });

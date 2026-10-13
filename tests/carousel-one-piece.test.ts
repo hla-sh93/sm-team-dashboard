@@ -58,6 +58,11 @@ describe("الإنجاز بالقطع، مو بالشرائح", () => {
     expect(countByCompany([carousel, single], () => "عبادة")).toBe("عبادة 2 بوست");
   });
 
+  it("الكرت الإضافي (ADHOC) كميته عدد حقيقي — «٦ ستوري» بتضل ٦", () => {
+    const adhoc = { ...base, id: "a1", kind: "ADHOC", type: "STORY", stage: "DESIGN", pipelineKey: null, quantity: 6 } as unknown as Task;
+    expect(countByCompany([adhoc], () => "وصل")).toBe("وصل 6 ستوري");
+  });
+
   it("إنجاز الشركة (المُنتَج): الكاروسيل قطعة وحدة من الخطة", () => {
     expect(producedCompanyPlanCount([carousel, single] as never, "co")).toBe(2);
   });

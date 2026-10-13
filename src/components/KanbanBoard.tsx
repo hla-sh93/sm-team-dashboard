@@ -250,7 +250,9 @@ export default function KanbanBoard({
   // علينا، والمحجوز خلف مرحلة مفتوحة الدور فيه على صاحبها. كان هون استثناء لكل كرت
   // «لم يبدأ» بدورة شغّالة (المول ٢٠/٦) — عملياً ألغى التأخير الحقيقي: صفر متأخر على
   // اللوح والبريف بيقول ٨ (فحص ١٢/١٠، OP-16).
-  const isLate = useMemo(() => makeLatePredicate(tasks, companies), [tasks, companies]);
+  // من **كل** الكروت، مو المفلترة: لوح مفلتر على شخص ما فيه حاجز كروته (تصوير ماجد)، و
+  // الحاجز الغايب كان ينقرا «ما عاد حاجز» — فمونتاج أليسار يطلع «متأخر» (مراجعة نهائية ١٣/١٠).
+  const isLate = useMemo(() => makeLatePredicate(allTasks, companies), [allTasks, companies]);
   const dateMs = (value: Date | string | null | undefined) =>
     value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
   const cardDateMs = (t: Task) => {

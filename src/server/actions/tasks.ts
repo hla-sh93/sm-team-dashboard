@@ -132,11 +132,20 @@ function statusPatch(
   // «جاهز» بتاريخ جهوزية بالمستقبل كان بيختم الإنجاز بالمستقبل: الكرت المنجز
   // اليوم ما كان بينحسب من يوم صاحبه، وكان بينعدّ بتقرير شهر جاي (OP-07). الختم
   // ما بيتجاوز هلّق أبداً.
-  const inferred = done
-    ? (input.publishDate !== undefined || before.stage === "PUBLISH") && dates.publishDate
-      ? dates.publishDate
-      : inferHistoricalCompletionDate({ ...before, readyDate: dates.readyDate, workDate: dates.workDate }, now)
-    : null;
+  // كرت نشر **منجز أصلاً** وتعديل ما لمس يوم نشره (تصحيح يوم شغل/جهوزية): طابعه الحقيقي
+  // بيضل — كان ينكتب فوقه يوم النشر المخطَّط، فنشر متأخر (مخطّط ١٠/١٠، انأكّد ١٢/١٠)
+  // يختفي من التقارير (مراجعة نهائية ١٣/١٠).
+  const keptPublishStamp =
+    done && before.stage === "PUBLISH" && input.publishDate === undefined && isDone(before.status)
+      ? (before.completedAt ?? before.finishedAt)
+      : null;
+  const inferred = keptPublishStamp
+    ? keptPublishStamp
+    : done
+      ? (input.publishDate !== undefined || before.stage === "PUBLISH") && dates.publishDate
+        ? dates.publishDate
+        : inferHistoricalCompletionDate({ ...before, readyDate: dates.readyDate, workDate: dates.workDate }, now)
+      : null;
   const doneAt = inferred && inferred.getTime() > now.getTime() ? now : inferred;
   let startedAt = before.startedAt;
   let finishedAt = before.finishedAt;
@@ -201,7 +210,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     // بيقرا `readyDate` أول. نافذة التعديل بتبعت يوم النشر بس، فكرت انأجّل من ١٠/١٠
     // لـ٢٠/١٠ كان يضل «متأخر — موعدها ٢٠/١٠» (مراجعة F–H). التنين بيمشوا سوا.
     const publishMovesReady =
-      before.stage === "PUBLISH" && input.publishDate !== undefined && input.readyDate === undefined;
+      before.stage === "PUBLISH" && !!input.publishDate && input.readyDate === undefined;
     if (publishMovesReady) dates.readyDate = dates.publishDate;
     const datesTouched =
       input.workDate !== undefined || input.readyDate !== undefined || input.publishDate !== undefined;
