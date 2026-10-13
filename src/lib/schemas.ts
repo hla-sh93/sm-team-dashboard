@@ -189,6 +189,9 @@ export const taskSchema = z.object({
     .transform((v) => (v ? v : null)),
   isPinned: z.boolean().default(false),
   notes: z.string().max(NOTES_MAX).nullable().optional(),
+  // «ممنوع مهمة بلا وصف» (القائدة ١٣/١٠): شو المطلوب بالضبط — بيظهر على الكرت وبالبريف،
+  // وهو يلي بيفرّق مهمة عن مهمة لما عمر يسكّر كرت.
+  brief: z.string().trim().min(1, "الوصف مطلوب — شو المطلوب بالضبط").max(4000),
   month: z.coerce.number().int().min(0).max(11),
   year: z.coerce.number().int().min(2020).max(2100),
 });
@@ -207,6 +210,8 @@ export const taskDetailsSchema = z
     days: z.coerce.number().min(0).max(60).nullable().optional(),
     quantity: z.coerce.number().int().min(1).max(10_000).nullable().optional(),
     isPinned: z.boolean().optional(),
+    /** وصف المهمة **الإضافية** — ما بينمحى (القائدة ١٣/١٠). وصف قطعة الخطة من ملف الخطة. */
+    brief: z.string().trim().min(1, "الوصف مطلوب — شو المطلوب بالضبط").max(4000).optional(),
     /** حالة الكرت يلي انفتح عليها النموذج — قفل تفاؤلي على تغيير الحالة (SA-03أ). */
     // بيتقارن بس — كرت ملغى (CANCELED، مو من `STATUSES`) لازم ينفتح للتعديل بلا رفض.
     expectedStatus: z.enum([...STATUSES, "CANCELED"]).optional(),

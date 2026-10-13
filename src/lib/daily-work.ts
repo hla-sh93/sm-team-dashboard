@@ -47,11 +47,20 @@ function manualDayISO(task: Pick<Task, "manualDay">): string | null {
  * قبله». حمولة «إعادة الجدولة من اليوم» (١١/١٠) ثبّتت كل قطعة على يوم، فطلع لسابين
  * ١٣/١٠ بوستين و١٠ كروت «مؤجَّلة» (وأيمن ٤، وليلاس ٥). الترتيب محفوظ بالحجز
  * (`makeBlockedPredicate`)، والنشر ما بينسحب لقدّام أصلاً (بلا سعة، بس بيومه).
+ *
+ * والمهمة **الإضافية** (مو من الخطة، `isAuto=false`) المثبّتة على يوم بداية حطّته القائدة
+ * بتستنّى يومها كمان (القائدة ١٣/١٠): «مهمة سابين ونوال تبع بكرا ليش نزلت ضمن مهام اليوم؟
+ * هيي بكرا بتبدأ مو اليوم.. ومذكور هالشي بتفاصيل الكارد» — كولاب الثانوية الوطنية
+ * (١٤/١٠) انسحبت لـ١٣/١٠. يوم القطعة من الخطة حساب المحرّك؛ يوم المهمة الإضافية قرار.
  */
-function fixedDayISO(task: Pick<Task, "manualDay" | "isPinned" | "workDate" | "stage">): string | null {
+function fixedDayISO(
+  task: Pick<Task, "manualDay" | "isPinned" | "workDate" | "stage" | "isAuto">,
+): string | null {
   return (
     manualDayISO(task) ??
-    (task.isPinned && task.workDate && task.stage === "SHOOT" ? dateISO(task.workDate) : null)
+    (task.isPinned && task.workDate && (task.stage === "SHOOT" || !task.isAuto)
+      ? dateISO(task.workDate)
+      : null)
   );
 }
 

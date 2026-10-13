@@ -14,7 +14,7 @@
 import { dayKeyOf } from "@/lib/team-day";
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
-import { companySlugs, latinDigits, parseAssetName, slugMatches } from "@/lib/asset-name";
+import { companySlugs, latinDigits, parseAssetName, slugMatches, extraCode, parseExtraName } from "@/lib/asset-name";
 import { currentCycleBucket } from "@/lib/contract";
 import type { TelegramUpdate } from "./client";
 import {
@@ -600,6 +600,29 @@ async function settleDelivery(
   const none: Settled = { taskId: null, matchedBy: null, advanced: false };
   const setRow = (data: { taskId: string | null; matchedBy: string | null; confirmed: boolean }) =>
     prisma.telegramMessage.update({ where: { id: delivery.id }, data });
+  // مهمة إضافية باسمها التلقائي («Jobs-extra-kqfzt») بتسكّر **هالكرت بالذات** وبس (القائدة
+  // ١٣/١٠: «عم يضيعو الكروت ببعض ولما عمر عم يسكر كرت احتمال يكون لغير خطة»). كروت
+  // المهام الإضافية من النافذة بلا مرحلة، فما كانت تدخل المطابقة أصلاً. اسم صريح ما
+  // بيطابق ولا كرت (أو كرت منجز/نشر) ما بيسكّر شي — ولا بيمرق على المطابقة بالنوع.
+  const extra = parseExtraName(delivery.fileName) ?? parseExtraName(delivery.caption);
+  if (extra) {
+    const card = await extraCardNamed(extra.code);
+    if (!card || isTaskDoneState(card) || card.stage === "PUBLISH") {
+      await setRow({ taskId: card?.id ?? null, matchedBy: null, confirmed: false });
+      return none;
+    }
+    if (!mayClose(sender, card)) {
+      await setRow({ taskId: card.id, matchedBy: "NOT_OWNER", confirmed: false });
+      return { taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" };
+    }
+    const advanced = await closeProductionCard(card, delivery.sentAt, {
+      by: "NAME",
+      evidence: evidenceOf(delivery),
+    });
+    await setRow({ taskId: card.id, matchedBy: "NAME", confirmed: true });
+    return { taskId: card.id, matchedBy: "NAME", advanced };
+  }
+
   const ctx = await companyContext(companyId, delivery.sentAt);
   if (!ctx) return none;
   const own = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
@@ -663,6 +686,13 @@ async function settleDelivery(
 
   await setRow({ taskId: null, matchedBy: null, confirmed: false });
   return result(none);
+}
+
+/** المهمة الإضافية يلي رمزها هاد — بس لما يكون كرت واحد بالضبط (رمز مكرّر = ما منخمّن). */
+async function extraCardNamed(code: string) {
+  const rows = await prisma.task.findMany({ where: { kind: "ADHOC", status: { not: "CANCELED" } } });
+  const hits = rows.filter((t) => extraCode(t.id) === code);
+  return hits.length === 1 ? hits[0] : null;
 }
 
 const evidenceOf = (d: Pick<Delivery, "fileName" | "caption">) =>

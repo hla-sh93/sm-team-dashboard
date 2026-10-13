@@ -192,6 +192,52 @@ describe("آلة الحالات — قطعة بوست", () => {
   });
 });
 
+describe("«ممنوع مهمة بلا وصف» + تاريخ البداية قرار (القائدة ١٣/١٠)", () => {
+  const base = () => ({
+    kind: "ADHOC" as const,
+    hours: 4,
+    priority: "URGENT" as const,
+    status: "NOT_STARTED" as const,
+    assigneeId: designerId,
+    companyId: null,
+    isPinned: false,
+    year: Y,
+    month: 9,
+  });
+
+  it.skipIf(skip())("مهمة إضافية بلا وصف ما بتنخلق", async () => {
+    const r = await actions.createTask({ ...base(), title: `${uniq}-بلا وصف`, brief: "  " } as never);
+    expect(r.ok).toBe(false);
+    expect(r.ok ? "" : r.error).toContain("الوصف");
+    expect(await prisma.task.count({ where: { title: `${uniq}-بلا وصف` } })).toBe(0);
+  });
+
+  it.skipIf(skip())("بالوصف وتاريخ بداية: بينحفظ الوصف، وبتنقفل على يومها حتى لو ما انطلب القفل", async () => {
+    const r = await actions.createTask({
+      ...base(),
+      title: `${uniq}-كولاب`,
+      brief: "تصميم بوست كولاب على نص نوال",
+      workDate: "2026-10-14",
+      readyDate: "2026-10-14",
+    } as never);
+    expect(r.ok).toBe(true);
+    const row = await prisma.task.findFirstOrThrow({ where: { title: `${uniq}-كولاب` } });
+    expect(row.brief).toBe("تصميم بوست كولاب على نص نوال");
+    expect(row.isPinned).toBe(true);
+    expect(daily.makeHeldReason([row], "2026-10-13")(row)?.parkedUntil).toBe("2026-10-14");
+  });
+
+  it.skipIf(skip())("الوصف بينعدّل على المهمة الإضافية؛ ووصف قطعة الخطة ما بينعدّل من الكرت", async () => {
+    const row = await prisma.task.findFirstOrThrow({ where: { title: `${uniq}-كولاب` } });
+    expect((await actions.updateTaskDetails([row.id], { brief: "وصف معدّل" })).ok).toBe(true);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: row.id } })).brief).toBe("وصف معدّل");
+    const design = await find("DESIGN", "POST");
+    const plan = await actions.updateTaskDetails([design.id], { brief: "وصف من الكرت" });
+    expect(plan.ok).toBe(false);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: design.id } })).brief).toBe(design.brief);
+  });
+});
+
 describe("«راعي الترتيب» عند الإقفال (القائدة ١٣/١٠)", () => {
   it.skipIf(skip())("مونتاج تصويره مفتوح ما بينسكّر — لا من قائمة الحالة ولا من اللوح؛ وبعد التصوير بينسكّر", async () => {
     const shoot = await find("SHOOT", "REEL");

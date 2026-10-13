@@ -65,10 +65,18 @@ describe("taskSchema (ad-hoc)", () => {
       status: "NOT_STARTED",
       assigneeId: "e1",
       companyId: "c1",
+      brief: "تصميم بروفايل الشركة بالهوية الجديدة",
       month: 5,
       year: 2026,
     });
     expect(r.success).toBe(true);
+  });
+
+  it("«ممنوع مهمة بلا وصف» (القائدة ١٣/١٠): بلا وصف أو وصف فاضي → مرفوضة", () => {
+    const base = { title: "تصميم", kind: "ADHOC", hours: 8, month: 5, year: 2026 };
+    expect(taskSchema.safeParse(base).success).toBe(false);
+    expect(taskSchema.safeParse({ ...base, brief: "   " }).success).toBe(false);
+    expect(taskSchema.safeParse({ ...base, brief: "شو المطلوب" }).success).toBe(true);
   });
 
   it("rejects invalid priority/status enums", () => {

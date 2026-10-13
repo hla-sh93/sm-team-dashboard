@@ -28,7 +28,7 @@ import { calendarPublishItems, publishesInMonth } from "@/lib/publish-calendar";
 import { ARABIC_MONTHS, formatDateShort, toISODate } from "@/lib/dates";
 import { CyclePill } from "@/components/ui/pills";
 import type { Company, Employee, Task, PublicEmployee, PublicCompany } from "@/types";
-import { assetNameForTask } from "@/lib/asset-name";
+import { cardAssetName } from "@/lib/asset-name";
 import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 
 const PUBLISH_STATUSES: Status[] = ["NOT_STARTED", "IN_PROGRESS", "PUBLISHED"];
@@ -165,7 +165,7 @@ export default function PublishingClient({
     CONTENT_TYPE_COLORS[(t.type as ContentType) ?? "POST"] ?? "#C8A84E";
   const typeLabel = (t: Task) => publishTypeLabel(t);
   const assetLabel = (t: Task) =>
-    assetNameForTask(t.companyId ? companies.find((c) => c.id === t.companyId) : null, t, seqOf);
+    cardAssetName(t.companyId ? companies.find((c) => c.id === t.companyId) : null, t, seqOf);
 
   const renderChip = (t: Task) => (
     <div

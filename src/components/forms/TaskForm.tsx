@@ -22,6 +22,7 @@ import {
 } from "@/lib/constants";
 import { toast } from "@/components/ui/toaster";
 import { toISODate } from "@/lib/dates";
+import { extraAssetName } from "@/lib/asset-name";
 
 interface TaskFormProps {
   open: boolean;
@@ -66,6 +67,7 @@ export default function TaskForm({
     quantity: 1,
     isPinned: false,
     notes: "",
+    brief: "",
   });
   const fromTask = (t: Task) => ({
     title: t.title || displayLabel || "",
@@ -80,6 +82,7 @@ export default function TaskForm({
     quantity: t.quantity ?? 1,
     isPinned: t.isPinned,
     notes: t.notes ?? "",
+    brief: t.brief ?? "",
   });
 
   const [form, setForm] = useState(() => (task ? fromTask(task) : blank()));
@@ -101,6 +104,11 @@ export default function TaskForm({
       toast("العنوان مطلوب", "error");
       return;
     }
+    // «ممنوع مهمة بلا وصف» (القائدة ١٣/١٠) — المهمة الإضافية وصفها منها؛ قطعة الخطة من ملف الخطة.
+    if (isAdhoc && !form.brief.trim()) {
+      toast("الوصف مطلوب — اكتبي شو المطلوب بالضبط", "error");
+      return;
+    }
     startTransition(async () => {
       if (isEdit) {
         // بس يلي تغيّر + نسخة الكرت: النافذة القديمة كانت تبعت كل الحقول، فلو
@@ -110,6 +118,7 @@ export default function TaskForm({
         const result = await updateTaskDetails(ids ?? [task!.id], {
           expectedStatus: task!.status as TaskCreateStatus,
           ...(changed("title") ? { title: form.title.trim() } : {}),
+          ...(isAdhoc && changed("brief") ? { brief: form.brief.trim() } : {}),
           ...(changed("workDate") ? { workDate: form.workDate || null } : {}),
           ...(changed("readyDate") ? { readyDate: form.readyDate || null } : {}),
           ...(isPublishCard && changed("publishDate") ? { publishDate: form.publishDate || null } : {}),
@@ -141,6 +150,7 @@ export default function TaskForm({
           readyDate: form.readyDate || null,
           workDate: form.workDate || null,
           notes: form.notes || null,
+          brief: form.brief.trim(),
           assigneeId: form.assigneeId || null,
           companyId: form.companyId || null,
           isPinned: form.isPinned,
@@ -312,6 +322,40 @@ export default function TaskForm({
 
           {isAdhoc && (
             <div className="space-y-1.5">
+              <Label>الوصف (إجباري)</Label>
+              <Textarea
+                value={form.brief}
+                onChange={(e) => set("brief", e.target.value)}
+                placeholder="شو المطلوب بالضبط — بيظهر على الكرت وبالبريف"
+                required
+              />
+            </div>
+          )}
+
+          {/* اسم الملف التلقائي للمهمة الإضافية — بينتنسخ، وتلغرام بيلقط الملف يلي بيحمله. */}
+          {isEdit && isAdhoc && task && (
+            <div className="space-y-1.5">
+              <Label>اسم الملف عند الإرسال</Label>
+              <button
+                type="button"
+                dir="ltr"
+                title="اضغطي لنسخ اسم الملف"
+                onClick={() => {
+                  const name = extraAssetName(companies.find((c) => c.id === task.companyId) ?? null, task);
+                  navigator.clipboard?.writeText(name).then(
+                    () => toast(`انتنسخ: ${name}`),
+                    () => toast(name),
+                  );
+                }}
+                className="w-full text-start text-xs font-mono rounded-md px-2 py-1.5 bg-bg-elev2 text-fg-dim hover:text-accent hover:bg-accent/10 transition"
+              >
+                {extraAssetName(companies.find((c) => c.id === task.companyId) ?? null, task)}
+              </button>
+            </div>
+          )}
+
+          {isAdhoc && (
+            <div className="space-y-1.5">
               <Label>ملاحظات (اختياري)</Label>
               <Textarea
                 value={form.notes}
@@ -323,7 +367,7 @@ export default function TaskForm({
 
           {/* The content brief lifted from the month's plan — read-only here:
               it belongs to the plan document, not to a single card. */}
-          {task?.brief && (
+          {!isAdhoc && task?.brief && (
             <div className="space-y-1.5">
               <Label>المطلوب من الخطة</Label>
               <pre className="text-[11px] whitespace-pre-wrap font-sans text-fg-dim bg-bg border border-border-soft rounded-md p-2 max-h-56 overflow-y-auto leading-relaxed">

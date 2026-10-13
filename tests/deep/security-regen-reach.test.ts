@@ -60,7 +60,7 @@ describe.skipIf(!HAS_DB)("[SA-15] createTask بلا جلسة ما بيعيد ت�
     const where = { year: 2026, month: 7 };
     const before = await prisma.task.findMany({ where });
     expect(before.length).toBeGreaterThan(0);
-    const r = await createTask({ title: "فحص-SA-15", kind: "ADHOC", ...where, priority: "NORMAL", status: "NOT_STARTED", hours: 8, isPinned: false } as never);
+    const r = await createTask({ title: "فحص-SA-15", kind: "ADHOC", ...where, priority: "NORMAL", status: "NOT_STARTED", hours: 8, isPinned: false, brief: "وصف فحص" } as never);
     expect(r.ok).toBe(true);
     // (فلترة بالجافاسكربت: `NOT: { title }` بـSQL بيسقط الصفوف يلي عنوانها null)
     const after = (await prisma.task.findMany({ where })).filter((t: any) => t.title !== "فحص-SA-15");

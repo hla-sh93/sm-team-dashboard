@@ -89,8 +89,12 @@ export async function createTask(input: TaskInput) {
         board: statusToBoard(d.status),
         readyDate,
         workDate,
-        isPinned: d.isPinned,
+        // تاريخ بداية حطّته القائدة لمهمة إضافية = قرار: بتنقفل عليه فما بتبلّش قبله
+        // (`fixedDayISO`) وما بيحشرها المحرّك ليوم أبكر (القائدة ١٣/١٠: «هيي بكرا بتبدأ
+        // مو اليوم.. ومذكور هالشي بتفاصيل الكارد»).
+        isPinned: d.isPinned || (d.kind === "ADHOC" && !!workDate),
         notes: d.notes ?? null,
+        brief: d.brief,
         month: d.month,
         year: d.year,
         isAuto: false,
@@ -130,6 +134,8 @@ export type TaskDetailsInput = {
   days?: number | null; // ad-hoc effort in working days
   quantity?: number | null; // production work units, e.g. carousel slide count
   isPinned?: boolean;
+  /** وصف المهمة الإضافية — إجباري، فما بينبعت فاضي (القائدة ١٣/١٠). */
+  brief?: string;
   /**
    * The card's STATUS as the form loaded it. When the dialog changes the status
    * and the card's status changed since — someone finished it from the board
@@ -252,6 +258,13 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     // preserves pinned cards' title/dates/owner/priority).
     const data: Record<string, unknown> = { isPinned: true };
     if (input.title !== undefined) data.title = input.title;
+    if (input.brief !== undefined) {
+      // وصف قطعة الخطة نصّ الخطة نفسه ومشترك بين مراحلها — بيجي من ملف الخطة، مو من كرت.
+      if (before.kind !== "ADHOC") {
+        return { ok: false as const, error: "وصف قطعة الخطة بيجي من ملف الخطة — ارفعي الخطة" };
+      }
+      data.brief = input.brief;
+    }
     if (input.workDate !== undefined) data.workDate = dates.workDate;
     if (input.readyDate !== undefined || publishMovesReady) data.readyDate = dates.readyDate;
     if (input.publishDate !== undefined) data.publishDate = dates.publishDate;

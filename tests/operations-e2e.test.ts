@@ -470,6 +470,7 @@ describe("task operations", () => {
       priority: "NORMAL",
       status: "NOT_STARTED",
       readyDate: "2026-07-28",
+      brief: "وصف فحص",
       year: YEAR,
       month: MONTH,
     });

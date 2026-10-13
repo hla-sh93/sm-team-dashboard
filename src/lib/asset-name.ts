@@ -123,6 +123,59 @@ export function assetNameForTask(
   return assetName(companySlug(co), t.month, n, t.type);
 }
 
+// ── المهام الإضافية ──────────────────────────────────────────────────────────
+
+/**
+ * رمز ثابت من معرّف الكرت — خمس أحرف لاتينية صغيرة («kqfzt»).
+ *
+ * القائدة (١٣/١٠): «ممنوع مهمة بلا وصف واسم (هاد يلي قابل للنسخ مشان تلغرام يلقطه).
+ * لأن عم يضيعو الكروت ببعض» — وقرارها: «الموقع بيولّده لحاله». القطعة من الخطة
+ * اسمها من رقمها؛ المهمة الإضافية ما إلها رقم، فالاسم من معرّفها نفسه: ثابت مدى
+ * حياة الكرت، وبلا حقل جديد بالقاعدة. **بلا أرقام عن قصد** — `parseAssetName`
+ * بتقرا «شهر-قطعة» من أي أرقام، فرمز فيه أرقام كان ممكن ينقرا قطعة خطة.
+ */
+export function extraCode(id: string): string {
+  // FNV-1a ٣٢ بت — حتمي ومستقلّ عن المنصّة.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  let code = "";
+  for (let i = 0; i < 5; i++) {
+    code += String.fromCharCode(97 + (h % 26));
+    h = Math.floor(h / 26);
+  }
+  return code;
+}
+
+/** اسم ملف المهمة الإضافية: «Jobs-extra-kqfzt» (بلا شركة: «Team-extra-…»). */
+export function extraAssetName(
+  co: (Pick<Company, "name"> & { slug?: string | null }) | null | undefined,
+  t: Pick<Task, "id">,
+): string {
+  return `${co ? companySlug(co) : "Team"}-extra-${extraCode(t.id)}`;
+}
+
+/**
+ * اسم الملف يلي بيظهر على أي كرت: قطعة الخطة باسمها، والمهمة الإضافية (`ADHOC`)
+ * باسمها التلقائي. `null` = كرت ما إله تسليم بملف (كتابة الدورة مثلاً).
+ */
+export function cardAssetName(
+  co: (Pick<Company, "name"> & { slug?: string | null }) | null | undefined,
+  t: Pick<Task, "type" | "month" | "pieceNo" | "id" | "kind">,
+  numbers?: Map<string, number>,
+): string | null {
+  return assetNameForTask(co, t, numbers) ?? (t.kind === "ADHOC" ? extraAssetName(co, t) : null);
+}
+
+/** رمز المهمة الإضافية من اسم ملف أو كابشن («Jobs-extra-kqfzt.jpg» ← «kqfzt»)، أو null. */
+export function parseExtraName(text: string | null | undefined): { code: string } | null {
+  if (!text) return null;
+  const m = text.match(/(?:^|[^a-z])extra[\s_-]*([a-z]{5})(?![a-z])/i);
+  return m ? { code: m[1].toLowerCase() } : null;
+}
+
 /** One possible reading of a file name's numbering. */
 export type AssetReading = { month0: number; pieceNo: number };
 

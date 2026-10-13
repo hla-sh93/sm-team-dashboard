@@ -34,7 +34,7 @@ import {
 } from "@/lib/constants";
 import { ARABIC_DAYS, parseWorkDays, toISODate } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
-import { assetNameForTask } from "@/lib/asset-name";
+import { assetNameForTask, extraAssetName } from "@/lib/asset-name";
 import { hasStartedPublishing } from "@/lib/contract";
 import { buildContentNumbers } from "@/lib/cards";
 import { selectDailyWorkTasks } from "@/lib/daily-work";
@@ -168,7 +168,10 @@ export function buildDailyBrief({
     const kind = typeLabel(t);
     if (asset) return `${asset} · ${kind}`;
     const n = numbers.get(t.id);
-    return n ? `${kind}-${n}` : (t.title?.trim() || kind);
+    if (n) return `${kind}-${n}`;
+    // المهمة الإضافية: عنوانها + اسم ملفها التلقائي — الفريق بيسمّي الملف فيه (القائدة ١٣/١٠).
+    const title = t.title?.trim() || kind;
+    return t.kind === "ADHOC" ? `${title} · ${extraAssetName(co, t)}` : title;
   };
   const coName = (t: Task): string =>
     (t.companyId ? coById.get(t.companyId)?.name : null) ?? "—";

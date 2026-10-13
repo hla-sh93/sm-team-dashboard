@@ -28,7 +28,7 @@ import {
   comparePieceSequence,
   isGroupableCard,
 } from "@/lib/cards";
-import { assetNameForTask } from "@/lib/asset-name";
+import { cardAssetName } from "@/lib/asset-name";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
@@ -159,7 +159,8 @@ export default function KanbanBoard({
    * راسه — وهون بتصير الغلطة يلي بتخلّي التسليم ما ينلقط.
    */
   const assetLabel = (t: Task) =>
-    assetNameForTask(t.companyId ? coById.get(t.companyId) : null, t, reelNum);
+    // المهمة الإضافية كمان إلها اسم بينتنسخ («Jobs-extra-kqfzt») — القائدة ١٣/١٠.
+    cardAssetName(t.companyId ? coById.get(t.companyId) : null, t, reelNum);
   const durationLabel = (t: Task, quantity = t.quantity ?? 1) => {
     const days = cardDurationDays(emp(t.assigneeId), { ...t, quantity });
     if ((t.stage === "WRITE" || t.kind === "CONTENT_WRITING") && t.assigneeId && t.companyId) {

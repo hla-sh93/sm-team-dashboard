@@ -25,7 +25,7 @@ import {
 } from "@/lib/constants";
 import { ARABIC_DAYS, toISODate } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
-import { assetNameForTask, companySlug } from "@/lib/asset-name";
+import { assetNameForTask, companySlug, extraAssetName } from "@/lib/asset-name";
 import { buildContentNumbers, comparePieceSequence } from "@/lib/cards";
 import { makeLateClassifier } from "@/lib/late";
 import type { Company, Employee, Task, PublicDelivery, PublicEmployee, PublicCompany } from "@/types";
@@ -104,7 +104,10 @@ export default function TodayClient({
     const kind = CONTENT_TYPE_LABELS[t.type as ContentType] ?? "مهمة";
     if (asset) return `${asset} · ${kind}`;
     const n = numbers.get(t.id);
-    return n ? `${kind}-${n}` : (t.title?.trim() || kind);
+    if (n) return `${kind}-${n}`;
+    // المهمة الإضافية: عنوانها + اسم ملفها التلقائي (القائدة ١٣/١٠).
+    const title = t.title?.trim() || kind;
+    return t.kind === "ADHOC" ? `${title} · ${extraAssetName(co, t)}` : title;
   };
 
   const horizonISO = useMemo(() => {

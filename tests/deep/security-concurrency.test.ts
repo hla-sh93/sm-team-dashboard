@@ -155,7 +155,7 @@ describe.skipIf(!HAS_DB)("تزامن نظيف (للسجلّ)", () => {
     const before = await prisma.task.count();
     const emp = await prisma.employee.findFirst();
     const mk = (t: string) =>
-      tasks.createTask({ title: t, kind: "ADHOC", month: M, year: Y, assigneeId: emp.id, priority: "NORMAL", status: "NOT_STARTED", hours: 8, isPinned: false } as never);
+      tasks.createTask({ title: t, kind: "ADHOC", month: M, year: Y, assigneeId: emp.id, priority: "NORMAL", status: "NOT_STARTED", hours: 8, isPinned: false, brief: "وصف فحص" } as never);
     const [a, b] = await Promise.all([mk("فحص-تزامن-١"), mk("فحص-تزامن-٢")]);
     expect(a.ok && b.ok).toBe(true);
     expect(await prisma.task.count()).toBe(before + 2);

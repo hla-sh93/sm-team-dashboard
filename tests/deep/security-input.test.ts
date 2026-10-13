@@ -44,7 +44,7 @@ afterAll(async () => {
   if (scratch.target) removeDb(scratch.target);
 });
 
-const baseTask = { title: "مهمة فحص", month: 9, year: 2026 };
+const baseTask = { title: "مهمة فحص", brief: "وصف فحص", month: 9, year: 2026 };
 
 describe("مخطّط إنشاء المهمة (createTask — مفتوح للزوّار)", () => {
   it("المفاتيح الغريبة بتنشال بالصمت (ما بتوصل للقاعدة): id / isAuto / pipelineKey / completedAt", () => {
