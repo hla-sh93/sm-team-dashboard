@@ -824,6 +824,38 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-10-13 (١٢:٠٠) — Claude — المراجعة المستقلّة لـF–H (٣ مراجِعين، قراءة بس) · **محلي فقط — ولا تعديل كود؛ الإصلاحات بانتظار موافقة المستخدمة**
+
+- **F (`a0d4dfd`، `0444ef5`):**
+  - **P1 [VERIFIED بالكود]** `/publishing` بتجيب كروت PUBLISH بس (`publishing/page.tsx:18`) → `makeLateClassifier`/`makeHeldReason` ما بيلاقوا الحاجز → «بانتظار» ما بيطلع أبداً (OP-12 مو مصلَّح عالشاشة).
+  - **P1 [VERIFIED بالكود]** عدّاد «متأخرة» بالرئيسية (`overview-client.tsx:297`) بقاعدته الخاصة، مو `late.ts`.
+  - **P2:**
+    - تقويم `/tasks` قاعدة تالتة (`tasks-client.tsx:226`).
+    - `readyDate ?? publishDate` بيخلّي كرت نشر مؤجَّل يطلع متأخر.
+    - اختبارات `if (skip()) return` بتنجح بصمت.
+    - `new Date()` بدل `teamTodayISO()` بشاشتين.
+  - **قرار مطلوب:** تناقض WORK_RULES §١٠ («نصّ الإعفاء الحر ما بيعفي لحاله») مع §١٤ («ما عليها إعفاء») → رسالة ٧:٤٥ وتقرير ٢٠:٠٠ بيختلفوا.
+- **G (`0b38559`):**
+  - **P1 [CONFIRMED بسكربت المراجِع، الكود مقروء]** توليد شركة وحدة جوّا دلو (`onlyCompanyId`) بيتجاهل نزلات الشركات التانية المحفوظة بنفس الدلو (`schedule-engine.ts:385` `NOT {year, month}`) → سقف المصوّر بينكسر بلا إنذار.
+  - **P2:**
+    - تصحيح تاريخ تجديد: نزلات الشركة القديمة بتحجز دورتها المنقولة.
+    - **[VERIFIED بإعادة تشغيل `probe1`]** `n == feedSpan` بيروح للفرع القديم (`scheduler.ts:581`) → ٢٠ فيد على ٢٠ يوم = قطعتين على ٣١/١٠ ويوم فاضي بلا إنذار.
+    - فحص UTC بالاختبار ما بيفشل تحت TZ=UTC.
+- **H (`5810dd0`):**
+  - **P1 [VERIFIED بالكود]** منجز بلا `date` بينختم بموعده حتى لو بالمستقبل (`plan-update.ts:630`)، عكس قاعدة OP-07. وكرت النشر بموعده بينما الإنتاج بينسكّر «هلّق».
+  - **P2:**
+    - [VERIFIED] تسمية «كرتاً منجزاً دون تغيير» بتعدّ كروت مفتوحة.
+    - [VERIFIED] `adhocStates` بلا stage بيطبّع بـ`spec.stage` مو مرحلة الكرت.
+    - `restoreMistakenClosures` برّا حارس الأرشيف/الإيقاف.
+    - `preflight` أرخى من الخادم.
+    - عدّادين بيعدّوا المخطَّط مو المكتوب.
+  - ١٠٣/١٠٦ ملف بـ`scripts/data` بتمرق المخطّط الصارم؛ التلاتة المرفوضة مو حمولات.
+- **[VERIFIED]** باقي ادّعاءات المدخلات (٠٨:٣٠ · ٠٩:٠٠ · ٠٩:٣٠ · ١٠:٠٠) طابقت الكود حسب المراجِعين.
+- **التالي:**
+  1. موافقة المستخدمة على الإصلاحات.
+  2. قرار قاعدة الإعفاء.
+  3. J من الديسكتوب (بيحتاج `prisma/dev.db`).
+
 ### 2026-10-13 (١١:٠٠) — Claude — نسخة GitHub `hla-sh93/sm-team-dashboard` **عامّة** · **[VERIFIED] — بانتظار قرار المستخدمة؛ ولا تغيير كود**
 
 - **[VERIFIED — GitHub API بلا مصادقة]** `hla-sh93/sm-team-dashboard`: `visibility: public`، انعمل `2026-10-13T07:13:52Z`، الفرع الافتراضي `main@c66fa7f`. عليه ٧ فروع (main · feature/finance · feature/period-reports · feature/social-publishing-schedule · fix/publish-mix · codex/qa-deep-stabilization · فرع الجلسة).
