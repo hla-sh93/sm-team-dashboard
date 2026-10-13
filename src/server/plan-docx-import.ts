@@ -15,7 +15,8 @@
 import JSZip from "jszip";
 import { prisma } from "@/lib/db";
 import { DONE_STATUSES } from "@/lib/constants";
-import { currentCycleBucket, cycleForBucket } from "@/lib/contract";
+import { currentCycleBucket, cycleForBucket, cyclesOf, lastDayOf, type Cycle } from "@/lib/contract";
+import { teamToday } from "@/lib/team-day";
 import { toISODate } from "@/lib/dates";
 import {
   extractDocxBlocks,
@@ -46,6 +47,11 @@ export type PlanDocxPreview = {
   cycleLabel: string | null;
   year: number;
   month: number;
+  /**
+   * الدورات يلي الملف ممكن ينزل عليها: الحالية، والجاية لو انسجّلت (PU-16). خطة الدورة
+   * الجاية بتوصل قبل بدايتها — بلا اختيار صريح كانت تنزل على الحالية.
+   */
+  targets: PlanDocxTarget[];
   counts: PlanDocxCount[];
   pieces: { type: PieceType; label: string; pieceNo: number; head: string }[];
   /** كروت الكتابة يلي رح تنسكّر، بأسماء أصحابها. */
@@ -54,6 +60,10 @@ export type PlanDocxPreview = {
 };
 
 export type PlanDocxFailure = { ok: false; error: string };
+
+export type PlanDocxTarget = { year: number; month: number; cycleLabel: string; current: boolean };
+
+const spanLabel = (cycle: Cycle) => `${toISODate(cycle.start)} ← ${toISODate(lastDayOf(cycle.end))}`;
 
 const fail = (error: string): PlanDocxFailure => ({ ok: false, error });
 
@@ -133,8 +143,9 @@ async function readDocx(fileBase64: string): Promise<DocxRead> {
 export async function previewPlanDocx(
   companyId: string,
   fileBase64: string,
+  target?: { year: number; month: number },
 ): Promise<PlanDocxPreview | PlanDocxFailure> {
-  const read = await readPlanDocx(companyId, fileBase64);
+  const read = await readPlanDocx(companyId, fileBase64, target);
   return "preview" in read ? read.preview : read;
 }
 
@@ -149,6 +160,7 @@ type PlanDocxRead = {
 async function readPlanDocx(
   companyId: string,
   fileBase64: string,
+  target?: { year: number; month: number },
 ): Promise<PlanDocxRead | PlanDocxFailure> {
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) return fail("الشركة غير موجودة");
@@ -159,9 +171,27 @@ async function readPlanDocx(
   if (!company.publishStartDate) {
     return fail("لا يوجد تاريخ بدء نشر لهذه الشركة — حدّدي التاريخ أولاً، فبلا دورة لا كروت لها");
   }
-  const at = new Date();
-  const bucket = currentCycleBucket(company, at);
-  if (!bucket) return fail("لا توجد دورة شغّالة لهذه الشركة — حدّثي تاريخ بدء النشر أو التجديد أولاً");
+  const today = teamToday();
+  const current = currentCycleBucket(company, today);
+  if (!current) return fail("لا توجد دورة شغّالة لهذه الشركة — حدّثي تاريخ بدء النشر أو التجديد أولاً");
+  // الحالية، والجاية المسجَّلة إن وُجدت — والاختيار صريح (PU-16).
+  const targets: PlanDocxTarget[] = [];
+  const currentCycle = cycleForBucket(company, current.year, current.month);
+  targets.push({ ...current, cycleLabel: currentCycle ? spanLabel(currentCycle) : "", current: true });
+  const upcoming = cyclesOf(company).find((cycle) => cycle.start.getTime() > today.getTime());
+  if (upcoming && !(upcoming.start.getFullYear() === current.year && upcoming.start.getMonth() === current.month)) {
+    targets.push({
+      year: upcoming.start.getFullYear(),
+      month: upcoming.start.getMonth(),
+      cycleLabel: spanLabel(upcoming),
+      current: false,
+    });
+  }
+  const chosen = target
+    ? targets.find((t) => t.year === target.year && t.month === target.month)
+    : targets[0];
+  if (!chosen) return fail("الدورة المختارة مو الحالية ولا الجاية المسجَّلة");
+  const bucket = { year: chosen.year, month: chosen.month };
   const cycle = cycleForBucket(company, bucket.year, bucket.month);
 
   const read = await readDocx(fileBase64);
@@ -190,6 +220,9 @@ async function readPlanDocx(
     }));
 
   const warnings = [...parsed.warnings];
+  if (targets.length > 1 && !target) {
+    warnings.push(`في دورة جاية مسجَّلة (${targets[1].cycleLabel}) — الملف نازل على الحالية إلا إذا اخترتي الجاية`);
+  }
   for (const row of counts) {
     if (row.inFile < row.inContract)
       warnings.push(`${row.label}: الملف فيه ${row.inFile} والعقد ${row.inContract}`);
@@ -224,9 +257,10 @@ async function readPlanDocx(
     ok: true,
     company: company.name,
     companyId,
-    cycleLabel: cycle ? `${toISODate(cycle.start)} ← ${toISODate(new Date(cycle.end.getTime() - 86_400_000))}` : null,
+    cycleLabel: cycle ? spanLabel(cycle) : null,
     year: bucket.year,
     month: bucket.month,
+    targets,
     counts,
     pieces: parsed.pieces.map((piece) => ({
       type: piece.type,
@@ -266,8 +300,10 @@ export async function applyPlanDocx(input: {
   /** «رفع نوال من الواجهة» أو «ملف تلغرام من نوال» — بينكتب بالدليل. */
   source: string;
   at?: Date;
+  /** الدورة يلي اختارتها القائدة بالمعاينة — لازم تكون من `targets` (PU-16). */
+  target?: { year: number; month: number };
 }): Promise<PlanDocxApplyResult | PlanDocxFailure> {
-  const read = await readPlanDocx(input.companyId, input.fileBase64);
+  const read = await readPlanDocx(input.companyId, input.fileBase64, input.target);
   if (!("preview" in read)) return read;
   const { preview, pieces, writeNotes } = read;
 

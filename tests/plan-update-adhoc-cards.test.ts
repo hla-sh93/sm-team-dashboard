@@ -146,7 +146,9 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     const result = await apply(payload([designCard()]));
     expect(result.ok, result.error).toBe(true);
     expect(result.createdAdhocCards).toBe(0);
-    expect(result.updatedAdhocCards).toBe(1);
+    // بلا فرق = «ما تغيّر» مو «معاد توقيته» (PU-04).
+    expect(result.updatedAdhocCards).toBe(0);
+    expect(result.unchangedAdhocCards).toBe(1);
 
     const cards = await prisma.task.findMany({ where: { companyId, kind: "ADHOC" } });
     expect(cards).toHaveLength(1);

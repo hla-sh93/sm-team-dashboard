@@ -47,16 +47,19 @@ describe("الشركة والدلو", () => {
   });
   it("حمولة بلا أي كتلة = فاضية؛ ومفتاح مجهول بالجذر بيرفض الكل", () => {
     expect(firstError(base)).toContain("فاضية");
-    expect(firstError({ ...ps(), foo: 1 })).toContain("Unrecognized");
+    expect(firstError({ ...ps(), foo: 1 })).toContain("مفتاح مو معروف: foo");
     expect(ok({ ...ps(), _: ["تعليق", { أي: "شي" }] })).toBe(true);
   });
-  it("الجسم غير الكائن (نصّ/null/مصفوفة) مرفوض — بس برسالة إنجليزية (PU-19)", () => {
+  it("[PU-19] الجسم غير الكائن (نصّ/null/مصفوفة) مرفوض — برسالة عربية، وكمان المفتاح المجهول والتاريخ الغلط", () => {
     expect(ok("{}")).toBe(false);
     expect(ok(null)).toBe(false);
     expect(ok([])).toBe(false);
-    expect(firstError("{}")).toMatch(/Expected object/);
+    expect(firstError("{}")).toBe("الحمولة لازم تكون كائن JSON ({ … })");
+    expect(firstError(ps({ status: "READY", date: "2026-2-3" }))).toContain("YYYY-MM-DD");
+    expect(firstError(ps({ status: "DONE" }))).toContain("قيمة مو مسموحة «DONE»");
+    expect(firstError(ps({ status: "DONE" }))).not.toMatch(/[A-Za-z]{3,} (expected|received)/);
   });
-  it.fails("PU-10: prepareOn/publishOn لحالها لازم تنعدّ حمولة غير فاضية", () => {
+  it("PU-10: prepareOn/publishOn لحالها بتنعدّ حمولة غير فاضية", () => {
     expect(ok({ ...base, prepareOn: { date: "2026-10-12", items: [{ type: "POST", pieceNo: 1 }] } })).toBe(true);
     expect(ok({ ...base, publishOn: { date: "2026-10-12", item: { type: "POST", pieceNo: 1 } } })).toBe(true);
   });
@@ -77,13 +80,23 @@ describe("pieceStates — الحقول والحدود", () => {
     expect(ok(ps({ pieceNo: 1000 }))).toBe(false);
   });
   it("التاريخ YYYY-MM-DD صالح تقويمياً: ٣٠ شباط و٢٩ شباط ٢٠٢٦ وISO datetime مرفوضة", () => {
-    expect(ok(ps({ date: "2026-02-30" }))).toBe(false);
-    expect(ok(ps({ date: "2026-02-29" }))).toBe(false);
-    expect(ok(ps({ date: "2024-02-29" }))).toBe(true);
-    expect(ok(ps({ date: "2026-13-01" }))).toBe(false);
-    expect(ok(ps({ date: "2026-2-3" }))).toBe(false);
-    expect(ok(ps({ date: "2026-10-11T00:00:00Z" }))).toBe(false);
-    expect(ok(ps({ date: "11/10/2026" }))).toBe(false);
+    // `date` يوم إنجاز — بيلزمه حالة منجزة (PU-09).
+    const done = (date: string) => ps({ status: "READY", date });
+    expect(ok(done("2026-02-30"))).toBe(false);
+    expect(ok(done("2026-02-29"))).toBe(false);
+    expect(ok(done("2024-02-29"))).toBe(true);
+    expect(ok(done("2026-13-01"))).toBe(false);
+    expect(ok(done("2026-2-3"))).toBe(false);
+    expect(ok(done("2026-10-11T00:00:00Z"))).toBe(false);
+    expect(ok(done("11/10/2026"))).toBe(false);
+  });
+
+  it("[PU-09] `date` بلا حالة منجزة مرفوض (كان ينشال بالصمت) — بحالة النشر READY بتنعدّ منجزة", () => {
+    expect(firstError(ps({ date: "2026-10-05" }))).toContain("بس مع حالة منجزة");
+    expect(firstError(ps({ status: "IN_PROGRESS", date: "2026-10-05" }))).toContain("بس مع حالة منجزة");
+    expect(ok(ps({ status: "PUBLISHED", date: "2026-10-05", stage: "PUBLISH" }))).toBe(true);
+    expect(ok(ps({ status: "READY", date: "2026-10-05", stage: "PUBLISH" }))).toBe(true);
+    expect(firstError(ad({ status: "IN_PROGRESS", date: "2026-10-05" }))).toContain("بس مع حالة منجزة");
   });
   it("الدليل 3..500 حرفاً بعد التنقية؛ removeEvidence 3 على الأقل", () => {
     expect(ok(ps({ evidence: "ab" }))).toBe(false);
@@ -100,8 +113,9 @@ describe("pieceStates — الحقول والحدود", () => {
     expect(ok(many(200))).toBe(true);
     expect(ok(many(201))).toBe(false);
   });
-  it.fails("PU-07: يوم شغل بعد يوم الجهوزية بـpieceStates لازم ينرفض متل adhocStates/adhocCards", () => {
-    expect(ok(ps({ workDate: "2026-10-20", readyDate: "2026-10-15" }))).toBe(false);
+  it("PU-07: يوم شغل بعد يوم الجهوزية بـpieceStates مرفوض متل adhocStates/adhocCards", () => {
+    expect(firstError(ps({ workDate: "2026-10-20", readyDate: "2026-10-15" }))).toContain("يوم الشغل بعد يوم التسليم");
+    expect(ok(ps({ workDate: "2026-10-15", readyDate: "2026-10-15" }))).toBe(true);
   });
 });
 
@@ -152,11 +166,15 @@ describe("planCounts / renewal / items / courses", () => {
     expect(ok({ ...base, items: [] })).toBe(false);
     expect(ok({ ...base, items: Array.from({ length: 301 }, (_, i) => ({ type: "STORY", pieceNo: i + 1, brief: "x" })) })).toBe(false);
   });
-  it.fails("PU-08: بند items بمفتاح مجهول (stage) لازم ينرفض — اليوم بينشال بالصمت والوصف بينكتب على كل المراحل", () => {
-    expect(ok({ ...base, items: [{ type: "POST", pieceNo: 1, brief: "x", stage: "DESIGN" }] })).toBe(false);
+  it("PU-08: بند items بمفتاح مجهول (stage) مرفوض — كان ينشال بالصمت والوصف ينكتب على كل المراحل", () => {
+    expect(firstError({ ...base, items: [{ type: "POST", pieceNo: 1, brief: "x", stage: "DESIGN" }] })).toContain("مفتاح مو معروف: stage");
+    expect(ok({ ...base, prepareOn: { date: "2026-10-01", items: [{ type: "POST", pieceNo: 1, stage: "DESIGN" }] } })).toBe(false);
+    expect(ok({ ...base, publishOn: { date: "2026-10-01", item: { type: "POST", pieceNo: 1 }, foo: 1 } })).toBe(false);
   });
-  it.fails("PU-08: closePreviousOpenTasks مو strict — مفتاح مجهول بينشال بالصمت", () => {
+  it("PU-08: closePreviousOpenTasks strict — مفتاح مجهول مرفوض (والاستعادة كمان)", () => {
     expect(ok({ ...base, closePreviousOpenTasks: { decisionDate: "2026-10-01", beforeDate: "2026-10-01", foo: 1 } })).toBe(false);
+    expect(ok({ ...base, closePreviousOpenTasks: { decisionDate: "2026-10-01", beforeDate: "2026-10-01", restoreMistakenClosures: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED", x: 1 }] } })).toBe(false);
+    expect(ok({ ...base, closePreviousOpenTasks: { decisionDate: "2026-10-01", beforeDate: "2026-10-01" } })).toBe(true);
   });
   it("courses: الحدود (publishDaysBefore ≤ 60، designHours ≤ 8، بند واحد على الأقل)", () => {
     const c = (over: Record<string, unknown>, item: Record<string, unknown> = {}) => ({

@@ -435,6 +435,8 @@ export function statusToBoard(status: string): Board {
 
 export function normalizeStatusForStage(status: string, stage?: string | null): string {
   if (stage === "PUBLISH" && status === "READY") return "PUBLISHED";
+  // «منشور» حالة كرت النشر بس: على تصميم/تصوير/مونتاج/كتابة = «جاهز» (فحص ١٢/١٠، PU-13).
+  if (stage && stage !== "PUBLISH" && status === "PUBLISHED") return "READY";
   return status;
 }
 

@@ -45,10 +45,38 @@ export default function PlanDocxButtons({
         return;
       }
       start(async () => {
-        const preview = await previewCompanyPlanDocx(companyId, base64);
+        let preview = await previewCompanyPlanDocx(companyId, base64);
         if (!preview.ok) {
           void Swal.fire({ icon: "error", title: "الملف ما انقرا", text: preview.error, confirmButtonColor: "#0a8fa3" });
           return;
+        }
+        // دورة جاية مسجَّلة: لأي دورة الخطة؟ — اختيار صريح بدل ما تنزل على الحالية (PU-16).
+        let target: { year: number; month: number } | undefined;
+        if (preview.targets.length > 1) {
+          const options = preview.targets;
+          const choice = await Swal.fire({
+            title: "لأي دورة هالخطة؟",
+            input: "radio",
+            inputOptions: Object.fromEntries(
+              options.map((t, i) => [String(i), `${t.current ? "الحالية" : "الجاية"}: ${t.cycleLabel}`]),
+            ),
+            inputValue: "0",
+            inputValidator: (value) => (value ? null : "اختاري دورة"),
+            showCancelButton: true,
+            confirmButtonText: "متابعة",
+            cancelButtonText: "إلغاء",
+            confirmButtonColor: "#0a8fa3",
+          });
+          if (!choice.isConfirmed) return;
+          const picked = options[Number(choice.value)];
+          target = { year: picked.year, month: picked.month };
+          if (!picked.current) {
+            preview = await previewCompanyPlanDocx(companyId, base64, target);
+            if (!preview.ok) {
+              void Swal.fire({ icon: "error", title: "الملف ما انقرا", text: preview.error, confirmButtonColor: "#0a8fa3" });
+              return;
+            }
+          }
         }
         const counts = preview.counts
           .map((row) => {
@@ -88,7 +116,7 @@ export default function PlanDocxButtons({
           confirmButtonColor: "#0a8fa3",
         });
         if (!res.isConfirmed) return;
-        const applied = await applyCompanyPlanDocx({ companyId, fileBase64: base64, fileName: file.name });
+        const applied = await applyCompanyPlanDocx({ companyId, fileBase64: base64, fileName: file.name, target });
         if (!applied.ok) {
           void Swal.fire({ icon: "error", title: "ما انطبّقت", text: applied.error, confirmButtonColor: "#0a8fa3" });
           return;

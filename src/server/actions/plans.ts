@@ -28,8 +28,19 @@ export async function applyCompanyPlanUpdate(input: unknown) {
  * بقرار التصميم — كروت الحالة والإنجاز بتتغيّر منها بلا دخول. التطبيق تحتها
  * بيمرق من نفس تحقّق `applyPlanUpdatePayload` كل-أو-لا-شي.
  */
-export async function previewCompanyPlanDocx(companyId: string, fileBase64: string) {
-  return previewPlanDocx(companyId, fileBase64);
+export async function previewCompanyPlanDocx(
+  companyId: string,
+  fileBase64: string,
+  target?: { year: number; month: number },
+) {
+  return previewPlanDocx(companyId, fileBase64, cleanTarget(target));
+}
+
+/** الدورة المختارة من المتصفّح — أرقام صحيحة بس، والخادم بيتحقّق إنها من الدورات المتاحة. */
+function cleanTarget(target: unknown): { year: number; month: number } | undefined {
+  const t = target as { year?: unknown; month?: unknown } | null | undefined;
+  if (!t || !Number.isInteger(t.year) || !Number.isInteger(t.month)) return undefined;
+  return { year: t.year as number, month: t.month as number };
 }
 
 /** تطبيق ملف خطة Word: النصوص على القطع، وكرت الكتابة بينسكّر بدليل. */
@@ -37,8 +48,15 @@ export async function applyCompanyPlanDocx(input: {
   companyId: string;
   fileBase64: string;
   fileName: string;
+  target?: { year: number; month: number };
 }) {
-  const result = await applyPlanDocx({ ...input, source: "رفع من الواجهة" });
+  const result = await applyPlanDocx({
+    companyId: input.companyId,
+    fileBase64: input.fileBase64,
+    fileName: input.fileName,
+    target: cleanTarget(input.target),
+    source: "رفع من الواجهة",
+  });
   if (result.ok) revalidateAll();
   return result;
 }

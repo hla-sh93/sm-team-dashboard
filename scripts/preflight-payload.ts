@@ -13,9 +13,39 @@ import { parseWorkDays, toISODate } from "@/lib/dates";
 import { cycleForBucket, cyclesOf, parseRenewals } from "@/lib/contract";
 import { hasLaterCycle, pieceCountsOf, type PlanCounts } from "@/lib/cycle-plan";
 import { planCourseCards, type CourseItem, type CoursePoster } from "@/lib/course-cards";
+import { normalizeStatusForStage } from "@/lib/constants";
+import { parsePlanUpdatePayload } from "@/server/plan-update";
 
 type Row = Record<string, unknown>;
 const WEEKDAY = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const DONE = ["READY", "PUBLISHED"];
+const isDoneRow = (t: Row) => DONE.includes(String(t.status)) || t.board === "DONE";
+const willBeDone = (spec: Row) =>
+  spec.status != null && DONE.includes(normalizeStatusForStage(String(spec.status), (spec.stage as string | undefined) ?? null));
+
+/**
+ * الحالة والطوابع كما رح يكتبها الخادم (PU-21 · PU-02 · PU-09): حمولة **أقدم** بتفتح كرتاً
+ * انسكّر بعدها — بتمحي شغلاً لاحقاً بلا إنذار؛ ومنجز بلا `date` بياخد موعد الكرت طابعاً.
+ */
+function stampNotes(spec: Row, t: Row, label: string): string[] {
+  const bits: string[] = [];
+  if (spec.status && isDoneRow(t) && !willBeDone(spec)) {
+    console.log(
+      `   ⚠️ ${label}: الكرت منجز (${L(t.completedAt ?? t.finishedAt)}) والحمولة بتفتحه — طوابعه بتنمحى؛ تأكّدي إنها مو حمولة أقدم`,
+    );
+  }
+  if (willBeDone(spec)) {
+    if (spec.date) bits.push(`إنجاز → ${String(spec.date)}`);
+    else if (isDoneRow(t)) bits.push("منجز أصلاً — الطابع ما بيتغيّر");
+    else {
+      const scheduled =
+        spec.stage === "PUBLISH" ? (t.publishDate ?? t.readyDate ?? t.workDate) : (t.readyDate ?? t.workDate ?? t.publishDate);
+      bits.push(`إنجاز بلا date → طابعه موعد الكرت ${L(scheduled)}`);
+    }
+  }
+  return bits;
+}
+
 const L = (v: unknown) => {
   if (!v) return "—";
   const d = new Date(v as string);
@@ -38,6 +68,13 @@ for (const file of files) {
     (c) => c.name === payload.companyName || c.id === payload.companyId,
   );
   console.log(`\n■ ${file} — ${payload.companyName ?? payload.companyId} m=${payload.month}`);
+  // نفس مخطّط الخادم: الفحص المسبق ما بيكون أرخى منه ولا أشدّ.
+  const schema = parsePlanUpdatePayload(payload);
+  if (!schema.success) {
+    console.log(`   ✗ المخطّط: ${schema.error.errors[0]?.message}`);
+    problems++;
+    continue;
+  }
   if (!company) {
     console.log("   ✗ الشركة مو موجودة باللقطة");
     problems++;
@@ -64,7 +101,7 @@ for (const file of files) {
     const bits = [String(t.id)];
     if (spec.pinned !== undefined) bits.push(`مثبّت ${t.isPinned}→${spec.pinned}`);
     if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
-    if (spec.date) bits.push(`إنجاز → ${spec.date}`);
+    bits.push(...stampNotes(spec, t, `${spec.type}#${spec.pieceNo} ${spec.stage}`));
     if (spec.workDate) bits.push(`شغل ${L(t.workDate)}→${spec.workDate}`);
     if (spec.readyDate) bits.push(`جهوزية ${L(t.readyDate)}→${spec.readyDate}`);
     if (spec.publishDate) bits.push(`نشر ${L(t.publishDate)}→${spec.publishDate}`);
@@ -108,6 +145,7 @@ for (const file of files) {
       const t = hits[0];
       const bits = [t.id, `«${t.title}»`, `${t.status}`];
       if (spec.status) bits.push(`حالة ${t.status}→${spec.status}`);
+      bits.push(...stampNotes(spec, t, `«${needle}»`));
       if (spec.hours != null) bits.push(`ساعات ${t.hours}→${spec.hours}`);
       if (spec.workDate) bits.push(`شغل ${L(t.workDate)}→${spec.workDate}`);
       if (spec.readyDate) bits.push(`جهوزية ${L(t.readyDate)}→${spec.readyDate}`);

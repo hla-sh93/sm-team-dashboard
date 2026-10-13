@@ -102,8 +102,8 @@ describe("قارئ القالب (بلا قاعدة)", () => {
 
 // ------------------------------------------------------------------ DB-backed
 let prisma: any;
-let preview: (companyId: string, file: string) => Promise<any>;
-let applyDocx: (input: { companyId: string; fileBase64: string; fileName: string; source: string; at?: Date }) => Promise<any>;
+let preview: (companyId: string, file: string, target?: { year: number; month: number }) => Promise<any>;
+let applyDocx: (input: { companyId: string; fileBase64: string; fileName: string; source: string; at?: Date; target?: { year: number; month: number } }) => Promise<any>;
 const uniq = `فحص-عميق-وورد-${process.pid}`;
 let companyId = "";
 let writerId = "";
@@ -143,13 +143,17 @@ afterAll(async () => {
 });
 
 describe("الرفع على القاعدة", () => {
-  it("PU-16: آخر يوم بالدورة الحالية (١٢/١٠) مع تجديد ١٣/١٠ مسجَّل → الرفع بيستهدف دلو الدورة الحالية m=8 لا الجاية", async () => {
+  it("PU-16: آخر يوم بالدورة الحالية (١٢/١٠) مع تجديد ١٣/١٠ مسجَّل → المعاينة بتعرض الدورتين وبتنبّه؛ الافتراض الحالية m=8", async () => {
     if (skip()) return;
     vi.setSystemTime(new Date(2026, 9, 12, 9, 0));
     const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(2, "بوست") }]);
     const p = await preview(companyId, file);
     expect(p.ok, p.error).toBe(true);
     expect(p.month).toBe(8);
+    expect(p.targets.map((t: { month: number; current: boolean }) => [t.month, t.current])).toEqual([[8, true], [9, false]]);
+    expect(p.warnings.some((w: string) => w.includes("دورة جاية مسجَّلة"))).toBe(true);
+    // دلو مو من الدورتين = رفض.
+    expect((await preview(companyId, file, { year: 2026, month: 7 })).ok).toBe(false);
     const r = await applyDocx({ companyId, fileBase64: file, fileName: "plan-oct.docx", source: "فحص", at: new Date(2026, 9, 12, 9, 0) });
     expect(r.ok, r.error).toBe(true);
     const oldCycle = await prisma.task.findUnique({ where: { id: `${P}_d_8_1` } });
@@ -159,6 +163,17 @@ describe("الرفع على القاعدة", () => {
     vi.setSystemTime(new Date(2026, 9, 13, 9, 0));
     const p2 = await preview(companyId, file);
     expect(p2.month).toBe(9);
+  });
+  it("PU-16: باختيار الجاية صراحةً (١٢/١٠) الخطة بتنزل على دلو الدورة الجاية m=9", async () => {
+    if (skip()) return;
+    vi.setSystemTime(new Date(2026, 9, 12, 9, 0));
+    const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(2, "بوست الجاية") }]);
+    const p = await preview(companyId, file, { year: 2026, month: 9 });
+    expect([p.ok, p.month]).toEqual([true, 9]);
+    const r = await applyDocx({ companyId, fileBase64: file, fileName: "plan-next.docx", source: "فحص", at: new Date(2026, 9, 12, 9, 0), target: { year: 2026, month: 9 } });
+    expect(r.ok, r.error).toBe(true);
+    expect((await prisma.task.findUnique({ where: { id: `${P}_d_9_1` } })).brief).toContain("نص بوست الجاية 1");
+    vi.useRealTimers();
   });
   it("PU-14 مُصلَح: إقفال كرت الكتابة بالرفع بيضيف الدليل وما بيمحي الملاحظات الموجودة (قاعدة ٢)", async () => {
     if (skip()) throw new Error("skip");

@@ -171,12 +171,14 @@ describe("المطابقة — صفّ واحد بالضبط", () => {
     expect(bRows.every((t: any) => t.notes == null && t.status === "NOT_STARTED")).toBe(true);
   });
 
-  it.fails("PU-05: اسم موظف مكرّر → رفض بدل اختيار صامت لآخر واحد", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-05: اسم موظف مكرّر → رفض بدل اختيار صامت لآخر واحد", async () => {
+    if (skip()) return;
     const dup = await prisma.employee.create({ data: { name: `${uniq} مصمّم`, role: "designer-dup", workDays: "[0,1,2,3,4]" } });
     try {
       const r = await apply(payload({ adhocCards: [{ slug: `deep-${P}-dupname`, title: "كرت اسم مكرّر", assignee: `${uniq} مصمّم`, hours: 1, workDate: "2026-09-21", readyDate: "2026-09-21", evidence: EV }] }));
       expect(r.ok).toBe(false);
+      expect(r.error).toContain("لأكتر من موظف");
+      expect(await prisma.task.count({ where: { id: `adhoc_deep-${P}-dupname` } })).toBe(0);
     } finally {
       await prisma.task.deleteMany({ where: { id: `adhoc_deep-${P}-dupname` } });
       await prisma.employee.delete({ where: { id: dup.id } });
@@ -206,26 +208,32 @@ describe("العدّادات", () => {
     expect(d.changed.length).toBe(2 + 3 + 1 + 1);
     expect(r.affectedRows).toBe(d.changed.length + d.added.length);
   });
-  it("إعادة التطبيق نفسها: ولا صف يتغيّر — بس العدّادات بتعدّ المطابَق لا المتغيّر (PU-04، توثيق)", async () => {
+  it("[PU-04] إعادة التطبيق نفسها: ولا صف يتغيّر — والعدّادات بتعدّ المتغيّر (صفر) لا المطابَق", async () => {
     if (skip()) return;
     const before = await dump();
     const r = await apply(mixed());
     expect(r.ok, r.error).toBe(true);
     expect(noChange(diff(before, await dump()))).toBe(true);
-    // السلوك الحالي الموثَّق: الرسالة رح تقول «2 وصفاً · 1 حالة قطعة · 1 كرتاً خارج الخطة · 1 كرتاً خارج الخطة معاد توقيته»
-    expect(r.affectedRows).toBeGreaterThan(0);
-    expect(r.updatedAdhocCards).toBe(1);
+    expect([r.describedPieces, r.updatedStates, r.updatedAdhoc, r.updatedAdhocCards, r.affectedRows]).toEqual([0, 0, 0, 0, 0]);
+    expect(r.unchangedAdhocCards).toBe(1);
   });
 });
 
 describe("الحالة ↔ الطوابع", () => {
-  it.fails("PU-02: READY بلا date لازم ياخد طابع إنجاز (وإلا ما بيظهر بأي تقرير دوري)", async () => {
-    if (skip()) throw new Error("skip");
+  it("PU-02: READY بلا date بياخد طابع إنجاز = موعد الكرت نفسه (بلا تحريك أي موعد) — فبيظهر بالتقارير", async () => {
+    if (skip()) return;
+    const before = await prisma.task.findUnique({ where: { id: key("a_d_post_1") } });
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "READY", evidence: `${EV} ر١` }] }));
     expect(r.ok, r.error).toBe(true);
     const t = await prisma.task.findUnique({ where: { id: key("a_d_post_1") } });
     expect(t.status).toBe("READY");
-    expect(t.completedAt).not.toBeNull();
+    const scheduled = before.readyDate ?? before.workDate;
+    expect(toISODate(t.completedAt)).toBe(toISODate(scheduled));
+    expect(toISODate(t.finishedAt)).toBe(toISODate(scheduled));
+    expect([toISODate(t.workDate), toISODate(t.readyDate)]).toEqual([toISODate(before.workDate), toISODate(before.readyDate)]);
+    // إعادة التطبيق ما بتحرّك الطابع.
+    const again = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "READY", evidence: `${EV} ر١` }] }));
+    expect(again.updatedStates).toBe(0);
   });
   it("READY بـdate بيكتب الطوابع الثلاثة ويوم الشغل/الجهوزية؛ وإعادة الفتح بتمحيها وبتضيف الدليل", async () => {
     if (skip()) return;
@@ -240,15 +248,13 @@ describe("الحالة ↔ الطوابع", () => {
     expect(t.board).toBe("TODO");
     expect(t.notes.split("\n")).toContain(`${EV} فتح`);
   });
-  it("IN_PROGRESS مع date: التاريخ بينشال بالصمت (PU-09، توثيق) — ولا طابع ولا نقل يوم", async () => {
+  it("[PU-09] IN_PROGRESS مع date مرفوضة (كان التاريخ ينشال بالصمت) — ولا شي بيتغيّر", async () => {
     if (skip()) return;
-    const before = await prisma.task.findUnique({ where: { id: key("a_d_post_2") } });
+    const before = await dump();
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 2, stage: "DESIGN", status: "IN_PROGRESS", date: "2026-09-10", evidence: `${EV} ق` }] }));
-    expect(r.ok).toBe(true);
-    const t = await prisma.task.findUnique({ where: { id: key("a_d_post_2") } });
-    expect(t.status).toBe("IN_PROGRESS");
-    expect(t.startedAt).toBeNull();
-    expect(toISODate(t.workDate)).toBe(toISODate(before.workDate));
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("بس مع حالة منجزة");
+    expect(noChange(diff(before, await dump()))).toBe(true);
   });
   it("PUBLISHED على كرت النشر بيسكّر مراحل الإنتاج قبله بتاريخ النشر", async () => {
     if (skip()) return;
@@ -275,24 +281,29 @@ describe("الحالة ↔ الطوابع", () => {
     const des = await prisma.task.findUnique({ where: { id: key("a_d_post_2") } });
     expect(des.status).toBe("READY");
   });
-  it("pinned:false مع publishDate → التثبيت بيغلب (PU-12، توثيق)؛ وPUBLISHED على مرحلة تصميم بتنحفظ حرفياً (PU-13، توثيق)", async () => {
+  it("[PU-12] pinned:false الصريح بيغلب publishDate؛ وبلاه publishDate بيثبّت. [PU-13] PUBLISHED على مرحلة تصميم = READY", async () => {
     if (skip()) return;
     await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", pinned: false, publishDate: "2026-10-05", evidence: `${EV} ث` }] }));
     let t = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
+    expect(t.isPinned).toBe(false);
+    expect(toISODate(t.publishDate)).toBe("2026-10-05");
+    await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", publishDate: "2026-10-06", evidence: `${EV} ث٢` }] }));
+    t = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
     expect(t.isPinned).toBe(true);
     await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", status: "PUBLISHED", date: "2026-09-21", evidence: `${EV} م` }] }));
     t = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
-    expect(t.status).toBe("PUBLISHED");
+    expect(t.status).toBe("READY");
+    expect(t.board).toBe("DONE");
   });
 });
 
 describe("items — الوصف", () => {
-  it("items.stage بينشال بالصمت فالوصف بيكتب على كل مراحل القطعة (PU-08، توثيق الأثر)", async () => {
+  it("[PU-08] items.stage مرفوض فوصف كرت النشر ما بينلمس", async () => {
     if (skip()) return;
     await prisma.task.update({ where: { id: key("a_p_post_3") }, data: { brief: "وصف النشر الأصلي" } });
     const r = await apply(payload({ items: [{ type: "POST", pieceNo: 3, stage: "DESIGN", brief: "وصف للتصميم بس" }] }));
-    expect(r.ok, r.error).toBe(true);
+    expect(r.ok).toBe(false);
     const pub = await prisma.task.findUnique({ where: { id: key("a_p_post_3") } });
-    expect(pub.brief).toBe("وصف للتصميم بس");
+    expect(pub.brief).toBe("وصف النشر الأصلي");
   });
 });

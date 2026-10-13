@@ -18,7 +18,8 @@ import {
   PRIORITIES,
   statusToBoard,
 } from "@/lib/constants";
-import { formatDateShort, fromISODate, parseWorkDays, toISODate } from "@/lib/dates";
+import { formatDateShort, fromISODate, parseWorkDays, toISODate, utcMidnight } from "@/lib/dates";
+import { teamToday } from "@/lib/team-day";
 import { cycleForBucket, cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
 import { hasLaterCycle, planTotal, type PlanCounts } from "@/lib/cycle-plan";
 import { bucketKey, existingPieceCounts, planReductionBlocker } from "@/server/cycle-plan";
@@ -35,8 +36,47 @@ const pieceRef = z.object({
 });
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "التاريخ بصيغة YYYY-MM-DD (مثال 2026-10-05)")
   .refine((value) => toISODate(fromISODate(value)) === value, "تاريخ غير صالح");
+
+const isDoneStatus = (status: string | undefined, stage?: string | null) =>
+  status != null && DONE_STATUSES.includes(normalizeStatusForStage(status, stage) as never);
+
+/**
+ * `date` هو يوم الإنجاز الفعلي — بيعني شي بس مع حالة منجزة. مع غيرها كان ينشال بالصمت
+ * والفحص المسبق يطبع «إنجاز → date» (فحص ١٢/١٠، PU-09).
+ */
+const dateNeedsDoneStatus = {
+  check: (spec: { date?: string; status?: string; stage?: string | null }) =>
+    !spec.date || isDoneStatus(spec.status, spec.stage),
+  message: "`date` يوم الإنجاز الفعلي — بس مع حالة منجزة (READY / PUBLISHED)",
+};
+
+/**
+ * رسائل عربية للأخطاء البنيوية (PU-19): كانت «Expected object, received string» و
+ * «Unrecognized key(s)…». الرسائل المكتوبة بالمخطّط نفسه بتغلب هالخريطة.
+ */
+const arabicErrors: z.ZodErrorMap = (issue, ctx) => {
+  const where = issue.path.length ? `${issue.path.join(".")}: ` : "";
+  switch (issue.code) {
+    case z.ZodIssueCode.invalid_type:
+      if (issue.path.length === 0) return { message: "الحمولة لازم تكون كائن JSON ({ … })" };
+      if (issue.received === "undefined") return { message: `${where}حقل مطلوب` };
+      return { message: `${where}نوع غلط — المتوقَّع ${issue.expected}` };
+    case z.ZodIssueCode.unrecognized_keys:
+      return { message: `${where}مفتاح مو معروف: ${issue.keys.join("، ")}` };
+    case z.ZodIssueCode.invalid_enum_value:
+      return { message: `${where}قيمة مو مسموحة «${String(issue.received)}» — المسموح: ${issue.options.join(" / ")}` };
+    case z.ZodIssueCode.invalid_string:
+      return { message: `${where}صيغة غلط` };
+    case z.ZodIssueCode.too_small:
+      return { message: `${where}أقلّ من المسموح (${String(issue.minimum)})` };
+    case z.ZodIssueCode.too_big:
+      return { message: `${where}أكبر من المسموح (${String(issue.maximum)})` };
+    default:
+      return { message: ctx.defaultError };
+  }
+};
 
 const planUpdateSchema = z
   .object({
@@ -48,11 +88,15 @@ const planUpdateSchema = z
     // اختيارية: في حالات ما فيها خطة جديدة أصلاً — شركة خلصت دورتها وما جدّدت
     // (أغاليا)، وكل يلي مطلوب إقفال يلي ضل مفتوح من الدورة السابقة. بلا هيك
     // كان لازم نخترع «قطع» مالها وجود مشان نمرق من التحقّق.
+    // `.strict()` بالبنود كمان (PU-08): `stage` بالبند كان ينشال بالصمت فالوصف ينزل على
+    // كل مراحل القطعة — حتى كرت النشر فوق نصّه.
     items: z
       .array(
-        pieceRef.extend({
-          brief: z.string().trim().min(1).max(4000),
-        }),
+        pieceRef
+          .extend({
+            brief: z.string().trim().min(1).max(4000),
+          })
+          .strict(),
       )
       .min(1)
       .max(300)
@@ -60,14 +104,16 @@ const planUpdateSchema = z
     prepareOn: z
       .object({
         date: isoDate,
-        items: z.array(pieceRef).min(1).max(100),
+        items: z.array(pieceRef.strict()).min(1).max(100),
       })
+      .strict()
       .optional(),
     publishOn: z
       .object({
         date: isoDate,
-        item: pieceRef,
+        item: pieceRef.strict(),
       })
+      .strict()
       .optional(),
     // حالة قطعة بدليلها — «هاي القطعة انسلّمت/انتشرت يوم كذا، وهاد الدليل».
     // بدونها كانت المطابقة تنتهي بنقرات يدوية على الكروت: بلا سطر دليل، وبلا
@@ -120,7 +166,12 @@ const planUpdateSchema = z
           removeEvidence: z.string().trim().min(3).max(500).optional(),
           evidence: z.string().trim().min(3).max(500),
         })
-          .strict(),
+          .strict()
+          // نفس حارس `adhocStates`/`adhocCards` (PU-07): ما بيخلص شي قبل ما يبلّش (§٤).
+          .refine((spec) => !spec.workDate || !spec.readyDate || spec.workDate <= spec.readyDate, {
+            message: "يوم الشغل بعد يوم التسليم",
+          })
+          .refine(dateNeedsDoneStatus.check, { message: dateNeedsDoneStatus.message }),
       )
       .max(200)
       .optional(),
@@ -178,7 +229,8 @@ const planUpdateSchema = z
           .strict()
           .refine((spec) => !spec.workDate || !spec.readyDate || spec.workDate <= spec.readyDate, {
             message: "يوم الشغل بعد يوم التسليم",
-          }),
+          })
+          .refine(dateNeedsDoneStatus.check, { message: dateNeedsDoneStatus.message }),
       )
       .max(50)
       .optional(),
@@ -241,14 +293,17 @@ const planUpdateSchema = z
         beforeDate: isoDate,
         restoreMistakenClosures: z
           .array(
-            pieceRef.extend({
-              stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
-              status: z.literal("NOT_STARTED"),
-            }),
+            pieceRef
+              .extend({
+                stage: z.enum(["WRITE", "DESIGN", "SHOOT", "EDIT", "PUBLISH"]),
+                status: z.literal("NOT_STARTED"),
+              })
+              .strict(),
           )
           .max(50)
           .optional(),
       })
+      .strict()
       .optional(),
     /**
      * حساب إنستغرام الشركة — بلا @ وبلا رابط.
@@ -385,6 +440,8 @@ const planUpdateSchema = z
     (value) =>
       Boolean(
         value.items?.length ||
+          value.prepareOn ||
+          value.publishOn ||
           value.closePreviousOpenTasks ||
           value.pieceStates?.length ||
           value.adhocStates?.length ||
@@ -435,7 +492,51 @@ const planUpdateSchema = z
 
 /** للفحوص وسكربت ما قبل التطبيق — نفس المخطّط يلي بيقرأه الخادم. */
 export function parsePlanUpdatePayload(input: unknown) {
-  return planUpdateSchema.safeParse(input);
+  return planUpdateSchema.safeParse(input, { errorMap: arabicErrors });
+}
+
+/**
+ * التاريخ يلي بينكتب بالقاعدة: منتصف ليل **UTC** — نفس الشكل على Vercel ومن جهاز بدمشق
+ * (فحص ١٢/١٠، PU-22: نفس الحمولة كانت تكتب `T21:00Z` محلياً و`T00:00Z` على الإنتاج).
+ * المنطق (المقارنات) بيضل على `fromISODate`.
+ */
+const dbDate = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+};
+
+/** فرق حقيقي بين قيمة رح تنكتب والمخزَّنة؟ (التواريخ باللحظة، والباقي بالمساواة) */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+  return (a ?? null) === (b ?? null);
+}
+/** الكتابة ما رح تغيّر شي بالصف — ما منكتبها ولا منعدّها (PU-04). */
+function changesNothing(update: Record<string, unknown>, row: Record<string, unknown>): boolean {
+  return Object.entries(update).every(([key, value]) => sameValue(value, row[key]));
+}
+
+/**
+ * الموظف بالاسم — والاسم مو `@unique`: موظفان بنفس الاسم كان يطلع آخر واحد بالصمت
+ * (فحص ١٢/١٠، PU-05). اسم مكرّر = رفض.
+ */
+async function employeesByName(names: string[]) {
+  const people = await prisma.employee.findMany({
+    where: { name: { in: names } },
+    select: { id: true, name: true, workDays: true },
+  });
+  const byName = new Map<string, (typeof people)[number]>();
+  const duplicated = new Set<string>();
+  for (const person of people) {
+    if (byName.has(person.name)) duplicated.add(person.name);
+    else byName.set(person.name, person);
+  }
+  const dup = [...duplicated][0];
+  return {
+    byName,
+    error: dup ? `الاسم «${dup}» لأكتر من موظف — ما منعرف مين المقصود` : null,
+  };
 }
 
 const keyOf = (item: { type: string; pieceNo: number }) => `${item.type}|${item.pieceNo}`;
@@ -471,9 +572,17 @@ function stateUpdateFor(
     removeEvidence?: string;
     evidence: string;
   },
-  task: { notes: string | null; startedAt: Date | null },
+  task: {
+    notes: string | null;
+    startedAt: Date | null;
+    finishedAt?: Date | null;
+    completedAt?: Date | null;
+    workDate?: Date | null;
+    readyDate?: Date | null;
+    publishDate?: Date | null;
+  },
 ) {
-  const when = spec.date ? fromISODate(spec.date) : null;
+  const when = spec.date ? dbDate(spec.date) : null;
   const status = spec.status ? normalizeStatusForStage(spec.status, spec.stage) : null;
   const done = status ? DONE_STATUSES.includes(status as never) : false;
   // نفس سطر الدليل ما بينكتب مرتين. الحمولة بتنطبّق أكتر من مرة بالواقع —
@@ -512,10 +621,25 @@ function stateUpdateFor(
       update.workDate = when;
       update.readyDate = when;
     }
+  } else if (done) {
+    // منجز بلا `date` (PU-02): كان يطلع «منجز» بلا أي طابع فيغيب عن تقرير الفترة وتقرير
+    // ٢٠:٠٠. حمولات حقيقية بتعملها عن قصد — «التاريخ المسجَّل بالتطبيق يبقى كما هو»
+    // (برو ٣/٩)، أو ستوري ما بتضل على إنستغرام فيومها مو معروف (مانغو). الطابع = موعد
+    // الكرت نفسه (بلا تحريك أي موعد)، والمنجز أصلاً بيضل على طابعه؛ وحمولة بـ`date`
+    // بعدين بتصحّحه.
+    const prior = task.completedAt ?? task.finishedAt ?? null;
+    const scheduled =
+      spec.stage === "PUBLISH"
+        ? (task.publishDate ?? task.readyDate ?? task.workDate)
+        : (task.readyDate ?? task.workDate ?? task.publishDate);
+    const at = prior ?? scheduled ?? utcMidnight(teamToday());
+    update.finishedAt = at;
+    update.completedAt = at;
+    if (!task.startedAt || task.startedAt.getTime() > at.getTime()) update.startedAt = at;
   }
   // تصحيح صريح للمواعيد — بيجي بعد الاشتقاق من `date` مشان يغلبه.
-  if (spec.workDate) update.workDate = fromISODate(spec.workDate);
-  if (spec.readyDate) update.readyDate = fromISODate(spec.readyDate);
+  if (spec.workDate) update.workDate = dbDate(spec.workDate);
+  if (spec.readyDate) update.readyDate = dbDate(spec.readyDate);
   // إعادة فتح كرت لازم تمحي طوابع إنجازه كمان، وإلا بيضل «TODO ومنجز بنفس
   // الوقت»: التقارير بتعدّه منجز والفحوص بتصرخ «شغل خلص قبل ما يبلّش».
   // الحالة والطوابع لازم يتحرّكوا سوا.
@@ -526,9 +650,10 @@ function stateUpdateFor(
   }
   // تأجيل/تثبيت موعد نشر لقطعة لسا ما انتشرت — قرار صريح، فبينثبّت مشان إعادة
   // الجدولة ما تسحبه.
+  // `pinned` الصريح بيغلب (PU-12): `pinned:false` مع `publishDate` كان ينقلب تثبيتاً.
   if (spec.publishDate) {
-    update.publishDate = fromISODate(spec.publishDate);
-    update.isPinned = true;
+    update.publishDate = dbDate(spec.publishDate);
+    update.isPinned = spec.pinned ?? true;
   }
   return update;
 }
@@ -547,8 +672,8 @@ function managerDecisionEvidence(decisionDate: string) {
  * piece or stage is missing, nothing is written — this prevents a shifted plan
  * from silently describing the wrong content.
  */
-export async function applyPlanUpdatePayload(input: unknown) {
-  const parsed = planUpdateSchema.safeParse(input);
+async function applyPlanUpdateOnce(input: unknown) {
+  const parsed = parsePlanUpdatePayload(input);
   if (!parsed.success) {
     return {
       ok: false as const,
@@ -640,6 +765,19 @@ export async function applyPlanUpdatePayload(input: unknown) {
         where: { id: companyId },
         data: { renewals: serializeRenewals([...existing, start]) },
       });
+      // خطة صفر (التدريب: شغله كروت دورات): ما في شي يتولّد، والتوليد كان يرفض «ما في
+      // دورة تغطّي هالشهر» فينلغى التجديد برسالة غلط (PU-28). الدورة انسجّلت وبس.
+      if (planTotal({ posts: company.posts, reels: company.reels, aiReels: company.aiReels, stories: company.stories }) === 0) {
+        revalidateAll();
+        return succeed({
+          ok: true as const,
+          company: company.name,
+          ...none,
+          renewed: true,
+          generatedCards: 0,
+          affectedRows: 0,
+        });
+      }
       const built = await generateScheduleInternal(start.getFullYear(), start.getMonth(), companyId);
       if (!built.ok) {
         // التوليد فشل = الدورة بلا كروت؛ منرجّع التجديد حتى ما تضل دورة فاضية مسجَّلة.
@@ -742,6 +880,32 @@ export async function applyPlanUpdatePayload(input: unknown) {
       });
     }
 
+    // شركة موقوفة أو مؤرشفة ما بينخلق ولا بينفتح إلها شغل (§٨، فحص ١٢/١٠ PU-24) — كرت
+    // مفتوح جديد لوصل المؤرشفة انخلق من حمولة. التصحيح التاريخي للمنجز مسموح.
+    const lifecycle = companyLifecycle(company);
+    if (lifecycle !== "active") {
+      const opening = [
+        ...(data.adhocCards ?? [])
+          .filter((card) => !isDoneStatus(card.status ?? "NOT_STARTED", card.stage))
+          .map((card) => `adhoc_${card.slug}`),
+        ...(data.pieceStates ?? [])
+          .filter((spec) => spec.status && !isDoneStatus(spec.status, spec.stage))
+          .map((spec) => `${spec.type}#${spec.pieceNo} ${spec.stage}`),
+        ...(data.adhocStates ?? [])
+          .filter((spec) => spec.status && !isDoneStatus(spec.status, spec.stage))
+          .map((spec) => `«${spec.title}»`),
+        ...(data.courses ? ["كروت الدورات"] : []),
+      ];
+      if (opening.length) {
+        return {
+          ok: false as const,
+          error:
+            `${company.name} ${lifecycle === "archived" ? "مؤرشفة" : "موقوفة"} — ما بينخلق ولا بينفتح إلها شغل ` +
+            `(تصحيح المنجز مسموح): ${opening.join("، ")}`,
+        };
+      }
+    }
+
     const tasks = await prisma.task.findMany({
       where: {
         companyId,
@@ -808,7 +972,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
       task: {
         id: string; stage: string | null; notes: string | null; startedAt: Date | null;
         kind: string; blockedById: string | null; pipelineKey: string | null;
-      };
+      } & Record<string, unknown>;
     }[] = [];
     if (adhocSpecs.length) {
       const adhocCandidates = await prisma.task.findMany({
@@ -819,7 +983,11 @@ export async function applyPlanUpdatePayload(input: unknown) {
           pieceNo: null,
           status: { not: "CANCELED" },
         },
-        select: { id: true, title: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
+        select: {
+          id: true, title: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true,
+          status: true, board: true, isPinned: true, finishedAt: true, completedAt: true,
+          workDate: true, readyDate: true, publishDate: true, hours: true, assigneeId: true,
+        },
       });
       const problems: string[] = [];
       const claimed = new Set<string>();
@@ -859,11 +1027,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
       ...new Set(adhocSpecs.map((spec) => spec.assignee).filter((name): name is string => !!name)),
     ];
     if (reassignNames.length) {
-      const people = await prisma.employee.findMany({
-        where: { name: { in: reassignNames } },
-        select: { id: true, name: true },
-      });
-      for (const person of people) adhocAssignees.set(person.name, person.id);
+      const people = await employeesByName(reassignNames);
+      if (people.error) return { ok: false as const, error: people.error };
+      for (const [name, person] of people.byName) adhocAssignees.set(name, person.id);
       const missing = reassignNames.find((name) => !adhocAssignees.has(name));
       if (missing) return { ok: false as const, error: `المسؤول «${missing}» غير موجود` };
     }
@@ -882,8 +1048,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
         return { ok: false as const, error: `معرّف الكرت «${duplicate}» مكرّر بالحمولة` };
       }
       const names = [...new Set(newAdhocSpecs.map((card) => card.assignee))];
-      const people = await prisma.employee.findMany({ where: { name: { in: names } }, select: { id: true, name: true } });
-      const personByName = new Map(people.map((person) => [person.name, person.id]));
+      const people = await employeesByName(names);
+      if (people.error) return { ok: false as const, error: people.error };
+      const personByName = new Map([...people.byName].map(([name, person]) => [name, person.id]));
       const missingPerson = names.find((name) => !personByName.has(name));
       if (missingPerson) {
         return { ok: false as const, error: `المسؤول «${missingPerson}» غير موجود` };
@@ -891,7 +1058,11 @@ export async function applyPlanUpdatePayload(input: unknown) {
       const ids = newAdhocSpecs.map((card) => `adhoc_${card.slug}`);
       const existing = await prisma.task.findMany({
         where: { id: { in: ids } },
-        select: { id: true, companyId: true, status: true, board: true, notes: true, finishedAt: true, startedAt: true },
+        select: {
+          id: true, companyId: true, status: true, board: true, notes: true, finishedAt: true, startedAt: true,
+          completedAt: true, title: true, stage: true, hours: true, priority: true, workDate: true,
+          readyDate: true, assigneeId: true, brief: true, isPinned: true,
+        },
       });
       const existingById = new Map(existing.map((task) => [task.id, task]));
       const foreign = existing.find((task) => task.companyId !== companyId);
@@ -914,8 +1085,8 @@ export async function applyPlanUpdatePayload(input: unknown) {
         }
         const status = normalizeStatusForStage(card.status ?? "NOT_STARTED", card.stage);
         const done = DONE_STATUSES.includes(status as never);
-        const workDate = fromISODate(card.workDate);
-        const doneAt = done ? fromISODate(card.doneOn ?? card.readyDate) : null;
+        const workDate = dbDate(card.workDate);
+        const doneAt = done ? dbDate(card.doneOn ?? card.readyDate) : null;
         const fields = {
           title: card.title,
           stage: card.stage ?? null,
@@ -924,7 +1095,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
           status,
           board: statusToBoard(status),
           workDate,
-          readyDate: fromISODate(card.readyDate),
+          readyDate: dbDate(card.readyDate),
           assigneeId: personByName.get(card.assignee)!,
           brief: card.brief ?? null,
           notes: withEvidenceLine(found?.notes, card.evidence),
@@ -935,7 +1106,10 @@ export async function applyPlanUpdatePayload(input: unknown) {
           finishedAt: doneAt,
           completedAt: doneAt,
         };
-        if (found) {
+        if (found && changesNothing(fields, found)) {
+          // إعادة تطبيق بلا فرق: ولا كتابة ولا «معاد توقيته» (PU-04).
+          unchangedAdhocCards++;
+        } else if (found) {
           updatedAdhocCards++;
           adhocCardOps.push(
             prisma.task.updateMany({
@@ -971,10 +1145,10 @@ export async function applyPlanUpdatePayload(input: unknown) {
     let unchangedCourseCards = 0;
     if (data.courses) {
       const block = data.courses;
-      const [designer, publisher] = await Promise.all([
-        prisma.employee.findFirst({ where: { name: block.designer } }),
-        prisma.employee.findFirst({ where: { name: block.publisher } }),
-      ]);
+      const people = await employeesByName([block.designer, block.publisher]);
+      if (people.error) return { ok: false as const, error: people.error };
+      const designer = people.byName.get(block.designer);
+      const publisher = people.byName.get(block.publisher);
       if (!designer) return { ok: false as const, error: `المصمّم «${block.designer}» غير موجود` };
       if (!publisher) return { ok: false as const, error: `الناشر «${block.publisher}» غير موجود` };
       const plan = planCourseCards(
@@ -985,7 +1159,11 @@ export async function applyPlanUpdatePayload(input: unknown) {
       if (!plan.ok) return { ok: false as const, error: plan.error };
       const existing = await prisma.task.findMany({
         where: { id: { in: plan.cards.map((card) => card.id) } },
-        select: { id: true, companyId: true, status: true, board: true, finishedAt: true, notes: true },
+        select: {
+          id: true, companyId: true, status: true, board: true, finishedAt: true, notes: true,
+          title: true, hours: true, priority: true, stage: true, workDate: true, readyDate: true,
+          publishDate: true, assigneeId: true, brief: true, isPinned: true, year: true, month: true,
+        },
       });
       const byId = new Map(existing.map((task) => [task.id, task]));
       for (const card of plan.cards) {
@@ -1009,16 +1187,18 @@ export async function applyPlanUpdatePayload(input: unknown) {
           hours: card.hours,
           priority: card.priority,
           stage: card.stage,
-          workDate: card.workDate,
-          readyDate: card.readyDate,
-          publishDate: card.publishDate,
+          workDate: card.workDate ? utcMidnight(card.workDate) : card.workDate,
+          readyDate: card.readyDate ? utcMidnight(card.readyDate) : card.readyDate,
+          publishDate: card.publishDate ? utcMidnight(card.publishDate) : card.publishDate,
           assigneeId: card.assigneeId,
           brief: card.brief,
           notes: withEvidenceLine(found?.notes, block.evidence),
           isPinned: true,
           ...courseCardBucket(card),
         };
-        if (found) {
+        if (found && changesNothing(fields, found)) {
+          unchangedCourseCards++;
+        } else if (found) {
           updatedCourseCards++;
           courseOps.push(
             prisma.task.updateMany({
@@ -1150,6 +1330,8 @@ export async function applyPlanUpdatePayload(input: unknown) {
         })
       : [];
 
+    // بس الصفوف يلي وصفها فعلاً بيتغيّر — إعادة التطبيق كانت تعدّ «٢ وصفاً» بلا فرق (PU-04).
+    // (`not` على حقل nullable ما بيشمل الفاضي بـPrisma، فالفاضي صريح.)
     const writes = items.map((item) =>
       prisma.task.updateMany({
         where: {
@@ -1160,13 +1342,14 @@ export async function applyPlanUpdatePayload(input: unknown) {
           status: { not: "CANCELED" },
           type: item.type,
           pieceNo: item.pieceNo,
+          OR: [{ brief: null }, { brief: { not: item.brief } }],
         },
         data: { brief: item.brief },
       }),
     );
 
     if (data.prepareOn) {
-      const date = fromISODate(data.prepareOn.date);
+      const date = dbDate(data.prepareOn.date);
       for (const item of data.prepareOn.items) {
         writes.push(
           prisma.task.updateMany({
@@ -1179,6 +1362,13 @@ export async function applyPlanUpdatePayload(input: unknown) {
               type: item.type,
               pieceNo: item.pieceNo,
               stage: "DESIGN",
+              OR: [
+                { workDate: null },
+                { workDate: { not: date } },
+                { manualDay: null },
+                { manualDay: { not: date } },
+                { isPinned: false },
+              ],
             },
             data: { workDate: date, manualDay: date, isPinned: true },
           }),
@@ -1187,7 +1377,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
     }
 
     if (data.publishOn) {
-      const date = fromISODate(data.publishOn.date);
+      const date = dbDate(data.publishOn.date);
       writes.push(
         prisma.task.updateMany({
           where: {
@@ -1199,6 +1389,13 @@ export async function applyPlanUpdatePayload(input: unknown) {
             type: data.publishOn.item.type,
             pieceNo: data.publishOn.item.pieceNo,
             stage: "PUBLISH",
+            OR: [
+              { publishDate: null },
+              { publishDate: { not: date } },
+              { workDate: null },
+              { workDate: { not: date } },
+              { isPinned: false },
+            ],
           },
           data: { publishDate: date, workDate: date, isPinned: true },
         }),
@@ -1207,7 +1404,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
 
     const closureWriteStart = writes.length;
     if (data.closePreviousOpenTasks) {
-      const decisionDate = fromISODate(data.closePreviousOpenTasks.decisionDate);
+      const decisionDate = dbDate(data.closePreviousOpenTasks.decisionDate);
 
       for (const task of previousOpenTasks) {
         const latest = latestScheduledDate(task);
@@ -1271,7 +1468,6 @@ export async function applyPlanUpdatePayload(input: unknown) {
     // حالات القطع: كل كرت بينتحدّث لحاله مشان الدليل ينضاف لملاحظاته بدل ما
     // يمحيها. الكرت المنجز موعده **تاريخ** لا خطة، فمنكتب يوم التسليم الفعلي
     // على `workDate`/`readyDate` — والحفظ بيصونهم عبر إعادة التوليد.
-    let stateTargets: { id: string; notes: string | null }[] = [];
     // كتابات الدليل المشروطة — لو تطبيق تاني بنفس اللحظة غيّر ملاحظات الكرت بين
     // القراءة والكتابة، الشرط بيفشل (count 0) فمنعيد حساب السطر على الملاحظات
     // الجديدة بدل ما يمحي واحد التاني (فحص ١٢/١٠، PU-20: سطر دليل كان يضيع).
@@ -1281,6 +1477,8 @@ export async function applyPlanUpdatePayload(input: unknown) {
       spec: Parameters<typeof stateUpdateFor>[0];
       extra?: Record<string, unknown>;
     }[] = [];
+    const stateWriteIdx: number[] = [];
+    const adhocWriteIdx: number[] = [];
     let stateTargetsFull: {
       id: string; type: string | null; pieceNo: number | null; stage: string | null;
       kind: string; blockedById: string | null; pipelineKey: string | null;
@@ -1299,7 +1497,11 @@ export async function applyPlanUpdatePayload(input: unknown) {
             stage: spec.stage,
           })),
         },
-        select: { id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true },
+        select: {
+          id: true, type: true, pieceNo: true, stage: true, notes: true, startedAt: true, kind: true, blockedById: true, pipelineKey: true,
+          status: true, board: true, isPinned: true, finishedAt: true, completedAt: true,
+          workDate: true, readyDate: true, publishDate: true,
+        },
       });
       // بند واحد = صفّ واحد بالضبط. بصفّين كان التطبيق يكتب عليهن التنين بينما
       // الفحص المسبق بيرفض (فحص ١٢/١٠، PU-03).
@@ -1316,7 +1518,6 @@ export async function applyPlanUpdatePayload(input: unknown) {
           error: `${type}#${pieceNo} ${stage}: طابق ${ambiguous[1]} صف — البند لازم يطابق كرتاً واحداً`,
         };
       }
-      stateTargets = targets.map((t) => ({ id: t.id, notes: t.notes }));
       stateTargetsFull = targets;
       const specByKey = new Map(stateSpecs.map((spec) => [stageKeyOf(spec), spec]));
       for (const task of targets) {
@@ -1324,12 +1525,16 @@ export async function applyPlanUpdatePayload(input: unknown) {
           stageKeyOf({ type: task.type ?? "", pieceNo: task.pieceNo!, stage: task.stage ?? "" }),
         );
         if (!spec) continue;
+        const update = stateUpdateFor(spec, task);
+        // إعادة تطبيق بلا فرق: ولا كتابة ولا عدّ (PU-04).
+        if (changesNothing(update, task)) continue;
         noteWrites.push({ index: writes.length, id: task.id, spec });
+        stateWriteIdx.push(writes.length);
         writes.push(
           prisma.task.updateMany({
             // مشروطة بالملاحظات يلي انحسب منها السطر الجديد (PU-20).
             where: { id: task.id, notes: task.notes },
-            data: stateUpdateFor(spec, task),
+            data: update,
           }),
         );
       }
@@ -1341,7 +1546,9 @@ export async function applyPlanUpdatePayload(input: unknown) {
     });
     for (const { spec, task } of adhocResolved) {
       const update = { ...stateUpdateFor(spec, task), ...adhocExtra(spec) };
+      if (changesNothing(update, task)) continue;
       noteWrites.push({ index: writes.length, id: task.id, spec, extra: adhocExtra(spec) });
+      adhocWriteIdx.push(writes.length);
       writes.push(prisma.task.updateMany({ where: { id: task.id, notes: task.notes }, data: update }));
     }
 
@@ -1359,7 +1566,10 @@ export async function applyPlanUpdatePayload(input: unknown) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const fresh = await prisma.task.findUnique({
           where: { id: w.id },
-          select: { notes: true, startedAt: true },
+          select: {
+            notes: true, startedAt: true, finishedAt: true, completedAt: true,
+            workDate: true, readyDate: true, publishDate: true,
+          },
         });
         if (!fresh) break;
         const redone = await prisma.task.updateMany({
@@ -1396,7 +1606,7 @@ export async function applyPlanUpdatePayload(input: unknown) {
           blockedById: target.blockedById ?? null,
           pipelineKey: target.pipelineKey ?? null,
         },
-        spec.date ? fromISODate(spec.date) : null,
+        spec.date ? dbDate(spec.date) : null,
       );
     }
     const closedPreviousTasks = previousOpenTasks.length
@@ -1410,12 +1620,14 @@ export async function applyPlanUpdatePayload(input: unknown) {
           .reduce((sum, result) => sum + (result.count ?? 0), 0)
       : 0;
     revalidateAll();
+    const changed = (indexes: number[]) => indexes.filter((i) => (results[i]?.count ?? 0) > 0).length;
     return {
       ok: true as const,
       company: company.name,
-      describedPieces: items.length,
-      updatedStates: stateTargets.length,
-      updatedAdhoc: adhocResolved.length,
+      // العدّادات بتعدّ يلي **تغيّر** فعلاً، مو يلي طابق (PU-04).
+      describedPieces: items.filter((_, i) => (results[i]?.count ?? 0) > 0).length,
+      updatedStates: changed(stateWriteIdx),
+      updatedAdhoc: changed(adhocWriteIdx),
       createdAdhocCards,
       updatedAdhocCards,
       unchangedAdhocCards,
@@ -1433,9 +1645,32 @@ export async function applyPlanUpdatePayload(input: unknown) {
         .reduce((sum, result) => sum + (result.count ?? 1), 0),
     };
   } catch (error) {
+    // تصادم معرّف مع تطبيق موازٍ: الغلاف تحت بيعيد مرّة (PU-25).
+    if (isUniqueClash(error)) throw error;
     // الرسالة للقائدة بتضل عامّة، بس السبب لازم ينكتب مطرح ما بينقرا: بلا هالسطر
     // كان أي فشل حمولة يطلع «فشل تطبيق خطة المحتوى» وبس — ولا بالسجلّ ولا محلياً.
     console.error("applyPlanUpdatePayload", error);
+    return { ok: false as const, error: "فشل تطبيق خطة المحتوى" };
+  }
+}
+
+const isUniqueClash = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
+
+export async function applyPlanUpdatePayload(input: unknown) {
+  try {
+    return await applyPlanUpdateOnce(input);
+  } catch (error) {
+    // تطبيقان بنفس اللحظة خلقوا نفس الكرت (`adhoc_<slug>`، P2002): المعاملة رجعت كلها،
+    // فإعادة وحدة بتلاقي الكرت وبتكمّل كتحديث — بدل «فشل تطبيق خطة المحتوى» (PU-25).
+    if (isUniqueClash(error)) {
+      try {
+        return await applyPlanUpdateOnce(input);
+      } catch (again) {
+        console.error("applyPlanUpdatePayload", again);
+      }
+    } else {
+      console.error("applyPlanUpdatePayload", error);
+    }
     return { ok: false as const, error: "فشل تطبيق خطة المحتوى" };
   }
 }
