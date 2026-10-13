@@ -2,6 +2,7 @@
 
 import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { makeLateClassifier } from "@/lib/late";
+import { teamTodayISO } from "@/lib/team-day";
 import { makeHeldReason } from "@/lib/daily-work";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { useMemo, useState, useTransition } from "react";
@@ -38,12 +39,15 @@ export default function PublishingClient({
   employees,
   companies,
   tasks,
+  chainTasks = [],
 }: {
   year: number;
   month: number;
   employees: PublicEmployee[];
   companies: PublicCompany[];
   tasks: Task[];
+  /** الكروت الحاجزة لكروت النشر — للحساب بس (`loadBlockerChain`). */
+  chainTasks?: Task[];
 }) {
   const router = useRouter();
   const [view, setView] = useState<CalendarMode>("monthly");
@@ -79,15 +83,16 @@ export default function PublishingClient({
   // …while every still-open card past its publish date — including carryover
   // from earlier cycles — surfaces in the «متأخر النشر» strip below, so the
   // publisher's own screen finally shows his overdue queue.
-  const todayISO = toISODate(new Date());
+  const todayISO = teamTodayISO();
   /** كرت ما إلو خانة بالشبكة: لا من دورة هالشهر ولا يوم نشره جوّاه. */
   const offGrid = (t: Task) =>
     !(t.year === year && t.month === month) && !publishesInMonth(t, year, month);
   // «متأخر» بتعريف كل الشاشات (`lib/late.ts`) — والقطعة يلي فات موعدها وهي **محجوزة**
   // خلف مرحلة مفتوحة بتطلع «بانتظار <المرحلة> — <صاحبها>»، مش «انشريها»: كان الشريط
   // يطلب من عمر ينشر ريل مونتاجه لسا مفتوح (فحص ١٢/١٠، OP-12).
-  const lateClass = useMemo(() => makeLateClassifier(tasks, companies), [tasks, companies]);
-  const heldReason = useMemo(() => makeHeldReason(tasks, todayISO), [tasks, todayISO]);
+  const withChain = useMemo(() => [...tasks, ...chainTasks], [tasks, chainTasks]);
+  const lateClass = useMemo(() => makeLateClassifier(withChain, companies), [withChain, companies]);
+  const heldReason = useMemo(() => makeHeldReason(withChain, todayISO), [withChain, todayISO]);
   const overdue = useMemo(
     () =>
       pubTasks

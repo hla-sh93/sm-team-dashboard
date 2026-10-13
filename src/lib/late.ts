@@ -52,3 +52,30 @@ export function makeLatePredicate(
   const classify = makeLateClassifier(allTasks, companies, today);
   return (t: Task) => classify(t) === "late";
 }
+
+/**
+ * الكروت يلي حاجزة كروت الشاشة (سلسلة `blockedById` لفوق)، يلي **مش** محمّلة أصلاً.
+ *
+ * شاشة بتحمّل مرحلة وحدة (شريط النشر بيحمّل كروت النشر بس) ما بتلاقي الحاجز، و
+ * `makeBlockedPredicate` بيعتبر الحاجز الغايب «ما عاد حاجز» — فالمحجوز كان يطلع «متأخر»
+ * و«بانتظار» ما بيطلع أبداً (مراجعة F–H، OP-12). مرّة لكل مستوى، لحدّ `maxDepth`.
+ */
+export async function loadBlockerChain<T extends { id: string; blockedById: string | null }>(
+  tasks: T[],
+  fetchByIds: (ids: string[]) => Promise<T[]>,
+  maxDepth = 6,
+): Promise<T[]> {
+  const known = new Set(tasks.map((t) => t.id));
+  const extra: T[] = [];
+  let frontier = tasks;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    const ids = [...new Set(frontier.map((t) => t.blockedById).filter((id): id is string => !!id && !known.has(id)))];
+    if (ids.length === 0) break;
+    const found = await fetchByIds(ids);
+    for (const t of found) known.add(t.id);
+    for (const id of ids) known.add(id); // مفقود (انمحى/مؤرشف) — ما منرجع ندوّر عليه
+    extra.push(...found);
+    frontier = found;
+  }
+  return extra;
+}

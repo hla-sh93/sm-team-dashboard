@@ -3,6 +3,7 @@ import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows"
 import { resolvePublishMonth, monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { keepOtherCycleCard } from "@/lib/publish-calendar";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
+import { loadBlockerChain } from "@/lib/late";
 import PublishingClient from "./publishing-client";
 
 export default async function PublishingPage({
@@ -38,6 +39,11 @@ export default async function PublishingPage({
   // الشركة الموقوفة/المؤرشفة ما بيطلع من كروتها شي — ولا بقائمة «متأخر النشر»
   // (قرار القائدة ١٥/٩: جدارات موقوفة وكانت ١٢ كرت نشر إلها بتطلع هون).
   const tasks = hideDormantCompanyWork([...bucketTasks, ...extras], companies);
+  // المراحل يلي حاجزة كروت النشر (مونتاج، تصميم، تصوير…) — بلاها المحجوز بيطلع «متأخر»
+  // وعمر مطلوب منه ينشر شي لسا ما خلص (مراجعة F–H، OP-12). للحساب بس، ما بتنعرض.
+  const chainTasks = await loadBlockerChain(tasks, (ids) =>
+    prisma.task.findMany({ where: { id: { in: ids } } }),
+  );
 
   return (
     <PublishingClient
@@ -46,6 +52,7 @@ export default async function PublishingPage({
       employees={employees}
       companies={companies}
       tasks={tasks}
+      chainTasks={chainTasks}
     />
   );
 }

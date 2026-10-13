@@ -19,7 +19,7 @@ import { isDormantCompany } from "@/lib/company-visibility";
 import { toISODate } from "@/lib/dates";
 import { buildPeriodReport, resolvePeriod } from "@/lib/period-report";
 import { openLateTasks } from "@/lib/telegram/summary";
-import { makeLateClassifier, makeLatePredicate } from "@/lib/late";
+import { loadBlockerChain, makeLateClassifier, makeLatePredicate } from "@/lib/late";
 import { readFileSync } from "node:fs";
 import type { Company, Task } from "@/types";
 
@@ -156,7 +156,7 @@ describe("[OP-12] «متابعة اليوم» وشريط «متأخر النشر
     expect(ids(publishingStrip(tasks))).not.toContain("pubBlocked");
     expect(classify(tasks.find((t) => t.id === "pubBlocked")!)).toBe("waiting");
     const src = readFileSync("src/app/publishing/publishing-client.tsx", "utf8");
-    expect(src).toMatch(/makeLateClassifier\(tasks, companies\)/);
+    expect(src).toMatch(/makeLateClassifier\(withChain, companies\)/);
   });
 });
 
@@ -177,5 +177,35 @@ describe("[OP-10] الحجز «بالسلسلة» (البريف/الرئيسية
 
   it("[OP-10] البريف/الرئيسية بيشوفوا نفس الكرت متأخر — السلسلة ما بتعبر المونتاج المنجز لكتابة الدورة المفتوحة", () => {
     expect(ids(openLateTasks(tasks, companies, TODAY))).toContain("pubChain");
+  });
+});
+
+describe("[OP-12 · مراجعة F–H] شريط النشر بيحمّل كروت النشر بس — لازم يجيب سلسلة الحاجز", () => {
+  const publishOnly = tasks.filter((t) => t.stage === "PUBLISH");
+  const fetchFrom = (pool: Task[]) => async (wanted: string[]) => pool.filter((t) => wanted.includes(t.id));
+
+  it("بلا السلسلة: المحجوز بيطلع «متأخر» (هاد يلي كان صاير بالصفحة)", () => {
+    expect(makeLateClassifier(publishOnly, companies, TODAY)(publishOnly.find((t) => t.id === "pubBlocked")!)).toBe("late");
+  });
+
+  it("`loadBlockerChain` بيجيب الحاجز وحاجزه بالترتيب، وبلا تكرار", async () => {
+    const chain = await loadBlockerChain(publishOnly, fetchFrom(tasks));
+    expect(ids(chain)).toEqual(["edit1", "edit2", "shoot1", "shoot2", "write"]);
+  });
+
+  it("مع السلسلة: «بانتظار» للمحجوز، و«متأخر» لريل ١ يلي مراحله منجزة (كرت الكتابة ما بيحجز)", async () => {
+    const chain = await loadBlockerChain(publishOnly, fetchFrom(tasks));
+    const classifyPage = makeLateClassifier([...publishOnly, ...chain], companies, TODAY);
+    expect(classifyPage(publishOnly.find((t) => t.id === "pubBlocked")!)).toBe("waiting");
+    expect(classifyPage(publishOnly.find((t) => t.id === "pubChain")!)).toBe("late");
+  });
+
+  it("الصفحة نفسها بتمرّر السلسلة للمصنّف (مو بس الملف المساعد)", () => {
+    const page = readFileSync("src/app/publishing/page.tsx", "utf8");
+    const client = readFileSync("src/app/publishing/publishing-client.tsx", "utf8");
+    expect(page).toMatch(/loadBlockerChain\(/);
+    expect(page).toMatch(/chainTasks=\{chainTasks\}/);
+    expect(client).toMatch(/makeLateClassifier\(withChain/);
+    expect(client).toMatch(/makeHeldReason\(withChain/);
   });
 });
