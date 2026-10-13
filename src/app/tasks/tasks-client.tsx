@@ -26,7 +26,9 @@ import {
   updatePhotoSessionStatus,
   deleteTasks,
 } from "@/server/actions/tasks";
-import { formatDateShort } from "@/lib/dates";
+import { formatDateShort, toISODate } from "@/lib/dates";
+import { makeLatePredicate } from "@/lib/late";
+import { dayKeyOf } from "@/lib/team-day";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { toast } from "@/components/ui/toaster";
 import type { Employee, Company, Task, PhotoSession, PublicEmployee, PublicCompany } from "@/types";
@@ -221,16 +223,17 @@ export default function TasksClient({
         router.refresh();
       } else toast(r.error, "error");
     });
-  // A task is late if it finished after its deadline, or it's past the deadline
-  // and still not done.
+  // المفتوح: «متأخر» بتعريف كل الشاشات (`lib/late.ts`) — كان هون قاعدة تالتة: الكرت
+  // المطلوب اليوم بيصير متأخر الساعة ٣ الصبح بدمشق بنفس يومه، والمحجوز والمثبّت ليوم
+  // لاحق والمعفى كانوا يطلعوا متأخرين، والشارة على اللوح بنفس الشاشة بتقول لأ (مراجعة F–H).
+  // المنجز: «تسلّم متأخر» = يوم الإنجاز بعد يوم التسليم (باليوم، مو بالساعة).
+  const isLateOpen = useMemo(() => makeLatePredicate(tasks, companies), [tasks, companies]);
   const isLate = (t: Task) => {
     // شركة موقوفة = شغل مركون بانتظار الزبون — ما بيتأخر (قرار القائدة 5/8).
     const co = t.companyId ? companies.find((c) => c.id === t.companyId) : null;
     if (co && isDormantCompany(co)) return false;
-    if (!t.readyDate) return false;
-    const due = new Date(t.readyDate).getTime();
-    if (t.finishedAt) return new Date(t.finishedAt).getTime() > due;
-    return !["READY", "PUBLISHED"].includes(t.status) && Date.now() > due;
+    if (t.finishedAt) return !!t.readyDate && dayKeyOf(new Date(t.finishedAt)) > toISODate(new Date(t.readyDate));
+    return isLateOpen(t);
   };
 
   // ---- renderers ----

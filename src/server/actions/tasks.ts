@@ -197,6 +197,12 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
       readyDate: setDate(input.readyDate, before.readyDate),
       publishDate: setDate(input.publishDate, before.publishDate),
     };
+    // كرت النشر موعده يوم نشره — المحرّك بيكتب `readyDate = publishDate`، و«متأخر»
+    // بيقرا `readyDate` أول. نافذة التعديل بتبعت يوم النشر بس، فكرت انأجّل من ١٠/١٠
+    // لـ٢٠/١٠ كان يضل «متأخر — موعدها ٢٠/١٠» (مراجعة F–H). التنين بيمشوا سوا.
+    const publishMovesReady =
+      before.stage === "PUBLISH" && input.publishDate !== undefined && input.readyDate === undefined;
+    if (publishMovesReady) dates.readyDate = dates.publishDate;
     const datesTouched =
       input.workDate !== undefined || input.readyDate !== undefined || input.publishDate !== undefined;
     // الحالة وطوابعها بتنحسب لما الحالة تنبعت، أو لما كرت منجز تتغيّر تواريخه
@@ -209,7 +215,7 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     const data: Record<string, unknown> = { isPinned: true };
     if (input.title !== undefined) data.title = input.title;
     if (input.workDate !== undefined) data.workDate = dates.workDate;
-    if (input.readyDate !== undefined) data.readyDate = dates.readyDate;
+    if (input.readyDate !== undefined || publishMovesReady) data.readyDate = dates.readyDate;
     if (input.publishDate !== undefined) data.publishDate = dates.publishDate;
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId || null;
     if (input.priority !== undefined) data.priority = input.priority;

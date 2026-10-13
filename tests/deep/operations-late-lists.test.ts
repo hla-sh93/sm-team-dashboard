@@ -222,3 +222,12 @@ describe("[OP-16 · مراجعة F–H] عدّاد «متأخرة» بالرئي
     expect(src).toMatch(/const today = teamToday\(\)/);
   });
 });
+
+describe("[مراجعة F–H] تقويم صفحة المهام بتعريف `late.ts` للمفتوح", () => {
+  it("المفتوح بـ`makeLatePredicate`، والمنجز «تسلّم متأخر» باليوم مو بالساعة", () => {
+    const src = readFileSync("src/app/tasks/tasks-client.tsx", "utf8");
+    expect(src).toMatch(/makeLatePredicate\(tasks, companies\)/);
+    expect(src).not.toMatch(/Date\.now\(\) > due/);
+    expect(src).toMatch(/dayKeyOf\(new Date\(t\.finishedAt\)\) > toISODate\(new Date\(t\.readyDate\)\)/);
+  });
+});
