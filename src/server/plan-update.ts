@@ -632,7 +632,11 @@ function stateUpdateFor(
       spec.stage === "PUBLISH"
         ? (task.publishDate ?? task.readyDate ?? task.workDate)
         : (task.readyDate ?? task.workDate ?? task.publishDate);
-    const at = prior ?? scheduled ?? utcMidnight(teamToday());
+    // والموعد **ما بيتجاوز اليوم**: كرت موعده ٢٠/١٠ انسكّر يوم ١٣/١٠ كان ينختم ٢٠/١٠ —
+    // بيغيب عن تقرير ٢٠:٠٠ وبينعدّ بفترة جاية. نفس قاعدة شاشة الكرت (OP-07).
+    const today = utcMidnight(teamToday());
+    const capped = scheduled && scheduled.getTime() > today.getTime() ? today : scheduled;
+    const at = prior ?? capped ?? today;
     update.finishedAt = at;
     update.completedAt = at;
     if (!task.startedAt || task.startedAt.getTime() > at.getTime()) update.startedAt = at;
@@ -1606,7 +1610,12 @@ async function applyPlanUpdateOnce(input: unknown) {
           blockedById: target.blockedById ?? null,
           pipelineKey: target.pipelineKey ?? null,
         },
-        spec.date ? dbDate(spec.date) : null,
+        // بلا `date`: نفس طابع كرت النشر (موعده أو اليوم، أيهما أبكر) — مو «هلّق»، وإلا
+        // الإنتاج بيطلع خالص **بعد** النشر.
+        spec.date
+          ? dbDate(spec.date)
+          : ((await prisma.task.findUnique({ where: { id: target.id }, select: { completedAt: true } }))
+              ?.completedAt ?? null),
       );
     }
     const closedPreviousTasks = previousOpenTasks.length

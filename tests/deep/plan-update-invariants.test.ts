@@ -7,7 +7,7 @@
  * وكل الصفوف المفحوصة لشركتين اصطناعيتين — ما بنعتمد على داتا الإنتاج.
  * `it.fails` = باغ مثبت بالتقرير `docs/qa/deep-test-2026-10-11/plan-update.md`.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const scratch = await vi.hoisted(async () => {
   const { copyFileSync, existsSync } = await import("node:fs");
@@ -305,5 +305,47 @@ describe("items — الوصف", () => {
     expect(r.ok).toBe(false);
     const pub = await prisma.task.findUnique({ where: { id: key("a_p_post_3") } });
     expect(pub.brief).toBe("وصف النشر الأصلي");
+  });
+});
+
+describe("[PU-02 · مراجعة F–H] منجز بلا date موعده بالمستقبل → الطابع اليوم، مو الموعد", () => {
+  // «اليوم» ١٥/٩ ودورة الكروت موعدها ٢٠/٩ (تصميم) و٢٨/٩ (نشر): الكرت انسكّر اليوم، فطابعه
+  // اليوم — كان ينختم بموعده فيغيب عن تقرير ٢٠:٠٠ وبينعدّ بفترة جاية (عكس OP-07).
+  beforeAll(async () => {
+    if (skip()) return;
+    await prisma.task.createMany({
+      data: [7, 8].flatMap((n) => [
+        piece(`a_d_post_${n}`, "POST", n, "DESIGN", "2026-09-20"),
+        piece(`a_p_post_${n}`, "POST", n, "PUBLISH", "2026-09-28"),
+      ]),
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("READY على تصميم موعده ٢٠/٩، يوم ١٥/٩ → completedAt/finishedAt = ١٥/٩", async () => {
+    if (skip()) return;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-15T09:00:00Z"));
+    const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 7, stage: "DESIGN", status: "READY", evidence: `${EV} مستقبل` }] }));
+    expect(r.ok, r.error).toBe(true);
+    const t = await prisma.task.findUnique({ where: { id: key("a_d_post_7") } });
+    expect([t.completedAt, t.finishedAt, t.startedAt].map(toISODate)).toEqual(Array(3).fill("2026-09-15"));
+    // المواعيد نفسها ما بتتحرّك.
+    expect(toISODate(t.readyDate)).toBe("2026-09-20");
+  });
+
+  it("PUBLISHED بلا date على نشر موعده ٢٨/٩، يوم ١٥/٩ → النشر والتصميم قبله بطابع ١٥/٩ (الإنتاج ما بيخلص بعد النشر)", async () => {
+    if (skip()) return;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-15T09:00:00Z"));
+    const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 8, stage: "PUBLISH", status: "PUBLISHED", evidence: `${EV} نشر مستقبل` }] }));
+    expect(r.ok, r.error).toBe(true);
+    const pub = await prisma.task.findUnique({ where: { id: key("a_p_post_8") } });
+    const des = await prisma.task.findUnique({ where: { id: key("a_d_post_8") } });
+    expect(pub.status).toBe("PUBLISHED");
+    expect(toISODate(pub.completedAt)).toBe("2026-09-15");
+    expect(des.board).toBe("DONE");
+    expect(toISODate(des.completedAt)).toBe("2026-09-15");
+    expect(des.completedAt.getTime()).toBeLessThanOrEqual(pub.completedAt.getTime());
   });
 });
