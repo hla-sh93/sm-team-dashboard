@@ -374,6 +374,30 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
       return { ok: true as const, data: co, unchanged: true as const };
     }
 
+    // الدورة بتنزاح لبكت تاني، فكروت البكت القديم بتنمحى بالتنظيف تحت (`allowEmptyRebuild`
+    // بيعدّي الحارس الأخير). شغل منجز أو مبدوء ما بينمحى بصمت (مراجعة نهائية ١٣/١٠): الرفض
+    // **قبل** أي تعديل، والقائدة بتقرّر — «احذف آخر تجديد» (بتأكيد العدد) ثم تجديد جديد.
+    if (oldStart.getFullYear() !== start.getFullYear() || oldStart.getMonth() !== start.getMonth()) {
+      const worked = await prisma.task.count({
+        where: {
+          companyId,
+          year: oldStart.getFullYear(),
+          month: oldStart.getMonth(),
+          isAuto: true,
+          status: { not: "CANCELED" },
+          OR: [{ board: "DONE" }, { startedAt: { not: null } }, { finishedAt: { not: null } }],
+        },
+      });
+      if (worked > 0) {
+        return {
+          ok: false as const,
+          error:
+            `دورة ${formatDateShort(oldStart)} فيها ${worked} كرت مبدوء أو منجز، والتصحيح لشهر تاني بيمحيها. ` +
+            "إذا الدورة فعلاً غلط: «احذف آخر تجديد» (بتأكيد العدد) ثم سجّلي التجديد الصحيح.",
+        };
+      }
+    }
+
     const correctedRenewals = [...renewals.slice(0, -1), start];
     const updated = await prisma.company.update({
       where: { id: companyId },
@@ -407,7 +431,8 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
           ok: false as const,
           corrected: true as const,
           error:
-            "تَصحّح تاريخ التجديد وبُنيت الدورة الجديدة، لكن بقيت كروت الدورة الخاطئة وتحتاج إعادة المحاولة لتنظيفها.",
+            "تَصحّح تاريخ التجديد وبُنيت الدورة الجديدة، لكن كروت الدورة الخاطئة ما انمحت: " +
+            cleaned.error,
         };
       }
       // الدورة الجديدة انبنت والنزلات القديمة لسا محفوظة، فحجزت أيامها قدّامها وانزاحت

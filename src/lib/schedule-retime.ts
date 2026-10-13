@@ -138,15 +138,19 @@ export function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays
     // أخد ختم يوم الاستيراد). المقارنة مع تواريخه هو عن قصد: «الواقع المسجّل بيصمد»
     // (`regen-reality`) — تناقض قديم بين مراحل القطعة بيطلع بالفحص، ما بيتصلّح بصمت.
     const isPublished = publishedKeys.has(t.pipelineKey);
+    // يوم نشر **القطعة** (كرت نشرها)، مو تاريخ النشر القديم المنسوخ على كرت المونتاج: لما
+    // القائدة بتأجّل النشر (بيتثبّت كرت النشر بس) بيضل على المونتاج اليوم القديم، فمونتاج
+    // منجز ٢٧/٩ لقطعة انتشرت ٢٨/٩ كان ينسحب لـ١٧/٩ (مراجعة نهائية ١٣/١٠، RG-03).
+    const pubDay = out ?? t.publishDate ?? null;
     if (
       t.board === "DONE" &&
       !inferredDone.has(t) &&
       t.workDate &&
       (!done || t.workDate >= isoOf(done)) &&
-      !(isPublished && t.publishDate && t.workDate > t.publishDate)
+      !(isPublished && pubDay && t.workDate > pubDay)
     )
       continue;
-    const ceiling = inferredDone.has(t) ? out : isPublished ? (t.publishDate ?? null) : null;
+    const ceiling = inferredDone.has(t) ? out : isPublished ? pubDay : null;
     let iso: string | null = null;
     if (done) {
       const d = new Date(done);

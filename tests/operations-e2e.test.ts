@@ -598,6 +598,33 @@ describe("contract renewal lifecycle", () => {
     expect(priorAfter).toEqual(prior);
   });
 
+  it("refuses a renewal correction that would erase a finished card of the wrong cycle (final review 13/10)", async () => {
+    if (skip()) return;
+    const co = await makeCompany({
+      name: `${uniq}-correct-renewal-done`,
+      contractStartDate: "2026-07-21",
+      publishStartDate: "2026-07-21",
+      posts: 2,
+      stories: 0,
+    });
+    await actions.generateSchedule(YEAR, 6);
+    expect((await actions.renewContract(co.id, "2026-08-21")).ok).toBe(true);
+    const card = await prisma.task.findFirstOrThrow({ where: { companyId: co.id, year: YEAR, month: 7, stage: "DESIGN" } });
+    const doneAt = new Date(Date.UTC(2026, 7, 25));
+    await prisma.task.update({
+      where: { id: card.id },
+      data: { status: "READY", board: "DONE", finishedAt: doneAt, completedAt: doneAt, brief: "نص الخطة" },
+    });
+
+    const result = await actions.correctLatestRenewal(co.id, "2026-09-01");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("منجز");
+    const after = await prisma.company.findUnique({ where: { id: co.id } });
+    expect(contract.parseRenewals(after).map(toISODate)).toEqual(["2026-08-21"]);
+    const kept = await prisma.task.findUnique({ where: { id: card.id } });
+    expect([kept?.board, kept?.brief]).toEqual(["DONE", "نص الخطة"]);
+  });
+
   it("refuses to correct a missing renewal or overlap the previous natural cycle", async () => {
     if (skip()) return;
     const none = await makeCompany({

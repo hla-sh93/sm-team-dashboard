@@ -41,7 +41,7 @@ import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
 import { markResumeApplied, resumeWindowsFor } from "@/server/company-pause";
 import { loadSuccessors, successorOf } from "@/server/handover";
 import { revalidateAll } from "@/lib/revalidate";
-import { teamToday } from "@/lib/team-day";
+import { teamDayStart, teamToday } from "@/lib/team-day";
 
 
 // كل تاريخ بينكتب على منتصف ليل **UTC** (SC-08): نفس الشي على Vercel، ومن جهاز بدمشق
@@ -376,7 +376,13 @@ async function generateScheduleOnce(
 
     // نزلات المصوّر بالدلاء الجارة (من القاعدة): سقفه اليومي بالعدد عبر الدورات
     // المتقاطعة، مو جوّا الدلو بس (SC-01). الشركات الراكدة نزلاتها ما رح تصير.
+    // …بس **من اليوم ولقدّام**: يوم تصوير مرق صار واقع، وعدّ نزلات الدلاء التانية عليه كان
+    // يزيح نزلات صارت (عبادة ٢٨/٩ → ٢٧/٩، BW ٢٧/٩ → ٢٤/٩) بأول توليد بعد النشر — والسقف
+    // ما بيصلّح شي بالماضي (مراجعة نهائية ١٣/١٠). `teamDayStart` بيغطّي شكلي التخزين
+    // (منتصف ليل UTC، و٢١:٠٠Z من اليوم السابق).
     const plannedIds = state.companies.filter(isPlanned).map((c) => c.id);
+    const windowStart = new Date(year, month - 1, 1);
+    const todayStart = teamDayStart();
     state.reelBookings = (
       await prisma.photoSession.findMany({
         where: {
@@ -384,7 +390,10 @@ async function generateScheduleOnce(
           reelCount: { gt: 0 },
           companyId: { in: plannedIds },
           NOT: { year, month },
-          shootDate: { gte: new Date(year, month - 1, 1), lt: new Date(year, month + 2, 1) },
+          shootDate: {
+            gte: todayStart > windowStart ? todayStart : windowStart,
+            lt: new Date(year, month + 2, 1),
+          },
         },
         select: { companyId: true, shootDate: true, reelCount: true },
       })

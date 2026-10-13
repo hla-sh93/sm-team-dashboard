@@ -156,6 +156,30 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
     expect(edit.workDate).toBe("2026-09-20");
   });
 
+  it("[RG-03 · مراجعة نهائية ١٣/١٠] عبادة ريل ١ **غير مثبّت**: منجز ٢٧/٩، القطعة انتشرت ٢٨/٩ — ما بينسحب لـ١٧/٩", () => {
+    const edit = run({
+      shootFinishedAt: "2026-09-16",
+      editWork: "2026-09-27",
+      editPublishDate: "2026-09-22",
+      editPinned: false,
+      publishBoard: "DONE",
+      publishDate: "2026-09-28",
+    });
+    expect(edit.workDate).toBe("2026-09-27");
+  });
+
+  it("…ومنجز غير مثبّت **بعد** نشر قطعته الفعلي بيتقصّ على يوم نشر القطعة (كرت النشر)", () => {
+    const edit = run({
+      shootFinishedAt: "2026-09-16",
+      editWork: "2026-09-30",
+      editPublishDate: "2026-09-22",
+      editPinned: false,
+      publishBoard: "DONE",
+      publishDate: "2026-09-28",
+    });
+    expect(edit.workDate).toBe("2026-09-17");
+  });
+
   it("الحالة المتّسقة (تصوير ١٥/٩ → مونتاج ١٧/٩ → نشر ٢٠/٩) ما بتتحرّك، مثبّتة أو لا", () => {
     for (const pinned of [true, false]) {
       const edit = run({

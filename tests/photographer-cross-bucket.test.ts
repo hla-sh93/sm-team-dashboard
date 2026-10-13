@@ -105,6 +105,9 @@ const dayKey = (d: Date) =>
 
 describe.skipIf(!scratch.available)("سقف المصوّر عبر الدلاء — المحرّك الحقيقي", () => {
   it("دلو تشرين بيشوف نزلات دلو أيلول لنفس المصوّر: ولا يوم فوق سقفه — وبالعكس بإعادة توليد أيلول", async () => {
+    // «اليوم» قبل كل أيام التصوير: النزلات بتنعدّ من اليوم ولقدّام (مراجعة نهائية ١٣/١٠).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-20T09:00:00Z"));
     expect((await schedule.generateCompanySchedule(ids.a, 2026, 8)).ok).toBe(true);
     expect((await schedule.generateCompanySchedule(ids.b, 2026, 9)).ok).toBe(true);
     // إعادة توليد الدلو الأول بعد ما صار التاني موجود: لسا ضمن السقف.
@@ -125,6 +128,40 @@ describe.skipIf(!scratch.available)("سقف المصوّر عبر الدلاء �
     const perDay = new Map<string, number>();
     for (const s of sessions) perDay.set(dayKey(s.shootDate), (perDay.get(dayKey(s.shootDate)) ?? 0) + s.reelCount);
     for (const [day, n] of perDay) expect(n, day).toBeLessThanOrEqual(CAP);
+    vi.useRealTimers();
+  });
+
+  it("[مراجعة نهائية ١٣/١٠] يوم تصوير **مرق** ما بيتزحزح بسبب نزلات دلو تاني — بس الجاي بيحترم السقف", async () => {
+    // بعد آخر يوم تصوير بأيلول: إعادة توليد أيلول لازم تترك نزلاته متل ما هي، ولو دلو تشرين
+    // فيه نزلات على نفس الأيام.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-20T09:00:00Z"));
+    // أيلول انبنى **قبل** ما يكون في نزلات بدلو تشرين (متل الإنتاج: نزلات صارت بالقاعدة).
+    await prisma.photoSession.deleteMany({ where: { companyId: ids.b } });
+    expect((await schedule.generateCompanySchedule(ids.a, 2026, 8)).ok).toBe(true);
+    const before = await prisma.photoSession.findMany({
+      where: { companyId: ids.a, year: 2026, month: 8, kind: "REELS" },
+      orderBy: { no: "asc" },
+      select: { no: true, shootDate: true },
+    });
+    // نزلات «ب» بدلو تشرين على **نفس أيام** «أ» — متل ما خزّنها الكود القديم يلي ما كان يشوف
+    // الدلاء التانية (هيك الإنتاج اليوم: أيام فوق السقف صارت وخلصت).
+    await prisma.photoSession.createMany({
+      data: before.map((x: any, i: number) => ({
+        no: i + 1, kind: "REELS", shootDate: x.shootDate, deliverBy: x.shootDate, reelCount: CAP,
+        status: "DELIVERED", month: 9, year: 2026, isAuto: true, detKey: `xb-old-${P}-${i}`, companyId: ids.b,
+      })),
+    });
+    const last = before.reduce((m: Date, s: any) => (s.shootDate > m ? s.shootDate : m), new Date(0));
+    vi.setSystemTime(new Date(last.getTime() + 2 * 86_400_000));
+    expect((await schedule.generateCompanySchedule(ids.a, 2026, 8)).ok).toBe(true);
+    const after = await prisma.photoSession.findMany({
+      where: { companyId: ids.a, year: 2026, month: 8, kind: "REELS" },
+      orderBy: { no: "asc" },
+      select: { no: true, shootDate: true },
+    });
+    expect(after.map((s: any) => dayKey(s.shootDate))).toEqual(before.map((s: any) => dayKey(s.shootDate)));
+    vi.useRealTimers();
   });
 
   it("المواعيد المولَّدة بتنخزن على منتصف ليل UTC (SC-08) — نفس شكل الإنتاج", async () => {
