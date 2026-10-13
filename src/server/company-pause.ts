@@ -7,10 +7,10 @@
  * يوم ولا باقي أيام الدورة… نعمل نصف الخطة ويبقى نصفها, ف بترجع بنص… بشكل ديناميكي».
  *
  *   • `companyPause:<id>`  = { pausedAt }               — للعرض والحساب.
- *   • `companyResume:<id>` = { from, until, year, month, pieceNos }
- *       نافذة الرجوع لدلو الدورة الموقوفة: القطع يلي كانت باقية **لحظة الرجوع**
- *       (بأرقامها) بتتوزّع على [from, until)، والباقي من الدلو محسوم بمكانه. المجموعة
- *       ثابتة مشان ما تتزحزح مواعيد الباقي كل ما تخلص قطعة.
+ *   • `companyResume:<id>` = [{ from, until, year, month, pieceNos, pausedAt, datesApplied }]
+ *       نافذة رجوع لكل دلو فيه قطع باقية (الأقدم أولاً، والنوافذ ورا بعض): القطع يلي
+ *       كانت باقية **لحظة الرجوع** (بأرقامها) بتتوزّع على [from, until)، والباقي من
+ *       الدلو محسوم بمكانه. المجموعة ثابتة مشان ما تتزحزح مواعيد الباقي كل ما تخلص قطعة.
  *
  * بلا `"use server"` عن قصد: بيناديه المحرّك وأفعال الأدمن، مو المتصفّح.
  */
@@ -28,6 +28,14 @@ export type ResumeSetting = {
   year: number;
   month: number;
   pieceNos: Partial<Record<ContentType, number[]>>;
+  /** يوم الإيقاف: جلسات التصوير قبله تاريخ، والمجدولة بينه وبين الرجوع ما صارت. */
+  pausedAt?: string | null;
+  /**
+   * أول توليد بعد الرجوع حطّ المواعيد الجديدة على القطع الباقية — حتى المثبّتة (القائدة:
+   * «جدولة جديدة حسب تاريخ البدء الجديد للمهام الباقية»). بعدها التعديل اليدوي بيغلب
+   * متل العادة (مراجعة ١٢/١٠: كل قطع BW المثبّتة ضلّت على مواعيدها القديمة).
+   */
+  datesApplied?: boolean;
 };
 
 export async function recordPause(companyId: string, pausedAt: Date): Promise<void> {
@@ -47,32 +55,61 @@ export async function readPause(companyId: string): Promise<{ pausedAt: Date } |
   }
 }
 
-export async function saveResume(companyId: string, value: ResumeSetting): Promise<void> {
+export async function saveResume(companyId: string, windows: ResumeSetting[]): Promise<void> {
   const key = `${RESUME_PREFIX}${companyId}`;
-  const json = JSON.stringify(value);
+  const json = JSON.stringify(windows);
   await prisma.setting.upsert({ where: { key }, update: { value: json }, create: { key, value: json } });
 }
 
-function parseResume(value: string): ResumeSetting | null {
+export async function deleteResume(companyId: string): Promise<void> {
+  await prisma.setting.deleteMany({ where: { key: `${RESUME_PREFIX}${companyId}` } });
+}
+
+/** قائمة النوافذ (والشكل القديم: نافذة وحدة كائن). الصفّ التالف = ولا نافذة. */
+export function parseResumeList(value: string): ResumeSetting[] {
   try {
-    const v = JSON.parse(value) as ResumeSetting;
-    if (!v || typeof v.from !== "string" || typeof v.until !== "string") return null;
-    if (!Number.isInteger(v.year) || !Number.isInteger(v.month)) return null;
-    return { ...v, pieceNos: v.pieceNos ?? {} };
+    const raw = JSON.parse(value) as unknown;
+    const list = (Array.isArray(raw) ? raw : [raw]) as ResumeSetting[];
+    return list
+      .filter(
+        (v) =>
+          v &&
+          typeof v.from === "string" &&
+          typeof v.until === "string" &&
+          Number.isInteger(v.year) &&
+          Number.isInteger(v.month),
+      )
+      .map((v) => ({ ...v, pieceNos: v.pieceNos ?? {} }));
   } catch {
-    return null;
+    return [];
   }
 }
 
-/** كل نوافذ الرجوع المسجّلة لهالدلو — `companyId → setting`. */
+/** نوافذ الرجوع لهالدلو — `companyId → setting`. */
 export async function resumeWindowsFor(year: number, month: number): Promise<Map<string, ResumeSetting>> {
   const rows = await prisma.setting.findMany({ where: { key: { startsWith: RESUME_PREFIX } } });
   const out = new Map<string, ResumeSetting>();
   for (const row of rows) {
-    const v = parseResume(row.value);
-    if (v && v.year === year && v.month === month) out.set(row.key.slice(RESUME_PREFIX.length), v);
+    const v = parseResumeList(row.value).find((w) => w.year === year && w.month === month);
+    if (v) out.set(row.key.slice(RESUME_PREFIX.length), v);
   }
   return out;
+}
+
+/** بعد أول توليد ناجح للدلو: المواعيد انحطّت — جوّا معاملة الاستبدال نفسها. */
+export async function markResumeApplied(
+  db: Pick<typeof prisma, "setting">,
+  companyId: string,
+  year: number,
+  month: number,
+): Promise<void> {
+  const key = `${RESUME_PREFIX}${companyId}`;
+  const row = await db.setting.findUnique({ where: { key } });
+  if (!row) return;
+  const list = parseResumeList(row.value).map((w) =>
+    w.year === year && w.month === month ? { ...w, datesApplied: true } : w,
+  );
+  await db.setting.update({ where: { key }, data: { value: JSON.stringify(list) } });
 }
 
 /**

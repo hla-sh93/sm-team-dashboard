@@ -328,6 +328,10 @@ export function applyPipelinePreservation(
     // من التوليد مؤرّخاً 9/8 — يوم الخطة، مو يوم الشغل الحقيقي. `finishedAt`
     // وحده ما بيكفي: الشاشات والتقارير بتعرض `workDate`.
     if (saved.board === "DONE") {
+      // المنجز بيضل باسم يلي عمله (قاعدة القائدة)، مو باسم مسؤول الشركة اليوم: «تسليم
+      // الشغل» من ١/١٠ كان ينقلب بأول توليد — تصويرات ماجد قبل ١/١٠ صارت لخلفه
+      // (مراجعة ١٢/١٠، DA-05).
+      if (saved.assigneeId) task.assigneeId = saved.assigneeId;
       if (saved.workDate) task.workDate = iso(saved.workDate);
       if (saved.readyDate) task.readyDate = iso(saved.readyDate);
       // يوم النشر بينجمد لما يكون **صار**: كرت النشر نفسه، أو أي مرحلة من قطعة

@@ -37,7 +37,8 @@ import {
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
 import { planTotal } from "@/lib/cycle-plan";
 import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
-import { resumeWindowsFor } from "@/server/company-pause";
+import { markResumeApplied, resumeWindowsFor } from "@/server/company-pause";
+import { loadSuccessors, successorOf } from "@/server/handover";
 import { revalidateAll } from "@/lib/revalidate";
 
 
@@ -371,18 +372,23 @@ async function generateScheduleOnce(
 
     const result = buildSchedule(state);
 
-    const writerId = state.employees.find((e) => /كات|writer/i.test(e.role))?.id ?? null;
+    // «تسليم الشغل» (D4): المغادر ما بياخد ولا كرت مولَّد — الدور بيروح لخلفه.
+    const successors = await loadSuccessors();
+    const heir = (id: string | null) => successorOf(successors, id);
+    const writerId = heir(state.employees.find((e) => /كات|writer/i.test(e.role))?.id ?? null);
     const writerWorkDays = parseWorkDays(
       state.employees.find((e) => e.id === writerId)?.workDays as string | number[]
     );
-    const publisherId =
-      state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null;
+    const publisherId = heir(
+      state.employees.find((e) => /ناشر|نشر|publisher/i.test(e.role))?.id ?? null,
+    );
     const publisherWorkDays = parseWorkDays(
       state.employees.find((e) => e.id === publisherId)?.workDays as string | number[]
     );
     // المونتيرة — كل ريل بينتصوّر بيمرق عليها قبل النشر (قاعدة القائدة 2/8/2026).
-    const editorId =
-      state.employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role))?.id ?? null;
+    const editorId = heir(
+      state.employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role))?.id ?? null,
+    );
     const editorWorkDays = parseWorkDays(
       state.employees.find((e) => e.id === editorId)?.workDays as string | number[]
     );
@@ -461,6 +467,8 @@ async function generateScheduleOnce(
       publisherWorkDays,
     });
     applyAchievements(pipe, await achievementsFor(year, month));
+    // ومسؤولي الشركات والمصوّر الاحتياطي كمان — المنجز بيرجع لصاحبه بحفظ الحالة تحت.
+    if (successors.size) for (const t of pipe) t.assigneeId = heir(t.assigneeId);
 
     // Preserve manual edits from a prior run (matched by pipelineKey+stage).
     // Board/status are always kept; for cards the user PINNED (manual edit via
@@ -508,7 +516,25 @@ async function generateScheduleOnce(
         reviewedById: true,
       },
     });
+    // مواعيد الرجوع من إيقاف — بأول توليد بعد «رجّع النشر» بس: القطع الباقية بتاخد
+    // مواعيد النافذة حتى لو مثبّتة. بعدها التعديل اليدوي بيغلب متل العادة.
+    const resumedNow = [...resumeSettings.entries()].filter(
+      ([id, setting]) => !setting.datesApplied && (!onlyCompanyId || id === onlyCompanyId),
+    );
+    const generatedDates = new Map(
+      pipe.map((t) => [t, { workDate: t.workDate, readyDate: t.readyDate, publishDate: t.publishDate }]),
+    );
     const matchedRows = applyPipelinePreservation(pipe, existing);
+    if (resumedNow.length) {
+      const piecesOf = new Map(resumedNow.map(([id, setting]) => [id, setting.pieceNos]));
+      for (const t of pipe) {
+        const nos = t.companyId ? piecesOf.get(t.companyId) : undefined;
+        if (!nos || t.pieceNo == null || !t.type) continue;
+        if (!(nos[t.type as keyof typeof nos] ?? []).includes(t.pieceNo)) continue;
+        if (isTaskDoneState(t as never)) continue; // المرحلة المنجزة تاريخ، مو خطة
+        Object.assign(t, generatedDates.get(t), { manualDay: null });
+      }
+    }
     // المونتاج بيتبع **التصوير الفعلي** مو المخطط: ريل مجدول تصويره 1/6 وانتصوّر
     // 5/7 كان كرت مونتاجه بيطلع مستحق 2/6 — متأخر شهر قبل ما تنوجد المادة أصلاً.
     // بعد ما رجّعت خطوة الحفظ `finishedAt` على كرت التصوير، منعيد تأريخ المونتاج
@@ -700,9 +726,13 @@ async function generateScheduleOnce(
       }
       // جلسات التصوير قبل يوم الرجوع لشركة راجعة من إيقاف هي تاريخ قطعها المحسومة —
       // ما بتنولّد من جديد، فما بتنمحى.
+      // المجدولة بين الإيقاف والرجوع وما انصوّرت ما صارت — بتنمحى (مراجعة ١٢/١٠).
       const keptSessions = [...resumeSettings.entries()]
         .filter(([id]) => !onlyCompanyId || id === onlyCompanyId)
-        .map(([id, setting]) => ({ companyId: id, shootDate: { lt: fromISODate(setting.from) } }));
+        .flatMap(([id, setting]) => [
+          { companyId: id, shootDate: { lt: fromISODate(setting.pausedAt ?? setting.from) } },
+          { companyId: id, shootDate: { lt: fromISODate(setting.from) }, status: { not: "NOT_STARTED" } },
+        ]);
       await tx.photoSession.deleteMany({
         where: keptSessions.length ? { AND: [replaceScope, { NOT: { OR: keptSessions } }] } : replaceScope,
       });
@@ -774,6 +804,7 @@ async function generateScheduleOnce(
         });
       }
 
+      for (const [id] of resumedNow) await markResumeApplied(tx, id, year, month);
     }, {
       // The atomic replace above is only a few queries (deleteMany + createMany),
       // but give it generous head-room so a slow connection (e.g. Neon) can't trip

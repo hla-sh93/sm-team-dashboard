@@ -6,6 +6,7 @@ import { resolveActiveMonth } from "@/lib/month";
 import { computeWorkload } from "@/lib/workload";
 import { ROLE_LABELS, isTaskDoneState } from "@/lib/constants";
 import { workRoster } from "@/lib/team";
+import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import { AlertTriangle } from "lucide-react";
 
 export default async function WorkloadPage({
@@ -17,7 +18,7 @@ export default async function WorkloadPage({
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);
   const publishFetchEnd = new Date(year, month + 1, 2);
-  const [employees, companies, tasks, sessions] = await Promise.all([
+  const [employees, companies, allTasks, allSessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({
@@ -34,6 +35,10 @@ export default async function WorkloadPage({
       where: { shootDate: { gte: monthStart, lt: monthEnd } },
     }),
   ]);
+
+  // شغل شركة موقوفة محفوظ ومخفي — ما بيدخل الحمل (D1، مراجعة ١٢/١٠).
+  const tasks = hideDormantCompanyWork(allTasks, companies);
+  const sessions = hideDormantCompanyWork(allSessions, companies);
 
   // فريق السوشال ميديا بس — السيلز والفريلانس برّا (قرار القائدة ١/٩)، إلا
   // لو ماسكين شغل مفتوح.

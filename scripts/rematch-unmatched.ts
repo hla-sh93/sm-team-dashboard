@@ -27,7 +27,8 @@ async function main() {
   const pending = await prisma.telegramMessage.findMany({
     where: {
       chatId: { in: linkedIds },
-      taskId: null,
+      // المحجوز («من غير صاحب الكرت»/«توبيك غلط») كمان — بعد إضافة اسم بديل بيستاهل جولة.
+      confirmed: false,
       kind: { not: "TEXT" },
       sentAt: { gte: since },
     },

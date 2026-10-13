@@ -411,6 +411,34 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
       expect(closed).not.toContain(ID("zulu_8_POST_2_PUBLISH"));
     });
 
+    it("ملف القطعة بكابشن «تم النشر» من الناشر بيسكّر نشر **قطعته** — حتى لو تصميمها مسكّر (مراجعة ١٢/١٠)", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg("Zulu-post-10-3.jpg") }));
+      expect((await t(ID("zulu_9_POST_3_DESIGN"))).board).toBe("DONE");
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), doc: jpg("Zulu-post-10-3.jpg"), caption: "تم النشر" }));
+      const closed = await closedIds(Z1);
+      expect(closed).toContain(ID("zulu_9_POST_3_PUBLISH"));
+      expect(closed).not.toContain(ID("zulu_8_POST_2_PUBLISH"));
+    });
+
+    it("ملف بيسمّي قطعة ما إلها كرت («Zulu-post-10-9») بكابشن «تم النشر» ما بيسكّر شي — ولا «أقدم مستحقّة»", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), doc: jpg("Zulu-post-10-9.jpg"), caption: "تم النشر" }));
+      expect(await closedIds(Z1)).toEqual([]);
+    });
+
+    it("رد على رسالة إنشاء التوبيك (كل رسالة بالتوبيكات) مو «مرتبط بقطعة»: رسالة سطرين ما بتسكّر شي", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), replyTo: T_Z1, text: "نشرت\nبس الصورة مقصوصة" }));
+      expect(await closedIds(Z1)).toEqual([]);
+    });
+
+    it("تعديل كابشن ملف محجوز («باسم شركة تانية») لاسم صحيح بيسكّر كرته", async () => {
+      const id = nextMsg++;
+      const first = await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), msgId: id, photo: true, caption: "Yankee-post-10-1" }));
+      expect(first?.held).toBe("WRONG_TOPIC");
+      const edited = await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), msgId: id, photo: true, caption: "Zulu-post-10-1", edited: true }));
+      expect(edited?.advanced).toBe(true);
+      expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_1_DESIGN")]);
+    });
+
     it("«نشرت 10-2» بلا كلمة نوع ومفتوح بنوعين بالدورة = ما منعرف أي وحدة — ما بيسكّر شي", async () => {
       await prisma.task.create({
         data: card(Z1, "zulu", 9, "STORY", 2, "PUBLISH", { publishDate: D(9, 7) }),

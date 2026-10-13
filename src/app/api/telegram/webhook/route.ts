@@ -94,7 +94,7 @@ export async function GET(req: Request) {
       isTeam: chat?.isTeam ?? false,
       total: msgs.length,
       files: files.length,
-      matched: files.filter((m) => m.taskId && m.confirmed).length,
+      matched: files.filter((m) => m.taskId && m.confirmed && m.matchedBy !== "PUBLISH").length,
       latest: msgs.slice(0, 6).map((m) => ({
         at: m.sentAt.toISOString().slice(5, 16),
         from: m.senderName,

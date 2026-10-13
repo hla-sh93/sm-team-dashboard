@@ -274,7 +274,13 @@ export default function TelegramClient({
                   {m.fileName || m.caption?.slice(0, 60) || `[${m.kind}]`}
                 </span>
                 <span className="text-fg-muted shrink-0">{m.senderName ?? "—"}</span>
-                {m.taskId ? (
+                {m.matchedBy === "PUBLISH" ? (
+                  <span className="text-success shrink-0">تأكيد نشر</span>
+                ) : m.matchedBy === "NOT_OWNER" ? (
+                  <span className="text-warning shrink-0">من غير صاحب الكرت</span>
+                ) : m.matchedBy === "WRONG_TOPIC" ? (
+                  <span className="text-warning shrink-0">باسم شركة تانية</span>
+                ) : m.taskId && m.confirmed ? (
                   <span className="text-success shrink-0">مطابق</span>
                 ) : m.kind !== "TEXT" ? (
                   <span className="text-warning shrink-0">غير مطابق</span>

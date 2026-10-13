@@ -193,7 +193,7 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
     if (
       isEdit &&
       companyId &&
-      !existing.taskId &&
+      !existing.confirmed &&
       existing.kind !== "TEXT" &&
       (delivery.caption ?? null) !== (existing.caption ?? null)
     ) {
@@ -202,8 +202,8 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
         data: { caption: delivery.caption },
       });
       const sender = await resolveSender(delivery);
-      const settled = await settleDelivery(delivery, chatId, companyId, sender);
-      return { ...base, stored: false, ...settled };
+      const { taskId, matchedBy, advanced, held } = await settleDelivery(delivery, chatId, companyId, sender);
+      return { ...base, stored: false, taskId, matchedBy, advanced, ...(held ? { held } : {}) };
     }
     const kind = existing.matchedBy;
     return {
@@ -271,19 +271,21 @@ export async function ingestUpdate(update: TelegramUpdate): Promise<IngestOutcom
 
   // 4. الملف أولاً، والكابشن سياق (TR-08): «Zulu-post-10-3.jpg» بكابشن «جاهز ✅» من
   //    المصمّم كان ينقرا تأكيد نشر — بيسكّر كرت نشر أقدم والتصميم بيضيع.
-  const settled = await settleDelivery(delivery, chatId, companyId, sender);
+  const { named, ...settled } = await settleDelivery(delivery, chatId, companyId, sender);
   if (settled.advanced || (settled.taskId && !settled.held) || settled.held === "WRONG_TOPIC") {
     return { ...base, stored: true, ...settled };
   }
 
   // 5. ملف ما سكّر شي، وكابشنه تأكيد نشر من الناشر أو القائدة (لقطة المنشور، أو ملف
-  //    القطعة نفسه بـ«تم النشر») — نفس قواعد الرسالة النصّية.
+  //    القطعة نفسه بـ«تم النشر») — نفس قواعد الرسالة النصّية. الملف يلي **بيسمّي** قطعة
+  //    بيأكّد هالقطعة بالذات (حتى لو تصميمها مسكّر — الحالة العادية وقت النشر)؛ وإذا ما
+  //    انعرفت ما بيتسكّر شي: كان ينزل لـ«أقدم مستحقّة» ويسكّر قطعة غلط (مراجعة ١٢/١٠).
   const caption = msg.caption?.trim();
-  if (caption) {
+  if (caption && !(named && !named.taskId)) {
     const closed = await handlePublishConfirmation({
       text: caption,
       replyTo,
-      pieceTaskId: settled.held === "NOT_OWNER" ? settled.taskId : null,
+      pieceTaskId: named?.taskId ?? (settled.held === "NOT_OWNER" ? settled.taskId : null),
       conversation: chatId,
       at: delivery.sentAt,
       sender,
@@ -430,7 +432,6 @@ async function handlePublishConfirmation(input: {
 }): Promise<string[]> {
   const { text, replyTo, pieceTaskId, conversation, at, sender } = input;
   if (!mayConfirmPublish(sender)) return [];
-  if (!isPublishConfirmation(text, replyTo != null || pieceTaskId != null)) return [];
   const who = sender ? ` · ${sender.name}` : "";
 
   // ١) رد على ملف مطابَق، أو ملف القطعة نفسه — أقوى دليل.
@@ -450,6 +451,9 @@ async function handlePublishConfirmation(input: {
       fileLabel = target.fileName ?? "الملف";
     }
   }
+  // «مرتبط بقطعة» = رد على ملف **مطابَق** أو ملف القطعة نفسه — مو أي رد: بالتوبيكات كل
+  // رسالة عادية «رد» على رسالة إنشاء التوبيك، فكان شرط السطر الواحد بيسقط (مراجعة ١٢/١٠).
+  if (!isPublishConfirmation(text, productionId != null)) return [];
   if (productionId) {
     const production = await prisma.task.findUnique({ where: { id: productionId } });
     if (production?.pipelineKey) {
@@ -573,7 +577,10 @@ async function companyContext(companyId: string, at: Date) {
   };
 }
 
-type Settled = Pick<IngestOutcome, "taskId" | "matchedBy" | "advanced" | "held">;
+type Settled = Pick<IngestOutcome, "taskId" | "matchedBy" | "advanced" | "held"> & {
+  /** الملف بيسمّي قطعة من هالشركة باسمها — وأي كرت إنتاج إلها (مفتوح أو مسكّر)، أو null. */
+  named?: { taskId: string | null };
+};
 
 /**
  * الملف ← قطعته ← إقفالها (أو حجزها) — ونتيجته بتنكتب على صفّ الرسالة. مشترك بين
@@ -590,6 +597,13 @@ async function settleDelivery(
     prisma.telegramMessage.update({ where: { id: delivery.id }, data });
   const ctx = await companyContext(companyId, delivery.sentAt);
   if (!ctx) return none;
+  const own = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
+  const namedCard = pieceNamedBy(delivery, ctx.slug, [...ctx.candidates, ...ctx.closed], ctx.bucket);
+  const named =
+    namedCard || (own && ctx.slugs.some((s) => slugMatches(own.slug, s)))
+      ? { taskId: namedCard?.id ?? null }
+      : undefined;
+  const result = (r: Settled): Settled => (named ? { ...r, named } : r);
 
   const match = await matchAgainstCompany(delivery, ctx, conversation, sender);
   if (match) {
@@ -597,7 +611,7 @@ async function settleDelivery(
     if (card) {
       if (!mayClose(sender, card)) {
         await setRow({ taskId: card.id, matchedBy: "NOT_OWNER", confirmed: false });
-        return { taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" };
+        return result({ taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" });
       }
       const advanced = await closeProductionCard(card, delivery.sentAt, {
         by: match.by,
@@ -608,14 +622,12 @@ async function settleDelivery(
       // the design card: §5 charges a design unit per slide, so «كاروسيل من ٥» is
       // five units of أيمن's day even though the client sees one post.
       await recordCarouselSlides(card.id, delivery);
-      return { taskId: card.id, matchedBy: match.by, advanced };
+      return result({ taskId: card.id, matchedBy: match.by, advanced });
     }
   }
 
-  const named = parseAssetName(delivery.fileName) ?? parseAssetName(delivery.caption);
-
   // شريحة ٢…N من كاروسيل قطعته انسكّرت بأول شريحة (TR-14): نفس الكرت، وعدد أكبر.
-  if (named?.slideNo) {
+  if (own?.slideNo) {
     const card = pieceNamedBy(
       delivery,
       ctx.slug,
@@ -625,27 +637,27 @@ async function settleDelivery(
     if (card) {
       if (!mayClose(sender, card)) {
         await setRow({ taskId: card.id, matchedBy: "NOT_OWNER", confirmed: false });
-        return { taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" };
+        return result({ taskId: card.id, matchedBy: null, advanced: false, held: "NOT_OWNER" });
       }
       await setRow({ taskId: card.id, matchedBy: "NAME", confirmed: true });
       await recordCarouselSlides(card.id, delivery);
-      return { taskId: card.id, matchedBy: "NAME", advanced: false };
+      return result({ taskId: card.id, matchedBy: "NAME", advanced: false });
     }
   }
 
   // اسم شركة تانية صريح بتوبيك هالشركة (TR-26): ما بيسكّر شي هون — بس بيطلع بـ«اليوم»
   // بسببه بدل «ما طابق شي» الصامت (phoenitech-reel-10-1 بتوبيك التوظيف).
   if (
-    named &&
-    !ctx.slugs.some((s) => slugMatches(named.slug, s)) &&
-    ctx.foreignSlugs.some((s) => slugMatches(named.slug, s))
+    own &&
+    !ctx.slugs.some((s) => slugMatches(own.slug, s)) &&
+    ctx.foreignSlugs.some((s) => slugMatches(own.slug, s))
   ) {
     await setRow({ taskId: null, matchedBy: "WRONG_TOPIC", confirmed: false });
     return { ...none, held: "WRONG_TOPIC" };
   }
 
   await setRow({ taskId: null, matchedBy: null, confirmed: false });
-  return none;
+  return result(none);
 }
 
 const evidenceOf = (d: Pick<Delivery, "fileName" | "caption">) =>

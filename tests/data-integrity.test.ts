@@ -64,8 +64,9 @@ let employees: Row[] = [];
 let companies: Row[] = [];
 let tasks: Row[] = [];
 let sessions: Row[] = [];
-/** نوافذ الرجوع من إيقاف (`companyResume:<id>` بـSetting) — قرار القائدة ١٢/١٠. */
-let resumeWindows = new Map<string, { from: string; until: string; year: number; month: number }>();
+/** نوافذ الرجوع من إيقاف (`companyResume:<id>` بـSetting، نافذة لكل دلو) — قرار القائدة ١٢/١٠. */
+type ResumeWindow = { from: string; until: string; year: number; month: number };
+let resumeWindows = new Map<string, ResumeWindow[]>();
 let seeded = false;
 
 beforeAll(async () => {
@@ -79,7 +80,8 @@ beforeAll(async () => {
     seeded = companies.length > 0;
     for (const row of await prisma.setting.findMany({ where: { key: { startsWith: "companyResume:" } } })) {
       try {
-        resumeWindows.set(row.key.slice("companyResume:".length), JSON.parse(row.value));
+        const parsed = JSON.parse(row.value) as ResumeWindow | ResumeWindow[];
+        resumeWindows.set(row.key.slice("companyResume:".length), Array.isArray(parsed) ? parsed : [parsed]);
       } catch {
         /* صفّ تالف = ما في نافذة */
       }
@@ -351,8 +353,8 @@ describe("scheduling rules hold on the stored data", () => {
       }
       const p = t.publishDate.getTime();
       // قطعة كمّلت بعد رجوع من إيقاف: مكانها نافذة الرجوع، مو الدورة الأصلية.
-      const rw = resumeWindows.get(co.id);
-      if (rw && rw.year === t.year && rw.month === t.month) {
+      const rw = (resumeWindows.get(co.id) ?? []).find((w) => w.year === t.year && w.month === t.month);
+      if (rw) {
         const [fy, fm, fd] = rw.from.split("-").map(Number);
         const [uy, um, ud] = rw.until.split("-").map(Number);
         if (p >= new Date(fy, fm - 1, fd).getTime() && p < new Date(uy, um - 1, ud).getTime()) continue;

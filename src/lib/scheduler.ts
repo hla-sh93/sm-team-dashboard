@@ -225,6 +225,8 @@ const PREP_WEEK_RULE_FROM = new Date(2026, 6, 20);
 const SIGNING_PREP_RULE_FROM = new Date(2026, 9, 13);
 /** يومين عمل للكاتبة لتسلّم الخطة من يوم التوقيع. */
 export const SIGNING_WRITE_WORKDAYS = 2;
+/** أسبوع التحضير الافتراضي (القائدة: «بشكل افتراضي هو اسبوع»). */
+export const SIGNING_PREP_DAYS = 7;
 
 export type SigningPrep = {
   /** يوم التوقيع — كرت الخطة بيبلّش منه. */
@@ -246,8 +248,12 @@ export function signingPrepOf(
   if (!cyc || cyc.index !== 0 || !co.contractStartDate) return null;
   if (cyc.start.getTime() < SIGNING_PREP_RULE_FROM.getTime()) return null;
   const raw = new Date(co.contractStartDate);
-  const signedAt = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
-  if (signedAt.getTime() > cyc.start.getTime()) return null;
+  const signed = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
+  if (signed.getTime() > cyc.start.getTime()) return null;
+  // توقيع قديم (موقّعة ولسا ما بلّش نشرها شهور، متل Siizen والبلسم) ما بيحطّ كرت الخطة
+  // بشهر فات ومتأخر لحظتها: التحضير أسبوع قبل البدء بالكتير (مراجعة ١٢/١٠).
+  const weekBefore = new Date(cyc.start.getFullYear(), cyc.start.getMonth(), cyc.start.getDate() - SIGNING_PREP_DAYS);
+  const signedAt = signed.getTime() < weekBefore.getTime() ? weekBefore : signed;
   const writeReady = addWorkingDays(signedAt, SIGNING_WRITE_WORKDAYS, writerWorkDays);
   const productionFloor = writeReady.getTime() > cyc.start.getTime() ? writeReady : new Date(cyc.start);
   return { signedAt, writeReady, productionFloor };

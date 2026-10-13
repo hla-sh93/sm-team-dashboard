@@ -6,6 +6,7 @@ import { employeeSchema, isCalendarDay, type EmployeeInput } from "@/lib/schemas
 import { revalidateAll } from "@/lib/revalidate";
 import { fromISODate } from "@/lib/dates";
 import { withEvidenceLine } from "@/lib/evidence";
+import { recordHandover } from "@/server/handover";
 
 
 /** Build the rates JSON (items/day). planDays → PLAN rate = 1/planDays. */
@@ -220,6 +221,8 @@ export async function handoverEmployeeWork(input: {
       ...companyUpdates.map((u) => prisma.company.update({ where: { id: u.id }, data: u.data })),
       prisma.employee.update({ where: { id: fromId }, data: { isScheduled: false } }),
     ]);
+    // المحرّك بيختار الكاتبة/المونتيرة/الناشر بالدور — الخلف بيورث الدور كمان.
+    await recordHandover(fromId, toId, fromDate);
     revalidateAll();
     return { ok: true as const, preview: false as const, ...summary };
   } catch {

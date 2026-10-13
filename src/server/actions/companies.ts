@@ -21,7 +21,14 @@ import { generateCompanySchedule } from "./schedule";
 import { generateScheduleInternal } from "@/server/schedule-engine";
 import { revalidateAll } from "@/lib/revalidate";
 import { planReductionBlocker } from "@/server/cycle-plan";
-import { readPause, recordPause, resumeWindowDays, saveResume } from "@/server/company-pause";
+import {
+  deleteResume,
+  readPause,
+  recordPause,
+  resumeWindowDays,
+  saveResume,
+  type ResumeSetting,
+} from "@/server/company-pause";
 import type { ContentType } from "@/lib/constants";
 
 
@@ -681,11 +688,13 @@ async function resumeRemaining(
   });
   const isOpen = (t: (typeof publishCards)[number]) =>
     t.status !== "CANCELED" && t.board !== "DONE" && !DONE_STATUSES.includes(t.status as never);
+  // **كل** دلو فيه قطع باقية — متبقّي دورة قبل الإيقاف كمان، مو الأحدث بس (مراجعة
+  // ١٢/١٠: قطع فونيتيك بدلو أيلول ضلّت على ١٢–١٨/١٠ وطلعت متأخرة بعد الرجوع). الأقدم
+  // أولاً، ونافذة كل دلو بتبلّش وين خلصت يلي قبلها — ولا يوم نشر بيتزاحم بين دلوين.
   const buckets = [...new Set(publishCards.filter(isOpen).map((t) => t.year * 12 + t.month))]
-    .sort((a, b) => b - a)
+    .sort((a, b) => a - b)
     .map((k) => ({ year: Math.floor(k / 12), month: k % 12 }))
     .filter((b) => cycleForBucket(co, b.year, b.month));
-  const target = buckets[0] ?? null;
 
   const activate = () =>
     prisma.company.update({
@@ -693,51 +702,72 @@ async function resumeRemaining(
       data: { status: "active", lateExemptReason: null },
     });
 
-  if (!target) {
+  if (!buckets.length) {
     // ما في باقي: الشركة بترجع نشطة، ودورتها الجاية بتجي بـ«جدّد».
+    await deleteResume(companyId);
     const updated = await activate();
     revalidateAll();
     return { ok: true as const, data: updated, from: toISODate(start), remaining: 0, windowDays: 0 };
   }
 
-  const inBucket = publishCards.filter((t) => t.year === target.year && t.month === target.month);
-  const open = inBucket.filter(isOpen);
-  const planned = inBucket.filter((t) => t.status !== "CANCELED").length;
-  const openByType: Partial<Record<ContentType, number>> = {};
-  const pieceNos: Partial<Record<ContentType, number[]>> = {};
-  for (const t of open) {
-    const type = t.type as ContentType;
-    openByType[type] = (openByType[type] ?? 0) + 1;
-    (pieceNos[type] ??= []).push(t.pieceNo!);
+  const pausedAt = (await readPause(companyId))?.pausedAt ?? null;
+  const windows: ResumeSetting[] = [];
+  let windowStart = start;
+  let remaining = 0;
+  for (const bucket of buckets) {
+    const inBucket = publishCards.filter((t) => t.year === bucket.year && t.month === bucket.month);
+    const open = inBucket.filter(isOpen);
+    const planned = inBucket.filter((t) => t.status !== "CANCELED").length;
+    const openByType: Partial<Record<ContentType, number>> = {};
+    const pieceNos: Partial<Record<ContentType, number[]>> = {};
+    for (const t of open) {
+      const type = t.type as ContentType;
+      openByType[type] = (openByType[type] ?? 0) + 1;
+      (pieceNos[type] ??= []).push(t.pieceNo!);
+    }
+    const cyc = cycleForBucket(co, bucket.year, bucket.month)!;
+    const days = resumeWindowDays({ cycleDays: cyc.days.length, planned, open: openByType });
+    const until = new Date(windowStart.getFullYear(), windowStart.getMonth(), windowStart.getDate() + days);
+    windows.push({
+      from: toISODate(windowStart),
+      until: toISODate(until),
+      year: bucket.year,
+      month: bucket.month,
+      pieceNos,
+      pausedAt: pausedAt ? toISODate(pausedAt) : null,
+      datesApplied: false,
+    });
+    remaining += open.length;
+    windowStart = until;
   }
-  const cyc = cycleForBucket(co, target.year, target.month)!;
-  const windowDays = resumeWindowDays({ cycleDays: cyc.days.length, planned, open: openByType });
-  const until = new Date(start.getFullYear(), start.getMonth(), start.getDate() + windowDays);
 
-  await saveResume(companyId, {
-    from: toISODate(start),
-    until: toISODate(until),
-    year: target.year,
-    month: target.month,
-    pieceNos,
-  });
+  await saveResume(companyId, windows);
   const updated = await activate();
-  const built = await generateCompanySchedule(companyId, target.year, target.month);
-  if (!built.ok) {
-    return {
-      ok: false as const,
-      resumed: true as const,
-      error: `رجعت الشركة للعمل، بس جدولة الباقي فشلت: ${built.error}`,
-    };
+  for (const w of windows) {
+    const built = await generateCompanySchedule(companyId, w.year, w.month);
+    if (!built.ok) {
+      // الشركة ما بتضل «راجعة» بمواعيد قديمة بتنحسب متأخرة (مراجعة ١٢/١٠): بترجع
+      // موقوفة متل ما كانت، والنافذة بتنشال — «رجّع النشر» من جديد بيعيد الحساب.
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { status: "paused", lateExemptReason: co.lateExemptReason },
+      });
+      await deleteResume(companyId);
+      revalidateAll();
+      return {
+        ok: false as const,
+        error: `ما رجعت الشركة — جدولة الباقي فشلت (${built.error})، وبقيت موقوفة`,
+      };
+    }
   }
   revalidateAll();
   return {
     ok: true as const,
     data: updated,
     from: toISODate(start),
-    remaining: open.length,
-    windowDays,
-    pausedAt: (await readPause(companyId))?.pausedAt ?? null,
+    remaining,
+    windowDays: Math.round((windowStart.getTime() - start.getTime()) / 86_400_000),
+    pausedAt,
   };
 }
 
