@@ -33,6 +33,7 @@ import {
   forwardWorkday,
   fromISODate,
   parseWorkDays,
+  utcMidnight,
 } from "@/lib/dates";
 import { cycleForBucket, hasStartedPublishing } from "@/lib/contract";
 import { planTotal } from "@/lib/cycle-plan";
@@ -43,10 +44,12 @@ import { revalidateAll } from "@/lib/revalidate";
 import { teamToday } from "@/lib/team-day";
 
 
+// كل تاريخ بينكتب على منتصف ليل **UTC** (SC-08): نفس الشي على Vercel، ومن جهاز بدمشق
+// ما عاد ينخزن ٢١:٠٠Z من اليوم السابق.
 const D = (s: string | null): Date | null => {
   if (!s) return null;
   const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
+  return new Date(Date.UTC(y, m - 1, d));
 };
 
 // Reported reality (per company|type), in PIECE order by publish date. Applied
@@ -370,6 +373,22 @@ async function generateScheduleOnce(
       const counts = frozenPlans.get(co.id);
       if (counts && planTotal(counts) > 0) Object.assign(co, counts);
     }
+
+    // نزلات المصوّر بالدلاء الجارة (من القاعدة): سقفه اليومي بالعدد عبر الدورات
+    // المتقاطعة، مو جوّا الدلو بس (SC-01). الشركات الراكدة نزلاتها ما رح تصير.
+    const plannedIds = state.companies.filter(isPlanned).map((c) => c.id);
+    state.reelBookings = (
+      await prisma.photoSession.findMany({
+        where: {
+          kind: "REELS",
+          reelCount: { gt: 0 },
+          companyId: { in: plannedIds },
+          NOT: { year, month },
+          shootDate: { gte: new Date(year, month - 1, 1), lt: new Date(year, month + 2, 1) },
+        },
+        select: { companyId: true, shootDate: true, reelCount: true },
+      })
+    ).map((s) => ({ companyId: s.companyId, shootDate: s.shootDate, reelCount: s.reelCount }));
 
     const result = buildSchedule(state);
 
@@ -789,8 +808,8 @@ async function generateScheduleOnce(
           data: sessionsToWrite.map((s) => ({
             no: s.no,
             kind: s.kind,
-            shootDate: s.shootDate,
-            deliverBy: s.deliverBy,
+            shootDate: utcMidnight(s.shootDate),
+            deliverBy: utcMidnight(s.deliverBy),
             reelCount: s.reelCount,
             status:
               sessionStatusByDet.get(s.detKey) ??
@@ -831,7 +850,7 @@ async function generateScheduleOnce(
       // `updateMany` بشرط «لسا مو منجز»: كرت انسكّر بعد قراءة المحرّك ما بيتزحزح يومه.
       await prisma.task.updateMany({
         where: { id: a.sourceId, status: { notIn: ["READY", "PUBLISHED"] }, board: { not: "DONE" } },
-        data: { workDate: a.workDate, overflow: a.overflow },
+        data: { workDate: a.workDate ? utcMidnight(a.workDate) : a.workDate, overflow: a.overflow },
       });
     }
 

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildSchedule, type EmployeeInput, type ScheduledTask } from "@/lib/scheduler";
-import { hoursPerItem, ratePerDay, taskDays } from "@/lib/capacity";
+import { hoursPerItem, ratePerDay, taskDays, effectiveHours, WORK_DAY_HOURS } from "@/lib/capacity";
 import { toISODate } from "@/lib/dates";
 import { mulberry32, genState, team, company, PLANS, E, D } from "./scheduler-core-fixture";
 
@@ -129,7 +129,7 @@ describe("سقف المصوّر من معدّله المخزَّن (قرار ١/
   });
 });
 
-describe("عيوب مؤكَّدة — السعة (it.fails؛ التقرير SC-07)", () => {
+describe("السعة — ساعات يوم شاذّة (SC-07: انصلح)", () => {
   const sundayOnly = (hoursPerDay: number) => {
     const emp: EmployeeInput = { ...E.ayman, hoursPerDay, workDays: [0] };
     const r = buildSchedule({
@@ -148,7 +148,11 @@ describe("عيوب مؤكَّدة — السعة (it.fails؛ التقرير SC-0
     expect(sundayOnly(8)).toBeLessThanOrEqual(6);
   });
 
-  it.fails("SC-07 ساعات يوم = ٠ (مدخل شاذ، الفورم بيمنعه بحدّ ٠٫٥): يوم المصمّمة ما بيعبى فوق معدّلها — القطعة بتكلّف ٠ ساعة (capacity.ts: ?? 8) على لوح ٨ ساعات (scheduler.ts: > 0 ? : 8) فبيصير ٩ قطع على أحد واحد بلا overflow", () => {
+  it("SC-07 ساعات يوم = ٠ (مدخل شاذ، الفورم بيمنعه بحدّ ٠٫٥): يوم المصمّمة ما بيعبى فوق معدّلها — بديل واحد (`effectiveHours`) للقطعة واللوح", () => {
     expect(sundayOnly(0)).toBeLessThanOrEqual(6);
+    expect(effectiveHours({ hoursPerDay: 0 })).toBe(WORK_DAY_HOURS);
+    expect(effectiveHours({ hoursPerDay: null })).toBe(WORK_DAY_HOURS);
+    expect(effectiveHours({ hoursPerDay: 6 })).toBe(6);
+    expect(hoursPerItem({ hoursPerDay: 0, rates: '{"POST":6}' }, "POST")).toBeCloseTo(WORK_DAY_HOURS / 6);
   });
 });

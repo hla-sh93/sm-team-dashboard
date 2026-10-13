@@ -23,8 +23,10 @@ import {
   isPublishableDay,
   SHOOT_BEFORE_MONTAGE,
   PRIORITY_RANK,
+  shootWindow,
 } from "./constants";
-import { hoursPerItem, ratePerDay } from "./capacity";
+import { effectiveHours, hoursPerItem, ratePerDay } from "./capacity";
+import { isPublisherRole } from "./workload";
 import {
   addWorkingDays,
   WORK_WEEK,
@@ -122,6 +124,8 @@ export type SchedulerState = {
   employees: EmployeeInput[];
   companies: CompanyInput[];
   adhoc?: AdhocInput[];
+  /** نزلات ريلات محجوزة **بدلاء تانية** (من القاعدة) — سقف المصوّر اليومي عبر الدورات (SC-01). */
+  reelBookings?: { companyId: string; shootDate: Date; reelCount: number }[];
 };
 
 // ---------------------------------------------------------------------------
@@ -306,6 +310,22 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     return parseWorkDays(e ? (e.workDays as string | number[]) : null);
   };
 
+  // العطلة جمعة، والسبت للنشر بس مو للإنتاج (قرار القائدة ١/٩). دوام مخزَّن فيه جمعة —
+  // أو سبت لغير الناشر — المحرّك بيحترمه فبينزل إنتاج بيوم عطلة: منقولها بصوت (SC-16).
+  for (const e of state.employees) {
+    const wd = parseWorkDays(e.workDays as string | number[]);
+    const off = [
+      wd.includes(5) ? "الجمعة" : null,
+      wd.includes(6) && !isPublisherRole(e.role) ? "السبت" : null,
+    ].filter(Boolean);
+    if (off.length > 0) {
+      warnings.push({
+        level: "warning",
+        message: `${e.name}: أيام دوامه فيها ${off.join(" و")} — عطلة الفريق (السبت للنشر بس)`,
+      });
+    }
+  }
+
   const tasks: ScheduledTask[] = [];
 
   // -------------------------------------------------------------------------
@@ -458,6 +478,25 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         minIdxOf[ty] = idx >= 0 ? idx : 0;
       }
     }
+    // ═══ أول ريل بدورة باردة: تصوير بعد أرضية الإنتاج وقبل المونتاج بيومين (SC-03) ═══
+    //
+    // أرضية نشر الريل تقويمية وأرضية الإنتاج أيام عمل: مخبر د.نور لو بلّشت ٤/١٠ كان
+    // أول ريل ينشر ١٢/١٠ ومونتاجه ٨/١٠ والتصوير ما بيقدر قبل ٧/١٠ — يوم بدل يومين
+    // (`SHOOT_BEFORE_MONTAGE.min`) وبلا إنذار. أول يوم نشر للريل = أول يوم بتلحق فيه
+    // نافذة التصوير (لآخرها) بعد الأرضية، على أيام دوام المصوّر والمونتيرة.
+    if ((resumeFrom || signingPrep || firstCycle) && productionFloor && plan.reels > 0) {
+      const floor = productionFloor;
+      const pid = photographerOf(co);
+      const photo = pid ? empById.get(pid) : undefined;
+      if (photo) {
+        const photoWork = parseWorkDays(photo.workDays as string | number[]);
+        const shootFits = (i: number) =>
+          backWorkday(shootWindow(cycleDays[i], editorWorkDays).latest, photoWork).getTime() >=
+          floor.getTime();
+        while (minIdxOf.REEL < cycleLen - 1 && !shootFits(minIdxOf.REEL)) minIdxOf.REEL++;
+      }
+    }
+
     const weekOfCycle = (dayIdx: number) =>
       Math.min(4, Math.floor(dayIdx / (cycleLen / 4)) + 1);
     const offset = (coIdx * 2) % cycleLen; // rotate companies apart
@@ -539,6 +578,36 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       const slack = Math.min(3, Math.max(1, cycleLen - feedFloor - n + 1));
       const feedStart = feedFloor + (offset % slack);
       const feedSpan = Math.max(1, cycleLen - feedStart);
+      if (n > feedSpan) {
+        // ═══ فيد أكتر من أيام النشر (SC-02) ═══
+        //
+        // التصاق حتمي رياضياً — بس بالتساوي: حدّ `⌈n ÷ الأيام⌉` باليوم، مو تكويم كل الباقي
+        // على آخر يوم (وصل ٢٣ فيد على ٢٠ يوم بأول دورة كانت تطلّع ٤ قطع بيوم). وإنذار.
+        const perDay = Math.ceil(n / feedSpan);
+        const load = new Map<number, number>();
+        const room = (d: number) => (load.get(d) ?? 0) < perDay;
+        feedSeq.forEach((type, i) => {
+          const floor = Math.max(feedStart, minIdxOf[type]);
+          const ideal = Math.max(floor, feedStart + Math.floor((i * feedSpan) / n));
+          let day = ideal;
+          while (day < cycleLen - 1 && !room(day)) day++;
+          if (!room(day)) {
+            day = ideal;
+            while (day > floor && !room(day)) day--;
+          }
+          if (!room(day)) {
+            // النافذة الشرعية للنوع كلها بحدّها: الأقلّ حملاً.
+            for (let d = floor; d < cycleLen; d++) if ((load.get(d) ?? 0) < (load.get(day) ?? 0)) day = d;
+          }
+          load.set(day, (load.get(day) ?? 0) + 1);
+          emit(type, day);
+        });
+        warnings.push({
+          level: "warning",
+          message: `${co.name}: الخطة (${n} قطعة فيد) أكتر من أيام النشر (${feedSpan}) — لحدّ ${perDay} باليوم`,
+          companyId: co.id,
+        });
+      } else {
       let prevDay = feedStart - 1;
       let prevType: ContentType | null = null;
       feedSeq.forEach((type, i) => {
@@ -559,18 +628,67 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         prevType = type;
         emit(type, slot);
       });
+      }
     }
 
     // STORIES — even spread, one per day for the company (may share feed days).
     const storyFloor = minIdxOf.STORY;
     const storySpan = Math.max(1, cycleLen - storyFloor);
-    const usedStory = new Set<number>();
+    const storyLoad = new Map<number, number>();
     for (let i = 0; i < plan.stories; i++) {
       const target =
         storyFloor + (Math.round(offset + (i + 0.5) * (storySpan / plan.stories)) % storySpan);
-      const slot = placeUnique(target, usedStory, cycleLen, minIdxOf.STORY);
-      usedStory.add(slot);
+      const slot = placeUnique(target, storyLoad, cycleLen, minIdxOf.STORY);
+      storyLoad.set(slot, (storyLoad.get(slot) ?? 0) + 1);
       emit("STORY", slot);
+    }
+    if (plan.stories > storySpan) {
+      warnings.push({
+        level: "warning",
+        message: `${co.name}: الستوريز (${plan.stories}) أكتر من أيام النشر (${storySpan}) — لحدّ ${Math.ceil(plan.stories / storySpan)} باليوم`,
+        companyId: co.id,
+      });
+    }
+
+    // ═══ كل أسبوع من الأربعة فيه نشر (PROJECT §6 «No-interruption»، SC-05) ═══
+    //
+    // الفيد والستوري بيتوزّعوا كل واحد لحاله، فخطة صغيرة (ريل + ٣ ستوري) كانت تترك
+    // ربعاً فاضياً وتحطّ ريل وستوري بنفس اليوم. بالدورة الدافئة بس (الباردة أسبوعها
+    // الأول تحضير بالقصد): الربع الفاضي بياخد أقرب قطعة من ربع فيه أكتر من وحدة — الستوري
+    // أولاً — على يوم ما عليه شي للشركة، بنصّ الربع.
+    if (!resume && !firstCycle && !signingPrep) {
+      const mine = tasks.filter((t) => t.companyId === co.id && t.kind === "CONTENT" && t.publishDate);
+      const idxOf = (t: ScheduledTask) => cycleDays.findIndex((d) => toISODate(d) === toISODate(t.publishDate!));
+      for (let w = 1; w <= 4; w++) {
+        if (mine.some((t) => t.week === w)) continue;
+        const weekDays = cycleDays.map((_, i) => i).filter((i) => weekOfCycle(i) === w);
+        if (weekDays.length === 0) continue;
+        const middle = weekDays[Math.floor(weekDays.length / 2)];
+        const busy = new Set(mine.map(idxOf));
+        const inWeek = (wk: number | null) => mine.filter((t) => t.week === wk).length;
+        const movable = mine
+          .filter((t) => inWeek(t.week) > 1)
+          .sort(
+            (a, b) =>
+              Number(a.type !== "STORY") - Number(b.type !== "STORY") ||
+              Math.abs((a.week ?? 0) - w) - Math.abs((b.week ?? 0) - w) ||
+              a.detKey.localeCompare(b.detKey),
+          );
+        for (const t of movable) {
+          const free = weekDays
+            .filter((i) => i >= minIdxOf[t.type as ContentType] && !busy.has(i))
+            .sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle) || a - b);
+          if (free.length === 0) continue;
+          t.publishDate = new Date(cycleDays[free[0]]);
+          t.week = w;
+          const iso = toISODate(t.publishDate);
+          const k = `${t.type}|${iso}`;
+          const seq = (seqByDay.get(k) ?? 0) + 1;
+          seqByDay.set(k, seq);
+          t.detKey = `${co.id}|${t.type}|${iso}|${seq}`;
+          break;
+        }
+      }
     }
 
     if (resume) {
@@ -665,6 +783,19 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
     reelsByPhotographer.set(pid, arr);
   }
 
+  // نزلات الدلاء التانية لكل مصوّر (يوم → عدد): السقف اليومي بالعدد عبر الدورات
+  // المتقاطعة — دورة نور وعبادة بدلو أيلول والتوظيف بدلو تشرين كانوا يطلّعوا ٩ (SC-01).
+  const bookedByPhotographer = new Map<string, Map<string, number>>();
+  for (const b of state.reelBookings ?? []) {
+    const co = state.companies.find((c) => c.id === b.companyId);
+    const pid = co ? photographerOf(co) : null;
+    if (!pid || b.reelCount <= 0) continue;
+    const perDay = bookedByPhotographer.get(pid) ?? new Map<string, number>();
+    const key = toISODate(b.shootDate);
+    perDay.set(key, (perDay.get(key) ?? 0) + b.reelCount);
+    bookedByPhotographer.set(pid, perDay);
+  }
+
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
   for (const [pid, comps] of reelsByPhotographer) {
@@ -677,6 +808,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       parseWorkDays(emp.workDays as string | number[]),
       reelsPerDayOf(emp),
       editorWorkDays,
+      bookedByPhotographer.get(pid),
     );
     sessions.push(...photo.sessions);
     warnings.push(...photo.warnings);
@@ -835,7 +967,7 @@ function packEmployee(
   const priorityOf = (companyId: string | null) =>
     companyId != null ? (coPriority.get(companyId) ?? 99) : 99;
   const workDays = parseWorkDays(emp.workDays as string | number[]);
-  const cap = emp.hoursPerDay > 0 ? emp.hoursPerDay : 8;
+  const cap = effectiveHours(emp);
   const days = packingWindowDays(year, month, until).filter((d) =>
     workDays.includes(d.getDay()),
   );
@@ -987,13 +1119,25 @@ function interleaveTypes(counts: {
 }
 
 /** Nearest free day index to `target` (no two of the same kind on one day).
- *  `minIdx` floors the slot (first-cycle stories wait for the written plan). */
-function placeUnique(target: number, used: Set<number>, len: number, minIdx = 0): number {
+ *  `minIdx` floors the slot (first-cycle stories wait for the written plan).
+ *  When every day already has one (more stories than days, SC-04), the least
+ *  loaded day nearest the target — not the last day of the cycle. */
+function placeUnique(target: number, used: ReadonlyMap<number, number>, len: number, minIdx = 0): number {
   for (let d = 0; d < len; d++) {
     if (target + d >= minIdx && target + d < len && !used.has(target + d)) return target + d;
-    if (target - d >= minIdx && !used.has(target - d)) return target - d;
+    if (target - d >= minIdx && target - d < len && !used.has(target - d)) return target - d;
   }
-  return Math.min(len - 1, Math.max(minIdx, target));
+  let best = -1;
+  for (let i = Math.max(0, minIdx); i < len; i++) {
+    if (best < 0) {
+      best = i;
+      continue;
+    }
+    const li = used.get(i) ?? 0;
+    const lb = used.get(best) ?? 0;
+    if (li < lb || (li === lb && Math.abs(i - target) < Math.abs(best - target))) best = i;
+  }
+  return best >= 0 ? best : Math.min(len - 1, Math.max(minIdx, target));
 }
 
 /** كل الأيام من `start` (منتصف ليله) لقبل `end` — نافذة الرجوع من إيقاف. */

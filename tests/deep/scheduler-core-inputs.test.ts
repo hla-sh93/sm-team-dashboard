@@ -46,14 +46,17 @@ describe("مدخلات حدّية — الخطة والفريق", () => {
     }
   });
 
-  it("[موثَّق SC-16] جمعة أو سبت مخزّنين بدوام مصمّم بيحترمهم المحرّك — الإنتاج بينزل جمعة/سبت، والفورم (schemas.ts: 0..6) ما بيمنعهم", () => {
-    for (const day of [5, 6]) {
+  it("[SC-16] جمعة أو سبت مخزّنين بدوام مصمّم: المحرّك بيحترمهم (المخزَّن هو المصدر) — بس بإنذار باسمه", () => {
+    for (const [day, label] of [[5, "الجمعة"], [6, "السبت"]] as const) {
       const emps = team().map((e) => (e.id === E.ayman.id ? { ...e, workDays: [day] } : e));
       const r = buildSchedule(st({ employees: emps }));
       const mine = r.tasks.filter((t) => t.assigneeId === E.ayman.id);
       expect(mine.length).toBeGreaterThan(0);
       expect(new Set(mine.map((t) => t.workDate!.getDay()))).toEqual(new Set([day]));
+      expect(r.warnings.some((w) => w.message.includes(E.ayman.name) && w.message.includes(label))).toBe(true);
     }
+    // الفريق العادي (أحد→خميس) بلا إنذار من هالنوع.
+    expect(buildSchedule(st({})).warnings.some((w) => /عطلة الفريق/.test(w.message))).toBe(false);
   });
 
   it("[موثَّق] شركتان بنفس المعرّف (مستحيل من القاعدة — مفتاح أساسي): مفاتيح detKey بتتكرّر — المحرّك ما بيحمي حاله", () => {

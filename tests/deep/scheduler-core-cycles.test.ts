@@ -141,8 +141,10 @@ describe("الدورات — سلسلة تجديدات متّصلة من كل ي
     expect(cycleSpanLabel({}, 2026, 10)).toBe("1/11 → 30/11");
   });
 
-  it("[موثَّق SC-14] تجديد مسجَّل قبل تاريخ بدء النشر بيصير هو الدورة الأولى", () => {
+  it("[SC-14] تجديد مسجَّل قبل تاريخ بدء النشر (أو بيومه) ما بيصير دورة — الدورة الأولى من بدء النشر", () => {
     const co = { publishStartDate: D("2026-10-13"), renewals: '["2026-09-13"]', contractEndedAt: null };
-    expect(cyclesOf(co).map((c) => iso(c.start))).toEqual(["2026-09-13", "2026-10-13"]);
+    expect(cyclesOf(co).map((c) => iso(c.start))).toEqual(["2026-10-13"]);
+    const same = { publishStartDate: D("2026-10-13"), renewals: '["2026-10-13", "2026-11-13"]', contractEndedAt: null };
+    expect(cyclesOf(same).map((c) => iso(c.start))).toEqual(["2026-10-13", "2026-11-13"]);
   });
 });

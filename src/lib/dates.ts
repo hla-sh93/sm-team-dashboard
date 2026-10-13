@@ -67,6 +67,15 @@ export function fromISODate(iso: string): Date {
 }
 
 /**
+ * نفس اليوم (بـgetters العملية) على منتصف ليل **UTC** — شكل التخزين الموحّد (SC-08).
+ * على Vercel (UTC) هي نفسها؛ من جهاز بدمشق كان اليوم ينخزن ٢١:٠٠Z من اليوم السابق،
+ * وخادم UTC بيقراه يوماً قبل لو انصدّرت القاعدة.
+ */
+export function utcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
+/**
  * Format date in Arabic short form: "5 أيار".
  */
 export function formatDateShort(date: Date | string): string {

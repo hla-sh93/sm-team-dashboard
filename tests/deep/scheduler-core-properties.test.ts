@@ -528,15 +528,25 @@ describe("نواة الجدولة — علاقات تحويلية (metamorphic)"
   });
 });
 
-describe("نواة الجدولة — عيوب مؤكَّدة (it.fails: بتفشل عن قصد لحدّ ما تنصلح؛ راجع التقرير SC-01…SC-05)", () => {
-  it.fails("SC-01 سقف المصوّر عبر الدلاء: دمج دلو أيلول ودلو تشرين (شركات الإنتاج) ما بيتجاوز ٦ ريلات باليوم", () => {
-    const perDay = new Map<string, number>();
-    for (const month of [8, 9]) {
-      const r = buildSchedule({ year: 2026, month, employees: team(), companies: productionCompanies(), adhoc: [] });
-      for (const s of r.sessions.filter((s) => s.kind === "REELS")) perDay.set(toISODate(s.shootDate), (perDay.get(toISODate(s.shootDate)) ?? 0) + s.reelCount);
-    }
-    // اليوم 2026-09-28: نور ٣ + عبادة ٣ (دلو أيلول) + التوظيف ٣ (دلو تشرين) = ٩ — مطابق للقطة الإنتاج
-    for (const [day, n] of perDay) expect(n, day).toBeLessThanOrEqual(6);
+describe("نواة الجدولة — عيوب التقرير SC-01…SC-05 (انصلحت)", () => {
+  it("SC-01 سقف المصوّر عبر الدلاء: دلو تشرين بيشوف نزلات دلو أيلول (`reelBookings`) — ولا يوم فوق ٦ ريلات", () => {
+    const sept = buildSchedule({ year: 2026, month: 8, employees: team(), companies: productionCompanies(), adhoc: [] });
+    const reelBookings = sept.sessions
+      .filter((s) => s.kind === "REELS")
+      .map((s) => ({ companyId: s.companyId, shootDate: s.shootDate, reelCount: s.reelCount }));
+    const merged = (oct: ReturnType<typeof buildSchedule>) => {
+      const perDay = new Map<string, number>();
+      for (const s of [...sept.sessions, ...oct.sessions].filter((s) => s.kind === "REELS")) {
+        perDay.set(toISODate(s.shootDate), (perDay.get(toISODate(s.shootDate)) ?? 0) + s.reelCount);
+      }
+      return perDay;
+    };
+    // الشاهد: بلا الحجوزات اليوم 2026-09-28 بيطلع نور ٣ + عبادة ٣ (أيلول) + التوظيف ٣ (تشرين) = ٩ — متل لقطة الإنتاج.
+    const blind = merged(buildSchedule({ year: 2026, month: 9, employees: team(), companies: productionCompanies(), adhoc: [] }));
+    expect(Math.max(...blind.values())).toBeGreaterThan(6);
+    // مع الحجوزات (متل المحرّك): ولا يوم فوق السقف.
+    const oct = buildSchedule({ year: 2026, month: 9, employees: team(), companies: productionCompanies(), adhoc: [], reelBookings });
+    for (const [day, n] of merged(oct)) expect(n, day).toBeLessThanOrEqual(6);
   });
 
   /** أيام النشر المسموحة بعد أرضية النوع بأول دورة (أسبوع التحضير = ٧ أيام تقويمية). */
@@ -551,16 +561,18 @@ describe("نواة الجدولة — عيوب مؤكَّدة (it.fails: بتف�
     return Math.max(0, ...m.values());
   };
 
-  it.fails("SC-02 خطة فيد أكبر من أيام النشر بأول دورة (وصل ٢٣ فيد على ٢٠ يوم بعد التحضير): ولا يوم فوق الحدّ الحسابي ⌈٢٣/٢٠⌉=٢ — المحرّك بيكوّم ٤ (بوست+بوست+ريل+بوست) على آخر يوم بالدورة بصمت", () => {
+  it("SC-02 خطة فيد أكبر من أيام النشر بأول دورة (وصل ٢٣ فيد على ٢٠ يوم بعد التحضير): ولا يوم فوق الحدّ الحسابي ⌈٢٣/٢٠⌉=٢ — وبإنذار", () => {
     const co = company("c_wasl", "وصل", PLANS.wasl, { publishStartDate: D("2026-10-01") });
     const r = buildSchedule({ year: 2026, month: 9, employees: team(), companies: [co], adhoc: [] });
     const feed = r.tasks.filter((t) => t.type && t.type !== "STORY");
     const avail = availAfterPrep(co, 2026, 9);
     expect(avail).toBe(20);
+    expect(feed).toHaveLength(23);
     expect(maxPerDay(feed)).toBeLessThanOrEqual(Math.ceil(feed.length / avail));
+    expect(r.warnings.some((w) => w.companyId === "c_wasl" && /أكتر من أيام النشر/.test(w.message))).toBe(true);
   });
 
-  it.fails("SC-03 أول ريل بدورة باردة: التصوير قبل المونتاج بيومين على الأقل أو إنذار صريح — الأرضية (٣ أيام عمل) بتزحّط التصوير ليوم قبل المونتاج بلا إنذار", () => {
+  it("SC-03 أول ريل بدورة باردة: التصوير قبل المونتاج بيومين على الأقل أو إنذار صريح", () => {
     const state: SchedulerState = { year: 2026, month: 9, employees: team(), companies: [company("c_noor", "نور", PLANS.noor, { publishStartDate: D("2026-10-04") })], adhoc: [] };
     const r = buildSchedule(state);
     const reels = r.tasks.filter((t) => t.type === "REEL").sort((a, b) => a.publishDate!.getTime() - b.publishDate!.getTime());
@@ -570,24 +582,36 @@ describe("نواة الجدولة — عيوب مؤكَّدة (it.fails: بتف�
     expect(gap >= SHOOT_BEFORE_MONTAGE.min || warned, `shoot ${iso(first.workDate)} montage ${iso(montageDay(first.publishDate!, editorWD(state)))}`).toBe(true);
   });
 
-  it("[موثَّق SC-04] خطة وصل (٢٠ ستوري) بأول دورة 5/11: ١٩ يوم نشر بعد التحضير، فالمحرّك بيضاعف يوماً واحداً بس (الحدّ الأدنى الحسابي) — بلا إنذار", () => {
+  it("SC-03 الأرضية نفسها: أول ريل بأي بداية باردة بيلحقله تصوير قبل المونتاج بيومين — بلا ما يحتاج إنذار", () => {
+    for (const start of ["2026-10-01", "2026-10-04", "2026-10-13", "2026-11-05", "2026-12-24"]) {
+      const d = D(start);
+      const state: SchedulerState = { year: d.getFullYear(), month: d.getMonth(), employees: team(), companies: [company("c_noor", "نور", PLANS.noor, { publishStartDate: d })], adhoc: [] };
+      const r = buildSchedule(state);
+      const first = r.tasks.filter((t) => t.type === "REEL").sort((a, b) => a.publishDate!.getTime() - b.publishDate!.getTime())[0];
+      const gap = dayDiff(first.workDate!, montageDay(first.publishDate!, editorWD(state)));
+      expect(gap, start).toBeGreaterThanOrEqual(SHOOT_BEFORE_MONTAGE.min);
+      expect(r.warnings.filter((w) => w.companyId === "c_noor"), start).toEqual([]);
+    }
+  });
+
+  it("[SC-04] خطة وصل (٢٠ ستوري) بأول دورة 5/11: ١٩ يوم نشر بعد التحضير، فالمحرّك بيضاعف يوماً واحداً بس (الحدّ الأدنى الحسابي) — وبإنذار هلّق", () => {
     const co = company("c_wasl", "وصل", PLANS.wasl, { publishStartDate: D("2026-11-05") });
     const r = buildSchedule({ year: 2026, month: 10, employees: team(), companies: [co], adhoc: [] });
     const stories = r.tasks.filter((t) => t.type === "STORY");
     const avail = availAfterPrep(co, 2026, 10);
     const used = new Set(stories.map((t) => toISODate(t.publishDate!))).size;
     expect([stories.length, avail, used]).toEqual([20, 19, 19]);
-    expect(r.warnings).toEqual([]);
+    expect(r.warnings.some((w) => w.companyId === "c_wasl" && /الستوريز \(20\) أكتر من أيام النشر/.test(w.message))).toBe(true);
   });
 
-  it.fails("SC-04 ستوريز أكتر من أيام النشر (٢٥ على ١٩ يوم بأول دورة 5/11): ولا يوم فوق ⌈٢٥/١٩⌉=٢ — المحرّك بيكدّس آخر الدورة ويوصل لـ٣ باليوم بصمت", () => {
+  it("SC-04 ستوريز أكتر من أيام النشر (٢٥ على ١٩ يوم بأول دورة 5/11): ولا يوم فوق ⌈٢٥/١٩⌉=٢ — الأقلّ حملاً الأقرب، مو آخر الدورة", () => {
     const co = company("c_wasl", "وصل", { ...PLANS.wasl, stories: 25 }, { publishStartDate: D("2026-11-05") });
     const r = buildSchedule({ year: 2026, month: 10, employees: team(), companies: [co], adhoc: [] });
     const stories = r.tasks.filter((t) => t.type === "STORY");
     expect(maxPerDay(stories)).toBeLessThanOrEqual(Math.ceil(stories.length / availAfterPrep(co, 2026, 10)));
   });
 
-  it.fails("SC-05 خطة صغيرة (ريل + ٣ ستوري، دورة دافئة): كل أسبوع من الأربعة فيه نشر (PROJECT §6 «No-interruption») — المحرّك بيترك الأسبوع ٢ فاضي وبيحطّ ريل وستوري بنفس اليوم بلا إنذار", () => {
+  it("SC-05 خطة صغيرة (ريل + ٣ ستوري، دورة دافئة): كل أسبوع من الأربعة فيه نشر (PROJECT §6 «No-interruption»)", () => {
     const co = company("c_small", "صغيرة", { posts: 0, reels: 1, aiReels: 0, stories: 3 }, { publishStartDate: D("2026-08-10"), renewals: ["2026-09-10", "2026-10-10"] });
     const r = buildSchedule({ year: 2026, month: 9, employees: team(), companies: [co], adhoc: [] });
     // مدقّق المنتج نفسه (validatePublishing) بيشوف الانقطاع — بس ما حدا بيناديه خارج الاختبارات.

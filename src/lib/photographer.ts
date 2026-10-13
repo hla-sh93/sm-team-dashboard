@@ -9,7 +9,9 @@ import { batchSizes, backWorkday, forwardWorkday, addWorkdaysFor, prevMonth, wee
 import {
   PHOTO_DELIVER_MAX_DAYS,
   PHOTOSHOOT_DELIVER_DAYS,
+  SHOOT_BEFORE_MONTAGE,
   footageDeadline,
+  montageDay,
   shootWindow,
   type PhotoKind,
   type PhotoStatus, WORKDAYS_PHOTO } from "./constants";
@@ -74,6 +76,9 @@ export function buildPhotoSessions(
   /** أيام دوام المونتيرة — النافذة بتنحسب رجوعاً من يوم مونتاجها، فالعطلة
    *  بتزحزح التصوير بدل ما تاكل هامش التسليم. */
   editorWorkDays?: number[],
+  /** ريلات محجوزة لنفس المصوّر بدلاء تانية (يوم YYYY-MM-DD → عدد): السقف اليومي عبر
+   *  كل الدورات الشغّالة، مو جوّا الدلو بس (SC-01: ٩ ريلات لماجد ٢٨/٩ والسقف ٦). */
+  preBooked?: ReadonlyMap<string, number>,
 ): PhotographerResult {
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
@@ -117,7 +122,7 @@ export function buildPhotoSessions(
   // سقف اليوم **بالعدد** لا بعدد الشركات (قرار القائدة ١/٩): «مو مهم إذا
   // لشركة وحدة أو أكتر — هاد قيد جدولة وتأخيرات بس». كان القيد نزلة وحدة
   // باليوم، فكان يزحّط تصوير شركتين ما بينهم تعارض حقيقي.
-  const reelsBookedPerDay = new Map<string, number>();
+  const reelsBookedPerDay = new Map<string, number>(preBooked ?? []);
   const bookedOn = (d: Date) => reelsBookedPerDay.get(toKeyDate(d)) ?? 0;
   const fitsOn = (d: Date, count: number) => bookedOn(d) + count <= maxReelsPerDay;
 
@@ -229,6 +234,16 @@ export function buildPhotoSessions(
         }
       }
       reelsBookedPerDay.set(toKeyDate(shoot), bookedOn(shoot) + batch.length);
+      // التصوير قبل المونتاج بيومين على الأقل («التصوير نافذة لا يوم»): أرضية العقد أو
+      // زحمة اليوم ممكن يزحّطوه — منقولها بصوت بدل ما تستلم المونتيرة لقطات يومها (SC-03).
+      const montage = montageDay(epub, editorWorkDays);
+      if (Math.round((montage.getTime() - shoot.getTime()) / DAY) < SHOOT_BEFORE_MONTAGE.min) {
+        warnings.push({
+          level: "warning",
+          message: `${co.companyName}: التصوير ${toKeyDate(shoot)} قبل المونتاج ${toKeyDate(montage)} بأقل من ${SHOOT_BEFORE_MONTAGE.min} يوم — عدّليه يدوياً`,
+          companyId: co.companyId,
+        });
+      }
       // تسليم اللقطات: خلال ٣ أيام من التصوير، وقبل يوم المونتاج بيوم — يعني
       // نشر − ٣ (constants.footageDeadline). كان الحدّ «نشر − ١»، وهو يلي كان
       // بيخلّي المونتاج ينزل يوم النشر أو قبله بيوم ويكسر قاعدة اليومين.

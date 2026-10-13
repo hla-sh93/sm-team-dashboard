@@ -56,9 +56,17 @@ export function ratePerDay(emp: RateEmp, type: string): number {
   return r[type] ?? DEFAULT_RATES[type] ?? 1;
 }
 
+/**
+ * ساعات يوم الشخص — بديل واحد بمكان واحد (SC-07): كانت نسختين (`?? 8` هون و`> 0 ? : 8`
+ * بالمحرّك)، فدوام ٠ ساعة كان يطلّع القطعة ٠ ساعة على لوح ٨ — يوم بلا سقف.
+ */
+export function effectiveHours(emp: { hoursPerDay?: number | null }): number {
+  return emp.hoursPerDay != null && emp.hoursPerDay > 0 ? emp.hoursPerDay : WORK_DAY_HOURS;
+}
+
 /** Hours one item of `type` costs this person (hoursPerDay ÷ rate). */
 export function hoursPerItem(emp: RateEmp, type: string): number {
-  const cap = emp.hoursPerDay ?? 8;
+  const cap = effectiveHours(emp);
   const rate = ratePerDay(emp, type);
   return rate > 0 ? cap / rate : cap;
 }

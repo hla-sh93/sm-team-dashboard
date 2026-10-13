@@ -24,7 +24,7 @@
  * Companies with NO contractStartDate (design-only clients like المدارس) have no
  * contract concept at all — they keep the plain calendar month, ungated, forever.
  */
-import { clampDayToMonth, toISODate } from "./dates";
+import { clampDayToMonth, fromISODate, toISODate } from "./dates";
 import { teamToday } from "./team-day";
 
 /** Days before a cycle's end at which the UI starts asking about renewal. */
@@ -101,9 +101,11 @@ export function hasStartedPublishing(co: ContractCompany | null | undefined): bo
   return contractModeOf(co) !== "signed_not_publishing";
 }
 
-/** Local midnight for a Date | ISO string. */
+/** Local midnight for a Date | ISO string. «YYYY-MM-DD» بلا وقت = يوم تقويمي (مو منتصف
+ *  ليل UTC — `new Date(str)` بيقراه UTC فبمنطقة غرب غرينتش بيطلع يوم قبل، SC-08). */
 function midnight(v: Date | string): Date {
-  const d = typeof v === "string" ? new Date(v) : v;
+  const d =
+    typeof v === "string" ? (/^\d{4}-\d{2}-\d{2}$/.test(v) ? fromISODate(v) : new Date(v)) : v;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
@@ -159,7 +161,10 @@ export function cycleStarts(co: ContractCompany): Date[] {
   const endedAt = toDateOrNull(co.contractEndedAt);
   const seen = new Set<string>();
   const out: Date[] = [];
-  for (const d of [first, ...parseRenewals(co)].sort((a, b) => a.getTime() - b.getTime())) {
+  // تجديد مسجَّل قبل بدء النشر ما إله معنى (ما في دورة قبل الأولى): كان يصير هو الدورة
+  // الأولى بصمت (SC-14). «جدّد» والحمولات بيمنعوه — هون الحارس بالنواة.
+  const renewals = parseRenewals(co).filter((d) => d.getTime() > first.getTime());
+  for (const d of [first, ...renewals].sort((a, b) => a.getTime() - b.getTime())) {
     if (endedAt && d.getTime() >= endedAt.getTime()) continue;
     const iso = toISODate(d);
     if (seen.has(iso)) continue;
