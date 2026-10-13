@@ -578,7 +578,10 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       const slack = Math.min(3, Math.max(1, cycleLen - feedFloor - n + 1));
       const feedStart = feedFloor + (offset % slack);
       const feedSpan = Math.max(1, cycleLen - feedStart);
-      if (n > feedSpan) {
+      // `>=`: فيد = أيام النشر بالضبط كان يروح للفرع التاني، و`round(i+0.5)` بيزيح كل قطعة
+      // يوم لقدّام فآخر وحدة بتنكبس على آخر يوم — قطعتين بيوم ويوم فاضي بلا إنذار
+      // (٢٠ فيد على ٢٠ يوم، مراجعة F–H). هون حدّ `⌈n÷الأيام⌉` = ١ بالضبط.
+      if (n >= feedSpan) {
         // ═══ فيد أكتر من أيام النشر (SC-02) ═══
         //
         // التصاق حتمي رياضياً — بس بالتساوي: حدّ `⌈n ÷ الأيام⌉` باليوم، مو تكويم كل الباقي
@@ -602,11 +605,13 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
           load.set(day, (load.get(day) ?? 0) + 1);
           emit(type, day);
         });
-        warnings.push({
-          level: "warning",
-          message: `${co.name}: الخطة (${n} قطعة فيد) أكتر من أيام النشر (${feedSpan}) — لحدّ ${perDay} باليوم`,
-          companyId: co.id,
-        });
+        if (n > feedSpan) {
+          warnings.push({
+            level: "warning",
+            message: `${co.name}: الخطة (${n} قطعة فيد) أكتر من أيام النشر (${feedSpan}) — لحدّ ${perDay} باليوم`,
+            companyId: co.id,
+          });
+        }
       } else {
       let prevDay = feedStart - 1;
       let prevType: ContentType | null = null;
