@@ -222,6 +222,10 @@ function firstOpenBlocker(byId: Map<string, Task>, task: Task): Task | null {
     seen.add(cur.id);
     const blocker: Task | undefined = byId.get(cur.blockedById);
     if (!blocker) return null; // blocker archived/deleted → no longer a gate
+    // كرت كتابة الخطة ما بيحجز قطعة **نصّها عليها** (`brief`): الكتابة صارت لهالقطعة، والكرت
+    // المفتوح بيغطّي باقي الخطة. كان يحجز كل تصاميم الدورة، فسابين طلعلها بوست واحد وخطة
+    // التوظيف عندها مفتوحة (القائدة ١٣/١٠، WORK_RULES §١٦: ما في يوم فاضي وفي شغل).
+    if (!isTaskDoneState(blocker) && blocker.stage === "WRITE" && cur.brief?.trim()) return null;
     if (!isTaskDoneState(blocker)) return passedDone && blocker.stage === "WRITE" ? null : blocker;
     passedDone = true;
     cur = blocker;
@@ -345,8 +349,10 @@ export function selectDailyWork({
   const selected: Task[] = [];
   // المنجَز اليوم بياخد حصّته أولاً؛ ومن لحظة ما يكون في شي منجز، اليوم «بدأ»:
   // ما في كرت أول بيتجاوز السعة، ولا كرت يوم كامل بينضاف فوق شغل مخلَّص.
-  let usedDays = doneLoad;
-  let dayStarted = doneToday.length > 0;
+  // …وإذا خلّص حصّة اليوم وعنده شغل مفتوح، بياخد الدفعة الجاية — ما بيضل «منجز» وفاضي
+  // (القائدة ١٣/١٠: «مابدي الموظف يخلص مهام طول ما لسا عندو مهام مفتوحة»، §١٦).
+  let usedDays = dayFull ? 0 : doneLoad;
+  let dayStarted = dayFull ? false : doneToday.length > 0;
 
   for (const task of open) {
     const effortDays = dailyTaskEffortDays(employee, task, scopeCounts);
@@ -358,8 +364,6 @@ export function selectDailyWork({
       }
       continue;
     }
-
-    if (dayFull) continue;
 
     const exclusive = isExclusiveDayTask(task, effortDays);
     if (dayStarted && exclusive) continue;

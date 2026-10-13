@@ -465,7 +465,7 @@ describe("makeBlockedPredicate", () => {
  * كان يطلعله «تم إنجاز مهامك اليوم»، بيضل يعرضله مهام إضافية من الأيام الجاية.
  * السبب: القائمة كانت تنعاد من المفتوح بس، فكل كرت بينقفل بيدخل مكانه غيره.
  */
-describe("finished-today work closes the day", () => {
+describe("finished-today work and the next batch (§16)", () => {
   const today = new Date(2026, 8, 17, 14, 0); // Thursday 17/9 — inside the Sun→Thu week used below
   const workingToday = () => employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6 }) });
   const co = company({ id: "company", priority: 1 });
@@ -490,7 +490,7 @@ describe("finished-today work closes the day", () => {
     expect(work.queue).toHaveLength(2);
   });
 
-  it("empties the queue once the day's rate is met, even with open work for later days", () => {
+  it("خلّص حصّة اليوم وعنده شغل مفتوح → بياخد الدفعة الجاية، ما بيضل فاضي (القائدة ١٣/١٠، §١٦)", () => {
     const finished = Array.from({ length: 6 }, (_, i) =>
       task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 16, 30)) }),
     );
@@ -503,12 +503,16 @@ describe("finished-today work closes the day", () => {
       today,
     });
     expect(work.dayFull).toBe(true);
-    expect(work.queue).toEqual([]);
+    expect(work.queue).toHaveLength(6);
     expect(work.doneToday).toHaveLength(6);
-    // the legacy wrapper agrees
-    expect(
-      selectDailyWorkTasks({ employee: workingToday(), tasks: open, allTasks: [...finished, ...open], companies: [co], today }),
-    ).toEqual([]);
+  });
+
+  it("…ولما ما يضل ولا كرت مفتوح، الطابور فاضي (متفرّغ)", () => {
+    const finished = Array.from({ length: 6 }, (_, i) =>
+      task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 16, 30)) }),
+    );
+    const work = selectDailyWork({ employee: workingToday(), tasks: [], allTasks: finished, companies: [co], today });
+    expect(work.queue).toEqual([]);
   });
 
   it("does not let a partially used day fall back to the whole-first-date dump", () => {
@@ -523,13 +527,13 @@ describe("finished-today work closes the day", () => {
     expect(work.dayFull).toBe(false);
   });
 
-  it("a full-day card finished today closes the day on its own", () => {
+  it("كرت يوم كامل خلص اليوم وعنده بوستات مفتوحة → بياخدهن (ما بيضل فاضي)", () => {
     const emp = employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6, AI_REEL: 1 }) });
     const reel = task({ id: "reel", type: "AI_REEL", ...doneAt(new Date(2026, 8, 17, 9, 0)) });
     const posts = Array.from({ length: 3 }, (_, i) => task({ id: `post_${i}` }));
     const work = selectDailyWork({ employee: emp, tasks: posts, allTasks: [reel, ...posts], companies: [co], today });
     expect(work.dayFull).toBe(true);
-    expect(work.queue).toEqual([]);
+    expect(work.queue.map((t) => t.id)).toEqual(["post_0", "post_1", "post_2"]);
   });
 
   it("ignores work finished on another day", () => {
@@ -651,5 +655,24 @@ describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHel
     expect(open.map((t) => reasonOf(t)?.parkedUntil)).toEqual([
       "2026-10-12", "2026-10-13", "2026-10-15", "2026-10-15", "2026-10-19",
     ]);
+  });
+});
+
+describe("[القائدة ١٣/١٠ · §١٦] كرت كتابة الخطة المفتوح ما بيحجز قطعة نصّها عليها", () => {
+  const today = new Date(2026, 8, 17, 14, 0);
+  const workingToday = () => employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6 }) });
+  const co = company({ id: "company", priority: 1 });
+  // سابين: خطة التوظيف — كرت الكتابة (نوال) لسا مفتوح، بس نصوص البوستات انستوردت على
+  // كروتها. كانت كل التصاميم محجوزة فطلعلها بوست واحد من شركة تانية.
+  const write = task({ id: "write", kind: "CONTENT_WRITING", stage: "WRITE", type: null, assigneeId: "nawal" });
+  const briefed = Array.from({ length: 4 }, (_, i) =>
+    task({ id: `jobs_${i}`, stage: "DESIGN", blockedById: "write", brief: `نص بوست ${i + 1}` }),
+  );
+  const noText = task({ id: "jobs_x", stage: "DESIGN", blockedById: "write", brief: null });
+
+  it("البوستات يلي نصّها عليها بتنعطى، والبلا نص بيضل محجوز ورا الكتابة", () => {
+    const all = [write, ...briefed, noText];
+    const work = selectDailyWork({ employee: workingToday(), tasks: all, allTasks: all, companies: [co], today });
+    expect(work.queue.map((t) => t.id).sort()).toEqual(["jobs_0", "jobs_1", "jobs_2", "jobs_3"]);
   });
 });

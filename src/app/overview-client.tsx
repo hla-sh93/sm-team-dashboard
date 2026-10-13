@@ -681,7 +681,7 @@ export default function OverviewClient({
                     </div>
                   ) : (
                     <div className="text-center py-8 text-sm text-success">
-                      متفرّغ — جاهز لعمل إضافي.
+                      ليس لديه مهام — متفرّغ لاستلام مهام إضافية.
                     </div>
                   )
                 ) : (

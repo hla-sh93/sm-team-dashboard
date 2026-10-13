@@ -575,7 +575,7 @@ export function buildDailyBrief({
   }
   // Who is free today. Deliberately absent from the group-facing message — but
   // she is the one who reassigns work, so she needs to know there is slack.
-  if (idleToday.length) leadLines.push("", `🟢 فاضي اليوم: ${idleToday.join("، ")}`);
+  if (idleToday.length) leadLines.push("", `🟢 ليس لديه مهام — متفرّغ لاستلام مهام إضافية: ${idleToday.join("، ")}`);
 
   return {
     dateLabel,

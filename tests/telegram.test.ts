@@ -590,7 +590,7 @@ describe("العام (07:45) — the message the lead forwards as-is", () => {
   it("leaves idle people out of the group message but tells the lead privately", () => {
     const brief = buildDailyBrief({ ...base, tasks: [] });
     expect(brief.schedule.text).not.toContain("أيمن");
-    expect(brief.lead.text).toContain("فاضي اليوم: أيمن");
+    expect(brief.lead.text).toContain("ليس لديه مهام — متفرّغ لاستلام مهام إضافية: أيمن");
   });
 
   // (١٦/٩) «خلي النشر باسم الشركة ونوع المحتوى فقط».

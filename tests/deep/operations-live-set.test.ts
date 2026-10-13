@@ -180,14 +180,18 @@ describe("المجموعة الحيّة — اللوح/اليوم/البريف �
     expect(view).not.toMatch(/openCarryoverWhere|monthContinuationWhere/);
   });
 
-  it.skipIf(skip())("[OP-01] «مهام اليوم» على المجموعة الحيّة: إقفال اليوم بيسكّر اليوم (اللوح والرئيسية سوا)", async () => {
+  it.skipIf(skip())("[OP-01] «مهام اليوم» على المجموعة الحيّة: المنجز اليوم بينعدّ، وبعد حصّة اليوم بيجي الشغل المفتوح الجاي (§١٦)", async () => {
     const designer = await prisma.employee.findUniqueOrThrow({ where: { id: designerId } });
     const companies = await prisma.company.findMany();
     const A = await live.loadLiveTasks(2026, 9, AT);
     const day = daily.selectDailyWork({ employee: designer, tasks: A as never, allTasks: A as never, companies, today: AT });
     expect(day.doneToday.map((t) => t.id)).toEqual([doneTodayId]);
     expect(day.dayFull).toBe(true);
-    expect(day.queue).toEqual([]);
+    // ولا كرت منجز بالطابور، وكل يلي فيه شغلها المفتوح (القائدة ١٣/١٠: ما بتضل فاضية وعندها شغل).
+    for (const t of day.queue) {
+      expect(t.assigneeId).toBe(designerId);
+      expect(constants.isTaskDoneState(t as never)).toBe(false);
+    }
   });
 
   it.skipIf(skip())("[OP-01] «إنجاز الفريق» (الدونات) بيعدّ منجز الدورة الشغّالة بدلو تاني", async () => {

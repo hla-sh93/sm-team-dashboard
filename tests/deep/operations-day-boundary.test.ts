@@ -162,15 +162,15 @@ describe("«بدّل» وتفسير المستبعَد", () => {
     expect(reason(blocker)).toBeNull();
   });
 
-  it("منجَز اليوم بيسكّر اليوم لكن النشر المستحقّ بيضل ينزل (بلا سعة)", () => {
+  it("خلّص حصّة اليوم: الشغل المفتوح الجاي بينعطى (§١٦، القائدة ١٣/١٠) والنشر المستحقّ بيضل ينزل", () => {
     const designer = employee({ id: "d", role: "designer", rates: JSON.stringify({ POST: 1 }) });
     const done = task({ id: "done", kind: "CONTENT", stage: "DESIGN", status: "READY", board: "DONE", finishedAt: new Date(2026, 9, 12, 10), assigneeId: "d" });
     const nextPost = task({ id: "next", kind: "CONTENT", stage: "DESIGN", workDate: new Date(2026, 9, 12), assigneeId: "d" });
     const w = selectDailyWork({ employee: designer, tasks: [done, nextPost], companies: [company], today });
     expect(w.dayFull).toBe(true);
-    expect(w.queue).toEqual([]);
+    expect(w.queue.map((t) => t.id)).toEqual(["next"]);
     const pub = task({ id: "pub", publishDate: today, readyDate: today, assigneeId: "d" });
     const w2 = selectDailyWork({ employee: designer, tasks: [done, nextPost, pub], companies: [company], today });
-    expect(w2.queue.map((t) => t.id)).toEqual(["pub"]);
+    expect(w2.queue.map((t) => t.id).sort()).toEqual(["next", "pub"]);
   });
 });
