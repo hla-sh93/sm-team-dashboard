@@ -33,6 +33,16 @@ describe("أسماء ملفات الكاروسيل → قطعة وحدة + رق�
     expect(read("mango-carousel-8-2.jpg")).toEqual({ slug: "mango", month: 8, piece: 2, slide: null });
   });
 
+  it("لقطات تلغرام ١٣/١٠: أيمن «Phoenitech-post-10-2-1…7» وسابين «jobs-carousel 01…04-10-1»", () => {
+    for (let s = 1; s <= 7; s++) expect(read(`Phoenitech-post-10-2-${s}.jpg`)).toEqual({ slug: "Phoenitech", month: 10, piece: 2, slide: s });
+    for (let s = 1; s <= 4; s++) expect(read(`jobs-carousel 0${s}-10-1.jpg`)).toEqual({ slug: "jobs", month: 10, piece: 1, slide: s });
+  });
+
+  it("القاعدة الموحّدة «Phoenitech-carousel-10-2-1» (كلمة carousel بشَرطة) = بوست 10-2 شريحة ١ — مو «شريحة ١٠»", () => {
+    expect(read("Phoenitech-carousel-10-2-1.jpg")).toEqual({ slug: "Phoenitech", month: 10, piece: 2, slide: 1 });
+    expect(read("Phoenitech-carousel-10-2-7.jpg")).toEqual({ slug: "Phoenitech", month: 10, piece: 2, slide: 7 });
+  });
+
   it("بوست عادي بلا شريحة ما بيتغيّر", () => {
     expect(read("obada-post-8-2.jpg")).toEqual({ slug: "obada", month: 8, piece: 2, slide: null });
   });
