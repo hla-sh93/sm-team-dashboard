@@ -192,6 +192,26 @@ describe("آلة الحالات — قطعة بوست", () => {
   });
 });
 
+describe("«راعي الترتيب» عند الإقفال (القائدة ١٣/١٠)", () => {
+  it.skipIf(skip())("مونتاج تصويره مفتوح ما بينسكّر — لا من قائمة الحالة ولا من اللوح؛ وبعد التصوير بينسكّر", async () => {
+    const shoot = await find("SHOOT", "REEL");
+    const edit = await find("EDIT", "REEL");
+    expect(shoot.status).toBe("NOT_STARTED");
+    const viaStatus = await actions.updateTaskStatus(edit.id, "READY");
+    expect(viaStatus.ok).toBe(false);
+    expect(viaStatus.ok ? "" : viaStatus.error).toContain("التصوير");
+    expect((await actions.moveCard(edit.id, "DONE")).ok).toBe(false);
+    const still = await prisma.task.findUniqueOrThrow({ where: { id: edit.id } });
+    expect([still.board, still.status, still.finishedAt]).toEqual(["TODO", "NOT_STARTED", null]);
+    // البدء مسموح (الحجز بيمنع الإقفال بس)، والإقفال بعد التصوير مسموح.
+    expect((await actions.updateTaskStatus(shoot.id, "READY")).ok).toBe(true);
+    expect((await actions.updateTaskStatus(edit.id, "READY")).ok).toBe(true);
+    // رجّعهن متل ما كانوا للاختبارات الجاية (النشر بيسكّرهن بسطر دليل).
+    expect((await actions.updateTaskStatus(edit.id, "NOT_STARTED")).ok).toBe(true);
+    expect((await actions.updateTaskStatus(shoot.id, "NOT_STARTED")).ok).toBe(true);
+  });
+});
+
 describe("إقفال آلي — النشر بيسكّر المراحل السابقة", () => {
   it.skipIf(skip())("نشر الريل (moveCard DONE) بيسكّر التصوير والمونتاج المفتوحَين بطوابع", async () => {
     const publish = await find("PUBLISH", "REEL");

@@ -332,7 +332,12 @@ export default function KanbanBoard({
       if (res.every((r) => r.ok)) {
         toast("تم تحريك المهمة");
         router.refresh();
-      } else toast("فشل تحريك بعض المهام", "error");
+      } else {
+        // سبب الرفض (مثلاً «ما بينسكّر المونتاج قبل ما يخلص التصوير») أوضح من رسالة عامّة.
+        const refused = res.find((r): r is { ok: false; error: string } => !r.ok);
+        toast(refused?.error ?? "فشل تحريك بعض المهام", "error");
+        router.refresh();
+      }
     });
 
   const renderKCard = (c: KCard) => {

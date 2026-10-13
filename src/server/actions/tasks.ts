@@ -5,11 +5,16 @@ import { forwardWorkday, fromISODate, parseWorkDays, shiftDays, toISODate, WORK_
 import { withEvidenceLine } from "@/lib/evidence";
 import {
   DONE_STATUSES,
+  STAGE_LABELS,
   inferHistoricalCompletionDate,
   normalizeStatusForStage,
   statusToBoard,
+  type Stage,
   type Status,
 } from "@/lib/constants";
+import { makeHeldReason } from "@/lib/daily-work";
+import { loadBlockerChain } from "@/lib/late";
+import type { Task } from "@prisma/client";
 import {
   isCalendarDay,
   taskSchema,
@@ -28,6 +33,30 @@ import { completeProductionForPublishedTask } from "@/server/task-ops";
 import { teamToday } from "@/lib/team-day";
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
+
+/**
+ * «راعي الترتيب» عند الإقفال كمان (القائدة ١٣/١٠): مرحلة إنتاج ما بتنسكّر قبل ما تخلص
+ * مرحلة الإنتاج يلي قبلها — مونتاج قبل تصويره مستحيل. صار: ١١/١٠ ١٧:٣٨–١٧:٤٠ انسكّروا
+ * من قائمة الحالة ٦ مونتاجات بالإيد، منهم BW ريل ٤ ومخبر ريل ٦ وتصويرهن لسا مفتوح
+ * وبلا ولا ملف — والمحرّك بيعتبر هالحالة مستحيلة فبيرجع يفتحها بأول توليد.
+ *
+ * بيرجّع رسالة الرفض، أو `null` لما الإقفال مسموح:
+ *  - كرت **النشر** مستثنى: النشر دليل إنّ القطعة انعملت، وبيسكّر المراحل قبله بسطر دليل
+ *    (`completeProductionForPublishedTask`).
+ *  - حاجز **كتابة** مفتوح ما بيمنع: منجز وكرت الخطة مفتوح حالة مشروعة (§٦، OP-10).
+ * نفس سلسلة الحجز يلي بيقراها طابور اليوم (`makeHeldReason`)، محمّلة من القاعدة كاملة.
+ */
+async function closeBlockedReason(task: Task): Promise<string | null> {
+  if (!task.blockedById || task.stage === "PUBLISH" || task.kind === "PUBLISH") return null;
+  const chain = await loadBlockerChain([task], (ids) => prisma.task.findMany({ where: { id: { in: ids } } }));
+  const blocker = makeHeldReason([task, ...chain], toISODate(teamToday()))(task)?.blockedBy ?? null;
+  if (!blocker || blocker.stage === "WRITE" || blocker.kind === "CONTENT_WRITING") return null;
+  const owner = blocker.assigneeId
+    ? (await prisma.employee.findUnique({ where: { id: blocker.assigneeId }, select: { name: true } }))?.name
+    : null;
+  const label = (stage: string | null) => (stage && STAGE_LABELS[stage as Stage] ? `ال${STAGE_LABELS[stage as Stage]}` : "المرحلة يلي قبله");
+  return `ما بينسكّر ${label(task.stage)} قبل ما يخلص ${label(blocker.stage)}${owner ? ` (عند ${owner})` : ""} — سكّر ${label(blocker.stage)} أول إذا صار فعلاً.`;
+}
 
 /** Create an ad-hoc / manual task (§4.8). Re-runs the month engine so the new
  *  task is scheduled (ASAP for urgent) immediately. */
@@ -393,6 +422,10 @@ export async function updateTaskStatus(id: string, status: string) {
     const now = new Date();
     const next = normalizeStatusForStage(parsed.data, before.stage);
     const done = isDone(next);
+    if (done && !isDone(before.status)) {
+      const refused = await closeBlockedReason(before);
+      if (refused) return { ok: false as const, error: refused };
+    }
     // startedAt: set on first move out of NOT_STARTED. finishedAt: set when done.
     // Reverting to NOT_STARTED resets both.
     let startedAt = before.startedAt;
@@ -431,6 +464,10 @@ export async function moveCard(id: string, board: string) {
   try {
     const t = await prisma.task.findUnique({ where: { id } });
     if (!t) return { ok: false as const, error: "المهمة غير موجودة" };
+    if (board === "DONE" && t.board !== "DONE") {
+      const refused = await closeBlockedReason(t);
+      if (refused) return { ok: false as const, error: refused };
+    }
     const now = new Date();
     const isPublish = t.stage === "PUBLISH";
     const status =
