@@ -176,13 +176,19 @@ each one published on its own day.
 
 ## 5. Capacity / productivity (`lib/capacity.ts`, `lib/constants.ts`)
 
-Designer day = **8h** → **10 posts/day OR 10 stories/day OR 1 AI‑reel/day** (mixes
-allowed up to 8h). Per-employee rates can override these defaults. The two models are kept aligned:
-- `TYPE_HOURS` (schedule packing): POST 0.8h, STORY 0.8h, AI_REEL 8h, REEL 0
-  (photographer).
-- `DEFAULT_RATES` (workload, items/day): POST 10, STORY 10, AI_REEL 1, REEL 3/2
-  (3 reels per 2 days), PLAN 0.5 (=2 days/company). Per‑employee overrides in
-  `Employee.rates`.
+**Numbers live in code, not here** (this section used to quote rates that had
+long changed — deep test 12/10, SC-13/DA-15). One source per number:
+- **Rate = items per working day, per person and type**: `Employee.rates` (JSON)
+  overrides `DEFAULT_RATES` in `lib/capacity.ts` (`ratePerDay`). Read the
+  defaults there; the stored person rate is what the engine uses.
+- **Hours per item are DERIVED**: `hoursPerItem = effectiveHours(emp) ÷ rate`.
+  `effectiveHours` is the single fallback for the day length (empty/0 →
+  `WORK_DAY_HOURS`); the engine's packing board and the workload screen use the
+  same function (SC-07). `TYPE_HOURS` no longer exists.
+- Work week: `WORK_WEEK` in `lib/dates.ts` (team Sun→Thu); Saturday is a
+  publishing day only (`isPublishableDay`), Friday is off. An employee whose
+  stored work days include Friday — or Saturday for a non-publisher — makes the
+  engine warn by name (SC-16); the engine still honours what is stored.
 - **Ad‑hoc effort is in WORK DAYS** (`hours = days × 8`); normalized by the fixed
   8 so a work‑day = one calendar working day for everyone.
 - **Carousel posts**: the publish card remains `quantity=1` because it is one
@@ -242,10 +248,18 @@ spill‑over. Seeded: جدارات 15→15, المول 20→20.
 ### Publishing distribution
 - **NO publishing on Friday** 🆕 — each company's cycle days are filtered to
   exclude Fridays; everything spreads over the remaining days (Thursday allowed).
-- Feed (POST/REEL/AI_REEL): interleaved by type, placed **≥1 day apart** per
-  company (no same/consecutive day). Stories: even spread, **one/day** per
-  company, **may share a feed day**. Companies staggered by an offset.
-- **No‑interruption**: each managed company gets ≥1 publish in each of 4 weeks.
+- Feed (POST/REEL/AI_REEL): interleaved by type (`interleaveTypes`), one feed
+  piece per day; the same TYPE never lands on consecutive days while there is
+  slack (a post next to a reel is deliberate variety). Stories: even spread,
+  **one/day** per company, **may share a feed day**. Companies staggered by a
+  small start offset.
+- **Over-full plans** (more pieces than publishable days in the window): spread
+  evenly at most `⌈pieces ÷ days⌉` per day, with a warning — never piled on the
+  last day of the cycle (SC-02 feed, SC-04 stories).
+- **No‑interruption**: in a warm cycle every quarter of the cycle gets ≥1
+  publish — an empty quarter takes the nearest piece (stories first) from a
+  quarter that has more than one (SC-05). A cold first cycle starts with its
+  prep window empty by design (open question for the lead).
   **Plan‑match**: scheduled per‑type counts == plan exactly.
 
 ### Photographer (multi‑photographer + preferred day)
@@ -253,10 +267,18 @@ spill‑over. Seeded: جدارات 15→15, المول 20→20.
   photographer). Reel companies are grouped **per photographer**, and
   `buildPhotoSessions` runs on **that photographer's** workdays — splitting the
   shoot load. Workload counts each photographer's **own** companies only.
-- Per company: photoshoot (session 1) + reel batches of 2–3. `shoot ≈
-  backWorkday(earliestPublish − 3)`, `deliver ≤ shoot+3` and `< publish`; no
-  Thu/Fri shooting; no week‑4 shooting (week computed on the **calendar month** —
-  a known limitation for cycle companies, §13).
+- Per company: photoshoot (session 1) + reel batches of 2–3. The shoot sits in a
+  WINDOW derived from the montage day (`shootWindow`: montage − `SHOOT_BEFORE_MONTAGE`,
+  montage = publish − `LEAD.REEL` on the editor's work days), on the
+  photographer's own work days; footage due the editor's work day before montage
+  (`footageDeadline`). No shooting in the last quarter of the company's **cycle**
+  (`shootCapFor`).
+- **Daily cap is a COUNT across every running cycle** (`ratePerDay(emp,"REEL")`,
+  lead's rule 1/9 «المهم كم ريل بالنهار»): the engine passes the photographer's
+  reels already booked in neighbouring buckets (`reelBookings` → `preBooked`), so
+  two cycles that start in different months cannot stack the same day (SC-01: it
+  produced 9 reels on 28/9 against a cap of 6). A shoot pushed to less than
+  `SHOOT_BEFORE_MONTAGE.min` days before its montage is warned.
 - **Preferred shoot day (soft) 🆕**: `Company.preferredShootDay` nudges the shoot
   back to that weekday when possible (earlier only → safe); not mandatory; any
   shoot is editable manually.
@@ -268,11 +290,16 @@ cycle** the whole production chain is sequenced from day one:
 - The writer card starts ON the contract date; NOTHING production-facing
   (design/story/AI deadlines & work days, reel shoots, deliveries, the
   photoshoot session) is dated before **contract + 2 writing days**.
-- Publish floors per type = writing + the type's own lead: POST/AI_REEL
-  2+2 → day 5, STORY 2+1 → day 4, REEL 2+3 (scenario → shoot → publish) →
-  day 6. So a July-1 client's first story publishes ≥ Jul 4, first post ≥
-  Jul 5, first reel ≥ Jul 6 — and NEVER gets June prep dates or phantom
-  "late" June work.
+- Publish floors per type = the production floor + the type's own lead
+  (`LEAD`, and for reels `SHOOT_BEFORE_MONTAGE` too) — read the constants in
+  `lib/constants.ts` / `lib/scheduler.ts`, the day numbers that used to be
+  quoted here drifted (SC-13). Three regimes by cycle start: before 20/7 the
+  writing lead (`WRITE_LEAD_DAYS`); from 20/7 the prep week (`PREP_PRODUCTION_WORKDAYS`,
+  `PREP_PUBLISH_DAYS`); from 13/10 the prep week runs from the SIGNING date and
+  the cycle from «تاريخ البدء» (lead's decision 12/10, D2 — `signingPrepOf`,
+  `SIGNING_PREP_DAYS`). The first reel additionally waits until a shoot window
+  fits after the production floor on the photographer's and editor's work days
+  (SC-03). No client ever gets prior-month prep dates or phantom "late" work.
 Later cycles are untouched: an ONGOING client's prior-month prep (photoshoot
 staging, early shoots) is legitimate and unchanged. Manual (ad-hoc, pinned)
 tasks are the user's authority and are never clamped.
@@ -289,6 +316,16 @@ persists, preserving board/status + pinned edits + ad‑hoc + **work-history
 timestamps** (`startedAt`/`finishedAt`/`completedAt`) + **photo-session
 statuses** (matched by detKey, falling back to company|kind|no when a
 regenerated shoot date moved).
+
+### Dates and "today" 🆕 (deep test 12/10)
+- Every date the engine or a payload WRITES is UTC midnight of its calendar day
+  (`utcMidnight` / `D()` / `dbDate`) — identical on Vercel (UTC) and from a
+  machine in Damascus, which used to store `21:00Z` of the previous day (SC-08,
+  PU-22).
+- "Today" is the TEAM's day — Damascus, fixed UTC+3 — via `lib/team-day.ts`
+  (`teamToday`, `teamTodayISO`, `teamDayStart`, `dayKeyOf`), on server pages,
+  actions and as the default of every day-based helper. Timestamps
+  (`completedAt`, `startedAt`…) stay real instants.
 
 ### 6.1 Task Deletion Rules
 - **Manual/Ad-hoc Tasks (`isAuto: false`)**: Deleted permanently from the database.
@@ -414,7 +451,8 @@ Mobile-first, verified at 360/768/1280.
 - **Access**: employees on root (full task CRUD); admin on `/admin` (everything
   incl. finance/team/companies/workload/priorities); admin routes 404 for
   employees. No login — keep `/admin` private.
-- **Work days**: off Thu+Fri (Sat→Wed) except Ayman off Sat (Sun→Thu).
+- **Work days**: the team works Sun→Thu (`WORK_WEEK`); Friday off; Saturday is a
+  publishing day only (lead 1/9). Per-person days live on `Employee.workDays`.
 - **Publishing**: per contract cycle; **NO Friday publishing** (Thu OK); feed ≥1
   day apart; stories one/day (may share a feed day); no week is empty.
 - **Contract cycle**: a `contractStartDate` makes the plan run day→day (e.g.
@@ -424,13 +462,21 @@ Mobile-first, verified at 360/768/1280.
   for that company until the renewal question is answered on /admin/companies.
   Renewing from a later date starts the cycle **from that date** and leaves the
   in-between days genuinely empty; a cycle resumed after a gap re-runs the full
-  writing→production→publishing lead. «لم يُجدد» pauses the company and blocks
-  every later cycle until a renewal is recorded.
+  writing→production→publishing lead. «لم يُجدد» ARCHIVES the company (its open
+  cards close as canceled with evidence) and blocks every later cycle until a
+  renewal is recorded (WORK_RULES §٨).
+- **Pause hides, never deletes; resume continues the remainder** (lead 12/10,
+  D1): «أوقف النشر» touches no card; «رجّع النشر» spreads only what was left,
+  from the resume date, in a window proportional to the share of the plan left
+  (one window per bucket with remaining pieces, oldest first). See WORK_RULES §٨.
+- **Work handover** (lead 12/10, D4): `/admin/team` «تسليم الشغل» moves open work
+  (and work done from a date) to a successor; regeneration keeps giving every
+  generated role to the successor, while finished work keeps its real owner.
 - **New-contract pipeline lead**: the first cycle sequences
   عقد → كتابة (يومان) → تصميم/تصوير → نشر. No auto-generated date precedes
-  `contractStartDate`; no production date precedes contract+2 (the written
-  plan); first publishes per type: STORY day 4, POST/AI day 5, REEL day 6.
-  Ongoing clients keep prior-month prep.
+  `contractStartDate`; no production date precedes the production floor (the
+  written plan); first publishes per type follow `LEAD` (§6). Ongoing clients
+  keep prior-month prep.
 - **PREP WEEK for contracts signed from 2026-07-20** 🆕: signing does not start
   publishing. The writer needs ~2 days for the plan, then the client approves it,
   and only then may design/shoot begin — so **design/shoot waits 3 WORKING days**
@@ -453,8 +499,9 @@ Mobile-first, verified at 360/768/1280.
   task add/edit/delete).
 - **Ad-hoc of any priority is packed ASAP** and consumes capacity; URGENT goes
   first.
-- **Capacity**: designer 10 posts/day OR 10 stories/day OR 1 AI‑reel/day;
-  photographer 3 reels/2 days; writer 2 days/company; publisher daily coverage.
+- **Capacity**: per person and type from `Employee.rates` over `DEFAULT_RATES`
+  (§5) — never quote the numbers, read them; the photographer's cap is a daily
+  COUNT across cycles.
 - **Carousel capacity**: a carousel is one post in the company plan/publishing
   progress, but it consumes one design unit per slide on the designer workload.
 - **Regenerate preservation**: إعادة الجدولة may reorder work dates and publish
@@ -475,7 +522,11 @@ Mobile-first, verified at 360/768/1280.
 - **Company achievement = publish-card completion**. A content piece counts when
   its PUBLISH card is done/published; upstream production closure is operational
   state and is not required for company-facing progress.
-- **Lateness = unfinished + deadline before today**. Done states are `READY`,
+- **Lateness — one definition** (`lib/late.ts`, used by the brief, overview,
+  board, /today, the publishing strip and the Telegram summary): unfinished +
+  deadline before the team's today, not pinned to a later day, company active
+  and publishing and not exempt; a card held behind an open earlier stage is
+  «بانتظار» (waiting), not late. Done states are `READY`,
   `PUBLISHED`, `DELIVERED`, `board=DONE`, `completedAt`, or `finishedAt`.
   Completed historical June tasks keep their real task date as completion date,
   not the date they were entered into the system. The scheduler does NOT auto‑move
@@ -485,14 +536,24 @@ Mobile-first, verified at 360/768/1280.
   filtered to tasks whose `workDate`, `readyDate`, or `publishDate` is today.
 - **Finance**: revenue = contract values; cost = salaries (fixed) + per‑reel
   (variable); per‑contract cost allocated by work‑days; break‑even on fixed ÷ avg
-  contribution.
+  contribution. A month uses its OWN cycle plan (`frozenPlanCounts` for that
+  bucket) and each company's status AT THAT TIME (`dormantDuring`, WORK_RULES
+  §١٠) — not today's record (TR-20). Past months freeze on first view.
 - A manual card edit is always pinned and survives إعادة الجدولة.
 
 ---
 
 ## 12. Known limitations / TODO
 
-- No login — the obscure `/admin` URL is the only gate for sensitive data.
+- The employee area is open by the lead's decision; `/admin` is password-gated
+  (`lib/auth.ts`), and employee pages pass allow-listed rows only
+  (`server/public-rows.ts`, SA-01).
+- **Designer packing is per bucket** (`packEmployee`): two cycles that start in
+  different months, or resume windows on top of a running bucket, can give a
+  person more than a day's work on the same date. The daily panel («مهام اليوم»)
+  caps each day at the person's capacity, so execution is safe, but due dates can
+  be optimistic. Cross-bucket hour bookings (like the photographer's) would move
+  open cards — awaiting the lead's decision.
 - Photographer “week 4 no‑shoot” is computed per company on its **contract
   cycle** (`shootCapFor`), falling back to the calendar month only when the
   company has no cycle. Preferred shoot day is soft.
@@ -515,12 +576,13 @@ Mobile-first, verified at 360/768/1280.
 - Two Prisma schema files kept in sync manually.
 - Publisher workload is capped at 100% by design — a publisher never shows
   “over” even with extra ad-hoc load.
-- When a plan is denser than its cycle allows (e.g. 14 feed items in a 26-day
-  canvas), the ≥1-day feed gap falls back to adjacent days **silently** (no
-  warning yet).
+- When a plan is denser than its cycle allows, the feed spreads evenly at most
+  `⌈pieces ÷ days⌉` per day and the engine WARNS (SC-02/SC-04).
 - `validatePublishing` (§9 plan-match / no-interruption checks) exists and is
-  tested but is not wired into any screen.
-- No ESLint config — `npm run lint` opens an interactive setup prompt.
+  tested but is not wired into any screen; the engine itself fills an empty
+  quarter in warm cycles (SC-05).
+- Lint: `npx eslint src scripts tests --ext .ts,.tsx` (the gate used for every
+  commit of the 12/10 fix plan).
 
 ---
 
@@ -539,6 +601,10 @@ the piece number inside that month's plan. The name does NOT encode the type —
 the file does (mp4 → ريل, jpg → بوست). `parseAssetName` reads it back and is
 deliberately forgiving (`Bru1-7`, `agalya laser reel 7-14`, and the old
 piece-first `wasl 14-7`). Same vocabulary in the cards, the brief and the matcher.
+- **Aliases**: `Company.slug` may hold several names separated by `|`
+  («Makhbar|Drnoor») — the first is the primary name used on cards (TR-06).
+- **Carousel slides**: `<Slug>-<month>-<piece>-<slide>` maps to the piece's card
+  and raises its count (TR-14). Arabic-Indic digits are read (TR-30).
 
 ### Ingest (`lib/telegram/{client,match,ingest}.ts`, `/api/telegram/webhook`)
 Bot token in `TELEGRAM_BOT_TOKEN`, webhook authenticated with
@@ -580,8 +646,12 @@ linked to a company from `/admin/telegram`. Matching runs in three tiers:
    accounting honest: four «خبر عاجل» plan rows absorb four files and no more.
 3. **TYPE** — video → reel, photo → post/story, refined by a type word in the
    name (`POST صرف تركيا`, `… july 3rd reel`). **Only for companies whose cards
-   carry no brief yet**: once the plan text is in the system it is the authority,
-   and a delivery matching no plan row is simply not a planned piece.
+   carry no brief yet**, **only among the SENDER's own cards**, and never for raw
+   camera names (`IMG_…`, `DSC…`, `WhatsApp Image…` — `RAW_CAPTURE`): 17 of 21
+   type-closures in the snapshot were raw photos from other people (TR-02).
+4. **DOCUMENT** — a document closes a WRITING card only within its scope
+   (scenario · plan/posts/stories · article N · LinkedIn), `matchedBy = DOCUMENT`
+   (TR-24).
 
 **Off-plan content** (`Company.offPlanKeywords`, JSON array): وصل publishes the
 client's own exchange-rate bulletins, «المفكرة الاقتصادية», «نتيجة الخبر» and
@@ -594,15 +664,22 @@ A match **closes the piece's production card** (READY/DONE,
 `finishedAt` = the real delivery time) — reversible with «مو هي» on the اليوم
 screen (`unmatchMessage`). Albums (carousels) close their piece once.
 
-**The credit follows the SENDER, not the plan.** The plan says who was *supposed*
-to make a piece; the group says who *did*. سابين delivered the Jobs posts and
-they closed حلا's cards, so every report read as حلا's work — the lead caught it
-and the rule is now enforced in `closeProductionCard`: the card is re-assigned to
-the employee whose `Employee.telegramUserId` matches the sender, and pinned so a
-regeneration can't hand it back. Matching is by NUMERIC id, never display name (a
-name changes, an id doesn't); an unknown sender leaves the owner alone, because a
-wrong name is worse than a stale one. Populate ids from observed senders — the
-`/admin/telegram` message list shows them.
+**Only the card's owner or the lead closes it** (lead's decision 12/10, D3 —
+replaces the older «credit follows the sender»; WORK_RULES §١١). The sender is
+resolved by `telegramUserId`, then `telegramUsername` (`from.username`), then an
+EXACT `telegramAliases` match of the display name (a name matching two people is
+unknown). A file from anyone else, or from an unknown sender, is stored against
+its card as `matchedBy = NOT_OWNER` (`confirmed = false`) and surfaces on /today
+for the lead; the credit always stays with the card's owner. A file naming
+another company in the wrong topic is held as `WRONG_TOPIC`. Messages are stored
+FIRST (idempotent retries and edits), files before captions.
+
+**Publish confirmations** (`matchedBy = PUBLISH`): from the publisher or the lead
+only; the text must START with the confirmation («تم النشر»، «نشرت»، ✅), be short
+(≤ 8 words), with no negation and no «؟» — 34 of 38 automatic publish closures
+were captions and chat (TR-01). A reply to a matched file, or the piece's own file
+captioned «تم النشر», confirms THAT piece; a file naming a piece with no card
+closes nothing.
 
 ### Morning brief (`lib/telegram/brief.ts` + `service.ts`, `/api/cron/daily-brief`)
 **The bot never posts into a client group.** Every message goes to the LEAD's
@@ -702,6 +779,12 @@ exclusivity follows the rate (AI_REEL is still 1/day, so it still owns its day).
 Editing stays derived from completed shoots (`EDITS_PER_DAY`), not scheduled.
 
 ### Paused companies (`Company.status`)
+**Pause hides, never deletes** (lead 12/10, D1 — WORK_RULES §٨): «أوقف النشر»
+keeps every card and hides the company's work from every screen, report and
+lateness count (`hideDormantCompanyWork`); «رجّع النشر» schedules only the
+remainder from the resume date (`Setting companyResume:<id>`, one window per
+bucket, `server/company-pause.ts`). The history below predates that decision.
+
 `scheduler.ts` plans only `managed && status === "active"`. Pausing is the right
 tool for a **signed but not-yet-started** client (Siizen: contract dated, but the
 page details and product list never arrived) — the contract dates stay intact and
@@ -723,6 +806,11 @@ Per company: ينزل اليوم (with a **readiness** signal from the piece's o
 production siblings) · تسليم اليوم · معرّض للتأخير · متأخر (capped at 5 + tail
 count) · **شو وصل على المجموعة اليوم**. One-click «تم النشر». `lib/live-tasks.ts`
 extracts the bucket+continuation+carryover rule the other screens already used.
+«متأخر» uses the shared definition (`lib/late.ts`, OP-12); "today" and "today's
+messages" are the Damascus day (`lib/team-day.ts`, OP-13); messages reach this
+open page through an allow-list without the sender's Telegram id
+(`publicDeliverySelect`). Held files show their reason (NOT_OWNER · WRONG_TOPIC ·
+PUBLISH).
 
 ## 13. Conventions for the next session
 
