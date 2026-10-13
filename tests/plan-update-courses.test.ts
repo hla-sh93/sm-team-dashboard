@@ -117,8 +117,7 @@ afterAll(async () => {
 });
 
 describe("حمولة الدورات — إنشاء وإعادة تطبيق", () => {
-  it("بتخلق كرتي كل دورة وكرت البوستر، مثبّتين وبدليل، على الأشخاص المسمّين", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بتخلق كرتي كل دورة وكرت البوستر، مثبّتين وبدليل، على الأشخاص المسمّين", async () => {
     const result = await apply(payload());
     expect(result.ok, result.error).toBe(true);
     expect(result.createdCourseCards).toBe(5);
@@ -159,8 +158,7 @@ describe("حمولة الدورات — إنشاء وإعادة تطبيق", () 
     expect(await prisma.task.count({ where: { id: `course_t${process.pid}-poster_publish` } })).toBe(0);
   });
 
-  it("إعادة التطبيق نفسها: لا كروت جديدة ولا سطر دليل مكرّر", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق نفسها: لا كروت جديدة ولا سطر دليل مكرّر", async () => {
     const result = await apply(payload());
     expect(result.ok, result.error).toBe(true);
     expect(result.createdCourseCards).toBe(0);
@@ -170,8 +168,7 @@ describe("حمولة الدورات — إنشاء وإعادة تطبيق", () 
     expect(await prisma.task.count({ where: { companyId } })).toBe(5);
   });
 
-  it("تغيير يوم التصميم بيسحب الكرت المفتوح، والكرت المنجز ما بينلمس", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("تغيير يوم التصميم بيسحب الكرت المفتوح، والكرت المنجز ما بينلمس", async () => {
     const doneId = `course_t${process.pid}-shop_design`;
     const doneAt = new Date(2026, 8, 10);
     await prisma.task.update({
@@ -193,8 +190,7 @@ describe("حمولة الدورات — إنشاء وإعادة تطبيق", () 
     expect(toISODate(done.workDate)).toBe("2026-09-17");
   });
 
-  it("غلطة وحدة (مصمّم غير موجود، أو يوم تصميم بعطلة) → الحمولة كلها مرفوضة بلا كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("غلطة وحدة (مصمّم غير موجود، أو يوم تصميم بعطلة) → الحمولة كلها مرفوضة بلا كتابة", async () => {
     const before = await prisma.task.findMany({ where: { companyId }, orderBy: { id: "asc" } });
 
     const noDesigner = await apply(payload({ designer: `${uniq} مو موجود` }));
@@ -211,8 +207,7 @@ describe("حمولة الدورات — إنشاء وإعادة تطبيق", () 
     expect(after).toEqual(before);
   });
 
-  it("حقل غير معروف داخل الدورة بيرفض الحمولة بدل ما ينشال بالصمت", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("حقل غير معروف داخل الدورة بيرفض الحمولة بدل ما ينشال بالصمت", async () => {
     const extra = payload();
     (extra.courses.items[0] as Record<string, unknown>).trainer = "أ. عيد تايه";
     const result = await apply(extra);

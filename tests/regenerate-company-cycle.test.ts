@@ -98,8 +98,7 @@ const feedOf = async (companyId: string) =>
     .sort((a, b) => a.publishDate!.getTime() - b.publishDate!.getTime());
 
 describe("إعادة جدولة الدورة الحالية لشركة وحدة", () => {
-  it("المسجَّل بيصمد: الحالات والأوصاف وأيام الشغل المنجزة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("المسجَّل بيصمد: الحالات والأوصاف وأيام الشغل المنجزة", async () => {
     const { co, bucket } = await makeCompany("أ");
     const where = { companyId: co.id, year: bucket.year, month: bucket.month, type: "REEL", pieceNo: 1 };
     // متل نور ٢٨/٩: تصوير ريل ١ منجز، ومونتاجه قيد التنفيذ، وبوست ١ عليه وصف.
@@ -135,8 +134,7 @@ describe("إعادة جدولة الدورة الحالية لشركة وحدة"
     expect(new Set(reel1.map((t) => t.publishDate?.getTime())).size).toBe(1);
   });
 
-  it("والتوزيع بيتبادل: ٦ بوستات و٦ ريلات بلا نوعين ورا بعض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("والتوزيع بيتبادل: ٦ بوستات و٦ ريلات بلا نوعين ورا بعض", async () => {
     const { co } = await makeCompany("ب");
     const r = await regenerate(co.id);
     expect(r.ok).toBe(true);
@@ -145,8 +143,7 @@ describe("إعادة جدولة الدورة الحالية لشركة وحدة"
     expect(seq).not.toMatch(/RR|PP/);
   });
 
-  it("وباقي الشركات ما بتنلمس", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("وباقي الشركات ما بتنلمس", async () => {
     const { co: target } = await makeCompany("ج");
     const { co: other } = await makeCompany("د");
     const snap = async () =>
@@ -159,8 +156,7 @@ describe("إعادة جدولة الدورة الحالية لشركة وحدة"
     expect(await snap()).toEqual(before);
   });
 
-  it("والشركة الموقوفة ما بتنعاد جدولتها", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("والشركة الموقوفة ما بتنعاد جدولتها", async () => {
     const { co } = await makeCompany("هـ");
     await prisma.company.update({ where: { id: co.id }, data: { status: "paused" } });
     const before = await prisma.task.count({ where: { companyId: co.id } });

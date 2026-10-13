@@ -147,8 +147,7 @@ afterAll(async () => {
 });
 
 describe("رفع خطة Word", () => {
-  it("القالب الفاضي بينرفض: ما في ولا قطعة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("القالب الفاضي بينرفض: ما في ولا قطعة", async () => {
     const empty = (
       await Packer.toBuffer(buildTemplate({ company: companyName, plan: { posts: 2, reels: 2, stories: 0, aiReels: 0 } }))
     ).toString("base64");
@@ -157,8 +156,7 @@ describe("رفع خطة Word", () => {
     expect(String(result.error)).toContain("فاضية");
   });
 
-  it("المعاينة بتعدّ القطع مقابل العقد وبتسمّي كرتي الكتابة بلا ما تكتب شي", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("المعاينة بتعدّ القطع مقابل العقد وبتسمّي كرتي الكتابة بلا ما تكتب شي", async () => {
     const result = await preview(companyId, await planFile({ reels: 2, posts: 2 }));
     expect(result.ok, result.error).toBe(true);
     // الدورة الشغّالة بتاريخ `TODAY`، لا شهر تقويم الجهاز.
@@ -174,15 +172,13 @@ describe("رفع خطة Word", () => {
     expect(write.status).toBe("NOT_STARTED");
   });
 
-  it("خطة ناقصة بتمرق مع تحذير صريح بالعدد", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("خطة ناقصة بتمرق مع تحذير صريح بالعدد", async () => {
     const result = await preview(companyId, await planFile({ reels: 1, posts: 2 }));
     expect(result.ok, result.error).toBe(true);
     expect(result.warnings.join(" ")).toContain("ريل: الملف فيه 1 والعقد 2");
   });
 
-  it("خطة أكبر من العقد بترجع بالتطبيق: القطعة الزائدة ما إلها كرت", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("خطة أكبر من العقد بترجع بالتطبيق: القطعة الزائدة ما إلها كرت", async () => {
     const result = await apply({
       companyId,
       fileBase64: await planFile({ reels: 3, posts: 2 }),
@@ -195,8 +191,7 @@ describe("رفع خطة Word", () => {
     expect(write.status).toBe("NOT_STARTED");
   });
 
-  it("الرفع بينزّل النصوص وبيسكّر كرتي الكتابة بدليل فيه اسم الملف", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الرفع بينزّل النصوص وبيسكّر كرتي الكتابة بدليل فيه اسم الملف", async () => {
     const at = new Date(2026, 8, 20, 10, 0);
     const result = await apply({
       companyId,
@@ -228,8 +223,7 @@ describe("رفع خطة Word", () => {
     }
   });
 
-  it("رفع ثانٍ ما بيعيد عدّ الإنجاز: الكرت المسكَّر بيضل على تاريخه", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("رفع ثانٍ ما بيعيد عدّ الإنجاز: الكرت المسكَّر بيضل على تاريخه", async () => {
     const before = await prisma.task.findUnique({ where: { id: `t${process.pid}_w_design` } });
     const result = await apply({
       companyId,
@@ -244,8 +238,7 @@ describe("رفع خطة Word", () => {
     expect(after.finishedAt?.getTime()).toBe(before.finishedAt?.getTime());
   });
 
-  it("شركة بلا دورة شغّالة بترفض الرفع بدل ما تكتب بالفراغ", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("شركة بلا دورة شغّالة بترفض الرفع بدل ما تكتب بالفراغ", async () => {
     const orphan = await prisma.company.create({
       data: { name: `${uniq} بلا دورة`, managed: true, posts: 1, reels: 0, stories: 0, aiReels: 0 },
     });
@@ -255,8 +248,7 @@ describe("رفع خطة Word", () => {
     await prisma.company.delete({ where: { id: orphan.id } });
   });
 
-  it("ملف مو Word بينرفض برسالة مفهومة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("ملف مو Word بينرفض برسالة مفهومة", async () => {
     const result = await preview(companyId, Buffer.from("مجرد نصّ").toString("base64"));
     expect(result.ok).toBe(false);
     expect(String(result.error)).toContain("Word");

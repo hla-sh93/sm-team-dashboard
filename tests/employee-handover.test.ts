@@ -71,22 +71,19 @@ afterAll(async () => {
 });
 
 describe("تسليم الشغل (ماجد → ليلاس من ١/١٠)", () => {
-  it("المعاينة بالأعداد وبلا أي كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("المعاينة بالأعداد وبلا أي كتابة", async () => {
     const r = await actions.handoverEmployeeWork({ fromId: ids.from, toId: ids.to, fromDate: "2026-10-01" });
     expect(r.ok).toBe(true);
     expect(r).toMatchObject({ preview: true, openCards: 1, doneSince: 1, companies: 1, total: 3 });
     expect((await prisma.task.findUnique({ where: { id: ids.open } })).assigneeId).toBe(ids.from);
   });
 
-  it("تأكيد بعدد غلط بينرفض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("تأكيد بعدد غلط بينرفض", async () => {
     const r = await actions.handoverEmployeeWork({ fromId: ids.from, toId: ids.to, fromDate: "2026-10-01", confirm: 99 });
     expect(r.ok).toBe(false);
   });
 
-  it("التطبيق: المفتوح والمنجز من التاريخ والشركة النشطة للمستلِم بسطر دليل؛ القديم والمؤرشفة ما بيتغيّروا", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("التطبيق: المفتوح والمنجز من التاريخ والشركة النشطة للمستلِم بسطر دليل؛ القديم والمؤرشفة ما بيتغيّروا", async () => {
     const r = await actions.handoverEmployeeWork({ fromId: ids.from, toId: ids.to, fromDate: "2026-10-01", confirm: 3 });
     expect(r.ok, (r as { error?: string }).error).toBe(true);
     const get = (id: string) => prisma.task.findUnique({ where: { id } });
@@ -99,8 +96,7 @@ describe("تسليم الشغل (ماجد → ليلاس من ١/١٠)", () => {
     expect((await prisma.employee.findUnique({ where: { id: ids.from } })).isScheduled).toBe(false);
   });
 
-  it("نفس الموظف أو تاريخ غلط بينرفض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("نفس الموظف أو تاريخ غلط بينرفض", async () => {
     expect((await actions.handoverEmployeeWork({ fromId: ids.to, toId: ids.to, fromDate: "2026-10-01" })).ok).toBe(false);
     expect((await actions.handoverEmployeeWork({ fromId: ids.from, toId: ids.to, fromDate: "2026-02-30" })).ok).toBe(false);
   });

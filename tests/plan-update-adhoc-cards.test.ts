@@ -112,8 +112,7 @@ afterAll(async () => {
 });
 
 describe("كروت خارج الخطة — إنشاء من الحمولة", () => {
-  it("بتخلق الكرت بساعاته ومسؤوله ومواعيده، مثبّتاً وبدليل وبلا سقف ٤ ساعات", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بتخلق الكرت بساعاته ومسؤوله ومواعيده، مثبّتاً وبدليل وبلا سقف ٤ ساعات", async () => {
     const result = await apply(payload([designCard()]));
     expect(result.ok, result.error).toBe(true);
     expect(result.createdAdhocCards).toBe(1);
@@ -141,8 +140,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(card.notes).toBe(EVIDENCE);
   });
 
-  it("إعادة التطبيق نفسها: ما بتكرّر الكرت ولا سطر الدليل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق نفسها: ما بتكرّر الكرت ولا سطر الدليل", async () => {
     const result = await apply(payload([designCard()]));
     expect(result.ok, result.error).toBe(true);
     expect(result.createdAdhocCards).toBe(0);
@@ -155,8 +153,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(cards[0].notes).toBe(EVIDENCE);
   });
 
-  it("بتخلق كرتاً منجزاً بيوم إنجازه — الشغل يلي خلص قبل ما ينوجد كرته", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بتخلق كرتاً منجزاً بيوم إنجازه — الشغل يلي خلص قبل ما ينوجد كرته", async () => {
     const result = await apply(
       payload([
         {
@@ -182,8 +179,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(card.startedAt.getTime()).toBeLessThanOrEqual(card.finishedAt.getTime());
   });
 
-  it("الكرت المنجز ما بينلمس بإعادة التطبيق", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الكرت المنجز ما بينلمس بإعادة التطبيق", async () => {
     const result = await apply(
       payload([
         {
@@ -204,8 +200,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(card.hours).toBe(2);
   });
 
-  it("مسؤول غير موجود → الحمولة كلها مرفوضة بلا كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("مسؤول غير موجود → الحمولة كلها مرفوضة بلا كتابة", async () => {
     const before = await prisma.task.count({ where: { companyId } });
     const result = await apply(
       payload([
@@ -218,8 +213,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(await prisma.task.count({ where: { companyId } })).toBe(before);
   });
 
-  it("معرّف مكرّر بالحمولة بينرفض قبل أي كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("معرّف مكرّر بالحمولة بينرفض قبل أي كتابة", async () => {
     const before = await prisma.task.count({ where: { companyId } });
     const result = await apply(payload([designCard(), designCard({ title: "عنوان ثاني" })]));
     expect(result.ok).toBe(false);
@@ -227,8 +221,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(await prisma.task.count({ where: { companyId } })).toBe(before);
   });
 
-  it("معرّف تبع شركة ثانية بينرفض بدل ما ينقل الكرت", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("معرّف تبع شركة ثانية بينرفض بدل ما ينقل الكرت", async () => {
     const result = await apply(
       payload([designCard()], { companyName: otherCompanyName }),
     );
@@ -238,8 +231,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(card.companyId).toBe(companyId);
   });
 
-  it("يوم شغل بعد يوم التسليم بينرفض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("يوم شغل بعد يوم التسليم بينرفض", async () => {
     const result = await apply(
       payload([designCard({ slug: `a${process.pid}-back`, workDate: "2026-09-25", readyDate: "2026-09-21" })]),
     );
@@ -248,8 +240,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
 
   // نقل كرت لمسؤول تاني بدليل — المطابقة القديمة سجّلت كروتاً على الشخص الغلط،
   // وما كان في غير نافذة «تعديل» بلا دليل ولا فحص.
-  it("`adhocStates.assignee` بتنقل الكرت لمسؤول تاني وبتكتب الدليل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("`adhocStates.assignee` بتنقل الكرت لمسؤول تاني وبتكتب الدليل", async () => {
     const writer = await prisma.employee.findFirst({ where: { name: writerName } });
     const result = await apply({
       companyName,
@@ -274,8 +265,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     await prisma.task.update({ where: { id: DESIGN_ID }, data: { assigneeId: designer.id } });
   });
 
-  it("اسم مسؤول غلط بـ`adhocStates` بيرجّع الحمولة كلها بلا نقل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("اسم مسؤول غلط بـ`adhocStates` بيرجّع الحمولة كلها بلا نقل", async () => {
     const before = await prisma.task.findUnique({ where: { id: DESIGN_ID } });
     const result = await apply({
       companyName,
@@ -292,8 +282,7 @@ describe("كروت خارج الخطة — إنشاء من الحمولة", () =
     expect(after.notes).toBe(before.notes);
   });
 
-  it("حقل غير معروف بيرفض الحمولة بدل ما ينشال بالصمت", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("حقل غير معروف بيرفض الحمولة بدل ما ينشال بالصمت", async () => {
     const result = await apply(
       payload([{ ...designCard({ slug: `a${process.pid}-x` }), assigneeId: "e_hla" }]),
     );

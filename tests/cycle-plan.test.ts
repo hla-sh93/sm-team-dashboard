@@ -147,29 +147,25 @@ afterAll(async () => {
 });
 
 describe("كتلة planCounts — على قاعدة معزولة", () => {
-  it("ما بتنجمع مع خطة بنفس الحمولة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("ما بتنجمع مع خطة بنفس الحمولة", async () => {
     const r = await apply(counts({ posts: 4 }, { items: [{ type: "POST", pieceNo: 1, brief: "وصف" }] }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("حمولة مستقلة");
   });
 
-  it("بلا أي عدد → مرفوضة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بلا أي عدد → مرفوضة", async () => {
     const r = await apply(counts({}));
     expect(r.ok).toBe(false);
   });
 
-  it("الدورة يلي بعدها دورة مثبّتة — عددها ما بينعدَّل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الدورة يلي بعدها دورة مثبّتة — عددها ما بينعدَّل", async () => {
     const r = await apply({ ...counts({ posts: 4 }), month: 8 });
     expect(r.ok).toBe(false);
     expect(r.error).toContain("مثبّت");
     expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).posts).toBe(2);
   });
 
-  it("بترفع عدد آخر دورة: القطع الموجودة بتحتفظ بوصفها والزيادة بتنولّد", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بترفع عدد آخر دورة: القطع الموجودة بتحتفظ بوصفها والزيادة بتنولّد", async () => {
     await prisma.task.updateMany({
       where: { companyId, year: 2026, month: 9, isAuto: true, type: "POST", pieceNo: 2 },
       data: { brief: "وصف بوست ٢ من الخطة" },
@@ -187,8 +183,7 @@ describe("كتلة planCounts — على قاعدة معزولة", () => {
     expect(second.every((t: any) => t.brief === "وصف بوست ٢ من الخطة")).toBe(true);
   });
 
-  it("إعادة جدولة دلو أيلول بعد رفع السجلّ ما بتزرع الزيادة بالدورة السابقة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة جدولة دلو أيلول بعد رفع السجلّ ما بتزرع الزيادة بالدورة السابقة", async () => {
     expect(await postPieces(8)).toEqual([1, 2]);
     const scoped = await generate(2026, 8, companyId);
     expect(scoped.ok, scoped.error).toBe(true);
@@ -200,16 +195,14 @@ describe("كتلة planCounts — على قاعدة معزولة", () => {
     expect(await postPieces(9)).toEqual([1, 2, 3, 4]);
   });
 
-  it("إعادة التطبيق بنفس العدد ما بتعمل شي", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق بنفس العدد ما بتعمل شي", async () => {
     const r = await apply(counts({ posts: 4 }));
     expect(r.ok, r.error).toBe(true);
     expect(r.planCountsChanged).toBe(false);
     expect(r.affectedRows).toBe(0);
   });
 
-  it("التقليل مرفوض لو القطع يلي رح تنشال عليها وصف أو شغل؛ ومقبول لو فاضية", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("التقليل مرفوض لو القطع يلي رح تنشال عليها وصف أو شغل؛ ومقبول لو فاضية", async () => {
     const blocked = await apply(counts({ posts: 1 }));
     expect(blocked.ok).toBe(false);
     expect(blocked.error).toContain("شغل أو وصف");
@@ -220,8 +213,7 @@ describe("كتلة planCounts — على قاعدة معزولة", () => {
     expect(await postPieces(9)).toEqual([1, 2, 3]);
   });
 
-  it("الخطة ما بتصير صفراً بحمولة عدد", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الخطة ما بتصير صفراً بحمولة عدد", async () => {
     const r = await apply(counts({ posts: 0 }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("صفراً");

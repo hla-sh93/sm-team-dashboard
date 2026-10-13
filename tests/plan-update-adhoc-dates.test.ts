@@ -107,8 +107,7 @@ afterAll(async () => {
 });
 
 describe("كروت خارج الخطة — إعادة تأريخ كرت مفتوح", () => {
-  it("بتنقل يوم الشغل والجهوزية وبتثبّت، بلا ما تلمس الحالة ولا طوابعها", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بتنقل يوم الشغل والجهوزية وبتثبّت، بلا ما تلمس الحالة ولا طوابعها", async () => {
     const result = await apply(
       payload([
         { title: TITLE, stage: "WRITE", workDate: "2026-10-12", readyDate: "2026-10-14", pinned: true, evidence: EVIDENCE },
@@ -130,8 +129,7 @@ describe("كروت خارج الخطة — إعادة تأريخ كرت مفتو
     expect(card.notes).toBe(EVIDENCE);
   });
 
-  it("إعادة التطبيق ما بتكرّر سطر الدليل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق ما بتكرّر سطر الدليل", async () => {
     const result = await apply(
       payload([{ title: TITLE, stage: "WRITE", workDate: "2026-10-12", readyDate: "2026-10-14", evidence: EVIDENCE }]),
     );

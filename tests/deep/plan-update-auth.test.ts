@@ -59,8 +59,7 @@ afterAll(async () => {
 });
 
 describe("بوابة الأدمن", () => {
-  it("بلا كوكي → «غير مصرّح» وولا صف", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بلا كوكي → «غير مصرّح» وولا صف", async () => {
     jar.value = undefined;
     const n = await prisma.task.count();
     const r = await applyGuarded(payload);
@@ -68,8 +67,7 @@ describe("بوابة الأدمن", () => {
     expect(r.error).toBe("غير مصرّح");
     expect(await prisma.task.count()).toBe(n);
   });
-  it("كوكي مزوّرة (توقيع غلط / بلا نقطة / منتهية) → «غير مصرّح»", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("كوكي مزوّرة (توقيع غلط / بلا نقطة / منتهية) → «غير مصرّح»", async () => {
     const future = String(Date.now() + 60_000);
     for (const forged of [`${future}.deadbeef`, "garbage", `${future}.${sign("other")}`, `${String(Date.now() - 1000)}.${sign(String(Date.now() - 1000))}`]) {
       jar.value = forged;
@@ -77,16 +75,14 @@ describe("بوابة الأدمن", () => {
       expect(r.error, forged).toBe("غير مصرّح");
     }
   });
-  it("كوكي صحيحة → البوابة بتمرّق والمنطق هو يلي بيردّ (الشركة غير موجودة)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("كوكي صحيحة → البوابة بتمرّق والمنطق هو يلي بيردّ (الشركة غير موجودة)", async () => {
     const exp = String(Date.now() + 60_000);
     jar.value = `${exp}.0.qa0session.${sign(`${exp}.0.qa0session`)}`;
     const r = await applyGuarded(payload);
     expect(r.ok).toBe(false);
     expect(r.error).toBe("الشركة غير موجودة");
   });
-  it("رفع ملف Word بلا بوابة عن قصد (PU-18، توثيق): بلا كوكي بيوصل للمنطق", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("رفع ملف Word بلا بوابة عن قصد (PU-18، توثيق): بلا كوكي بيوصل للمنطق", async () => {
     jar.value = undefined;
     const r = await applyDocxAction({ companyId: "c_لا_وجود", fileBase64: "AAAA", fileName: "x.docx" });
     expect(r.ok).toBe(false);

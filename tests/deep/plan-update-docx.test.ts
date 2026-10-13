@@ -143,8 +143,7 @@ afterAll(async () => {
 });
 
 describe("الرفع على القاعدة", () => {
-  it("PU-16: آخر يوم بالدورة الحالية (١٢/١٠) مع تجديد ١٣/١٠ مسجَّل → المعاينة بتعرض الدورتين وبتنبّه؛ الافتراض الحالية m=8", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-16: آخر يوم بالدورة الحالية (١٢/١٠) مع تجديد ١٣/١٠ مسجَّل → المعاينة بتعرض الدورتين وبتنبّه؛ الافتراض الحالية m=8", async () => {
     vi.setSystemTime(new Date(2026, 9, 12, 9, 0));
     const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(2, "بوست") }]);
     const p = await preview(companyId, file);
@@ -164,8 +163,7 @@ describe("الرفع على القاعدة", () => {
     const p2 = await preview(companyId, file);
     expect(p2.month).toBe(9);
   });
-  it("PU-16: باختيار الجاية صراحةً (١٢/١٠) الخطة بتنزل على دلو الدورة الجاية m=9", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-16: باختيار الجاية صراحةً (١٢/١٠) الخطة بتنزل على دلو الدورة الجاية m=9", async () => {
     vi.setSystemTime(new Date(2026, 9, 12, 9, 0));
     const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(2, "بوست الجاية") }]);
     const p = await preview(companyId, file, { year: 2026, month: 9 });
@@ -181,8 +179,7 @@ describe("الرفع على القاعدة", () => {
     expect(w.status).toBe("READY");
     expect(w.notes).toContain("دليل سابق على كرت الكتابة m=8");
   });
-  it("الرفع التاني بيكتب الوصف فوق القديم (استبدال لا دمج) وما بيعيد إقفال كرت الكتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الرفع التاني بيكتب الوصف فوق القديم (استبدال لا دمج) وما بيعيد إقفال كرت الكتابة", async () => {
     vi.setSystemTime(new Date(2026, 9, 12, 10, 0));
     const w0 = await prisma.task.findUnique({ where: { id: `${P}_w_8` } });
     const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(2, "نسخة٢") }]);
@@ -196,8 +193,7 @@ describe("الرفع على القاعدة", () => {
     expect(w1.notes).toBe(w0.notes);
     expect(String(w1.completedAt)).toBe(String(w0.completedAt));
   });
-  it("خطة أكبر من العقد: المعاينة بتحذّر والتطبيق بيرجع بلا كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("خطة أكبر من العقد: المعاينة بتحذّر والتطبيق بيرجع بلا كتابة", async () => {
     vi.setSystemTime(new Date(2026, 9, 12, 10, 0));
     const file = await docxBase64([{ heading: "جدول البوستات", headers: AR, body: rows(3, "زيادة") }]);
     const p = await preview(companyId, file);

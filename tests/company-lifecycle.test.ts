@@ -117,8 +117,7 @@ afterAll(async () => {
 });
 
 describe("دورة الحياة — الأكشنات على قاعدة معزولة", () => {
-  it("«لم يُجدد»: أرشيف + كل كرت مفتوح (مولَّد أو يدوي) ملغى بدليل؛ المنجَز والملغى ما بينلمسوا", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("«لم يُجدد»: أرشيف + كل كرت مفتوح (مولَّد أو يدوي) ملغى بدليل؛ المنجَز والملغى ما بينلمسوا", async () => {
     const co = await makeCompany(`${uniq}-ended`);
     const r = await actions.endContract(co.id);
     expect(r.ok, (r as { error?: string }).error).toBe(true);
@@ -143,8 +142,7 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     expect(manual.status).toBe("CANCELED");
   });
 
-  it("المؤرشفة ما بتنوقف ولا بتنرجّع — الطريق الوحيد «جدّد»، وهو بيرجّعها نشطة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("المؤرشفة ما بتنوقف ولا بتنرجّع — الطريق الوحيد «جدّد»، وهو بيرجّعها نشطة", async () => {
     const co = await makeCompany(`${uniq}-revive`);
     await actions.endContract(co.id);
 
@@ -162,8 +160,7 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     expect(revived.contractEndedAt).toBeNull();
   });
 
-  it("حقل الحالة بالنموذج: «نشطة» مرفوضة لشركة لم تجدّد؛ «مؤرشفة» بتقفل الكروت متل «لم يُجدد»", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("حقل الحالة بالنموذج: «نشطة» مرفوضة لشركة لم تجدّد؛ «مؤرشفة» بتقفل الكروت متل «لم يُجدد»", async () => {
     const co = await makeCompany(`${uniq}-form`);
     const base = {
       id: co.id, name: co.name, managed: true, priority: 50, posts: 2, reels: 0, stories: 0, aiReels: 0,
@@ -183,8 +180,7 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     expect((back as { error: string }).error).toContain("جدّد");
   });
 
-  it("المصالحة: قرار انتهاء قديم على شركة «موقوفة» بينقلها للأرشيف وبيقفل كروتها — ومتكافئة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("المصالحة: قرار انتهاء قديم على شركة «موقوفة» بينقلها للأرشيف وبيقفل كروتها — ومتكافئة", async () => {
     const co = await makeCompany(`${uniq}-legacy`, { status: "paused", contractEndedAt: new Date(2026, 7, 21) });
     const first = await lifecycle.archiveEndedContracts(new Date(2026, 8, 15));
     const mine = first.find((r) => r.id === co.id);
@@ -194,8 +190,7 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     expect(second.find((r) => r.id === co.id)).toBeUndefined();
   });
 
-  it("الإيقاف بطلب الزبون: للنشطة بس، وبيضل بين النشطة بحالة إيقاف", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الإيقاف بطلب الزبون: للنشطة بس، وبيضل بين النشطة بحالة إيقاف", async () => {
     const co = await makeCompany(`${uniq}-paused`);
     const r = await actions.pauseCompanyPublishing(co.id);
     expect(r.ok, (r as { error?: string }).error).toBe(true);
@@ -206,8 +201,7 @@ describe("دورة الحياة — الأكشنات على قاعدة معزو�
     expect(lc(row)).toBe("paused");
   });
 
-  it("الموقوفة إلها الجوابان (القائدة ١/١٠ — برو): «لم يُجدد» بيأرشفها، و«جدّد» بيرجّعها نشطة بدورة جديدة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الموقوفة إلها الجوابان (القائدة ١/١٠ — برو): «لم يُجدد» بيأرشفها، و«جدّد» بيرجّعها نشطة بدورة جديدة", async () => {
     const { companyLifecycle: lc } = await import("@/lib/company-visibility");
 
     const ended = await makeCompany(`${uniq}-paused-ended`);

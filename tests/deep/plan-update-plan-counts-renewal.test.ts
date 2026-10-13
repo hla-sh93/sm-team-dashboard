@@ -83,8 +83,7 @@ afterAll(async () => {
 });
 
 describe("التجديد — الحدود", () => {
-  it("قبل نهاية الدورة بيوم → مرفوض بلا كتابة؛ ودلو غلط → مرفوض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("قبل نهاية الدورة بيوم → مرفوض بلا كتابة؛ ودلو غلط → مرفوض", async () => {
     const fp = await othersFingerprint();
     const r = await apply(renewal(A, 9, "2026-10-09"));
     expect(r.ok).toBe(false);
@@ -95,8 +94,7 @@ describe("التجديد — الحدود", () => {
     expect(await prisma.task.count({ where: { companyId: A, month: 9 } })).toBe(0);
     expect(await othersFingerprint()).toBe(fp);
   });
-  it("== نهاية الدورة (حصراً) → مقبول: التجديد بينسجّل وكروت دلو تشرين بتتولّد لهالشركة وحدها", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("== نهاية الدورة (حصراً) → مقبول: التجديد بينسجّل وكروت دلو تشرين بتتولّد لهالشركة وحدها", async () => {
     const fp = await othersFingerprint();
     const r = await apply(renewal(A, 9, "2026-10-10"));
     expect(r.ok, r.error).toBe(true);
@@ -107,8 +105,7 @@ describe("التجديد — الحدود", () => {
     expect((await posts(A, 9)).map((t: any) => t.pieceNo)).toEqual([1, 2]);
     expect(await othersFingerprint()).toBe(fp);
   });
-  it("تكرار نفس التاريخ → renewed=false وaffectedRows=0 وولا صف", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("تكرار نفس التاريخ → renewed=false وaffectedRows=0 وولا صف", async () => {
     const before = await prisma.task.count({ where: { companyId: A } });
     const r = await apply(renewal(A, 9, "2026-10-10"));
     expect(r.ok).toBe(true);
@@ -116,8 +113,7 @@ describe("التجديد — الحدود", () => {
     expect(r.affectedRows).toBe(0);
     expect(await prisma.task.count({ where: { companyId: A } })).toBe(before);
   });
-  it("فجوة بعد نهاية الدورة → مقبول، وأول موعد ≥ بداية التجديد (بداية باردة)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("فجوة بعد نهاية الدورة → مقبول، وأول موعد ≥ بداية التجديد (بداية باردة)", async () => {
     const r = await apply(renewal(C, 9, "2026-10-15"));
     expect(r.ok, r.error).toBe(true);
     const rows = await prisma.task.findMany({ where: { companyId: C, year: 2026, month: 9 } });
@@ -127,8 +123,7 @@ describe("التجديد — الحدود", () => {
     const co = await prisma.company.findUnique({ where: { id: C } });
     expect(JSON.parse(co.renewals)).toEqual(["2026-10-15"]);
   });
-  it("الموقوفة والمؤرشفة (contractEndedAt) مرفوضتان للتجديد وعدد القطع", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الموقوفة والمؤرشفة (contractEndedAt) مرفوضتان للتجديد وعدد القطع", async () => {
     await prisma.company.update({ where: { id: C }, data: { status: "paused" } });
     expect((await apply(renewal(C, 10, "2026-11-14"))).ok).toBe(false);
     expect((await apply({ companyId: C, year: 2026, month: 9, planCounts: { posts: 3, evidence: EV } })).ok).toBe(false);
@@ -140,14 +135,12 @@ describe("التجديد — الحدود", () => {
 });
 
 describe("عدد القطع — قاعدة ٩", () => {
-  it("الدورة يلي بعدها دورة مثبّتة: دلو أيلول مرفوض بعد التجديد", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الدورة يلي بعدها دورة مثبّتة: دلو أيلول مرفوض بعد التجديد", async () => {
     const r = await apply(counts(8, { posts: 3 }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("مثبّت");
   });
-  it("الزيادة 2→3: القطعتان الموجودتان بتحتفظان بالوصف والحالة والدليل، والجديدة نظيفة، وباقي الشركات بايت-بايت", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الزيادة 2→3: القطعتان الموجودتان بتحتفظان بالوصف والحالة والدليل، والجديدة نظيفة، وباقي الشركات بايت-بايت", async () => {
     await apply({ companyId: A, year: 2026, month: 9, items: [{ type: "POST", pieceNo: 1, brief: "وصف بوست ١" }], pieceStates: [{ type: "POST", pieceNo: 2, stage: "DESIGN", status: "IN_PROGRESS", evidence: EV }] });
     const fp = await othersFingerprint();
     const r = await apply(counts(9, { posts: 3 }));
@@ -165,8 +158,7 @@ describe("عدد القطع — قاعدة ٩", () => {
     expect(await othersFingerprint()).toBe(fp);
     expect((await prisma.company.findUnique({ where: { id: A } })).posts).toBe(3);
   });
-  it("إعادة التطبيق بنفس العدد: affectedRows=0 وولا صف يتغيّر", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق بنفس العدد: affectedRows=0 وولا صف يتغيّر", async () => {
     const before = (await posts(A, 9)).map((t: any) => `${t.id}|${norm(t.workDate)}|${t.status}`).join(",");
     const r = await apply(counts(9, { posts: 3 }));
     expect(r.ok).toBe(true);
@@ -174,8 +166,7 @@ describe("عدد القطع — قاعدة ٩", () => {
     expect(r.affectedRows).toBe(0);
     expect((await posts(A, 9)).map((t: any) => `${t.id}|${norm(t.workDate)}|${t.status}`).join(",")).toBe(before);
   });
-  it("التقليل مرفوض لو القطعة يلي رح تنشال عليها وصف أو شغل؛ ومقبول لو فاضية", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("التقليل مرفوض لو القطعة يلي رح تنشال عليها وصف أو شغل؛ ومقبول لو فاضية", async () => {
     await prisma.task.updateMany({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 }, data: { brief: "وصف" } });
     expect((await apply(counts(9, { posts: 2 }))).error).toContain("يحذف قطعاً عليها شغل أو وصف");
     await prisma.task.updateMany({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 }, data: { brief: null } });
@@ -183,8 +174,7 @@ describe("عدد القطع — قاعدة ٩", () => {
     expect(r.ok, r.error).toBe(true);
     expect((await posts(A, 9)).map((t: any) => t.pieceNo)).toEqual([1, 2]);
   });
-  it("[PU-15 مُصلَح] القطعة الملغاة ما بتمنع التقليل — بتنشال مع رقمها", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[PU-15 مُصلَح] القطعة الملغاة ما بتمنع التقليل — بتنشال مع رقمها", async () => {
     await apply(counts(9, { posts: 3 }));
     await prisma.task.updateMany({ where: { companyId: A, year: 2026, month: 9, type: "POST", pieceNo: 3 }, data: { status: "CANCELED" } });
     const r = await apply(counts(9, { posts: 2 }));
@@ -194,8 +184,7 @@ describe("عدد القطع — قاعدة ٩", () => {
     expect(await prisma.task.count({ where: { companyId: A, year: 2026, month: 9, type: "POST", status: "CANCELED" } })).toBe(0);
     await apply(counts(9, { posts: 3 }));
   });
-  it("الصفر مرفوض، ودلو بلا دورة مرفوض", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الصفر مرفوض، ودلو بلا دورة مرفوض", async () => {
     expect((await apply(counts(9, { posts: 0 }))).error).toContain("صفراً");
     expect((await apply(counts(11, { posts: 2 }))).error).toContain("لا دورة");
   });

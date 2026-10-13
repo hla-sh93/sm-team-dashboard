@@ -99,8 +99,7 @@ afterAll(async () => {
 });
 
 describe("الذرّية — بند واحد غلط = ولا صف يتغيّر", () => {
-  it("قطعة بلا كرت · عنوان خارج الخطة بلا مطابق · مسؤول غير موجود · وصف لقطعة غير موجودة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("قطعة بلا كرت · عنوان خارج الخطة بلا مطابق · مسؤول غير موجود · وصف لقطعة غير موجودة", async () => {
     const bad = [
       payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "IN_PROGRESS", evidence: EV }, { type: "POST", pieceNo: 99, stage: "DESIGN", evidence: EV }] }),
       payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "IN_PROGRESS", evidence: EV }], adhocStates: [{ title: "عنوان مو موجود أبداً", evidence: EV }] }),
@@ -116,8 +115,7 @@ describe("الذرّية — بند واحد غلط = ولا صف يتغيّر",
     }
   });
 
-  it("PU-01 مُصلَح: instagramHandle ما بينكتب لما ترفض باقي الحمولة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-01 مُصلَح: instagramHandle ما بينكتب لما ترفض باقي الحمولة", async () => {
     const r = await apply(payload({ instagramHandle: "leaked.handle", pieceStates: [{ type: "POST", pieceNo: 99, stage: "DESIGN", evidence: EV }] }));
     expect(r.ok).toBe(false);
     const co = await prisma.company.findUnique({ where: { id: A.id } });
@@ -126,8 +124,7 @@ describe("الذرّية — بند واحد غلط = ولا صف يتغيّر",
 });
 
 describe("التزامن — تطبيقان بنفس اللحظة (PU-20 مُصلَح)", () => {
-  it("دليلان مختلفان على نفس الكرت بنفس اللحظة → السطرين بيضلّوا", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("دليلان مختلفان على نفس الكرت بنفس اللحظة → السطرين بيضلّوا", async () => {
     const id = key("a_d_post_3");
     await prisma.task.update({ where: { id }, data: { notes: null } });
     const [r1, r2] = await Promise.all([
@@ -143,8 +140,7 @@ describe("التزامن — تطبيقان بنفس اللحظة (PU-20 مُص�
 });
 
 describe("المطابقة — صفّ واحد بالضبط", () => {
-  it("PU-03 مُصلَح: صفّان بنفس (النوع·الرقم·المرحلة) → الحمولة بتنرفض متل الفحص المسبق", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-03 مُصلَح: صفّان بنفس (النوع·الرقم·المرحلة) → الحمولة بتنرفض متل الفحص المسبق", async () => {
     const orig = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
     const { id: _i, ...rest } = orig;
     await prisma.task.create({ data: { ...rest, id: key("a_d_post_3_dup") } });
@@ -157,8 +153,7 @@ describe("المطابقة — صفّ واحد بالضبط", () => {
     }
   });
 
-  it("الدلو الغلط ما بيطابق، والشركة التانية ما بتنلمس (عزل)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الدلو الغلط ما بيطابق، والشركة التانية ما بتنلمس (عزل)", async () => {
     const before = await dump();
     const r = await apply({ ...payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", evidence: EV }] }), month: 9 });
     expect(r.ok).toBe(false);
@@ -171,8 +166,7 @@ describe("المطابقة — صفّ واحد بالضبط", () => {
     expect(bRows.every((t: any) => t.notes == null && t.status === "NOT_STARTED")).toBe(true);
   });
 
-  it("PU-05: اسم موظف مكرّر → رفض بدل اختيار صامت لآخر واحد", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-05: اسم موظف مكرّر → رفض بدل اختيار صامت لآخر واحد", async () => {
     const dup = await prisma.employee.create({ data: { name: `${uniq} مصمّم`, role: "designer-dup", workDays: "[0,1,2,3,4]" } });
     try {
       const r = await apply(payload({ adhocCards: [{ slug: `deep-${P}-dupname`, title: "كرت اسم مكرّر", assignee: `${uniq} مصمّم`, hours: 1, workDate: "2026-09-21", readyDate: "2026-09-21", evidence: EV }] }));
@@ -194,8 +188,7 @@ describe("العدّادات", () => {
       adhocStates: [{ title: `كرت يدوي ${uniq}`, hours: 3, evidence: EV }],
       adhocCards: [{ slug: `deep-${P}-c1`, title: "كرت جديد", assignee: `${uniq} مصمّم`, hours: 1, workDate: "2026-09-21", readyDate: "2026-09-21", evidence: EV }],
     });
-  it("أول تطبيق: affectedRows = الصفوف المتغيّرة + المضافة (وصف البوست صفّان، الريل ثلاثة)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("أول تطبيق: affectedRows = الصفوف المتغيّرة + المضافة (وصف البوست صفّان، الريل ثلاثة)", async () => {
     const before = await dump();
     const r = await apply(mixed());
     expect(r.ok, r.error).toBe(true);
@@ -208,8 +201,7 @@ describe("العدّادات", () => {
     expect(d.changed.length).toBe(2 + 3 + 1 + 1);
     expect(r.affectedRows).toBe(d.changed.length + d.added.length);
   });
-  it("[PU-04] إعادة التطبيق نفسها: ولا صف يتغيّر — والعدّادات بتعدّ المتغيّر (صفر) لا المطابَق", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[PU-04] إعادة التطبيق نفسها: ولا صف يتغيّر — والعدّادات بتعدّ المتغيّر (صفر) لا المطابَق", async () => {
     const before = await dump();
     const r = await apply(mixed());
     expect(r.ok, r.error).toBe(true);
@@ -220,8 +212,7 @@ describe("العدّادات", () => {
 });
 
 describe("الحالة ↔ الطوابع", () => {
-  it("PU-02: READY بلا date بياخد طابع إنجاز = موعد الكرت نفسه (بلا تحريك أي موعد) — فبيظهر بالتقارير", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-02: READY بلا date بياخد طابع إنجاز = موعد الكرت نفسه (بلا تحريك أي موعد) — فبيظهر بالتقارير", async () => {
     const before = await prisma.task.findUnique({ where: { id: key("a_d_post_1") } });
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "READY", evidence: `${EV} ر١` }] }));
     expect(r.ok, r.error).toBe(true);
@@ -235,8 +226,7 @@ describe("الحالة ↔ الطوابع", () => {
     const again = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "READY", evidence: `${EV} ر١` }] }));
     expect(again.updatedStates).toBe(0);
   });
-  it("READY بـdate بيكتب الطوابع الثلاثة ويوم الشغل/الجهوزية؛ وإعادة الفتح بتمحيها وبتضيف الدليل", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("READY بـdate بيكتب الطوابع الثلاثة ويوم الشغل/الجهوزية؛ وإعادة الفتح بتمحيها وبتضيف الدليل", async () => {
     await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "READY", date: "2026-09-19", evidence: `${EV} ر٢` }] }));
     let t = await prisma.task.findUnique({ where: { id: key("a_d_post_1") } });
     expect([t.startedAt, t.finishedAt, t.completedAt, t.workDate, t.readyDate].map(toISODate)).toEqual(Array(5).fill("2026-09-19"));
@@ -248,16 +238,14 @@ describe("الحالة ↔ الطوابع", () => {
     expect(t.board).toBe("TODO");
     expect(t.notes.split("\n")).toContain(`${EV} فتح`);
   });
-  it("[PU-09] IN_PROGRESS مع date مرفوضة (كان التاريخ ينشال بالصمت) — ولا شي بيتغيّر", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[PU-09] IN_PROGRESS مع date مرفوضة (كان التاريخ ينشال بالصمت) — ولا شي بيتغيّر", async () => {
     const before = await dump();
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 2, stage: "DESIGN", status: "IN_PROGRESS", date: "2026-09-10", evidence: `${EV} ق` }] }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("بس مع حالة منجزة");
     expect(noChange(diff(before, await dump()))).toBe(true);
   });
-  it("PUBLISHED على كرت النشر بيسكّر مراحل الإنتاج قبله بتاريخ النشر", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PUBLISHED على كرت النشر بيسكّر مراحل الإنتاج قبله بتاريخ النشر", async () => {
     const r = await apply(payload({ pieceStates: [{ type: "REEL", pieceNo: 1, stage: "PUBLISH", status: "PUBLISHED", date: "2026-09-25", evidence: `${EV} نشر` }] }));
     expect(r.ok, r.error).toBe(true);
     for (const id of ["a_s_reel_1", "a_e_reel_1"]) {
@@ -266,14 +254,12 @@ describe("الحالة ↔ الطوابع", () => {
       expect(toISODate(t.completedAt), id).toBe("2026-09-25");
     }
   });
-  it("PU-11 مُصلَح: الإقفال التتابعي بيكتب دليلاً على الكرت المُقفَل (قاعدة ٢)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-11 مُصلَح: الإقفال التتابعي بيكتب دليلاً على الكرت المُقفَل (قاعدة ٢)", async () => {
     const t = await prisma.task.findUnique({ where: { id: key("a_e_reel_1") } });
     expect(t.status).toBe("READY");
     expect((t.notes ?? "").trim()).not.toBe("");
   });
-  it("PU-06 مُصلَح: READY على كرت النشر (بتتطبّع PUBLISHED) بتسكّر الإنتاج قبلها كمان", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PU-06 مُصلَح: READY على كرت النشر (بتتطبّع PUBLISHED) بتسكّر الإنتاج قبلها كمان", async () => {
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 2, stage: "PUBLISH", status: "READY", date: "2026-09-26", evidence: `${EV} جاهز` }] }));
     expect(r.ok, r.error).toBe(true);
     const pub = await prisma.task.findUnique({ where: { id: key("a_p_post_2") } });
@@ -281,8 +267,7 @@ describe("الحالة ↔ الطوابع", () => {
     const des = await prisma.task.findUnique({ where: { id: key("a_d_post_2") } });
     expect(des.status).toBe("READY");
   });
-  it("[PU-12] pinned:false الصريح بيغلب publishDate؛ وبلاه publishDate بيثبّت. [PU-13] PUBLISHED على مرحلة تصميم = READY", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[PU-12] pinned:false الصريح بيغلب publishDate؛ وبلاه publishDate بيثبّت. [PU-13] PUBLISHED على مرحلة تصميم = READY", async () => {
     await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 3, stage: "DESIGN", pinned: false, publishDate: "2026-10-05", evidence: `${EV} ث` }] }));
     let t = await prisma.task.findUnique({ where: { id: key("a_d_post_3") } });
     expect(t.isPinned).toBe(false);
@@ -298,8 +283,7 @@ describe("الحالة ↔ الطوابع", () => {
 });
 
 describe("items — الوصف", () => {
-  it("[PU-08] items.stage مرفوض فوصف كرت النشر ما بينلمس", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[PU-08] items.stage مرفوض فوصف كرت النشر ما بينلمس", async () => {
     await prisma.task.update({ where: { id: key("a_p_post_3") }, data: { brief: "وصف النشر الأصلي" } });
     const r = await apply(payload({ items: [{ type: "POST", pieceNo: 3, stage: "DESIGN", brief: "وصف للتصميم بس" }] }));
     expect(r.ok).toBe(false);
@@ -322,8 +306,7 @@ describe("[PU-02 · مراجعة F–H] منجز بلا date موعده بالم
   });
   afterEach(() => vi.useRealTimers());
 
-  it("READY على تصميم موعده ٢٠/٩، يوم ١٥/٩ → completedAt/finishedAt = ١٥/٩", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("READY على تصميم موعده ٢٠/٩، يوم ١٥/٩ → completedAt/finishedAt = ١٥/٩", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-15T09:00:00Z"));
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 7, stage: "DESIGN", status: "READY", evidence: `${EV} مستقبل` }] }));
@@ -334,8 +317,7 @@ describe("[PU-02 · مراجعة F–H] منجز بلا date موعده بالم
     expect(toISODate(t.readyDate)).toBe("2026-09-20");
   });
 
-  it("PUBLISHED بلا date على نشر موعده ٢٨/٩، يوم ١٥/٩ → النشر والتصميم قبله بطابع ١٥/٩ (الإنتاج ما بيخلص بعد النشر)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("PUBLISHED بلا date على نشر موعده ٢٨/٩، يوم ١٥/٩ → النشر والتصميم قبله بطابع ١٥/٩ (الإنتاج ما بيخلص بعد النشر)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-15T09:00:00Z"));
     const r = await apply(payload({ pieceStates: [{ type: "POST", pieceNo: 8, stage: "PUBLISH", status: "PUBLISHED", evidence: `${EV} نشر مستقبل` }] }));
@@ -363,8 +345,7 @@ describe("[PU-13 · مراجعة F–H] سطر adhocStates بلا stage بيتط
     });
   });
 
-  it("«PUBLISHED» على كرت تصميم → جاهز (مو منشور)؛ «READY» على كرت نشر → منشور بيوم النشر", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("«PUBLISHED» على كرت تصميم → جاهز (مو منشور)؛ «READY» على كرت نشر → منشور بيوم النشر", async () => {
     const r = await apply(payload({
       adhocStates: [
         { title: `تصميم إضافي ${uniq}`, status: "PUBLISHED", date: "2026-09-10", evidence: `${EV} بلا مرحلة ١` },

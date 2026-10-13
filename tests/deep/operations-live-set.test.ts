@@ -167,8 +167,7 @@ afterAll(async () => {
 });
 
 describe("المجموعة الحيّة — اللوح/اليوم/البريف مقابل الرئيسية", () => {
-  it("loadLiveTasks بيجيب الدلو الكامل للدورة الشغّالة: المنجَز اليوم والمفتوح معاً", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("loadLiveTasks بيجيب الدلو الكامل للدورة الشغّالة: المنجَز اليوم والمفتوح معاً", async () => {
     const A = await live.loadLiveTasks(2026, 9, AT);
     const ids = new Set(A.map((t: { id: string }) => t.id));
     expect(ids.has(doneTodayId)).toBe(true);
@@ -181,8 +180,7 @@ describe("المجموعة الحيّة — اللوح/اليوم/البريف �
     expect(view).not.toMatch(/openCarryoverWhere|monthContinuationWhere/);
   });
 
-  it("[OP-01] «مهام اليوم» على المجموعة الحيّة: إقفال اليوم بيسكّر اليوم (اللوح والرئيسية سوا)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[OP-01] «مهام اليوم» على المجموعة الحيّة: إقفال اليوم بيسكّر اليوم (اللوح والرئيسية سوا)", async () => {
     const designer = await prisma.employee.findUniqueOrThrow({ where: { id: designerId } });
     const companies = await prisma.company.findMany();
     const A = await live.loadLiveTasks(2026, 9, AT);
@@ -192,8 +190,7 @@ describe("المجموعة الحيّة — اللوح/اليوم/البريف �
     expect(day.queue).toEqual([]);
   });
 
-  it("[OP-01] «إنجاز الفريق» (الدونات) بيعدّ منجز الدورة الشغّالة بدلو تاني", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[OP-01] «إنجاز الفريق» (الدونات) بيعدّ منجز الدورة الشغّالة بدلو تاني", async () => {
     const A = await live.loadLiveTasks(2026, 9, AT);
     const doneOf = (set: { assigneeId: string | null }[]) =>
       set.filter((t) => t.assigneeId === designerId && constants.isTaskDoneState(t as never)).length;
@@ -205,8 +202,7 @@ describe("[OP-11] خطة الدورة الشغّالة — التقارير مق
   /** رقم السجلّ (خطة الدورة الجاية بعد التجديد المبكر). */
   const recordPlan = (co: Record<string, number>) => ({ posts: co.posts ?? 0, reels: co.reels ?? 0, stories: co.stories ?? 0 });
 
-  it("الرئيسية (OverviewView → frozenPlanCounts) بتاخد خطة الدورة من كروتها: ٤ بوست · ٤ ريل · ٠ ستوري", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("الرئيسية (OverviewView → frozenPlanCounts) بتاخد خطة الدورة من كروتها: ٤ بوست · ٤ ريل · ٠ ستوري", async () => {
     const contract = await import("@/lib/contract");
     const cyclePlan = await import("@/lib/cycle-plan");
     const { frozenPlanCounts } = await import("@/server/cycle-plan");
@@ -220,8 +216,7 @@ describe("[OP-11] خطة الدورة الشغّالة — التقارير مق
     expect(recordPlan(co)).toEqual({ posts: 10, reels: 4, stories: 14 });
   });
 
-  it("[OP-11] صفحة التقارير بتقيس نفس الدورة بنفس الخطة يلي على الرئيسية (`displayedCyclePlan`)", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("[OP-11] صفحة التقارير بتقيس نفس الدورة بنفس الخطة يلي على الرئيسية (`displayedCyclePlan`)", async () => {
     const contract = await import("@/lib/contract");
     const { displayedCyclePlan } = await import("@/lib/cycle-plan");
     const { frozenPlanCounts } = await import("@/server/cycle-plan");

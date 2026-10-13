@@ -81,30 +81,26 @@ const renewal = (start: string, over: Record<string, unknown> = {}) => ({
 });
 
 describe("التجديد المبكر بالحمولة", () => {
-  it("قبل نهاية الدورة الحالية → مرفوض بلا كتابة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("قبل نهاية الدورة الحالية → مرفوض بلا كتابة", async () => {
     const r = await apply(renewal("2026-10-05"));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("لا يمكن بدء دورة جديدة قبلها");
     expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).renewals).toBeNull();
   });
 
-  it("دلو الحمولة لازم يطابق شهر بداية الدورة", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("دلو الحمولة لازم يطابق شهر بداية الدورة", async () => {
     const r = await apply(renewal("2026-10-10", { month: 8 }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("دلو الحمولة");
   });
 
-  it("ما بينجمع مع خطة بنفس الحمولة — التجديد لحاله", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("ما بينجمع مع خطة بنفس الحمولة — التجديد لحاله", async () => {
     const r = await apply(renewal("2026-10-10", { items: [{ type: "POST", pieceNo: 1, brief: "وصف" }] }));
     expect(r.ok).toBe(false);
     expect(r.error).toContain("حمولة مستقلة");
   });
 
-  it("بيسجّل الدورة وبيولّد كروتها لهالشركة وحدها", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("بيسجّل الدورة وبيولّد كروتها لهالشركة وحدها", async () => {
     const neighbourBefore = await snapshotOf(otherId);
     const r = await apply(renewal("2026-10-10"));
     expect(r.ok, r.error).toBe(true);
@@ -120,8 +116,7 @@ describe("التجديد المبكر بالحمولة", () => {
     expect(await snapshotOf(otherId)).toBe(neighbourBefore);
   });
 
-  it("إعادة التطبيق بنفس التاريخ ما بتعمل شي", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("إعادة التطبيق بنفس التاريخ ما بتعمل شي", async () => {
     const before = await snapshotOf(companyId);
     const r = await apply(renewal("2026-10-10"));
     expect(r.ok, r.error).toBe(true);
@@ -130,8 +125,7 @@ describe("التجديد المبكر بالحمولة", () => {
     expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).renewals).toBe('["2026-10-10"]');
   });
 
-  it("للشركة النشطة فقط — الموقوفة والمؤرشفة من صفحة الشركات", async () => {
-    if (skip()) return;
+  it.skipIf(skip())("للشركة النشطة فقط — الموقوفة والمؤرشفة من صفحة الشركات", async () => {
     await prisma.company.update({ where: { id: otherId }, data: { status: "paused" } });
     const r = await apply({ ...renewal("2026-11-09"), companyId: otherId, month: 10 });
     expect(r.ok).toBe(false);
