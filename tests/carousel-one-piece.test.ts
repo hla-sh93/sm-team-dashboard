@@ -43,6 +43,12 @@ describe("أسماء ملفات الكاروسيل → قطعة وحدة + رق�
     expect(read("Phoenitech-carousel-10-2-7.jpg")).toEqual({ slug: "Phoenitech", month: 10, piece: 2, slide: 7 });
   });
 
+  it("رقم شريحة مصفور بعد carousel بشَرطة أو بلا فاصل = شريحة (مو شهر)", () => {
+    expect(read("jobs-carousel-04-10-1.jpg")).toEqual({ slug: "jobs", month: 10, piece: 1, slide: 4 });
+    expect(read("jobs-carousel_03-10-1.jpg")).toEqual({ slug: "jobs", month: 10, piece: 1, slide: 3 });
+    expect(read("jobs-carousel04-10-1.jpg")).toEqual({ slug: "jobs", month: 10, piece: 1, slide: 4 });
+  });
+
   it("بوست عادي بلا شريحة ما بيتغيّر", () => {
     expect(read("obada-post-8-2.jpg")).toEqual({ slug: "obada", month: 8, piece: 2, slide: null });
   });

@@ -11,6 +11,7 @@
  * can never double-count a delivery or a publish confirmation, and an album
  * (one carousel sent as many messages) closes its piece once.
  */
+import { dayKeyOf } from "@/lib/team-day";
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
 import { companySlugs, latinDigits, parseAssetName, slugMatches } from "@/lib/asset-name";
@@ -322,8 +323,10 @@ const markRowPublish = (id: string, taskId: string) =>
  * من الناشر أو القائدة **بس** (D3، للصيغة الصريحة كمان) · الرسالة **بتبلّش** بالتأكيد
  * أو هي رموز ✅ بس · قصيرة (≤ ٨ كلمات، سطر واحد إلا الرد) · بلا نفي.
  */
+// «تم نشر بوست 3» و«تمّ النشر» (بشدّة) تأكيد كمان — كانت الصيغة الصارمة تقبل «تم النشر» بس،
+// فالناشر يكتب «تم نشر الريل» والكرت يضل مفتوح ومتأخر (مراجعة نهائية ١٣/١٠).
 const PUBLISHED_EXPLICIT =
-  /(^|\s)(?:تم\s+النشر|ان+نشر(?:ت)?|published)(?=\s|$|[.،!])|✅|☑️|✔️/i;
+  /(^|\s)(?:تمّ?\s+(?:ال)?نشر|ان+نشر(?:ت)?|published)(?=\s|$|[.،!])|✅|☑️|✔️/i;
 const PUBLISHED_LOOSE =
   /(^|\s)(?:نشر(?:ت|نا|و|وا)?|نزل(?:ت|نا|و|وا)?|نزّل(?:ت|نا)?|publish(?:ed)?)(?=\s|$|[.،!])/i;
 /** نفي: «ما نزلت عالموقع» · «لسا ما انشرت» · «مش منشور». */
@@ -523,9 +526,11 @@ async function handlePublishConfirmation(input: {
   }
 
   // ٣) تأكيد مجرّد → أقدم قطعة مستحقّة اليوم أو قبلو. ولا مرة قطعة مستقبلية.
-  const todayISO = at.toISOString().slice(0, 10);
+  // يوم دمشق، مو UTC: «تم النشر» الساعة ١ بالليل بدمشق كان يحسب «اليوم» يوم أمس.
+  const todayISO = dayKeyOf(at);
   const due = open.filter((t) => {
-    const d = (t.publishDate ?? t.readyDate)?.toISOString().slice(0, 10);
+    const stored = t.publishDate ?? t.readyDate;
+    const d = stored ? dayKeyOf(stored) : null;
     return d != null && d <= todayISO;
   });
   // قطعة محتوى قبل أي كرت متابعة إداري: «تم النشر» بتوبيك شركة بتعني قطعتها،

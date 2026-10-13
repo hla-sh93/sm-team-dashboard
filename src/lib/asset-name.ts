@@ -182,7 +182,9 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
   const slide = base.match(
     // الشريحة قبل الشهر بس لما الكلمة **مفصولة بمسافة** عن الرقم (نمط سابين). «carousel-10-2-1»
     // بشَرطة = نمط أيمن (شهر-قطعة-شريحة) بكلمة carousel — كانت تنقرا «شريحة ١٠».
-    /\b(?:carousel|slide|كاروسيل|شريحة)\s+(\d{1,3})(?=\s*-\s*\d{1,2}\s*-\s*\d{1,3}(?!\d))/i,
+    // …أو رقم مصفور (`carousel-04-10-1`، `carousel_04…`، `carousel04…`): شهر ما بينكتب «04»
+    // بتسمية الفريق، فالصفر = شريحة. بلاها كانت الشريحة ٤ تسكّر بوست ٤ (مراجعة نهائية ١٣/١٠).
+    /\b(?:carousel|slide|كاروسيل|شريحة)(?:\s+(\d{1,3})|[-_]?(0\d))(?=\s*-\s*\d{1,2}\s*-\s*\d{1,3}(?!\d))/i,
   );
   // …وتسمية الفريق بلا كلمة: «Phoenitech-post-10-2-1…7» = شهر-قطعة-**شريحة** (فحص
   // ١٢/١٠، TR-14). الرقم التالت بآخر الاسم بعد زوج «شهر-قطعة» هو الشريحة.
@@ -196,7 +198,7 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
     Number(triple[3]) <= 20
       ? triple
       : null;
-  const slideNo = slide ? Number(slide[1]) : tripleSlide ? Number(tripleSlide[3]) : undefined;
+  const slideNo = slide ? Number(slide[1] ?? slide[2]) : tripleSlide ? Number(tripleSlide[3]) : undefined;
   const withoutSlide = slide
     ? base.replace(slide[0], " ")
     : tripleSlide

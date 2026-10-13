@@ -290,6 +290,18 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
     });
   });
 
+  describe("[مراجعة نهائية ١٣/١٠] صيغ تأكيد النشر الشائعة", () => {
+    it("«تم نشر بوست 3» من الناشر بتسكّر نشر بوست ٣ (كانت ما بتسكّر شي)", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "تم نشر بوست 3" }));
+      expect(await closedIds(Z1)).toContain(ID("zulu_9_POST_3_PUBLISH"));
+    });
+
+    it("«تمّ النشر» (بشدّة) متل «تم النشر»: قطعة وحدة، أقدم مستحقّة", async () => {
+      await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(5), text: "تمّ النشر" }));
+      expect(await closedIds(Z1)).toEqual([ID("zulu_8_POST_2_PUBLISH")]);
+    });
+  });
+
   describe("الألبوم بتوبيك (media_group_id)", () => {
     it("[TR-10] ألبوم ٣ صور بلا اسم = قطعة وحدة — مو ٣ كروت", async () => {
       for (let i = 0; i < 3; i++) await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), photo: true, group: `g${P}` }));
@@ -299,6 +311,13 @@ describe.skipIf(!scratch.available)("ويبهوك تلغرام — مسار inge
     it("ألبوم ملفات مسمّاة لقطع مختلفة (BW-post-9-1…4 بألبوم واحد) بيسكّر كل قطعة باسمها — حارس لأي إصلاح لـTR-10", async () => {
       for (const n of [1, 2, 3]) await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg(`Zulu-post-10-${n}.jpg`), group: `h${P}` }));
       expect(await closedIds(Z1)).toEqual([1, 2, 3].map((n) => ID(`zulu_9_POST_${n}_DESIGN`)).sort());
+    });
+
+    it("[مراجعة نهائية ١٣/١٠] «carousel-01…04-10-2» بشَرطة: الشرائح لبوست ٢ — مو تسكير بوست ١ و٣ و٤", async () => {
+      for (const s of [1, 2, 3, 4]) await ingest.ingestUpdate(update({ thread: T_Z1, from: tgId(1), doc: jpg(`Zulu-carousel-0${s}-10-2.jpg`), group: `m${P}` }));
+      const rows = await prisma.telegramMessage.findMany({ where: { mediaGroupId: `m${P}` } });
+      expect(rows.every((r: any) => r.taskId === ID("zulu_9_POST_2_DESIGN"))).toBe(true);
+      expect(await closedIds(Z1)).toEqual([ID("zulu_9_POST_2_DESIGN")]);
     });
 
     it("[TR-14] شرائح الكاروسيل «-10-2-2…4» بتنربط بقطعتها وبتسجّل عدد الشرائح (§٥: وحدة تصميم لكل شريحة)", async () => {
