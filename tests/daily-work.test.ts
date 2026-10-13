@@ -595,10 +595,12 @@ describe("finished-today work: shown as achievement, never empties the open queu
 describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHeldReason)", () => {
   const todayISO = "2026-07-05";
 
-  it("كرت مثبّت على يوم لاحق → مثبّت لحدّ هالتاريخ", () => {
-    const parked = task({ id: "parked", isPinned: true, workDate: new Date(2026, 6, 6) });
-    const reason = makeHeldReason([parked], todayISO)(parked);
-    expect(reason).toEqual({ parkedUntil: "2026-07-06", blockedBy: null });
+  it("[§16 ١٣/١٠] تصميم مثبّت على يوم لاحق **ما بيستنّى** يومه؛ التصوير المثبّت (موعد زبون) بيستنّى", () => {
+    const design = task({ id: "design", isPinned: true, workDate: new Date(2026, 6, 6) });
+    const shoot = task({ id: "shoot", stage: "SHOOT", type: "REEL", isPinned: true, workDate: new Date(2026, 6, 6) });
+    const reasonOf = makeHeldReason([design, shoot], todayISO);
+    expect(reasonOf(design)).toBeNull();
+    expect(reasonOf(shoot)).toEqual({ parkedUntil: "2026-07-06", blockedBy: null });
   });
 
   it("«بدّل» على يوم لاحق نفس الشي، والمثبّت على اليوم أو قبله مو مستبعَد", () => {
@@ -635,13 +637,16 @@ describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHel
     expect(makeHeldReason([orphan], todayISO)(orphan)).toBeNull();
   });
 
-  it("الكرتان معاً: مثبّت على يوم لاحق وواقف على غيره", () => {
+  it("الكرتان معاً: تصوير مثبّت على يوم لاحق وواقف على غيره", () => {
     const plan = task({ id: "plan", stage: "WRITE", assigneeId: "writer" });
-    const both = task({ id: "both", blockedById: "plan", isPinned: true, workDate: new Date(2026, 6, 9) });
+    const both = task({ id: "both", stage: "SHOOT", type: "REEL", blockedById: "plan", isPinned: true, workDate: new Date(2026, 6, 9) });
     expect(makeHeldReason([plan, both], todayISO)(both)).toEqual({ parkedUntil: "2026-07-09", blockedBy: plan });
+    // التصميم بنفس الحالة: الحاجز بس — اليوم المثبّت ما بيأجّل.
+    const design = task({ id: "design", blockedById: "plan", isPinned: true, workDate: new Date(2026, 6, 9) });
+    expect(makeHeldReason([plan, design], todayISO)(design)).toEqual({ parkedUntil: null, blockedBy: plan });
   });
 
-  it("لما كل المفتوح مثبّت على أيام لاحقة: القائمة فاضية وكل كرت عندو سبب — ما في «متبقّي» بلا تفسير", () => {
+  it("[§16 ١٣/١٠ — حالة سابين] كل المفتوح مثبّت على أيام لاحقة (حمولة «إعادة الجدولة من اليوم»): بينسحب لقدّام لحدّ السعة — ما بيضل يوم فاضي", () => {
     const designer = employee();
     const companies = [company({ id: "company", priority: 1 })];
     const open = [12, 13, 15, 15, 19].map((day, i) =>
@@ -649,11 +654,26 @@ describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHel
     );
     const today = new Date(2026, 9, 11); // الأحد ١١/١٠ — يوم شغل
     const work = selectDailyWork({ employee: designer, tasks: open, companies, today });
-    expect(work.queue).toEqual([]);
-    expect(work.doneToday).toEqual([]);
+    // معدّله ١٠ بوست/يوم → الخمسة بيومه، الأقرب موعداً أول.
+    expect(work.queue.map((t) => t.id)).toEqual(["post-0", "post-1", "post-2", "post-3", "post-4"]);
     const reasonOf = makeHeldReason(open, "2026-10-11");
-    expect(open.map((t) => reasonOf(t)?.parkedUntil)).toEqual([
-      "2026-10-12", "2026-10-13", "2026-10-15", "2026-10-15", "2026-10-19",
-    ]);
+    expect(open.map((t) => reasonOf(t))).toEqual([null, null, null, null, null]);
+  });
+
+  it("[§16] نفس الحالة بمعدّل أقل: بياخد قدّ سعته بس، والباقي بيستنّى بلا سبب «مؤجَّل»", () => {
+    const designer = employee({ rates: JSON.stringify({ POST: 2 }) });
+    const companies = [company({ id: "company", priority: 1 })];
+    const open = [12, 13, 15].map((day, i) =>
+      task({ id: `post-${i}`, isPinned: true, workDate: new Date(2026, 9, day), readyDate: new Date(2026, 9, day) }),
+    );
+    const work = selectDailyWork({ employee: designer, tasks: open, companies, today: new Date(2026, 9, 11) });
+    expect(work.queue.map((t) => t.id)).toEqual(["post-0", "post-1"]);
+  });
+
+  it("«بدّل» (manualDay) لسا بيأجّل أي مرحلة — قرار القائدة", () => {
+    const swapped = task({ id: "swapped", manualDay: new Date(2026, 9, 15), workDate: new Date(2026, 9, 15) });
+    const work = selectDailyWork({ employee: employee(), tasks: [swapped], companies: [company({ id: "company", priority: 1 })], today: new Date(2026, 9, 11) });
+    expect(work.queue).toEqual([]);
+    expect(makeHeldReason([swapped], "2026-10-11")(swapped)?.parkedUntil).toBe("2026-10-15");
   });
 });

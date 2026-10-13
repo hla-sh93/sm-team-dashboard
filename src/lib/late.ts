@@ -13,11 +13,18 @@
  * نصّ «سبب الإعفاء» ما بيعفي لحاله: بينكتب بس مع «أوقف النشر» وبينمحى مع «رجّع النشر»
  * (القائدة ١٣/١٠: «إذا شغّالة ما بيصير ينكتب سبب الإيقاف، فقط حالة الإيقاف»)، والموقوفة
  * مستبعدة أصلاً. نفس قاعدة تقرير ٢٠:٠٠ (§١٠، قرار ١٥/٩) — رقم واحد الصبح والمسا.
+ *
+ * وقواعد تقرير ٢٠:٠٠ التانية **بكل مكان** (القائدة ١٣/١٠: «قواعد المسا بكل مكان»):
+ *   - كرت عليه ملاحظة «بانتظار الزبون» / «موقوف بطلب العميل» مش متأخر (`isClientHeld`) —
+ *     التأخير مو على الفريق. ونفس الشي للكرت يلي عليه سطر إقفال إداري.
+ *   - تصميم الستوري موعده **نهاية دورتها** (العبرة بالعدد لا بالترتيب — §١٠)، فما بيتأخّر
+ *     قبل ما تخلص الدورة. كانت رسالة الصبح تعدّها متأخرة على يوم المحرّك والمسا لأ.
  */
 import { isTaskDoneState, isTaskLateState } from "@/lib/constants";
 import { isDormantCompany, type LifecycleCompany } from "@/lib/company-visibility";
-import { hasStartedPublishing, type ContractCompany } from "@/lib/contract";
+import { cycleForBucket, hasStartedPublishing, type ContractCompany } from "@/lib/contract";
 import { makeBlockedPredicate } from "@/lib/daily-work";
+import { isAdministrativeClosure, isClientHeld } from "@/lib/period-report";
 import { teamToday } from "@/lib/team-day";
 import type { Task } from "@/types";
 
@@ -40,9 +47,17 @@ export function makeLateClassifier(
     companies.filter((c) => !hasStartedPublishing(c)).map((c) => c.id),
   );
   const isBlocked = makeBlockedPredicate(allTasks);
+  const coById = new Map(companies.map((c) => [c.id, c]));
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   return (t: Task) => {
     if (isTaskDoneState(t) || t.status === "CANCELED") return null;
     if (t.companyId && (dormant.has(t.companyId) || exempt.has(t.companyId))) return null;
+    if (isClientHeld(t) || isAdministrativeClosure({ notes: t.notes ?? null })) return null;
+    if (t.type === "STORY" && t.stage === "DESIGN" && t.companyId) {
+      const co = coById.get(t.companyId);
+      const cycle = co ? cycleForBucket(co, t.year, t.month) : null;
+      if (cycle && todayStart < cycle.end.getTime()) return null;
+    }
     if (!isTaskLateState(t, today)) return null;
     return isBlocked(t) ? "waiting" : "late";
   };

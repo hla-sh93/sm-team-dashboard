@@ -168,7 +168,7 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
     expect(edit.workDate).toBe("2026-09-27");
   });
 
-  it("…ومنجز غير مثبّت **بعد** نشر قطعته الفعلي بيتقصّ على يوم نشر القطعة (كرت النشر)", () => {
+  it("[القائدة ١٣/١٠] …ومنجز غير مثبّت **بعد** نشر قطعته الفعلي ما بيتحرّك — ولا بأي مرساة (حالة عبادة ريل ٢: ٢٥/٨ كانت تنسحب لـ١٨/٨)", () => {
     const edit = run({
       shootFinishedAt: "2026-09-16",
       editWork: "2026-09-30",
@@ -177,7 +177,7 @@ describe("retimeEditsAfterActualShoot — توصيف تحريك المونتاج
       publishBoard: "DONE",
       publishDate: "2026-09-28",
     });
-    expect(edit.workDate).toBe("2026-09-17");
+    expect(edit.workDate).toBe("2026-09-30");
   });
 
   it("الحالة المتّسقة (تصوير ١٥/٩ → مونتاج ١٧/٩ → نشر ٢٠/٩) ما بتتحرّك، مثبّتة أو لا", () => {

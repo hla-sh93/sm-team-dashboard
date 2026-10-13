@@ -126,7 +126,7 @@ describe("إعادة تأريخ المونتاج بعد التصوير الفع�
     expect(edit.board).toBe("DONE");
   });
 
-  it("مونتاج منجز مؤرّخ قبل وجود المادة بينصلّح — هاد مستحيل مو واقع", () => {
+  it("[القائدة ١٣/١٠] مونتاج منجز مؤرّخ قبل تصويره ما بيتحرّك — التناقض بيتصلّح بحمولة بدليل تلغرام، مو بتخمين التوليد", () => {
     const edit = card({
       id: "e",
       stage: "EDIT",
@@ -137,7 +137,7 @@ describe("إعادة تأريخ المونتاج بعد التصوير الفع�
       finishedAt: new Date(2026, 7, 1),
     });
     retimeEditsAfterActualShoot([shoot(), edit], WEEKDAYS);
-    expect(edit.workDate! > "2026-08-03").toBe(true);
+    expect([edit.workDate, edit.readyDate]).toEqual(["2026-08-01", "2026-08-01"]);
   });
 
   it("والمونتاج المفتوح بيلحق التصوير الفعلي متل ما كان", () => {
@@ -153,7 +153,7 @@ describe("إعادة تأريخ المونتاج بعد التصوير الفع�
     expect(edit.workDate! > "2026-08-03").toBe(true);
   });
 
-  it("مونتاج قطعة منشورة مؤرّخ بعد نشرها بينحصر بيوم النشر (حالة استيراد حزيران)", () => {
+  it("[القائدة ١٣/١٠] مونتاج منجز لقطعة منشورة مؤرّخ بعد نشرها ما بيتحرّك — اليوم الحقيقي من الدليل", () => {
     const lateImportedShoot = shoot();
     lateImportedShoot.finishedAt = new Date(2026, 7, 20);
     const pub = card({
@@ -174,6 +174,16 @@ describe("إعادة تأريخ المونتاج بعد التصوير الفع�
       finishedAt: new Date(2026, 7, 20),
     });
     retimeEditsAfterActualShoot([lateImportedShoot, pub, edit], WEEKDAYS);
+    expect(edit.workDate).toBe("2026-08-20");
+  });
+
+  it("…أما مونتاج بيسكّره **هالتوليد** لأنّ قطعته انتشرت (بلا سجلّ) فبيتأرّخ — ما بعد يوم النشر", () => {
+    const pub = card({ id: "p", stage: "PUBLISH", board: "DONE", status: "PUBLISHED", publishDate: "2026-08-05" });
+    const edit = card({ id: "e", stage: "EDIT", board: "TODO", status: "NOT_STARTED", workDate: "2026-08-20", readyDate: "2026-08-20", publishDate: "2026-08-05" });
+    const lateShoot = shoot();
+    lateShoot.finishedAt = new Date(2026, 7, 20);
+    retimeEditsAfterActualShoot([lateShoot, pub, edit], WEEKDAYS);
+    expect(edit.board).toBe("DONE");
     expect(edit.workDate).toBe("2026-08-05");
   });
 });

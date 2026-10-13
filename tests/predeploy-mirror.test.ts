@@ -8,8 +8,10 @@
  * `regen-reality` (المنجز والمثبّت ما بيتغيّروا، والتوليد متكافئ — شغّليهن كمان):
  *   ١. كل منتج بالفريق البوت بيعرفه — بلا هوية تلغرام ملفاته ما بتسكّر كروته (D3).
  *   ٢. ولا شركة **شغّالة** عليها نصّ «سبب إعفاء» (قرار القائدة ١٣/١٠: الإعفاء = الإيقاف).
- *   ٣. أول توليد بعد النشر ما بيزحزح ولا نزلة تصوير **مرقت** (مراجعة نهائية ١٣/١٠)،
- *      ولا كرت منجز؛ وبيطبع كم كرت مفتوح غير مثبّت رح يتغيّر يومه — للعلم قبل النشر.
+ *   ٣. أول توليد بعد النشر ما بيزحزح ولا كرت منجز (بهوية القطعة — الصف بينعاد خلقه
+ *      بمعرّف جديد لما يتغيّر يومه)؛ وبيطبع كم كرت مفتوح غير مثبّت رح يتغيّر يومه، ونزلات
+ *      التصوير يلي يومها مرق وتزحزحت — **للعلم بس** (القائدة ١٣/١٠: «كلشي سابق ما تهتم
+ *      فيه، المهم من اليوم واللاحق، خطة شهر ١٠»).
  *   ٤. «ليش عنده هالقدّ بس؟» — لكل موظف مداوم اليوم: الطابور، المنجز اليوم، وكل كرت مفتوح
  *      مستبعَد **مع سببه** (محجوز ورا مين، مؤجَّل لأيمتى، أو تجاوز السعة). بيطبع بس.
  */
@@ -92,7 +94,11 @@ describe.skipIf(!scratch.available)("فحص ما قبل النشر — مرآة 
     const pastBefore = new Map(
       (await prisma.photoSession.findMany({ where: { shootDate: { lt: now } } })).map((s) => [sessionKey(s), day(s.shootDate)]),
     );
-    const tasksBefore = new Map((await prisma.task.findMany()).map((t) => [t.id, t]));
+    // هوية القطعة لا معرّف الصف: التوليد بيعيد خلق الصف بمعرّف جديد لما يتغيّر يومه، فالمقارنة
+    // بالمعرّف كانت تفوّت بالضبط الكرت يلي تحرّك (مونتاج عبادة ريل ٢، ١٣/١٠).
+    const pieceKey = (t: { id: string; companyId: string | null; type: string | null; pieceNo: number | null; stage: string | null; year: number; month: number; isAuto: boolean }) =>
+      t.isAuto && t.pieceNo != null && t.companyId ? `${t.companyId}|${t.type}|${t.pieceNo}|${t.stage}|${t.year}-${t.month}` : t.id;
+    const tasksBefore = new Map((await prisma.task.findMany()).map((t) => [pieceKey(t), t]));
 
     const buckets = await prisma.task.groupBy({ by: ["year", "month"], where: { isAuto: true }, orderBy: [{ year: "desc" }, { month: "desc" }] });
     const live = buckets.slice(0, 4); // آخر ٤ دلاء — يلي ممكن ينعاد توليدها
@@ -106,12 +112,14 @@ describe.skipIf(!scratch.available)("فحص ما قبل النشر — مرآة 
       const was = pastBefore.get(sessionKey(s));
       if (was && was !== day(s.shootDate)) movedPast.push(`${sessionKey(s)}: ${was} → ${day(s.shootDate)}`);
     }
-    expect(movedPast, "نزلات تصوير مرقت تزحزحت").toEqual([]);
+    console.log(`
+[predeploy] نزلات تصوير يومها مرق تزحزحت (للعلم — قرار القائدة ١٣/١٠): ${movedPast.length}`);
+    for (const line of movedPast) console.log(`  ${line}`);
 
     const doneChanged: string[] = [];
     const openMoved: string[] = [];
     for (const t of await prisma.task.findMany()) {
-      const was = tasksBefore.get(t.id);
+      const was = tasksBefore.get(pieceKey(t));
       if (!was) continue;
       const dates = (x: typeof t) => `${day(x.workDate)}|${day(x.readyDate)}|${day(x.publishDate)}`;
       if (was.board === "DONE") {

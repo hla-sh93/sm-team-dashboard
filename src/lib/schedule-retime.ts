@@ -132,25 +132,15 @@ export function retimeEditsAfterActualShoot(pipe: PipelineTask[], editorWorkDays
     const done = shotAt.get(t.pipelineKey);
     const out = pieceOut.get(t.pipelineKey) ?? null;
     if (!done && !inferredDone.has(t)) continue;
-    // المنجز **غير المثبّت** سجلّ واقع: تاريخه بيثبت ما دام صادقاً مع تواريخه هو —
-    // يوم التصوير الفعلي أو بعده، ومو بعد يوم النشر المسجّل عليه لقطعة انتشرت.
-    // بنصلّح بس المستحيل: مونتاج قبل وجود المادة، أو بعد النشر (استيراد حزيران
-    // أخد ختم يوم الاستيراد). المقارنة مع تواريخه هو عن قصد: «الواقع المسجّل بيصمد»
-    // (`regen-reality`) — تناقض قديم بين مراحل القطعة بيطلع بالفحص، ما بيتصلّح بصمت.
+    // المنجز **فعلاً** (مش المستنتج من النشر هون) سجلّ واقع — المحرّك **ما بيعيد
+    // تأريخه أبداً**، ولا حتى «تصحيح» لتناقض مع مراحل قطعته. القائدة (١٣/١٠): يوم
+    // الإنجاز الحقيقي من الدليل («بدك تشوف التلغرام وتراجع وقت الانجاز الفعلي») —
+    // التناقض بيطلع بالفحص (`regen-reality`) وبيتصلّح بحمولة بدليله، مو بتخمين التوليد.
+    // (صار: «يوم نشر القطعة» كمرساة سحب مونتاج عبادة ريل ٢ المنجز ٢٥/٨ → ١٨/٨، والملف
+    // `obada 2-8.mp4` وصل ١٥/٩.)
+    if (t.board === "DONE" && !inferredDone.has(t)) continue;
     const isPublished = publishedKeys.has(t.pipelineKey);
-    // يوم نشر **القطعة** (كرت نشرها)، مو تاريخ النشر القديم المنسوخ على كرت المونتاج: لما
-    // القائدة بتأجّل النشر (بيتثبّت كرت النشر بس) بيضل على المونتاج اليوم القديم، فمونتاج
-    // منجز ٢٧/٩ لقطعة انتشرت ٢٨/٩ كان ينسحب لـ١٧/٩ (مراجعة نهائية ١٣/١٠، RG-03).
-    const pubDay = out ?? t.publishDate ?? null;
-    if (
-      t.board === "DONE" &&
-      !inferredDone.has(t) &&
-      t.workDate &&
-      (!done || t.workDate >= isoOf(done)) &&
-      !(isPublished && pubDay && t.workDate > pubDay)
-    )
-      continue;
-    const ceiling = inferredDone.has(t) ? out : isPublished ? pubDay : null;
+    const ceiling = inferredDone.has(t) ? out : isPublished ? (out ?? t.publishDate ?? null) : null;
     let iso: string | null = null;
     if (done) {
       const d = new Date(done);

@@ -269,7 +269,7 @@ export function hasDeliveryEvidenceLine(notes: string | null): boolean {
 const CLIENT = /الزبون|العميل/;
 const HOLD = /بانتظار|موقوف|توقّف|توقف|أوقف/;
 
-function isClientHeld(t: ReportTask): boolean {
+export function isClientHeld(t: { notes?: string | null }): boolean {
   const n = t.notes ?? "";
   return CLIENT.test(n) && HOLD.test(n);
 }

@@ -153,15 +153,12 @@ describe("إعادة التوليد — انتقالات حالة الكرت ع�
       expect(c.board, `${c.stage} board`).toBe("DONE");
     }
     expect(day(after.production!.workDate)).toBe(day(closed.production!.workDate));
-    // المونتاج **مو** مجمَّد هون، وهاد مقصود بالكود (RG-06، تحذير — قرار قائدة):
-    // إقفال النشر سكّر التصوير والمونتاج بالتتابع (`completeProductionForPublishedTask`)
-    // بختم «هلّق» (ساعة الجهاز، بعد مواعيد أيلول ٢٠٢٦ دايماً). يوم المونتاج
-    // المخطّط ما هو سجلّ شغل، و`retimeEditsAfterActualShoot` بيقرأ ختم التصوير
-    // كيوم تصوير فعلي فبيعتبر المونتاج «قبل وجود المادة» (الاستثناء الموثّق
-    // برأس `schedule-retime.ts`) وبينقله لأول دوام بعد الختم — مقصوصاً على يوم
-    // نشر القطعة لأنها انتشرت. النتيجة صادقة الترتيب: تصوير ≤ مونتاج = نشر.
+    // المونتاج المسكّر بالتتابع **مجمَّد كمان** (القائدة ١٣/١٠): الكرت المنجز تاريخه سجلّ،
+    // والتوليد ما بيعيد تأريخه أبداً — يومه الحقيقي (لو مختلف) بيجي من الدليل بحمولة.
+    // الترتيب صادق: تصوير ≤ مونتاج ≤ نشر.
     expect(day(closed.edit!.workDate)! < plannedPublish).toBe(true);
-    expect(day(after.edit!.workDate)).toBe(plannedPublish);
+    expect(day(after.edit!.workDate)).toBe(day(closed.edit!.workDate));
+    expect(day(after.edit!.workDate)! <= plannedPublish).toBe(true);
     expect([after.edit!.board, after.edit!.status]).toEqual(["DONE", "READY"]);
     expect(after.edit!.finishedAt?.getTime()).toBe(closed.edit!.finishedAt!.getTime());
     expect(day(after.production!.workDate)! <= day(after.edit!.workDate)!).toBe(true);

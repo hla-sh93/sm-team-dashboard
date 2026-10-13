@@ -142,11 +142,12 @@ describe("اليوم المثبّت — البريف بيحترم موعد ال�
   const day = readFileSync("src/lib/daily-work.ts", "utf8");
   const konst = readFileSync("src/lib/constants.ts", "utf8");
 
-  it("الكرت المثبّت ليوم جاي ما بيدخل قائمة اليوم", () => {
+  it("موعد التصوير المثبّت ليوم جاي ما بيدخل قائمة اليوم — وباقي المراحل ما بتستنّى (§١٦)", () => {
     // ماجد طلع بالبريف «يصوّر المخبر اليوم» وموعد المخبر الأربعاء، وعبادة
-    // ومانغو (موعدهن اليوم) ما ظهروا — لأن الفرز كان بيعرف «بدّل» وبس.
+    // ومانغو (موعدهن اليوم) ما ظهروا — لأن الفرز كان بيعرف «بدّل» وبس. التصوير
+    // موعد زبون فبيستنّى يومه؛ التصميم والمونتاج بينسحبوا لقدّام (القائدة ١٣/١٠).
     expect(day).toMatch(/function fixedDayISO/);
-    expect(day).toMatch(/manualDayISO\(task\) \?\? \(task\.isPinned && task\.workDate/);
+    expect(day).toMatch(/manualDayISO\(task\) \?\?\s*\(task\.isPinned && task\.workDate && task\.stage === "SHOOT"/);
     expect(day).not.toMatch(/const md = manualDayISO\(task\);/);
   });
 
