@@ -176,7 +176,12 @@ export function parseAssetName(text: string | null | undefined): ParsedAssetName
 
   // A carousel is ONE post split across slides: «carousel 03» is the slide, not
   // the piece. Pull it out first so it can never be read as a piece number.
-  const slide = base.match(/\b(?:carousel|slide|كاروسيل|شريحة)\s*[-_]?\s*(\d{1,3})\b/i);
+  // الرقم بعد الكلمة شريحة **بس** لما بعده «شهر-قطعة» كاملين («carousel 01-8-2» سابين،
+  // «Chocolate Brownie-carousel 01-8-1»). «mango-carousel-8-2» (بلا رقم شريحة) هي بوست
+  // 8-2 نفسه — كانت تنقرا «شريحة ٨ من قطعة ٢ بلا شهر» (القائدة ١٣/١٠).
+  const slide = base.match(
+    /\b(?:carousel|slide|كاروسيل|شريحة)\s*[-_]?\s*(\d{1,3})(?=\s*-\s*\d{1,2}\s*-\s*\d{1,3}(?!\d))/i,
+  );
   // …وتسمية الفريق بلا كلمة: «Phoenitech-post-10-2-1…7» = شهر-قطعة-**شريحة** (فحص
   // ١٢/١٠، TR-14). الرقم التالت بآخر الاسم بعد زوج «شهر-قطعة» هو الشريحة.
   // الشهر ١–١٢ والشريحة ١–٢٠ (حدّ إنستغرام)، فتاريخ متل «2026-08-10» ما بينقرا شريحة.

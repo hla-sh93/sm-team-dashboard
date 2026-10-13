@@ -115,7 +115,9 @@ export function producedCompanyPlanCount(
       : !!piece.production && isTaskDoneState(piece.production);
     const finished = producedOK || (piece.publish && isTaskDoneState(piece.publish));
     if (!finished) continue;
-    done += piece.production?.quantity ?? piece.publish?.quantity ?? 1;
+    // بالقطع، مو بالشرائح: كاروسيل ٧ شرائح = بوست واحد من الخطة (القائدة ١٣/١٠). كمية كرت
+    // التصميم = الشرائح (حمل المصمّم)؛ كرت النشر هو عدد القطع.
+    done += piece.publish?.quantity ?? 1;
   }
 
   return done;

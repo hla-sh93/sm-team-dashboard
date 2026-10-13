@@ -56,7 +56,9 @@ export function countByCompany(list: Task[], coName: NameOf, max = 4): string {
     if (!label || label === "—") continue;
     const kinds = byLabel.get(label) ?? new Map<string, number>();
     const kind = t.companyId ? kindWordOf(t) : "";
-    kinds.set(kind, (kinds.get(kind) ?? 0) + Math.max(1, t.quantity ?? 1));
+    // كرت = قطعة وحدة. كاروسيل ٧ شرائح بوست واحد («10-1-1…10-1-7» = بوست 10-1، القائدة
+    // ١٣/١٠) — `quantity` على كرت التصميم عدد الشرائح لحمل المصمّم، مو عدد قطع.
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
     byLabel.set(label, kinds);
   }
   const total = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
