@@ -349,3 +349,35 @@ describe("[PU-02 · مراجعة F–H] منجز بلا date موعده بالم
     expect(des.completedAt.getTime()).toBeLessThanOrEqual(pub.completedAt.getTime());
   });
 });
+
+describe("[PU-13 · مراجعة F–H] سطر adhocStates بلا stage بيتطبّع بمرحلة الكرت يلي طابقه", () => {
+  beforeAll(async () => {
+    if (skip()) return;
+    const adhoc = (id: string, stage: string, title: string) => ({
+      id: key(id), kind: "ADHOC", stage, title, status: "NOT_STARTED", board: "TODO", quantity: 1, isAuto: false,
+      year: Y, month: M, companyId: A.id, assigneeId: designerId, hours: 1,
+      workDate: fromISODate("2026-09-10"), readyDate: fromISODate("2026-09-10"), publishDate: fromISODate("2026-09-12"),
+    });
+    await prisma.task.createMany({
+      data: [adhoc("adh_design", "DESIGN", `تصميم إضافي ${uniq}`), adhoc("adh_publish", "PUBLISH", `نشر إضافي ${uniq}`)],
+    });
+  });
+
+  it("«PUBLISHED» على كرت تصميم → جاهز (مو منشور)؛ «READY» على كرت نشر → منشور بيوم النشر", async () => {
+    if (skip()) return;
+    const r = await apply(payload({
+      adhocStates: [
+        { title: `تصميم إضافي ${uniq}`, status: "PUBLISHED", date: "2026-09-10", evidence: `${EV} بلا مرحلة ١` },
+        { title: `نشر إضافي ${uniq}`, status: "READY", date: "2026-09-12", evidence: `${EV} بلا مرحلة ٢` },
+      ],
+    }));
+    expect(r.ok, r.error).toBe(true);
+    const design = await prisma.task.findUnique({ where: { id: key("adh_design") } });
+    const publish = await prisma.task.findUnique({ where: { id: key("adh_publish") } });
+    expect(design.status).toBe("READY");
+    expect(publish.status).toBe("PUBLISHED");
+    expect(toISODate(publish.publishDate)).toBe("2026-09-12");
+    // يوم الشغل تبع كرت النشر ما بيتحرّك على تاريخ النشر — التاريخ للنشر.
+    expect(toISODate(publish.workDate)).toBe("2026-09-10");
+  });
+});

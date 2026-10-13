@@ -69,6 +69,22 @@ const card = (slug: string, extra: Record<string, unknown> = {}) => ({
 });
 
 describe.skipIf(!scratch.available)("حرّاس الحمولات — المرحلة H", () => {
+  it("[PU-24 · مراجعة F–H] «إرجاع المسكَّر بالغلط» لشركة مؤرشفة مرفوض — بيفتح شغل متل أي كرت مفتوح", async () => {
+    const r = await apply({
+      companyId: ids.archived,
+      year: 2026,
+      month: 8,
+      closePreviousOpenTasks: {
+        decisionDate: "2026-09-20",
+        beforeDate: "2026-09-01",
+        restoreMistakenClosures: [{ type: "POST", pieceNo: 1, stage: "DESIGN", status: "NOT_STARTED" }],
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toMatch(/مؤرشفة/);
+    expect((r as { error: string }).error).toContain("POST#1 DESIGN");
+  });
+
   it("[PU-24] مؤرشفة أو موقوفة: كرت مفتوح جديد مرفوض بلا كتابة — والكرت المنجز (تصحيح تاريخي) مسموح", async () => {
     for (const companyId of [ids.archived, ids.paused]) {
       const r = await apply({ companyId, year: 2026, month: 8, adhocCards: [card(`open-${companyId.slice(-4)}`)] });

@@ -369,7 +369,7 @@ export default function CompaniesClient({
             result.updatedAdhoc ? `${result.updatedAdhoc} كرتاً خارج الخطة` : "",
             result.createdAdhocCards ? `${result.createdAdhocCards} كرتاً جديداً خارج الخطة` : "",
             result.updatedAdhocCards ? `${result.updatedAdhocCards} كرتاً خارج الخطة معاد توقيته` : "",
-            result.unchangedAdhocCards ? `${result.unchangedAdhocCards} كرتاً منجزاً دون تغيير` : "",
+            result.unchangedAdhocCards ? `${result.unchangedAdhocCards} كرتاً خارج الخطة دون تغيير` : "",
             result.createdCourseCards ? `${result.createdCourseCards} كرت دورة جديداً` : "",
             result.updatedCourseCards ? `${result.updatedCourseCards} كرت دورة معاد توقيته` : "",
             result.closedPreviousTasks ? `إغلاق ${result.closedPreviousTasks} مهمة سابقة` : "",

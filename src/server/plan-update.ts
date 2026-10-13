@@ -899,6 +899,10 @@ async function applyPlanUpdateOnce(input: unknown) {
           .filter((spec) => spec.status && !isDoneStatus(spec.status, spec.stage))
           .map((spec) => `«${spec.title}»`),
         ...(data.courses ? ["كروت الدورات"] : []),
+        // «إرجاع المسكَّر بالغلط» بيرجّع الكرت NOT_STARTED — فتح شغل متل غيره (مراجعة F–H).
+        ...(data.closePreviousOpenTasks?.restoreMistakenClosures ?? []).map(
+          (spec) => `${spec.type}#${spec.pieceNo} ${spec.stage}`,
+        ),
       ];
       if (opening.length) {
         return {
@@ -1015,7 +1019,13 @@ async function applyPlanUpdateOnce(input: unknown) {
           continue;
         }
         claimed.add(hits[0].id);
-        adhocResolved.push({ spec, task: hits[0] });
+        // سطر بلا `stage` بياخد مرحلة الكرت يلي طابقه — التطبيع («READY» على النشر =
+        // «PUBLISHED»)، الطوابع، وإقفال الإنتاج كلهم بيقروا المرحلة؛ بلاها كان «PUBLISHED»
+        // ينكتب على كرت تصميم (مراجعة F–H، PU-13).
+        const effective = spec.stage
+          ? spec
+          : { ...spec, stage: (hits[0].stage ?? undefined) as (typeof spec)["stage"] };
+        adhocResolved.push({ spec: effective, task: hits[0] });
       }
       if (problems.length > 0) {
         return {
@@ -1592,7 +1602,7 @@ async function applyPlanUpdateOnce(input: unknown) {
     // صارت فعلاً مع ريل Siizen ١ وريل التوظيف ٦.
     // بتنفّذ **بعد** المعاملة: القراءة بدها الحالة الجديدة، والإقفال بيتختم
     // بيوم النشر لا بيوم اليوم.
-    for (const spec of [...stateSpecs, ...adhocSpecs]) {
+    for (const spec of [...stateSpecs, ...adhocResolved.map((a) => a.spec)]) {
       // الحالة **بعد** التطبيع: «READY» على النشر = «PUBLISHED» (PU-06).
       if (spec.stage !== "PUBLISH" || !spec.status) continue;
       if (normalizeStatusForStage(spec.status, spec.stage) !== "PUBLISHED") continue;
