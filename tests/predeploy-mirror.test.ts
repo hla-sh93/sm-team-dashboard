@@ -10,6 +10,8 @@
  *   ٢. ولا شركة **شغّالة** عليها نصّ «سبب إعفاء» (قرار القائدة ١٣/١٠: الإعفاء = الإيقاف).
  *   ٣. أول توليد بعد النشر ما بيزحزح ولا نزلة تصوير **مرقت** (مراجعة نهائية ١٣/١٠)،
  *      ولا كرت منجز؛ وبيطبع كم كرت مفتوح غير مثبّت رح يتغيّر يومه — للعلم قبل النشر.
+ *   ٤. «ليش عنده هالقدّ بس؟» — لكل موظف مداوم اليوم: الطابور، المنجز اليوم، وكل كرت مفتوح
+ *      مستبعَد **مع سببه** (محجوز ورا مين، مؤجَّل لأيمتى، أو تجاوز السعة). بيطبع بس.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
@@ -40,6 +42,9 @@ type Prisma = import("@prisma/client").PrismaClient;
 let prisma: Prisma;
 let gen: (y: number, m: number, only: string | null) => Promise<{ ok: boolean; error?: string }>;
 let teamDayStart: () => Date;
+let daily: typeof import("@/lib/daily-work");
+let live: typeof import("@/lib/live-tasks");
+let dates: typeof import("@/lib/dates");
 
 const PRODUCER = /مصمم|designer|مصور|مصوّر|photo|مونت|edit|ناشر|publish|ليدر|lead|قائد|كات|writer/i;
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "∅");
@@ -49,6 +54,9 @@ describe.skipIf(!scratch.available)("فحص ما قبل النشر — مرآة 
     prisma = (await import("@/lib/db")).prisma;
     ({ generateScheduleInternal: gen } = (await import("@/server/schedule-engine")) as never);
     ({ teamDayStart } = await import("@/lib/team-day"));
+    daily = await import("@/lib/daily-work");
+    live = await import("@/lib/live-tasks");
+    dates = await import("@/lib/dates");
   }, 60_000);
 
   afterAll(async () => {
@@ -117,4 +125,42 @@ describe.skipIf(!scratch.available)("فحص ما قبل النشر — مرآة 
     console.log(`\n[predeploy] كروت مفتوحة غير مثبّتة رح يتغيّر يومها بأول توليد: ${openMoved.length}`);
     for (const line of openMoved.slice(0, 40)) console.log(`  ${line}`);
   }, 300_000);
+
+  it("٤. تشخيص «مهام اليوم» لكل موظف — بيطبع الطابور والمستبعَد وسببه (بلا تأكيدات)", async () => {
+    const { teamToday } = await import("@/lib/team-day");
+    const today = teamToday();
+    const todayISO = dates.toISODate(today);
+    const tasks = await live.loadLiveTasks(today.getFullYear(), today.getMonth(), today);
+    const companies = await prisma.company.findMany();
+    const people = await prisma.employee.findMany({ where: { isScheduled: true } });
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "—";
+    const label = (t: (typeof tasks)[number]) =>
+      `${coName(t.companyId)} ${t.type ?? t.kind} ${t.pieceNo != null ? `#${t.pieceNo}` : ""} ${t.stage ?? ""} ` +
+      `[q=${t.quantity ?? 1} work=${t.workDate ? dates.toISODate(t.workDate) : "∅"} ready=${t.readyDate ? dates.toISODate(t.readyDate) : "∅"}]`;
+    const lines: string[] = [`\n[predeploy] مهام اليوم ${todayISO}`];
+    for (const emp of people) {
+      const work = daily.selectDailyWork({ employee: emp as never, tasks: tasks as never, allTasks: tasks as never, companies: companies as never, today });
+      const held = daily.makeHeldReason(tasks as never, todayISO);
+      const queued = new Set(work.queue.map((t) => t.id));
+      const open = tasks.filter((t) => t.assigneeId === emp.id && !daily.isFinishedOnDay(t as never, todayISO) && t.status !== "CANCELED" && !(t.board === "DONE"));
+      lines.push(`\n${emp.name} (${emp.role}) rates=${emp.rates ?? "default"} — طابور ${work.queue.length} · منجز اليوم ${work.doneToday.length} · مفتوح ${open.length}`);
+      for (const t of work.queue) lines.push(`  ✓ ${label(t as never)} effort=${daily.dailyTaskEffortDays(emp as never, t as never).toFixed(2)}`);
+      for (const t of open) {
+        if (queued.has(t.id)) continue;
+        const h = held(t as never);
+        const why = h?.blockedBy
+          ? `محجوز ورا ${label(byId.get(h.blockedBy.id) as never ?? h.blockedBy as never)}`
+          : h?.parkedUntil
+            ? `مؤجَّل لـ${h.parkedUntil}`
+            : `تجاوز السعة (effort=${daily.dailyTaskEffortDays(emp as never, t as never).toFixed(2)})`;
+        lines.push(`  ✗ ${label(t as never)} — ${why}`);
+      }
+    }
+    // vitest ما بيطبع console بالتقرير الافتراضي دايماً — التقرير بيروح لملف كمان.
+    const { writeFileSync } = await import("node:fs");
+    const out = "predeploy-today.log";
+    writeFileSync(out, lines.join("\n") + "\n");
+    process.stdout.write(lines.join("\n") + `\n[predeploy] التقرير محفوظ بـ${out}\n`);
+  }, 120_000);
 });

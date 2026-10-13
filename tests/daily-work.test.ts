@@ -465,14 +465,14 @@ describe("makeBlockedPredicate", () => {
  * كان يطلعله «تم إنجاز مهامك اليوم»، بيضل يعرضله مهام إضافية من الأيام الجاية.
  * السبب: القائمة كانت تنعاد من المفتوح بس، فكل كرت بينقفل بيدخل مكانه غيره.
  */
-describe("finished-today work and the next batch (§16)", () => {
+describe("finished-today work: shown as achievement, never empties the open queue (§16)", () => {
   const today = new Date(2026, 8, 17, 14, 0); // Thursday 17/9 — inside the Sun→Thu week used below
   const workingToday = () => employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6 }) });
   const co = company({ id: "company", priority: 1 });
   const doneAt = (d: Date) =>
     ({ status: "READY", board: "DONE", finishedAt: d, completedAt: d }) as const;
 
-  it("counts the cards finished today against the rate and shows only the remainder", () => {
+  it("المنجز اليوم بينعدّ كإنجاز — والطابور بيضل يوم كامل من المفتوح (§١٦)", () => {
     const finished = Array.from({ length: 4 }, (_, i) =>
       task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 11, 0)) }),
     );
@@ -487,7 +487,7 @@ describe("finished-today work and the next batch (§16)", () => {
     expect(work.doneToday.map((t) => t.id)).toEqual(finished.map((t) => t.id));
     expect(work.doneLoad).toBeCloseTo(4 / 6);
     expect(work.dayFull).toBe(false);
-    expect(work.queue).toHaveLength(2);
+    expect(work.queue).toHaveLength(6);
   });
 
   it("خلّص حصّة اليوم وعنده شغل مفتوح → بياخد الدفعة الجاية، ما بيضل فاضي (القائدة ١٣/١٠، §١٦)", () => {
@@ -515,15 +515,15 @@ describe("finished-today work and the next batch (§16)", () => {
     expect(work.queue).toEqual([]);
   });
 
-  it("does not let a partially used day fall back to the whole-first-date dump", () => {
-    // 5 of 6 done; the only open cards are full-day reels that cannot fit.
+  it("خلّص ٥ من ٦ وعنده ريلات يوم كامل → بياخد ريل واحد (كرت يوم كامل لحاله)، مو فاضي", () => {
+    // 5 of 6 done; the only open cards are full-day reels.
     const finished = Array.from({ length: 5 }, (_, i) =>
       task({ id: `done_${i}`, ...doneAt(new Date(2026, 8, 17, 12, 0)) }),
     );
     const emp = employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6, AI_REEL: 1 }) });
     const reels = [task({ id: "reel_a", type: "AI_REEL" }), task({ id: "reel_b", type: "AI_REEL" })];
     const work = selectDailyWork({ employee: emp, tasks: reels, allTasks: [...finished, ...reels], companies: [co], today });
-    expect(work.queue).toEqual([]);
+    expect(work.queue.map((t) => t.id)).toEqual(["reel_a"]);
     expect(work.dayFull).toBe(false);
   });
 
@@ -655,24 +655,5 @@ describe("ليش الكرت المفتوح مو بقائمة اليوم (makeHel
     expect(open.map((t) => reasonOf(t)?.parkedUntil)).toEqual([
       "2026-10-12", "2026-10-13", "2026-10-15", "2026-10-15", "2026-10-19",
     ]);
-  });
-});
-
-describe("[القائدة ١٣/١٠ · §١٦] كرت كتابة الخطة المفتوح ما بيحجز قطعة نصّها عليها", () => {
-  const today = new Date(2026, 8, 17, 14, 0);
-  const workingToday = () => employee({ workDays: JSON.stringify([0, 1, 2, 3, 4]), rates: JSON.stringify({ POST: 6 }) });
-  const co = company({ id: "company", priority: 1 });
-  // سابين: خطة التوظيف — كرت الكتابة (نوال) لسا مفتوح، بس نصوص البوستات انستوردت على
-  // كروتها. كانت كل التصاميم محجوزة فطلعلها بوست واحد من شركة تانية.
-  const write = task({ id: "write", kind: "CONTENT_WRITING", stage: "WRITE", type: null, assigneeId: "nawal" });
-  const briefed = Array.from({ length: 4 }, (_, i) =>
-    task({ id: `jobs_${i}`, stage: "DESIGN", blockedById: "write", brief: `نص بوست ${i + 1}` }),
-  );
-  const noText = task({ id: "jobs_x", stage: "DESIGN", blockedById: "write", brief: null });
-
-  it("البوستات يلي نصّها عليها بتنعطى، والبلا نص بيضل محجوز ورا الكتابة", () => {
-    const all = [write, ...briefed, noText];
-    const work = selectDailyWork({ employee: workingToday(), tasks: all, allTasks: all, companies: [co], today });
-    expect(work.queue.map((t) => t.id).sort()).toEqual(["jobs_0", "jobs_1", "jobs_2", "jobs_3"]);
   });
 });

@@ -56,3 +56,5 @@ backups/pre-*.json
 backups/dev-*.db
 .tmp/
 scripts/tmp/
+# تقرير تشخيص «مهام اليوم» من فحص ما قبل النشر (محلي)
+predeploy-today.log
