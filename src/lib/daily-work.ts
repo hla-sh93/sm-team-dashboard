@@ -57,10 +57,21 @@ function fixedDayISO(
   task: Pick<Task, "manualDay" | "isPinned" | "workDate" | "stage" | "isAuto">,
 ): string | null {
   return (
+    leadDayISO(task) ??
+    (task.isPinned && task.workDate && !task.isAuto ? dateISO(task.workDate) : null)
+  );
+}
+
+/**
+ * يوم **الصدارة** — «بدّل» أو موعد تصوير: بيومه الكرت بيتصدّر القائمة فوق الأولوية
+ * والاستحقاق. يوم بداية المهمة الإضافية **بيمنع البداية قبله بس** وما بيصدّر: صدارته
+ * قدّمت «إطلاق ميزة Featured Job» (تسليم ٢١/١٠) على بوست التوظيف 10-2 المستحق ١٤/١٠
+ * وطلّعت 10-2·3·4 من يوم سابين (فحص ما بعد النشر ١٣/١٠).
+ */
+function leadDayISO(task: Pick<Task, "manualDay" | "isPinned" | "workDate" | "stage">): string | null {
+  return (
     manualDayISO(task) ??
-    (task.isPinned && task.workDate && (task.stage === "SHOOT" || !task.isAuto)
-      ? dateISO(task.workDate)
-      : null)
+    (task.isPinned && task.workDate && task.stage === "SHOOT" ? dateISO(task.workDate) : null)
   );
 }
 
@@ -158,7 +169,7 @@ export function compareDailyWorkTasks(
   // «بدّل» tops the person's queue, regardless of priority/deadline. Only bites
   // on its own day, so it silently expires afterwards.
   const manualTodayRank =
-    Number(fixedDayISO(a) !== todayISO) - Number(fixedDayISO(b) !== todayISO);
+    Number(leadDayISO(a) !== todayISO) - Number(leadDayISO(b) !== todayISO);
   if (manualTodayRank !== 0) return manualTodayRank;
 
   const activeRank = Number(!isActive(a)) - Number(!isActive(b));

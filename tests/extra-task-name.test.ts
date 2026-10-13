@@ -107,6 +107,18 @@ describe("المهمة الإضافية ما بتبلّش قبل يوم بداي
     expect(selectDailyWork({ employee: sabine, tasks: [post], companies: [], today }).queue.map((t) => t.id)).toEqual(["post"]);
   });
 
+  it("…ويوم البداية بيمنع البداية بس، ما بيصدّر: بوست خطة مستحق اليوم بيسبق إضافية تسليمها بعدين", () => {
+    // فحص ما بعد النشر ١٣/١٠: «إطلاق ميزة Featured Job» (مثبّتة ١٤/١٠، تسليم ٢١/١٠) كانت
+    // تتصدّر يوم سابين وتطلّع بوست التوظيف 10-2 المستحق ١٤/١٠.
+    const featured = card({ id: "featured", priority: "NORMAL", hours: 3, readyDate: new Date(2026, 9, 21) });
+    const post = card({
+      id: "post-10-2", kind: "CONTENT", type: "POST", stage: "DESIGN", isAuto: true, pieceNo: 2, hours: 0,
+      priority: "NORMAL", workDate: new Date(2026, 9, 13), readyDate: new Date(2026, 9, 14), manualDay: new Date(2026, 9, 13),
+    });
+    const q = selectDailyWork({ employee: sabine, tasks: [featured, post], companies: [], today: new Date(2026, 9, 14) }).queue;
+    expect(q.map((t) => t.id)).toEqual(["post-10-2", "featured"]);
+  });
+
   it("…والإضافية بلا قفل (يومها من المحرّك) ما بتستنّى", () => {
     const loose = card({ id: "loose", isPinned: false });
     expect(selectDailyWork({ employee: sabine, tasks: [loose], companies: [], today }).queue.map((t) => t.id)).toEqual(["loose"]);

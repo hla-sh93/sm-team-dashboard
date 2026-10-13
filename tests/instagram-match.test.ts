@@ -147,13 +147,14 @@ describe("اليوم المثبّت — البريف بيحترم موعد ال�
     // ومانغو (موعدهن اليوم) ما ظهروا — لأن الفرز كان بيعرف «بدّل» وبس. التصوير
     // موعد زبون فبيستنّى يومه؛ التصميم والمونتاج بينسحبوا لقدّام (القائدة ١٣/١٠).
     expect(day).toMatch(/function fixedDayISO/);
-    // …والمهمة الإضافية المثبّتة على يوم بدايتها كمان (القائدة ١٣/١٠: «هيي بكرا بتبدأ مو اليوم»).
-    expect(day).toMatch(/manualDayISO\(task\) \?\?\s*\(task\.isPinned && task\.workDate && \(task\.stage === "SHOOT" \|\| !task\.isAuto\)/);
+    // يوم الصدارة: «بدّل» أو موعد تصوير. والمهمة الإضافية المثبّتة بتستنّى يومها بس (القائدة ١٣/١٠).
+    expect(day).toMatch(/manualDayISO\(task\) \?\?\s*\(task\.isPinned && task\.workDate && task\.stage === "SHOOT"/);
+    expect(day).toMatch(/leadDayISO\(task\) \?\?\s*\(task\.isPinned && task\.workDate && !task\.isAuto/);
     expect(day).not.toMatch(/const md = manualDayISO\(task\);/);
   });
 
   it("والفرز بيصدّر المثبّت لليوم", () => {
-    expect(day).toMatch(/fixedDayISO\(a\) !== todayISO/);
+    expect(day).toMatch(/leadDayISO\(a\) !== todayISO/);
   });
 
   it("والمثبّت لبكرا مو متأخر", () => {
