@@ -713,11 +713,21 @@ export default function OverviewClient({
                         )}
                       </div>
                     ))}
-                    {activeGroup && activeGroup.doneCards.length > 0 && (
-                      <p className="text-[11px] text-success mt-1">
-                        أُنجز اليوم: {activeGroup.doneCards.length} بطاقة.
-                      </p>
-                    )}
+                    {/* المنجز اليوم بيضل بالقائمة مشطوب (القائدة ١٣/١٠: «بدي متل السابق تظهر
+                        المهمة ومشخوطة») — مو سطر عدد «أُنجز اليوم: N بطاقة». */}
+                    {activeGroup?.doneCards.map((card) => (
+                      <div
+                        key={`done-${card.key}`}
+                        title="أُنجز اليوم"
+                        className="flex items-center gap-2 min-w-0 bg-bg-elev rounded-md px-2.5 py-2 border border-border-soft opacity-70"
+                        style={{ borderRight: `3px solid ${taskColor(card.repr.kind, card.repr.type)}` }}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                        <span className="text-xs truncate flex-1 line-through">
+                          {cardLabelFor(card.repr, card.count, reelNum, coName)}
+                        </span>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>
