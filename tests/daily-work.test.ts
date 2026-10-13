@@ -286,6 +286,67 @@ describe("daily work queue", () => {
     expect(selected.map((item) => item.id)).toEqual(["publish_1", "publish_2"]);
   });
 
+  it("[عمر ١٣/١٠] كرت إنتاج شغّال بيملّي اليوم ما بيخبّي النشر المستحق — اليوم والمتأخر، مثبّت أو لأ", () => {
+    const publisher = employee({ id: "publisher", role: "publisher", rates: null });
+    const companies = [company({ id: "company", priority: 1 })];
+    const today = new Date(2026, 9, 13); // الثلاثاء
+    const pub = (id: string, day: number, over: Record<string, unknown> = {}) =>
+      task({
+        id,
+        kind: "PUBLISH",
+        stage: "PUBLISH",
+        assigneeId: "publisher",
+        publishDate: new Date(2026, 9, day),
+        readyDate: new Date(2026, 9, day),
+        workDate: new Date(2026, 9, day),
+        ...over,
+      });
+    const followUp = task({
+      id: "follow-up",
+      kind: "ADHOC",
+      type: null,
+      stage: null,
+      hours: 8, // يوم كامل
+      board: "DOING",
+      status: "IN_PROGRESS",
+      startedAt: new Date(2026, 4, 30),
+      assigneeId: "publisher",
+      workDate: new Date(2026, 4, 30),
+      readyDate: null,
+      publishDate: null,
+    });
+    const tasks = [
+      followUp,
+      pub("today-pinned", 13, { isPinned: true }),
+      pub("today", 13),
+      pub("overdue", 5, { isPinned: true }),
+      pub("tomorrow", 14, { isPinned: true }),
+    ];
+    const ids = selectDailyWorkTasks({ employee: publisher, tasks, companies, today }).map((t) => t.id);
+    expect(ids).toContain("follow-up");
+    expect(ids).toEqual(expect.arrayContaining(["today-pinned", "today", "overdue"]));
+    expect(ids).not.toContain("tomorrow");
+  });
+
+  it("…وبعد ما امتلى اليوم ما بيدخل كرت إنتاج تاني (السعة متل ما هي)", () => {
+    const designer = employee({ rates: JSON.stringify({ POST: 2 }) });
+    const companies = [company({ id: "company", priority: 1 })];
+    // البوستات متأخرة (١–٣/١٠) فبتترتّب قبل النشر — اليوم بيمتلي قبل ما يوصل الدور عليه.
+    const posts = [1, 2, 3].map((n) =>
+      task({ id: `post-${n}`, workDate: new Date(2026, 9, n), readyDate: new Date(2026, 9, n), publishDate: new Date(2026, 9, 20) }),
+    );
+    const due = task({
+      id: "publish",
+      kind: "PUBLISH",
+      stage: "PUBLISH",
+      publishDate: new Date(2026, 9, 13),
+      readyDate: new Date(2026, 9, 13),
+      workDate: new Date(2026, 9, 13),
+    });
+    const ids = selectDailyWorkTasks({ employee: designer, tasks: [...posts, due], companies, today: new Date(2026, 9, 13) }).map((t) => t.id);
+    expect(ids).toEqual(["post-1", "post-2", "publish"]);
+  });
+
   it("promotes a manualDay==today card above higher-priority/earlier work (بدّل)", () => {
     const designer = employee();
     const companies = [company({ id: "company", priority: 1 })];

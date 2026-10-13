@@ -353,6 +353,12 @@ export function selectDailyWork({
   // لحاله (`doneToday`/`dayFull`) كإنجاز، مو كخصم من الطابور.
   let usedDays = 0;
   let dayStarted = false;
+  // اليوم امتلى بالإنتاج — بس المرور **بيكمّل** لآخر القائمة: كروت النشر المستحقّة
+  // يلي ترتيبها بعد كرت بيملّي اليوم لازم توصل. كانت `break` توقفه، فعمر (١٣/١٠، مرآة
+  // الإنتاج) طلعلو كرت «متابعة مع العملاء» الشغّال بس، و١٥ نشر مستحقّ (منها تلات
+  // متأخرة من ٥ و٨/١٠) ما وصلوا قائمته — كانت توصل بس كروت نشر مثبّتة على اليوم نفسه
+  // لأنها بتترتّب أول، وبعد §١٦ (اليوم المثبّت ما بيرتّب غير التصوير) ولا وحدة.
+  let dayClosed = false;
 
   for (const task of open) {
     const effortDays = dailyTaskEffortDays(employee, task, scopeCounts);
@@ -365,6 +371,7 @@ export function selectDailyWork({
       continue;
     }
 
+    if (dayClosed) continue;
     const exclusive = isExclusiveDayTask(task, effortDays);
     if (dayStarted && exclusive) continue;
     if (dayStarted && usedDays + effortDays > 1 + EPS) continue;
@@ -372,7 +379,7 @@ export function selectDailyWork({
     selected.push(task);
     usedDays += effortDays;
     dayStarted = true;
-    if (exclusive || usedDays >= 1 - EPS) break;
+    if (exclusive || usedDays >= 1 - EPS) dayClosed = true;
   }
 
   if (selected.length > 0 || open.length === 0 || doneToday.length > 0) {
