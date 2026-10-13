@@ -824,6 +824,14 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-10-13 (١١:٠٠) — Claude — نسخة GitHub `hla-sh93/sm-team-dashboard` **عامّة** · **[VERIFIED] — بانتظار قرار المستخدمة؛ ولا تغيير كود**
+
+- **[VERIFIED — GitHub API بلا مصادقة]** `hla-sh93/sm-team-dashboard`: `visibility: public`، انعمل `2026-10-13T07:13:52Z`، الفرع الافتراضي `main@c66fa7f`. عليه ٧ فروع (main · feature/finance · feature/period-reports · feature/social-publishing-schedule · fix/publish-mix · codex/qa-deep-stabilization · فرع الجلسة).
+- **[VERIFIED — git]** التاريخ العام فيه: `backups/local-db-snapshot.json` (مفاتيح `authSecret`/`adminPasswordHash` بالتاريخ — SA-02، ومفاتيح `salary` ×١١ و`contractValue` ×١٥)، `backups/dev.db.pre-fixes-2026-07-08.bak` (نسخة قاعدة)، ملفات خطط العملاء `.docx`، وتقرير الفحص العميق بثغرات التطبيق الحيّ (SA-01…). `.env.bak-20260911` فيه بس `DATABASE_URL` لملف SQLite محلي — مو سرّ.
+- **[VERIFIED — فحص أنماط]** ولا توكن بوت تلغرام، ولا رابط Postgres/Neon بكلمة سر حقيقية، ولا `ghp_`/`npg_` بكل الـ٣٧٧ كوميت (أنماط بس — مو ضمان كامل).
+- **التوصية:** تحويل المستودع لخاص فوراً (Settings → Danger Zone → Change visibility)، ثم SA-02 بإيد القائدة: `AUTH_SECRET` جديد على Vercel + كلمة مرور أدمن جديدة. Claude ما عنده وصول GitHub بهالجلسة فما بيقدر يغيّر الرؤية.
+- **ما اندفع:** هالمدخل محلي لحتى يصير المستودع خاص.
+
 ### 2026-10-13 (١٠:٣٠) — Claude — طلب مكرَّر: إصلاح «رفع عدد القطع» بـ`applyPipelinePreservation` · **ولا تغيير كود — تحقّق بس؛ مدخل التوثيق هاد محلي**
 
 - **الطلب:** نفس طلب ١١/١٠ (مساءً) حرفياً: الاحتياطان (`pipelineKey|stage` و`company|type|publishDate|stage`) يتخطّوا الصف يلي هويّته محجوزة لكرت مرقّم، + اختبارات.
