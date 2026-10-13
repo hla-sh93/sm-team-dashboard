@@ -410,6 +410,18 @@ export async function correctLatestRenewal(companyId: string, startDateISO: stri
             "تَصحّح تاريخ التجديد وبُنيت الدورة الجديدة، لكن بقيت كروت الدورة الخاطئة وتحتاج إعادة المحاولة لتنظيفها.",
         };
       }
+      // الدورة الجديدة انبنت والنزلات القديمة لسا محفوظة، فحجزت أيامها قدّامها وانزاحت
+      // نزلاتها (مراجعة F–H). هلّق البكت القديم فضي: إعادة بنائها بتشوف المصوّر صح. البناء
+      // قبل التنظيف مقصود — تنظيف بلا بناء ناجح بيترك الشركة بلا دورة.
+      const rebuilt = await generateCompanySchedule(companyId, newBucket.year, newBucket.month);
+      if (!rebuilt.ok) {
+        revalidateAll();
+        return {
+          ok: false as const,
+          corrected: true as const,
+          error: `تَصحّح تاريخ التجديد ونُظّفت الدورة الخاطئة، لكن إعادة ترتيب التصوير فشلت: ${rebuilt.error}`,
+        };
+      }
     }
 
     revalidateAll();

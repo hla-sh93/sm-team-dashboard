@@ -389,6 +389,23 @@ async function generateScheduleOnce(
         select: { companyId: true, shootDate: true, reelCount: true },
       })
     ).map((s) => ({ companyId: s.companyId, shootDate: s.shootDate, reelCount: s.reelCount }));
+    // توليد شركة وحدة: نزلات الشركات التانية بهالدلو هي المحفوظة، مو نسختها بالذاكرة
+    // (هيدي ما بتنكتب) — فالشركة لازم تنحطّ حولها (مراجعة F–H).
+    if (onlyCompanyId) {
+      state.reelPlacementFor = onlyCompanyId;
+      state.savedBucketBookings = (
+        await prisma.photoSession.findMany({
+          where: {
+            kind: "REELS",
+            reelCount: { gt: 0 },
+            year,
+            month,
+            companyId: { in: plannedIds.filter((id) => id !== onlyCompanyId) },
+          },
+          select: { companyId: true, shootDate: true, reelCount: true },
+        })
+      ).map((s) => ({ companyId: s.companyId, shootDate: s.shootDate, reelCount: s.reelCount }));
+    }
 
     const result = buildSchedule(state);
 

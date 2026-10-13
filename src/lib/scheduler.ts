@@ -126,6 +126,13 @@ export type SchedulerState = {
   adhoc?: AdhocInput[];
   /** نزلات ريلات محجوزة **بدلاء تانية** (من القاعدة) — سقف المصوّر اليومي عبر الدورات (SC-01). */
   reelBookings?: { companyId: string; shootDate: Date; reelCount: number }[];
+  /**
+   * توليد محصور على شركة وحدة (`onlyCompanyId`): نزلات هالشركة بتنحطّ حول نزلات الشركات
+   * التانية **المحفوظة** بنفس الدلو (`savedBucketBookings`)، مو حول نسخهم بالذاكرة — هدول
+   * ما بينكتبوا، فالسقف كان ينكسر على الأيام المحفوظة بلا إنذار (مراجعة F–H، SC-01).
+   */
+  reelPlacementFor?: string | null;
+  savedBucketBookings?: { companyId: string; shootDate: Date; reelCount: number }[];
 };
 
 // ---------------------------------------------------------------------------
@@ -790,34 +797,55 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
 
   // نزلات الدلاء التانية لكل مصوّر (يوم → عدد): السقف اليومي بالعدد عبر الدورات
   // المتقاطعة — دورة نور وعبادة بدلو أيلول والتوظيف بدلو تشرين كانوا يطلّعوا ٩ (SC-01).
-  const bookedByPhotographer = new Map<string, Map<string, number>>();
-  for (const b of state.reelBookings ?? []) {
-    const co = state.companies.find((c) => c.id === b.companyId);
-    const pid = co ? photographerOf(co) : null;
-    if (!pid || b.reelCount <= 0) continue;
-    const perDay = bookedByPhotographer.get(pid) ?? new Map<string, number>();
-    const key = toISODate(b.shootDate);
-    perDay.set(key, (perDay.get(key) ?? 0) + b.reelCount);
-    bookedByPhotographer.set(pid, perDay);
-  }
+  const bookingMap = (list: { companyId: string; shootDate: Date; reelCount: number }[]) => {
+    const byPhotographer = new Map<string, Map<string, number>>();
+    for (const b of list) {
+      const co = state.companies.find((c) => c.id === b.companyId);
+      const pid = co ? photographerOf(co) : null;
+      if (!pid || b.reelCount <= 0) continue;
+      const perDay = byPhotographer.get(pid) ?? new Map<string, number>();
+      const key = toISODate(b.shootDate);
+      perDay.set(key, (perDay.get(key) ?? 0) + b.reelCount);
+      byPhotographer.set(pid, perDay);
+    }
+    return byPhotographer;
+  };
+  const bookedByPhotographer = bookingMap(state.reelBookings ?? []);
+  const target = state.reelPlacementFor ?? null;
+  // للشركة المحصورة: نزلات الدلاء التانية + نزلات شركات هالدلو المحفوظة.
+  const bookedForTarget = target
+    ? bookingMap([...(state.reelBookings ?? []), ...(state.savedBucketBookings ?? [])])
+    : bookedByPhotographer;
 
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
   for (const [pid, comps] of reelsByPhotographer) {
     const emp = empById.get(pid);
     if (!emp) continue;
-    const photo = buildPhotoSessions(
-      year,
-      month,
-      comps,
-      parseWorkDays(emp.workDays as string | number[]),
-      reelsPerDayOf(emp),
-      editorWorkDays,
-      bookedByPhotographer.get(pid),
-    );
-    sessions.push(...photo.sessions);
-    warnings.push(...photo.warnings);
-    for (const [k, v] of photo.reelDates) reelDates.set(k, v);
+    // توليد محصور: الشركات التانية بتنحطّ بالذاكرة متل العادة (تواريخ كروتها لازمة لباقي
+    // الحساب، وما بتنكتب)، والشركة المحصورة لحالها حول المحفوظ.
+    const groups = target
+      ? [
+          { list: comps.filter((c) => c.companyId !== target), booked: bookedByPhotographer.get(pid) },
+          { list: comps.filter((c) => c.companyId === target), booked: bookedForTarget.get(pid) },
+        ]
+      : [{ list: comps, booked: bookedByPhotographer.get(pid) }];
+    for (const group of groups) {
+      if (group.list.length === 0) continue;
+      const photo = buildPhotoSessions(
+        year,
+        month,
+        group.list,
+        parseWorkDays(emp.workDays as string | number[]),
+        reelsPerDayOf(emp),
+        editorWorkDays,
+        group.booked,
+      );
+      sessions.push(...photo.sessions);
+      // إنذارات الشركات التانية بالتوليد المحصور من نسخة ما رح تنكتب — ضجّة.
+      warnings.push(...(target && group.list[0].companyId !== target ? [] : photo.warnings));
+      for (const [k, v] of photo.reelDates) reelDates.set(k, v);
+    }
   }
   // Stamp reel tasks: workDate = shootDate, readyDate = deliverBy.
   for (const t of tasks) {
