@@ -209,3 +209,16 @@ describe("[OP-12 · مراجعة F–H] شريط النشر بيحمّل كرو�
     expect(client).toMatch(/makeHeldReason\(withChain/);
   });
 });
+
+describe("[OP-16 · مراجعة F–H] عدّاد «متأخرة» بالرئيسية بتعريف `late.ts`", () => {
+  it("المثبّت ليوم لاحق مش متأخر بتعريف `late.ts` — ونفس التعريف هو يلي الرئيسية بتعدّ فيه", () => {
+    expect(boardIsLate(tasks.find((t) => t.id === "pinnedLater")!)).toBe(false);
+    expect(boardIsLate(tasks.find((t) => t.id === "designLate")!)).toBe(true);
+    const src = readFileSync("src/app/overview-client.tsx", "utf8");
+    expect(src).toMatch(/const isLateCard = makeLatePredicate\(tasks, companies\)/);
+    expect(src).toMatch(/const overdue = items\.some\(isLateCard\)/);
+    // العدّاد ما بيرجع يقارن التاريخ لحاله.
+    expect(src).not.toMatch(/if \(iso < todayISO\) return "overdue"/);
+    expect(src).toMatch(/const today = teamToday\(\)/);
+  });
+});

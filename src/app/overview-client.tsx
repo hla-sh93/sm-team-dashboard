@@ -2,6 +2,8 @@
 
 import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { isDormantCompany } from "@/lib/company-visibility";
+import { makeLatePredicate } from "@/lib/late";
+import { teamToday } from "@/lib/team-day";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -169,7 +171,7 @@ export default function OverviewClient({
   const deadlineOf = (t: Task): Date | null =>
     t.readyDate ? new Date(t.readyDate) : t.publishDate ? new Date(t.publishDate) : null;
   const reelNum = buildReelNumbers(tasks);
-  const today = new Date();
+  const today = teamToday();
   const todayISO = toISODate(today);
   const openByPerson = new Map(
     employees.map((e) => [
@@ -280,6 +282,7 @@ export default function OverviewClient({
   // blocker is. أليسار's montage cards were showing as her overdue work for
   // reels ماجد has not shot yet.
   const isBlockedCard = makeBlockedPredicate(tasks);
+  const isLateCard = makeLatePredicate(tasks, companies);
   const criticalSource = tasks.filter((t) => {
     if (isDone(t) || isBlockedCard(t)) return false;
     const dl = deadlineOf(t);
@@ -294,7 +297,10 @@ export default function OverviewClient({
         .filter((d): d is Date => !!d)
         .sort((a, b) => a.getTime() - b.getTime());
       const dl = dls[0] ?? null;
-      const overdue = dl ? toISODate(dl) < todayISO : false;
+      // «متأخرة» بتعريف كل الشاشات (`lib/late.ts`): المثبّت ليوم لاحق والشركة المعفاة أو
+      // يلي ما بلّشت نشر مش متأخرين — كان العدّاد هون يعدّهم فسابين «متأخرة ٢» بالرئيسية
+      // و١ بالبريف واللوح (مراجعة F–H، OP-16).
+      const overdue = items.some(isLateCard);
       return { card, dl, overdue };
     })
     // نفس الموعد = بالتسلسل الرقمي (نوع ← رقم ← مرحلة) لا بترتيب الوصول: كان
@@ -311,18 +317,16 @@ export default function OverviewClient({
   // Group the critical cards by the person responsible so the home page reads as
   // a daily ops board ("who owns what's on fire") instead of one flat list. Each
   // person block carries counters: متأخرة / اليوم / هذا الأسبوع.
-  const bucketOf = (dl: Date | null): "overdue" | "today" | "soon" => {
-    if (!dl) return "soon";
-    const iso = toISODate(dl);
-    if (iso < todayISO) return "overdue";
-    if (iso === todayISO) return "today";
+  const bucketOf = (it: { dl: Date | null; overdue: boolean }): "overdue" | "today" | "soon" => {
+    if (it.overdue) return "overdue";
+    if (it.dl && toISODate(it.dl) === todayISO) return "today";
     return "soon";
   };
   const criticalByPerson = employees
     .map((e) => {
       const items = criticalCards.filter((c) => c.card.repr.assigneeId === e.id);
       const counts = { overdue: 0, today: 0, soon: 0 };
-      for (const it of items) counts[bucketOf(it.dl)]++;
+      for (const it of items) counts[bucketOf(it)]++;
       return { emp: e, items, counts };
     })
     .filter((g) => g.items.length > 0)
