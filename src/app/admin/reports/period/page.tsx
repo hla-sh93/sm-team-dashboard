@@ -1,6 +1,7 @@
 import { PeriodReportView } from "@/components/reports/PeriodReportView";
 import { PeriodToolbar } from "@/components/reports/PeriodToolbar";
-import { dayKeyOf, resolvePeriod, type PeriodKind } from "@/lib/period-report";
+import { resolvePeriod, type PeriodKind } from "@/lib/period-report";
+import { teamTodayISO } from "@/lib/team-day";
 import { loadPeriodReport } from "@/server/period-report";
 
 // تقرير لحظي من الداتا الحيّة — ولا نسخة مخبّأة.
@@ -16,7 +17,7 @@ export default async function PeriodReportPage({
   searchParams: Promise<{ kind?: string; date?: string; from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const todayKey = dayKeyOf(new Date());
+  const todayKey = teamTodayISO();
   const result = resolvePeriod(params, todayKey);
 
   const kind: PeriodKind = result.ok

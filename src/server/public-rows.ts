@@ -59,3 +59,20 @@ export const publicCompanySelect = {
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CompanySelect;
+
+/** رسائل تلغرام بـ«متابعة اليوم»: بلا `senderId` (هوية تلغرام الرقمية) ولا `fileId`. */
+export const publicDeliverySelect = {
+  id: true,
+  chatId: true,
+  threadId: true,
+  messageId: true,
+  sentAt: true,
+  senderName: true,
+  kind: true,
+  fileName: true,
+  caption: true,
+  companyId: true,
+  taskId: true,
+  matchedBy: true,
+  confirmed: true,
+} satisfies Prisma.TelegramMessageSelect;

@@ -21,7 +21,7 @@ import {
 } from "@/server/actions/companies";
 import { applyCompanyPlanUpdate } from "@/server/actions/plans";
 import { toast } from "@/components/ui/toaster";
-import { contractStateOf, parseRenewals, type ContractState } from "@/lib/contract";
+import { contractStateOf, lastDayOf, parseRenewals, type ContractState } from "@/lib/contract";
 import { formatDateShort, toISODate } from "@/lib/dates";
 import { companyLifecycle, groupCompaniesByLifecycle } from "@/lib/company-visibility";
 import type { Company, Employee } from "@/types";
@@ -39,15 +39,16 @@ function contractChip(s: ContractState): { label: string; cls: string } | null {
       };
     case "active":
       return {
-        label: `العقد حتى ${formatDateShort(s.endsAt)}`,
+        label: `العقد حتى ${formatDateShort(lastDayOf(s.endsAt))}`,
         cls: "bg-bg-elev2 text-fg-dim",
       };
     case "due_soon":
       return {
         label:
-          s.daysLeft <= 0
-            ? `تنتهي الدورة اليوم — ${formatDateShort(s.endsAt)}`
-            : `تنتهي خلال ${s.daysLeft} يوم — ${formatDateShort(s.endsAt)}`,
+          // `endsAt` حصرية: يوم واحد باقي = اليوم آخر يوم بالدورة.
+          s.daysLeft <= 1
+            ? `تنتهي الدورة اليوم — ${formatDateShort(lastDayOf(s.endsAt))}`
+            : `تنتهي خلال ${s.daysLeft} يوم — ${formatDateShort(lastDayOf(s.endsAt))}`,
         cls: "bg-warning/15 text-warning",
       };
     case "awaiting_renewal":

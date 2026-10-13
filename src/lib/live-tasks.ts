@@ -14,6 +14,7 @@ import { isTaskDoneState } from "@/lib/constants";
 import { monthContinuationWhere, openCarryoverWhere } from "@/lib/month";
 import { currentCycleBucket } from "@/lib/contract";
 import { dormantCompanyIds, isDormantCompany } from "@/lib/company-visibility";
+import { teamToday } from "@/lib/team-day";
 
 /**
  * دلاء الدورات الشغّالة اليوم يلي مو نفس الدلو المعروض.
@@ -43,16 +44,16 @@ async function companyScopes(year: number, month: number, at: Date) {
   });
   const running: { companyId: string; year: number; month: number }[] = [];
   for (const company of companies) {
-    if (!company.managed || isDormantCompany(company)) continue;
+    if (!company.managed || isDormantCompany(company, at)) continue;
     const bucket = currentCycleBucket(company as never, at);
     if (!bucket) continue;
     if (bucket.year === year && bucket.month === month) continue;
     running.push({ companyId: company.id, year: bucket.year, month: bucket.month });
   }
-  return { running, dormant: dormantCompanyIds(companies) };
+  return { running, dormant: dormantCompanyIds(companies, at) };
 }
 
-export async function loadLiveTasks(year: number, month: number, at: Date = new Date()) {
+export async function loadLiveTasks(year: number, month: number, at: Date = teamToday()) {
   const { running, dormant } = await companyScopes(year, month, at);
   const [bucketTasks, continuationRaw, carryover, runningTasks] = await Promise.all([
     prisma.task.findMany({ where: { year, month, status: { not: "CANCELED" } } }),

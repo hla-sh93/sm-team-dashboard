@@ -127,10 +127,18 @@ describe("الدورات — سلسلة تجديدات متّصلة من كل ي
     expect(cycleSpanLabel({}, 2028, 1)).toBe("1/2 → 29/2");
   });
 
-  it("[موثَّق SC-10] دلو بلا دورة (بانتظار التجديد) بياخد تسمية شهر التقويم «1/11 → 30/11» بدل ما يقول إنه ما في دورة", () => {
+  it("[SC-10] دلو بلا دورة لشركة إلها دورات ما بياخد تسمية شهر التقويم — «بانتظار التجديد» وأخواتها", () => {
     const bw = { publishStartDate: D("2026-09-10"), renewals: '["2026-10-10"]', contractEndedAt: null };
     expect(cycleForBucket(bw, 2026, 10)).toBeNull();
-    expect(cycleSpanLabel(bw, 2026, 10)).toBe("1/11 → 30/11");
+    expect(cycleSpanLabel(bw, 2026, 10)).toBe("بانتظار التجديد");
+    expect(cycleSpanLabel(bw, 2026, 9)).toBe("10/10 → 9/11");
+    expect(cycleSpanLabel(bw, 2026, 7)).toBe("قبل بداية العقد");
+    expect(cycleSpanLabel({ ...bw, contractEndedAt: D("2026-11-09") }, 2026, 10)).toBe("لم تجدّد");
+    // فجوة: تجديد متأخّر بشهرين بيترك دلو تشرين التاني بلا دورة بالنص.
+    const gap = { publishStartDate: D("2026-09-10"), renewals: '["2026-12-10"]', contractEndedAt: null };
+    expect(cycleSpanLabel(gap, 2026, 10)).toBe("بلا دورة بهالشهر");
+    // شركة بلا عقد = الشهر التقويمي متل قبل.
+    expect(cycleSpanLabel({}, 2026, 10)).toBe("1/11 → 30/11");
   });
 
   it("[موثَّق SC-14] تجديد مسجَّل قبل تاريخ بدء النشر بيصير هو الدورة الأولى", () => {

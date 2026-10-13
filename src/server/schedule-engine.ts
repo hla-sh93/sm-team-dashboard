@@ -40,6 +40,7 @@ import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
 import { markResumeApplied, resumeWindowsFor } from "@/server/company-pause";
 import { loadSuccessors, successorOf } from "@/server/handover";
 import { revalidateAll } from "@/lib/revalidate";
+import { teamToday } from "@/lib/team-day";
 
 
 const D = (s: string | null): Date | null => {
@@ -218,7 +219,7 @@ function applyAchievements(pipe: PipelineTask[], state: Record<string, JuneState
  * SA-15). الدلو المسكّر تاريخ: التعديل على كرت فيه بينحفظ، بس ما في إعادة توليد.
  * «إعادة الجدولة» الصريحة من الأدمن ما بتمرق من هون.
  */
-export async function isLiveBucket(year: number, month: number, now = new Date()): Promise<boolean> {
+export async function isLiveBucket(year: number, month: number, now: Date = teamToday()): Promise<boolean> {
   if (year * 12 + month >= now.getFullYear() * 12 + now.getMonth()) return true;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // دلو فيه نافذة رجوع من إيقاف لسا شغّالة = شغل حيّ ولو دورته الأصلية خلصت.

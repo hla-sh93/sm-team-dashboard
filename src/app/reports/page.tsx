@@ -26,6 +26,7 @@ import { scheduleShiftNotes, type ShiftNote } from "@/lib/shift-reason";
 import { workRoster } from "@/lib/team";
 import { LatePill, daysLateOf } from "@/components/ui/pills";
 import { prisma } from "@/lib/db";
+import { teamToday } from "@/lib/team-day";
 import { AlertTriangle, CheckCircle2, Trophy } from "lucide-react";
 
 export default async function ReportsPage({
@@ -114,7 +115,7 @@ export default async function ReportsPage({
   for (const co of companies) {
     // آخر دورة بدأت، لا الدورة الشغّالة اليوم — شركة خلصت دورتها وبانتظار
     // التجديد بتضل تعرض إنجاز دورتها (القائدة ١٦/٩).
-    const b = latestCycleBucket(co, new Date());
+    const b = latestCycleBucket(co, teamToday());
     cycleTaskCache.set(
       co.id,
       b.year === year && b.month === month
@@ -125,7 +126,7 @@ export default async function ReportsPage({
     );
   }
   // نفس خطة الدورة يلي على الرئيسية (`displayedCyclePlan`، §٩ — OP-11).
-  const planNow = new Date();
+  const planNow = teamToday();
   const plannedCompanies = companies.filter((c) => c.managed && !isDormantCompany(c));
   const frozenPlans = await frozenPlanCounts(plannedCompanies, (co) => latestCycleBucket(co, planNow));
   const companyPlan = plannedCompanies

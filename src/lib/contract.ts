@@ -25,6 +25,7 @@
  * contract concept at all — they keep the plain calendar month, ungated, forever.
  */
 import { clampDayToMonth, toISODate } from "./dates";
+import { teamToday } from "./team-day";
 
 /** Days before a cycle's end at which the UI starts asking about renewal. */
 export const RENEWAL_NOTICE_DAYS = 3;
@@ -254,7 +255,7 @@ export function cycleForBucket(
 }
 
 /** The cycle covering `today`, if any. */
-export function currentCycle(co: ContractCompany, today: Date = new Date()): Cycle | null {
+export function currentCycle(co: ContractCompany, today: Date = teamToday()): Cycle | null {
   const t = midnight(today).getTime();
   return (
     cyclesOf(co).find((c) => c.start.getTime() <= t && t < c.end.getTime()) ?? null
@@ -269,7 +270,7 @@ export function currentCycle(co: ContractCompany, today: Date = new Date()): Cyc
  * الحساب بيرجع لشهر التقويم لما ما في دورة شغّالة اليوم. الإنجاز بيضل على آخر
  * دورة لحدّ ما تبلّش الجاية.
  */
-export function latestCycle(co: ContractCompany, today: Date = new Date()): Cycle | null {
+export function latestCycle(co: ContractCompany, today: Date = teamToday()): Cycle | null {
   const t = midnight(today).getTime();
   const started = cyclesOf(co).filter((c) => c.start.getTime() <= t);
   return started.length ? started[started.length - 1] : null;
@@ -278,7 +279,7 @@ export function latestCycle(co: ContractCompany, today: Date = new Date()): Cycl
 /** دلو دورة الإنجاز — شهر بداية آخر دورة، أو شهر التقويم لشركة بلا دورات. */
 export function latestCycleBucket(
   co: ContractCompany,
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): { year: number; month: number } {
   const cycle = latestCycle(co, today);
   const d = cycle ? cycle.start : midnight(today);
@@ -286,7 +287,7 @@ export function latestCycleBucket(
 }
 
 /** «11/8 → 10/9» لدورة، أو «1/9 → 30/9» لشركة على شهر التقويم — للعرض جنب الاسم. */
-export function achievementSpanLabel(co: ContractCompany, today: Date = new Date()): string {
+export function achievementSpanLabel(co: ContractCompany, today: Date = teamToday()): string {
   const dm = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
   const cycle = latestCycle(co, today);
   if (cycle) return `${dm(cycle.start)} → ${dm(new Date(cycle.end.getTime() - 86_400_000))}`;
@@ -304,6 +305,15 @@ export function achievementSpanLabel(co: ContractCompany, today: Date = new Date
  * Companies with no contract date genuinely run the calendar month, so they keep
  * the plain name.
  */
+/**
+ * آخر يوم بدورة نهايتها `end` — النهاية بالحساب **حصرية** (أول يوم الدورة الجاية)، بس
+ * الإنسان بيقرا الدورة شاملة «13/7 ← 12/8» (§١). كل نصّ بيطبع نهاية دورة بيمرق من هون
+ * (OP-04: «العقد حتى 1/11» بالأدمن مقابل «… ← 31/10» للموظّفين).
+ */
+export function lastDayOf(end: Date): Date {
+  return new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1);
+}
+
 export function cycleSpanLabel(
   co: ContractCompany & {
     contractStartDate?: Date | string | null;
@@ -320,11 +330,24 @@ export function cycleSpanLabel(
   // Always a span, never a bare month name — even for a company that genuinely
   // runs the calendar month. «دورة تموز» reads the same whether it means 1→31 or
   // 13→12, and that ambiguity is the whole complaint.
-  const cycle = cycleForBucket(co, year, month) ?? {
+  const own = cycleForBucket(co, year, month);
+  if (!own && contractModeOf(co) === "publishing") {
+    // دلو بلا دورة لشركة إلها دورات (SC-10): ما في دورة تقويمية شغّالة — تسمية «1/11 →
+    // 30/11» كانت توحي بعكس هيك لشركة بانتظار التجديد.
+    const all = cyclesOf(co);
+    const bucket = year * 12 + month;
+    const bucketOf = (c: Cycle) => c.start.getFullYear() * 12 + c.start.getMonth();
+    if (all.length && bucket < bucketOf(all[0])) return "قبل بداية العقد";
+    if (all.length && bucket > bucketOf(all[all.length - 1])) {
+      return toDateOrNull(co.contractEndedAt) ? "لم تجدّد" : "بانتظار التجديد";
+    }
+    return "بلا دورة بهالشهر";
+  }
+  const cycle = own ?? {
     start: new Date(year, month, 1),
     end: new Date(year, month + 1, 1),
   };
-  return `${d(cycle.start)} → ${d(new Date(cycle.end.getTime() - 86_400_000))}`;
+  return `${d(cycle.start)} → ${d(lastDayOf(cycle.end))}`;
 }
 
 /**
@@ -350,7 +373,7 @@ export function isCarryoverFromPastCycle(
   co: ContractCompany | null | undefined,
   year: number,
   month: number,
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): boolean {
   if (!co) return false;
   const cur = currentCycleBucket(co, today);
@@ -359,7 +382,7 @@ export function isCarryoverFromPastCycle(
 
 export function currentCycleBucket(
   co: ContractCompany,
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): { year: number; month: number } {
   const cycle = currentCycle(co, today);
   const d = cycle ? cycle.start : midnight(today);
@@ -372,7 +395,7 @@ export function currentCycleBucket(
  */
 export function contractStateOf(
   co: ContractCompany,
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): ContractState {
   if (contractModeOf(co) !== "publishing") return { state: "none", cycle: null };
   const t = midnight(today);

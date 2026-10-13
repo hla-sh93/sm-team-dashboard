@@ -27,7 +27,8 @@ import { ARABIC_DAYS, toISODate } from "@/lib/dates";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { assetNameForTask, companySlug } from "@/lib/asset-name";
 import { buildContentNumbers, comparePieceSequence } from "@/lib/cards";
-import type { Company, Employee, Task, TelegramMessage, PublicEmployee, PublicCompany } from "@/types";
+import { makeLateClassifier } from "@/lib/late";
+import type { Company, Employee, Task, PublicDelivery, PublicEmployee, PublicCompany } from "@/types";
 
 /** Publish dates within this many days count as "about to slip". */
 const AT_RISK_DAYS = 2;
@@ -57,7 +58,7 @@ export default function TodayClient({
   employees: PublicEmployee[];
   companies: PublicCompany[];
   tasks: Task[];
-  deliveries: TelegramMessage[];
+  deliveries: PublicDelivery[];
   /** Chats marked «مو تبع شركة» — their traffic never counts as unlinked. */
   ignoredChatIds?: string[];
 }) {
@@ -78,6 +79,9 @@ export default function TodayClient({
     () => tasks.filter((t) => !isTaskDoneState(t) && t.status !== "CANCELED"),
     [tasks],
   );
+  // «متأخر» بتعريف البريف والرئيسية واللوح نفسه (`lib/late.ts`): بلا المحجوز خلف مرحلة
+  // مفتوحة ولا المثبّت ليوم لاحق ولا الشركة المعفاة (OP-12) — الحاجز نفسه بيطلع متأخر.
+  const lateClass = useMemo(() => makeLateClassifier(tasks, companies, today), [tasks, companies, today]);
 
   /** Still-open production siblings of a piece — what makes it "not ready". */
   const blockersOf = useMemo(() => {
@@ -122,10 +126,7 @@ export default function TodayClient({
         const publishing = mine.filter((t) => t.stage === "PUBLISH" && iso(t.publishDate) === todayISO);
         const delivering = mine.filter((t) => t.stage !== "PUBLISH" && deadlineOf(t) === todayISO);
         const overdue = mine
-          .filter((t) => {
-            const d = deadlineOf(t);
-            return d != null && d < todayISO;
-          })
+          .filter((t) => lateClass(t) === "late")
           .sort(
             (a, b) =>
               daysLateOfState(b, today) - daysLateOfState(a, today) || comparePieceSequence(a, b),
@@ -144,7 +145,7 @@ export default function TodayClient({
           ? r.publishing.length || r.delivering.length || r.overdue.length || r.atRisk.length || r.arrived.length
           : true,
       );
-  }, [companies, open, deliveries, todayISO, horizonISO, onlyActive, today, blockersOf]);
+  }, [companies, open, deliveries, todayISO, horizonISO, onlyActive, today, blockersOf, lateClass]);
 
   // Only a CLIENT topic with no company is a problem worth flagging. The team's
   // own room, private chats and retired clients are marked «مو تبع شركة» and

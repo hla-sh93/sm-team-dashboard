@@ -1,4 +1,5 @@
 import { ARABIC_MONTHS } from "./dates";
+import { teamToday } from "./team-day";
 import { prisma } from "./db";
 
 export type YM = { year: number; month: number };
@@ -8,7 +9,7 @@ export function resolveMonth(searchParams: {
   y?: string;
   m?: string;
 }): YM {
-  const now = new Date();
+  const now = teamToday();
   const year = Number(searchParams.y) || now.getFullYear();
   const m = searchParams.m != null ? Number(searchParams.m) : now.getMonth();
   const month = Number.isFinite(m) && m >= 0 && m <= 11 ? m : now.getMonth();
@@ -26,7 +27,7 @@ export async function resolveActiveMonth(searchParams: {
   m?: string;
 }): Promise<YM> {
   if (searchParams.m != null) return resolveMonth(searchParams);
-  const now = new Date();
+  const now = teamToday();
   const today = { year: now.getFullYear(), month: now.getMonth() };
   try {
     const groups = await prisma.task.groupBy({ by: ["year", "month"] });
@@ -51,7 +52,7 @@ export async function resolvePublishMonth(searchParams: {
   m?: string;
 }): Promise<YM> {
   if (searchParams.m != null) return resolveMonth(searchParams);
-  const now = new Date();
+  const now = teamToday();
   const today = { year: now.getFullYear(), month: now.getMonth() };
   try {
     const rows = await prisma.task.findMany({

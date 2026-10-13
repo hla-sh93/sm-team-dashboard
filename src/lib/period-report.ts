@@ -7,33 +7,23 @@
  */
 import { CONTENT_TYPE_LABELS, STAGE_LABELS, isTaskDoneState } from "@/lib/constants";
 import { contractModeOf, cycleForBucket, hasStartedPublishing, type ContractCompany } from "@/lib/contract";
+import { changedAfter, dormantDuring } from "@/lib/company-visibility";
 import { ARABIC_DAYS, ARABIC_MONTHS } from "@/lib/dates";
 import { isProductionMember } from "@/lib/team";
+import { dayKeyOf } from "@/lib/team-day";
 
 // ---------------------------------------------------------------------------
 // اليوم بتوقيت دمشق
 // ---------------------------------------------------------------------------
 
-/**
- * سوريا على UTC+3 ثابت (بلا توقيت صيفي من ٢٠٢٢). الخادم على Vercel بـUTC،
- * فتسليم الساعة ١:٣٠ بعد منتصف ليلنا كان بيوقع باليوم السابق.
- */
-const TZ_OFFSET_MS = 3 * 3_600_000;
+// يوم دمشق (`dayKeyOf`) صار بـ`@/lib/team-day` — نقطة واحدة للخادم والمتصفّح (SC-12).
 const DAY_MS = 86_400_000;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_CUSTOM_DAYS = 366;
 /** فترة بهالطول أو أقصر بتعرض المنجز بالاسم. */
 export const ITEMIZE_MAX_DAYS = 7;
 
-/**
- * اليوم (YYYY-MM-DD) بتوقيت دمشق للحظة أو لحقل تاريخ. حقل التاريخ المخزَّن
- * منتصف الليل UTC (الإنتاج) أو ٢١:٠٠ UTC من اليوم السابق (المرآة المحلية)
- * بيعطي نفس اليوم بالحالتين.
- */
-export function dayKeyOf(value: Date | string): string {
-  const ms = (typeof value === "string" ? Date.parse(value) : value.getTime()) + TZ_OFFSET_MS;
-  return new Date(ms).toISOString().slice(0, 10);
-}
+export { dayKeyOf };
 
 function keyToUtc(key: string): number {
   const [y, m, d] = key.split("-").map(Number);
@@ -292,21 +282,8 @@ function isDone(t: ReportTask): boolean {
   return t.status !== "CANCELED" && isTaskDoneState(t);
 }
 
-/** تعدّل سجلّ الشركة بعد الفترة؟ حالتها الحالية ممكن ما تكون حالتها وقتها. */
-function changedAfter(co: ReportCompany, lastKey: string): boolean {
-  return co.updatedAt != null && dayKeyOf(co.updatedAt) > lastKey;
-}
-
-/**
- * موقوفة أو مؤرشفة **وقتها** — مانغو اللي ما جدّدت من ١/١٠ كانت نشطة بأيلول،
- * وSiizen يلي توقّفت ٤/١٠ كانت نشطة بأيلول. الإيقاف ما إله تاريخ، فآخر تعديل على
- * السجلّ هو التقريب: تعديل بعد الفترة = كانت نشطة فيها.
- */
-function dormantDuring(co: ReportCompany, lastKey: string): boolean {
-  if (co.contractEndedAt) return dayKeyOf(co.contractEndedAt) <= lastKey;
-  if (co.status === "paused" || co.status === "archived") return !changedAfter(co, lastKey);
-  return false;
-}
+// موقوفة أو مؤرشفة **وقتها** (`dormantDuring` · `changedAfter`): بـ`company-visibility.ts`
+// — نفس القاعدة بالمالية (TR-20).
 
 // ---------------------------------------------------------------------------
 // المخرجات

@@ -16,6 +16,7 @@ import { computeFinance } from "@/lib/finance";
 import { BOM, toCSV } from "@/lib/csv";
 import { patchStylesForRtl, withArabicDefaults } from "@/lib/docx-rtl";
 import { buildPlanTemplate } from "@/lib/plan-template";
+import { readFileSync } from "node:fs";
 
 const employee = (o: Record<string, unknown>) =>
   ({ id: "e", name: "e", role: "designer", hoursPerDay: 8, workDays: "[0,1,2,3,4]", isScheduled: true, isPhotographer: false, salary: 0, costPerReel: null, rates: null, ...o }) as any;
@@ -84,17 +85,37 @@ describe("المالية — ثوابت ومحاسبة", () => {
     expect(f.avgContractValue).toBe(150);
   });
 
-  it.fails("[TR-20] أيلول بخطته هو: سجلّ الشركة (١٠ بوست) خطة دورة تشرين المسجَّلة بعده — المالية لأيلول لازم ما تقراه (§٩)", () => {
+  it("[TR-20] أيلول بخطته هو: سجلّ الشركة (١٠ بوست) خطة دورة تشرين المسجَّلة بعده — المالية لأيلول ما بتقراه (§٩)", () => {
     // Phoenitech: سجلّها بعد prod-63 = ١٠ بوست · ٤ ريل · ١٤ ستوري لدورة ١٣/١٠؛ دورة ١٣/٩ كانت ٤ · ٤ · ٠.
     const phoeni = company({ posts: 10, reels: 4, stories: 14, contractValue: 250, publishStartDate: new Date(2026, 8, 13), renewals: JSON.stringify(["2026-10-13"]) });
-    const sept = computeFinance([employee({ id: "d1", salary: 400 }), employee({ id: "ph", role: "مصور", isPhotographer: true, costPerReel: 15 })], [phoeni], 2026, 8);
+    const team = [employee({ id: "d1", salary: 400 }), employee({ id: "ph", role: "مصور", isPhotographer: true, costPerReel: 15 })];
+    // خطة دلو أيلول كما بيرجّعها `frozenPlanCounts` من كروته.
+    const plans = new Map([[phoeni.id, { posts: 4, reels: 4, stories: 0, aiReels: 0 }]]);
+    const sept = computeFinance(team, [phoeni], 2026, 8, { plans, today: new Date(2026, 9, 13) });
     expect(sept.perContract[0].marginalCost).toBe(4 * 1.5 + 4 * 10); // ٤٦ — مو ٦٩ (١٠×١.٥ + ١٤ + ٤×١٠)
+    // بلا خطة مثبّتة للشهر = سجلّ الشركة (الشهر الشغّال).
+    expect(computeFinance(team, [phoeni], 2026, 9, { today: new Date(2026, 9, 13) }).perContract[0].marginalCost).toBe(10 * 1.5 + 14 + 4 * 10);
+    // الصفحة بتمرّر خطة دلو الشهر.
+    const page = readFileSync("src/app/admin/finance/page.tsx", "utf8");
+    expect(page).toMatch(/frozenPlanCounts\(\s*companies\.filter\(\(c\) => c\.managed\),\s*\(\) => \(\{ year, month \}\),?\s*\)/);
+    expect(page).toMatch(/computeFinance\(employees, companies, year, month, \{ plans, today \}\)/);
   });
 
-  it.fails("[TR-20] شركة ما جدّدت من ١/١٠ كانت عقداً شغّالاً بأيلول — إيراد أيلول لازم يشملها", () => {
-    // وصل: contractEndedAt = ١/١٠ وstatus = archived اليوم. `isDormantCompany` بيقرا حالة **اليوم**.
+  it("[TR-20] شركة ما جدّدت من ١/١٠ كانت عقداً شغّالاً بأيلول — إيراد أيلول بيشملها، وتشرين لأ", () => {
+    // وصل: contractEndedAt = ١/١٠ وstatus = archived اليوم. الحالة **وقت الشهر** (§١٠).
     const wasl = company({ posts: 15, contractValue: 400, status: "archived", contractEndedAt: new Date(2026, 9, 1) });
-    expect(computeFinance([employee({ id: "d1", salary: 400 })], [wasl], 2026, 8).totalRevenue).toBe(400);
+    const team = [employee({ id: "d1", salary: 400 })];
+    const today = new Date(2026, 9, 13);
+    expect(computeFinance(team, [wasl], 2026, 8, { today }).totalRevenue).toBe(400);
+    expect(computeFinance(team, [wasl], 2026, 9, { today }).totalRevenue).toBe(0);
+  });
+
+  it("[TR-20] الموقوفة بلا تاريخ: تعديل سجلّها بعد الشهر = كانت نشطة فيه؛ والشهر الشغّال بحالة اليوم", () => {
+    const paused = company({ posts: 4, contractValue: 300, status: "paused", updatedAt: new Date(2026, 9, 4) });
+    const team = [employee({ id: "d1", salary: 400 })];
+    const today = new Date(2026, 9, 13);
+    expect(computeFinance(team, [paused], 2026, 8, { today }).totalRevenue).toBe(300);
+    expect(computeFinance(team, [paused], 2026, 9, { today }).totalRevenue).toBe(0);
   });
 });
 
@@ -171,16 +192,35 @@ describe("Word بالعربي — `docx-rtl`", () => {
 
   const wrap = (inner: string) => `<?xml version="1.0"?><w:styles xmlns:w="x">${inner}</w:styles>`;
 
-  it.fails("[TR-22] `pPrDefault` بلا اتجاه بينحقن حتى لو نمط تاني بالملف فيه `<w:bidi/>`", () => {
+  it("[TR-22] `pPrDefault` بلا اتجاه بينحقن حتى لو نمط تاني بالملف فيه `<w:bidi/>`", () => {
     const out = patchStylesForRtl(
       wrap('<w:docDefaults><w:pPrDefault><w:pPr><w:spacing w:after="40"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="Heading1"><w:pPr><w:bidi/></w:pPr></w:style>'),
     );
     expect(out).toMatch(/<w:pPrDefault><w:pPr><w:bidi\/>/);
   });
 
-  it.fails("[TR-22] نمط Normal الموجود ما بيطلع فيه `<w:name>` مرتين (مخطّط OOXML: مرّة وحدة)", () => {
+  it("[TR-22] نمط Normal الموجود ما بيطلع فيه `<w:name>` مرتين (مخطّط OOXML: مرّة وحدة)", () => {
     const out = patchStylesForRtl(wrap('<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'));
     const normal = out.match(/<w:style\b[^>]*w:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/)![0];
     expect((normal.match(/<w:name /g) ?? []).length).toBe(1);
+    expect(normal).toMatch(/<w:bidi\/>/);
+  });
+
+  it("[TR-22] نمط Normal: `<w:pPr>` بينحطّ قبل `<w:rPr>` (ترتيب المخطّط)، ووسمه الأصلي بيضل", () => {
+    const out = patchStylesForRtl(
+      wrap('<w:style w:type="paragraph" w:default="1" w:styleId="Normal" w:customStyle="0"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rtl/></w:rPr></w:style>'),
+    );
+    const normal = out.match(/<w:style\b[^>]*w:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/)![0];
+    expect(normal).toMatch(/w:customStyle="0"/);
+    expect(normal.indexOf("<w:pPr>")).toBeGreaterThan(-1);
+    expect(normal.indexOf("<w:pPr>")).toBeLessThan(normal.indexOf("<w:rPr>"));
+  });
+
+  it("[TR-22] `pPrDefault` فيه اتجاه أصلاً = ما بيتغيّر؛ وتشغيل تاني ما بيغيّر شي", () => {
+    const already = wrap('<w:docDefaults><w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault></w:docDefaults>');
+    const once = patchStylesForRtl(already);
+    expect((once.match(/<w:bidi\/>/g) ?? []).length).toBeGreaterThanOrEqual(1);
+    expect(once.match(/<w:pPrDefault>[\s\S]*?<\/w:pPrDefault>/)![0]).toBe("<w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault>");
+    expect(patchStylesForRtl(once)).toBe(once);
   });
 });

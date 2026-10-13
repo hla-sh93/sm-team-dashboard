@@ -91,23 +91,17 @@ const tasks: Task[] = [
   task({ id: "pinnedLater", type: "POST", stage: "DESIGN", assigneeId: "sabine", readyDate: d(5), workDate: d(14), isPinned: true }),
 ];
 
-// ---- الفلاتر كما هي بالشاشات (منسوخة حرفياً) ----
-const iso = (v: Date | null) => (v ? toISODate(v) : null);
-/** today-client.tsx: `open` ثم `overdue` لكل شركة مُدارة غير راكدة. */
+// ---- الفلاتر كما هي بالشاشات ----
+/** شريط «متأخر النشر» و«متابعة اليوم»: المصنّف المشترك (والمحجوز «بانتظار»، مو متأخر). */
+const classify = makeLateClassifier(tasks, companies, TODAY);
+/** today-client.tsx: `open` ثم `overdue` لكل شركة مُدارة غير راكدة — بالمصنّف المشترك (OP-12). */
 const todayOverdue = (ts: Task[]) => {
   const open = ts.filter((t) => !isTaskDoneState(t) && t.status !== "CANCELED");
-  const deadlineOf = (t: Task) =>
-    t.stage === "PUBLISH" ? (iso(t.publishDate) ?? iso(t.readyDate)) : (iso(t.readyDate) ?? iso(t.publishDate));
   return companies
     .filter((c) => c.managed && !isDormantCompany(c))
     .flatMap((co) => open.filter((t) => t.companyId === co.id))
-    .filter((t) => {
-      const dl = deadlineOf(t);
-      return dl != null && dl < TODAY_ISO;
-    });
+    .filter((t) => classify(t) === "late");
 };
-/** شريط «متأخر النشر»: كروت النشر المصنّفة «متأخر» (والمحجوز «بانتظار»، مو متأخر). */
-const classify = makeLateClassifier(tasks, companies, TODAY);
 const publishingStrip = (ts: Task[]) =>
   ts.filter((t) => t.stage === "PUBLISH" && t.publishDate && classify(t) === "late");
 /** شارة «متأخّر» على اللوح. */
@@ -137,7 +131,7 @@ const periodReport = () => {
 describe("لوحة تعريفات «متأخر» — السلوك الحالي (مرجع للمقارنة)", () => {
   it("كل شاشة بتطلّع مجموعتها هيك اليوم", () => {
     expect(ids(openLateTasks(tasks, companies, TODAY))).toEqual(["designLate", "pubChain"]);
-    expect(ids(todayOverdue(tasks))).toEqual(["designLate", "pinnedLater", "pubBlocked", "pubChain"]);
+    expect(ids(todayOverdue(tasks))).toEqual(["designLate", "pubChain"]);
     expect(ids(publishingStrip(tasks))).toEqual(["pubChain"]);
     expect(ids(tasks.filter(boardIsLate))).toEqual(["designLate", "pubChain"]);
     const rep = periodReport();
@@ -148,8 +142,14 @@ describe("لوحة تعريفات «متأخر» — السلوك الحالي (
 });
 
 describe("[OP-12] «متابعة اليوم» وشريط «متأخر النشر» بيعدّوا المحجوز (B02 راجعة جزئياً)", () => {
-  it.fails("[OP-12] /today «متأخر» لازم يطابق تعريف البريف: بلا المحجوز وبلا المثبّت ليوم لاحق — عطل مفتوح", () => {
+  it("[OP-12] /today «متأخر» بيطابق تعريف البريف: بلا المحجوز وبلا المثبّت ليوم لاحق", () => {
     expect(ids(todayOverdue(tasks))).toEqual(ids(openLateTasks(tasks, companies, TODAY)));
+    expect(classify(tasks.find((t) => t.id === "pinnedLater")!)).toBeNull();
+    const src = readFileSync("src/app/today/today-client.tsx", "utf8");
+    expect(src).toMatch(/makeLateClassifier\(tasks, companies, today\)/);
+    expect(src).toMatch(/\.filter\(\(t\) => lateClass\(t\) === "late"\)/);
+    // الفلتر القديم بالموعد لحاله راح.
+    expect(src).not.toMatch(/return d != null && d < todayISO;/);
   });
 
   it("[OP-12] /publishing «متأخر النشر» ما بيطلب نشر قطعة مونتاجها لسا مفتوح — بتطلع «بانتظار»", () => {

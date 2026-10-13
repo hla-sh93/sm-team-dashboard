@@ -22,6 +22,7 @@ import {
   currentCycleBucket,
   cycleSpanLabel,
   isCarryoverFromPastCycle,
+  lastDayOf,
 } from "@/lib/contract";
 import { CONTENT_TYPE_LABELS } from "@/lib/constants";
 import { cardLabelFor, publishTypeLabel } from "@/lib/cards";
@@ -116,12 +117,14 @@ describe("تسمية نهاية الدورة — بطاقة الأدمن مقا�
     expect(toISODate(s.endsAt)).toBe("2026-11-01");
   });
 
-  it.fails("[OP-04] بطاقة الأدمن «العقد حتى <endsAt>» بتطبع 1 تشرين الثاني بدل 31 تشرين الأول — عطل مفتوح", () => {
+  it("[OP-04] بطاقة الأدمن «العقد حتى» بتطبع آخر يوم بالدورة (31 تشرين الأول) — نفس صفحة الموظّف", () => {
     const s = contractStateOf(training, AT);
     if (s.state !== "active") throw new Error("expected active");
-    // التعبير الحرفي من admin/companies/companies-client.tsx:42.
-    const adminLabel = `العقد حتى ${formatDateShort(s.endsAt)}`;
-    const lastDay = new Date(s.endsAt.getTime() - 86_400_000);
-    expect(adminLabel).toBe(`العقد حتى ${formatDateShort(lastDay)}`);
+    expect(toISODate(lastDayOf(s.endsAt))).toBe("2026-10-31");
+    expect(cycleSpanLabel(training, 2026, 9)).toBe("1/10 → 31/10");
+    // كل نصّ بالأدمن بيطبع نهاية الدورة بيمرق من `lastDayOf` — ولا وحدة بالنهاية الحصرية.
+    const src = readFileSync("src/app/admin/companies/companies-client.tsx", "utf8");
+    expect(src).toMatch(/العقد حتى \$\{formatDateShort\(lastDayOf\(s\.endsAt\)\)\}/);
+    expect(src).not.toMatch(/formatDateShort\(s\.endsAt\)/);
   });
 });

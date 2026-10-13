@@ -14,6 +14,7 @@ import { isTaskDoneState, isTaskLateState } from "@/lib/constants";
 import { isDormantCompany, type LifecycleCompany } from "@/lib/company-visibility";
 import { hasStartedPublishing, type ContractCompany } from "@/lib/contract";
 import { makeBlockedPredicate } from "@/lib/daily-work";
+import { teamToday } from "@/lib/team-day";
 import type { Task } from "@/types";
 
 export type LateCompany = ContractCompany &
@@ -28,7 +29,7 @@ export type LateClass = "late" | "waiting" | null;
 export function makeLateClassifier(
   allTasks: Task[],
   companies: LateCompany[],
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): (task: Task) => LateClass {
   const dormant = new Set(companies.filter((c) => isDormantCompany(c, today)).map((c) => c.id));
   const exempt = new Set(
@@ -46,7 +47,7 @@ export function makeLateClassifier(
 export function makeLatePredicate(
   allTasks: Task[],
   companies: LateCompany[],
-  today: Date = new Date(),
+  today: Date = teamToday(),
 ): (task: Task) => boolean {
   const classify = makeLateClassifier(allTasks, companies, today);
   return (t: Task) => classify(t) === "late";

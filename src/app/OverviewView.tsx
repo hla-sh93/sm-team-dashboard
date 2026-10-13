@@ -5,6 +5,7 @@ import { isDormantCompany } from "@/lib/company-visibility";
 import { achievementSpanLabel, latestCycleBucket } from "@/lib/contract";
 import { displayedCyclePlan, planTotal } from "@/lib/cycle-plan";
 import { loadLiveTasks } from "@/lib/live-tasks";
+import { teamToday } from "@/lib/team-day";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 import { completedCompanyPlanCount, producedCompanyPlanCount } from "@/lib/progress";
 import type { CompanyProgress } from "@/lib/progress";
@@ -39,7 +40,7 @@ export default async function OverviewView({
   // live in the تموز bucket and are done — invisible on both counts. Reading
   // them from there is why the panel showed 0% for nine companies out of ten
   // while the team had produced 20+ pieces for several of them.
-  const now = new Date();
+  const now = teamToday();
   const tracked = companies.filter(
     (c) => c.managed && !isDormantCompany(c) && c.posts + c.reels + c.stories + c.aiReels > 0,
   );

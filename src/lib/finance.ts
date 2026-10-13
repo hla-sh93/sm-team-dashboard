@@ -12,7 +12,9 @@
  * idle/overhead salary that no contract consumes, e.g. a team lead).
  */
 import type { Employee, Company } from "@/types";
-import { isDormantCompany } from "@/lib/company-visibility";
+import { dormantDuring } from "@/lib/company-visibility";
+import { displayedCyclePlan, type PlanCounts } from "@/lib/cycle-plan";
+import { dayKeyOf } from "@/lib/team-day";
 import { taskDays } from "./capacity";
 import { parseWorkDays, periodDays } from "./dates";
 import { isWriterRole, isPublisherRole } from "./workload";
@@ -75,13 +77,33 @@ export type FinanceResult = {
   hasData: boolean; // any contract value or salary entered yet
 };
 
+export type FinanceOptions = {
+  /**
+   * خطة كل شركة **لهالشهر** (`frozenPlanCounts` على دلو الشهر): دورة انسجّلت بعدها دورة
+   * خطتها عدد قطعها هي، مو سجلّ الشركة اليوم (§٩). أيلول فونيتيك كان ٤/٤/٠ وسجلّها
+   * اليوم ١٠/٤/١٤ لدورة تشرين — كلفة أيلول المباشرة طلعت ٦٩ بدل ٤٦ (TR-20).
+   */
+  plans?: Map<string, PlanCounts>;
+  /** «اليوم» — حالة الشركة لشهر ماضي بآخر يوم فيه، وللشهر الشغّال لليوم. */
+  today?: Date;
+};
+
 export function computeFinance(
   employees: Employee[],
   companies: Company[],
   year: number,
   month: number,
+  options: FinanceOptions = {},
 ): FinanceResult {
-  const managed = companies.filter((c) => c.managed && !isDormantCompany(c));
+  // حالة الشركة **وقت الشهر** لا اليوم (§١٠، TR-20): وصل ما جدّدت من ١/١٠ كانت عقداً
+  // شغّالاً بأيلول، وكانت تختفي من إيراد أيلول لأنها مؤرشفة اليوم.
+  const monthEndKey = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+  const todayKey = dayKeyOf(options.today ?? new Date());
+  const asOfKey = monthEndKey < todayKey ? monthEndKey : todayKey;
+  const plans = options.plans ?? new Map<string, PlanCounts>();
+  const managed = companies
+    .filter((c) => c.managed && !dormantDuring(c, asOfKey))
+    .map((c) => ({ ...c, ...displayedCyclePlan(plans, c) }));
   const period = periodDays(year, month);
   const empById = new Map(employees.map((e) => [e.id, e]));
   const firstPhotographerId = employees.find((e) => e.isPhotographer)?.id ?? null;

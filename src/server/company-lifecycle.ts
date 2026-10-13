@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { DONE_STATUSES } from "@/lib/constants";
 import { formatDateShort } from "@/lib/dates";
 import { contractHasEnded } from "@/lib/company-visibility";
+import { teamToday } from "@/lib/team-day";
 
 export function contractEndedEvidence(endedAt: Date): string {
   return `أُغلق تلقائياً: لم يُجدَّد العقد (${formatDateShort(endedAt)}) — غير منجَز ولا يُحتسب تأخيراً.`;
@@ -84,7 +85,7 @@ export async function archiveCompanyContract(companyId: string, endedAt: Date) {
  * (القرار القديم كان يوقفها بدل ما يؤرشفها) بتنقل للأرشيف وكروتها بتنقفل.
  * متكافئة — التشغيل الثاني ما بيغيّر شي.
  */
-export async function archiveEndedContracts(today: Date = new Date()) {
+export async function archiveEndedContracts(today: Date = teamToday()) {
   const candidates = await prisma.company.findMany({
     where: { contractEndedAt: { not: null }, status: { not: "archived" } },
     select: { id: true, name: true, contractEndedAt: true },

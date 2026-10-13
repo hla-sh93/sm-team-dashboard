@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { cycleForBucket, currentCycleBucket } from "@/lib/contract";
 import { formatDateShort } from "@/lib/dates";
 import { companyLifecycle } from "@/lib/company-visibility";
+import { teamToday } from "@/lib/team-day";
 import CompaniesReadOnly from "./companies-readonly";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function EmployeeCompaniesPage() {
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.employee.findMany({ select: { id: true, name: true } }),
   ]);
-  const now = new Date();
+  const now = teamToday();
   const rows = companies
     .filter((c) => c.managed && companyLifecycle(c) !== "archived")
     .map((company) => {

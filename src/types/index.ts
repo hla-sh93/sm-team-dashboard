@@ -189,3 +189,6 @@ export type TelegramMessage = {
   confirmed: boolean;
   createdAt: Date;
 };
+
+/** رسالة تلغرام كما بتوصل لمنطقة الموظفين (`publicDeliverySelect`): بلا هوية المرسِل الرقمية. */
+export type PublicDelivery = Omit<TelegramMessage, "senderId" | "fileId" | "mediaGroupId" | "createdAt">;

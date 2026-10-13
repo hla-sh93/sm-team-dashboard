@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
-import { publicCompanySelect, publicEmployeeSelect } from "@/server/public-rows";
+import { publicCompanySelect, publicDeliverySelect, publicEmployeeSelect } from "@/server/public-rows";
 import { loadLiveTasks } from "@/lib/live-tasks";
+import { teamDayStart, teamToday, teamTodayISO } from "@/lib/team-day";
 import TodayClient from "./today/today-client";
 
 /** Shared «متابعة اليوم» — identical at `/today` and `/admin/today` (§14).
@@ -9,16 +10,20 @@ import TodayClient from "./today/today-client";
  *  per company, what goes out today, is it actually ready, and what already
  *  landed in the Telegram group. */
 export default async function TodayView() {
-  const today = new Date();
-  const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // «اليوم» بدمشق مو بتوقيت الخادم (UTC على Vercel): من ٠٠:٠٠ لـ٠٣:٠٠ الصفحة كانت
+  // تعرض الأمس ورسائله (OP-13).
+  const now = new Date();
+  const today = teamToday(now);
 
   const [employees, companies, tasks, deliveries, ignoredChats] = await Promise.all([
     prisma.employee.findMany({ select: publicEmployeeSelect, orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ select: publicCompanySelect, orderBy: { priority: "asc" } }),
-    loadLiveTasks(today.getFullYear(), today.getMonth()),
+    loadLiveTasks(today.getFullYear(), today.getMonth(), today),
     // Today's group traffic — what the team actually delivered.
+    // الصفحة مفتوحة بلا دخول: الحقول يلي بتعرضها بس — بلا معرّف المرسِل الرقمي (SA-01).
     prisma.telegramMessage.findMany({
-      where: { sentAt: { gte: dayStart } },
+      select: publicDeliverySelect,
+      where: { sentAt: { gte: teamDayStart(now) } },
       orderBy: { sentAt: "desc" },
       take: 200,
     }),
@@ -30,10 +35,7 @@ export default async function TodayView() {
 
   return (
     <TodayClient
-      todayISO={
-        `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, "0")}-` +
-        `${String(dayStart.getDate()).padStart(2, "0")}`
-      }
+      todayISO={teamTodayISO(now)}
       employees={employees}
       companies={companies}
       tasks={tasks}

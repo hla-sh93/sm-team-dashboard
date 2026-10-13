@@ -115,6 +115,10 @@ describe("[SA-01 مُصلَح] صفحات الموظفين بتسلّم المك
         expect(e, route).not.toHaveProperty("telegramUserId");
         expect(e, route).not.toHaveProperty("telegramAliases");
       }
+      for (const d of (props.deliveries ?? []) as Record<string, unknown>[]) {
+        expect(d, route).not.toHaveProperty("senderId");
+        expect(d, route).not.toHaveProperty("fileId");
+      }
     }
   });
 });
@@ -146,5 +150,15 @@ describe("ثابت (بلا قاعدة): مكوّنات خادم الموظفين
       }
     }
     expect(unselected).toEqual([]);
+  });
+
+  it("[SA-01] رسائل تلغرام بـ«متابعة اليوم» بقائمة مسموحات — بلا معرّف المرسِل الرقمي (مراجعة ١٢/١٠)", async () => {
+    const { publicDeliverySelect } = await import("@/server/public-rows");
+    expect(publicDeliverySelect).not.toHaveProperty("senderId");
+    expect(publicDeliverySelect).not.toHaveProperty("fileId");
+    const src = readFileSync("src/app/TodayView.tsx", "utf8");
+    const calls = [...src.matchAll(/prisma\.telegramMessage\.findMany\(\{([\s\S]*?)\}\)/g)];
+    expect(calls.length).toBe(1);
+    expect(calls[0][1]).toMatch(/select:\s*publicDeliverySelect/);
   });
 });

@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const WORKER = path.resolve(__dirname, "scheduler-core-tz-worker.ts");
-type Out = { offsetMin: number; cycles: string[]; bwBucketAt0030Damascus: { year: number; month: number }; workdays: string; schedule: string[]; firstPublishInstant: string };
+type Out = { offsetMin: number; cycles: string[]; bwBucketAt0030Damascus: { year: number; month: number }; teamDay: { iso: string; bucket: { year: number; month: number }; dayStart: string }; workdays: string; schedule: string[]; firstPublishInstant: string };
 function runIn(tz: string): Out | null {
   const p = spawnSync(process.execPath, ["--import", "tsx", WORKER], { env: { ...process.env, TZ: tz }, encoding: "utf8", cwd: path.resolve(__dirname, "../.."), timeout: 120_000 });
   if (p.status !== 0) throw new Error(`worker ${tz} failed: ${p.stderr.slice(0, 400)}`);
@@ -38,5 +38,14 @@ describe("المنطقة الزمنية — عملية فرعية", () => {
   it.skipIf(!tzHonoured)("[موثَّق SC-12] حدّ اليوم = منتصف ليل الخادم: الساعة 00:30 بدمشق يوم بداية دورة BW (10/10)، خادم UTC لسا بيعتبرها دورة أيلول", () => {
     expect(dam!.bwBucketAt0030Damascus).toEqual({ year: 2026, month: 9 });
     expect(utc!.bwBucketAt0030Damascus).toEqual({ year: 2026, month: 8 });
+  });
+
+  it.skipIf(!tzHonoured)("[SC-12] يوم الفريق (`teamToday`) بيعطي نفس الدورة الشغّالة على خادم UTC ومن جهاز بدمشق — وبنيويورك نفس اليوم", () => {
+    for (const out of [utc!, dam!, ny!]) {
+      expect(out.teamDay.iso).toBe("2026-10-10");
+      expect(out.teamDay.dayStart).toBe("2026-10-09T21:00:00.000Z");
+    }
+    expect(utc!.teamDay.bucket).toEqual({ year: 2026, month: 9 });
+    expect(dam!.teamDay.bucket).toEqual({ year: 2026, month: 9 });
   });
 });

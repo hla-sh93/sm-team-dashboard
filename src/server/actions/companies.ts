@@ -30,6 +30,7 @@ import {
   type ResumeSetting,
 } from "@/server/company-pause";
 import type { ContentType } from "@/lib/constants";
+import { teamToday } from "@/lib/team-day";
 
 
 /** Parse a YYYY-MM-DD form string into a LOCAL-midnight Date (or null). */
@@ -187,7 +188,7 @@ export async function updateCompany(id: string, input: CompanyInput) {
     });
     // الأرشفة من النموذج = نفس الأرشفة من «لم يُجدد»: الكروت المفتوحة بتنقفل.
     if (d.status === "archived" && before.status !== "archived") {
-      await archiveCompanyContract(id, new Date());
+      await archiveCompanyContract(id, teamToday());
     }
     revalidateAll();
     return { ok: true as const, data: c };
@@ -505,13 +506,9 @@ export async function endContract(companyId: string) {
     return { ok: false as const, error: "غير مصرّح" };
   }
   try {
-    const now = new Date();
     // لم يُجدد = أرشيف، لا إيقاف: الشركة واقفة من حالها وكروتها المفتوحة بتنقفل
     // تلقائياً (قرار القائدة ١٥/٩). الإيقاف للنشطة يلي طلب زبونها التوقّف.
-    const r = await archiveCompanyContract(
-      companyId,
-      new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-    );
+    const r = await archiveCompanyContract(companyId, teamToday());
     revalidateAll();
     return { ok: true as const, closedTasks: r.closedTasks };
   } catch {
@@ -524,7 +521,7 @@ export async function endContract(companyId: string) {
 export async function archiveCompany(id: string) {
   try {
     await assertAdmin();
-    const r = await archiveCompanyContract(id, new Date());
+    const r = await archiveCompanyContract(id, teamToday());
     revalidateAll();
     return { ok: true as const, closedTasks: r.closedTasks };
   } catch {
@@ -598,7 +595,7 @@ export async function pauseCompanyPublishing(companyId: string) {
         lateExemptReason: "النشر موقوف بطلب الزبون — بينتظر تاريخ رجوع",
       },
     });
-    await recordPause(companyId, new Date());
+    await recordPause(companyId, teamToday());
     revalidateAll();
     return { ok: true as const, data: updated };
   } catch {
@@ -811,7 +808,7 @@ export async function regenerateCompanyCurrentCycle(companyId: string) {
     }
     // `currentCycleBucket` بيرجع دلو الشهر التقويمي لما ما في دورة، فلازم
     // نتأكّد إنّ الدلو فعلاً إله دورة — وإلا التوليد بيفرّغه.
-    const bucket = currentCycleBucket(co, new Date());
+    const bucket = currentCycleBucket(co, teamToday());
     const cycle = cycleForBucket(co, bucket.year, bucket.month);
     if (!cycle) return { ok: false as const, error: "ما في دورة حالية لهالشركة" };
     const built = await generateScheduleInternal(bucket.year, bucket.month, companyId);

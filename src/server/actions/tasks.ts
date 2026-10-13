@@ -25,6 +25,7 @@ import { generateScheduleInternal, isLiveBucket } from "@/server/schedule-engine
 import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 // عمليات داخلية مو نقاط نهاية للمتصفّح (فحص ١٢/١٠، SA-08) — بملف عادي.
 import { completeProductionForPublishedTask } from "@/server/task-ops";
+import { teamToday } from "@/lib/team-day";
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
@@ -470,11 +471,7 @@ export async function updateDailyTasks(
   const demote = [...new Set(demoteIds)].filter((id) => !promote.includes(id));
   if (promote.length === 0 && demote.length === 0) return { ok: true as const };
   try {
-    const now = new Date();
-    const today =
-      todayISO && isCalendarDay(todayISO)
-        ? fromISODate(todayISO)
-        : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = todayISO && isCalendarDay(todayISO) ? fromISODate(todayISO) : teamToday();
 
     // Each demoted card → its own owner's nearest next working day.
     const demoteTasks = demote.length

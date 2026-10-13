@@ -25,22 +25,38 @@ export function patchStylesForRtl(stylesXml: string): string {
     xml = xml.replace(/<w:pPrDefault\s*\/>/, `<w:pPrDefault>${P_DEFAULT}</w:pPrDefault>`);
   } else if (/<w:pPrDefault>\s*<\/w:pPrDefault>/.test(xml)) {
     xml = xml.replace(/<w:pPrDefault>\s*<\/w:pPrDefault>/, `<w:pPrDefault>${P_DEFAULT}</w:pPrDefault>`);
-  } else if (/<w:pPrDefault>/.test(xml) && !/<w:pPrDefault>[\s\S]*?<w:bidi\s*\/>/.test(xml)) {
-    xml = xml.replace(/<w:pPrDefault>\s*<w:pPr>/, "<w:pPrDefault><w:pPr><w:bidi/>");
+  } else if (/<w:pPrDefault>[\s\S]*?<\/w:pPrDefault>/.test(xml)) {
+    // الفحص جوّا العنصر نفسه بس: `<w:bidi/>` بنمط تاني بعده كان يخلّي الافتراض بلا
+    // اتجاه (TR-22).
+    const own = /<w:pPrDefault>([\s\S]*?)<\/w:pPrDefault>/;
+    const inner = xml.match(own)![1];
+    if (!/<w:bidi\s*\/>/.test(inner)) {
+      const next = /<w:pPr>/.test(inner)
+        ? inner.replace("<w:pPr>", "<w:pPr><w:bidi/>")
+        : /<w:pPr\s*\/>/.test(inner)
+          ? inner.replace(/<w:pPr\s*\/>/, P_DEFAULT)
+          : `${P_DEFAULT}${inner}`;
+      xml = xml.replace(own, `<w:pPrDefault>${next}</w:pPrDefault>`);
+    }
   } else if (!/<w:pPrDefault/.test(xml) && /<w:docDefaults>/.test(xml)) {
     xml = xml.replace("</w:docDefaults>", `<w:pPrDefault>${P_DEFAULT}</w:pPrDefault></w:docDefaults>`);
   }
 
   // 2) نمط Normal: Word بيبني عليه كل فقرة بلا نمط، وبيقرا منه اتجاه الجداول
   //    الجديدة يلي بتنضاف بالإيد.
-  const normal = /<w:style\b[^>]*w:styleId="Normal"[^>]*>([\s\S]*?)<\/w:style>/;
+  //    النمط الموجود بينحقن **جوّاه** بوسمه الأصلي: إعادة بنائه كانت تكرّر `<w:name>`
+  //    (TR-22)، و`<w:pPr>` مكانه بالمخطّط قبل `<w:rPr>`.
+  const normal = /(<w:style\b[^>]*w:styleId="Normal"[^>]*>)([\s\S]*?)(<\/w:style>)/;
   const match = xml.match(normal);
-  if (match && !/<w:bidi\s*\/>/.test(match[1])) {
-    const inner = /<w:pPr>/.test(match[1])
-      ? match[1].replace("<w:pPr>", "<w:pPr><w:bidi/><w:jc w:val=\"right\"/>")
-      : `${match[1]}${P_DEFAULT}`;
-    xml = xml.replace(normal, `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/>${inner}</w:style>`);
-  } else if (!match && /<w:styles\b[^>]*>/.test(xml)) {
+  if (match && !/<w:bidi\s*\/>/.test(match[2])) {
+    const body = match[2];
+    const inner = /<w:pPr>/.test(body)
+      ? body.replace("<w:pPr>", "<w:pPr><w:bidi/><w:jc w:val=\"right\"/>")
+      : /<w:rPr\b/.test(body)
+        ? body.replace(/<w:rPr\b/, `${P_DEFAULT}<w:rPr`)
+        : `${body}${P_DEFAULT}`;
+    xml = xml.replace(normal, () => `${match[1]}${inner}${match[3]}`);
+  } else if (!match && !/w:styleId="Normal"/.test(xml) && /<w:styles\b[^>]*>/.test(xml)) {
     xml = xml.replace(
       /(<w:styles\b[^>]*>)/,
       `$1<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/>${P_DEFAULT}</w:style>`,

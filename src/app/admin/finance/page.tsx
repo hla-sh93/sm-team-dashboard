@@ -4,6 +4,8 @@ import { resolveActiveMonth, monthLabel } from "@/lib/month";
 import { computeFinance, type FinanceResult } from "@/lib/finance";
 import { formatDateShort } from "@/lib/dates";
 import { prisma } from "@/lib/db";
+import { teamToday } from "@/lib/team-day";
+import { frozenPlanCounts } from "@/server/cycle-plan";
 import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react";
 
 const money = (n: number) => {
@@ -28,9 +30,15 @@ export default async function FinancePage({
   // Setting (`financeSnapshot:{y}-{m}`) and render the snapshot from then on.
   // The current month stays live.
   const now = new Date();
-  const isPast = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth());
+  const today = teamToday(now);
+  const isPast = year < today.getFullYear() || (year === today.getFullYear() && month < today.getMonth());
   const snapKey = `financeSnapshot:${year}-${month}`;
-  let f = computeFinance(employees, companies, year, month);
+  // خطة الشهر نفسه (دورة انسجّلت بعدها دورة = عدد قطعها) وحالة الشركة وقته (TR-20).
+  const plans = await frozenPlanCounts(
+    companies.filter((c) => c.managed),
+    () => ({ year, month }),
+  );
+  let f = computeFinance(employees, companies, year, month, { plans, today });
   let snapshotAt: Date | null = null;
   if (isPast) {
     const row = await prisma.setting.findUnique({ where: { key: snapKey } }).catch(() => null);

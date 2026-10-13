@@ -1,4 +1,5 @@
 import { WORK_WEEK } from "./dates";
+import { teamToday } from "./team-day";
 
 /**
  * Reference constants — SOCIAL_SCHEDULER_SPEC.md appendix + §4.
@@ -157,14 +158,14 @@ function pinnedForLater(t: TaskDoneState, now: Date): boolean {
   return day != null && dateKey(day) > dateKey(now);
 }
 
-export function isTaskLateState(t: TaskDoneState, now = new Date()): boolean {
+export function isTaskLateState(t: TaskDoneState, now: Date = teamToday()): boolean {
   if (isTaskDoneState(t)) return false;
   if (pinnedForLater(t, now)) return false;
   const deadline = taskDeadline(t);
   return deadline != null && dateKey(deadline) < dateKey(now);
 }
 
-export function daysLateOfState(t: TaskDoneState, now = new Date()): number {
+export function daysLateOfState(t: TaskDoneState, now: Date = teamToday()): number {
   if (!isTaskLateState(t, now)) return 0;
   const deadline = taskDeadline(t);
   if (!deadline) return 0;
