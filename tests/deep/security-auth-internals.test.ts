@@ -177,6 +177,15 @@ describe("التحقّق من الجلسة", () => {
     expect((await actions.loginAction(EMAIL, "env-pass-123")).ok).toBe(true);
   });
 
+  it("ADMIN_PASSWORD بفراغ أو سطر جديد بأولها/آخرها (لصق على Vercel) بتفوت — الدخول بيقصّ يلي بينكتب (١٤/١٠)", async () => {
+    await configureAdmin();
+    vi.stubEnv("ADMIN_PASSWORD", "  env-pass-123 \n");
+    const { actions } = await freshInstance();
+    expect((await actions.loginAction(EMAIL, "env-pass-123")).ok).toBe(true);
+    expect((await actions.loginAction(EMAIL, " env-pass-123 ")).ok).toBe(true);
+    expect((await actions.loginAction(EMAIL, "env-pass-12")).ok).toBe(false);
+  });
+
   it("[SA-04 مُصلَح] الخروج بيبطل الجلسة: نفس الكوكي بعد logout بتنرفض", async () => {
     const { lib, actions } = await freshInstance();
     await actions.loginAction(EMAIL, PASS);

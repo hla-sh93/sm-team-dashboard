@@ -167,8 +167,10 @@ export async function setAdminPassword(password: string): Promise<void> {
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   if (!password) return false;
   if (process.env.ADMIN_PASSWORD) {
+    // صفحة الدخول بتقصّ الفراغات من يلي بينكتب (`loginAction`)، فقيمة Vercel لازم
+    // تنقصّ كمان: فراغ بأولها أو آخرها (لصق) كان يقفل الأدمن برّا للأبد (١٤/١٠).
     const a = Buffer.from(password);
-    const b = Buffer.from(process.env.ADMIN_PASSWORD);
+    const b = Buffer.from(process.env.ADMIN_PASSWORD.trim());
     return a.length === b.length && timingSafeEqual(a, b);
   }
   const stored = await storedPasswordHash();
