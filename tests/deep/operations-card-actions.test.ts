@@ -238,6 +238,31 @@ describe("«ممنوع مهمة بلا وصف» + تاريخ البداية قر
   });
 });
 
+describe("أقل مدة للمهمة الإضافية ٠.١ يوم (القائدة ١٤/١٠)", () => {
+  // «عدل الكود ليقبل 0.1 يوم (حوالي ساعة)» — كروت المتابعة الدائمة (عمر ٨س، حلا ١٦س)
+  // كانت ما بتنزل عن نص يوم، فبتاكل يوم الشخص وبتخفي شغله المجدول.
+  it.skipIf(skip())("التعديل بيقبل ٠.١ يوم = ٠.٨ ساعة؛ وأقل منها بينسقف على ٠.١، مش على نص يوم", async () => {
+    const row = await prisma.task.create({
+      data: { id: `${uniq}-followup`, kind: "ADHOC", title: `${uniq}-متابعة`, hours: 8, year: Y, month: 9, status: "IN_PROGRESS", board: "IN_PROGRESS", isAuto: false, assigneeId: designerId, companyId: null, brief: "متابعة دائمة" },
+    });
+    expect((await actions.updateTaskDetails([row.id], { days: 0.1 })).ok).toBe(true);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: row.id } })).hours).toBe(0.8);
+    expect((await actions.updateTaskDetails([row.id], { days: 0.25 })).ok).toBe(true);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: row.id } })).hours).toBe(2);
+    expect((await actions.updateTaskDetails([row.id], { days: 0 })).ok).toBe(true);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: row.id } })).hours).toBe(0.8);
+  });
+
+  it.skipIf(skip())("الإنشاء: مهمة ساعة وحدة بتنحفظ ساعة، مش ٤ ساعات", async () => {
+    const r = await actions.createTask({
+      kind: "ADHOC", title: `${uniq}-ساعة`, hours: 0.8, priority: "NORMAL", status: "NOT_STARTED",
+      assigneeId: designerId, companyId: null, isPinned: false, year: Y, month: 9, brief: "مهمة صغيرة",
+    } as never);
+    expect(r.ok).toBe(true);
+    expect((await prisma.task.findFirstOrThrow({ where: { title: `${uniq}-ساعة` } })).hours).toBe(0.8);
+  });
+});
+
 describe("«راعي الترتيب» عند الإقفال (القائدة ١٣/١٠)", () => {
   it.skipIf(skip())("مونتاج تصويره مفتوح ما بينسكّر — لا من قائمة الحالة ولا من اللوح؛ وبعد التصوير بينسكّر", async () => {
     const shoot = await find("SHOOT", "REEL");

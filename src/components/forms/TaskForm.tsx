@@ -126,7 +126,7 @@ export default function TaskForm({
           ...(changed("priority") ? { priority: form.priority } : {}),
           ...(changed("status") ? { status: form.status } : {}),
           // Effort floor: a 0-day task would vanish from workload math.
-          ...(isAdhoc && changed("days") ? { days: Math.max(0.5, Number(form.days) || 0) } : {}),
+          ...(isAdhoc && changed("days") ? { days: Math.max(0.1, Number(form.days) || 0) } : {}),
           ...(isDesignUnitEditable && changed("quantity")
             ? { quantity: Math.max(1, Math.round(Number(form.quantity) || 1)) }
             : {}),
@@ -139,7 +139,7 @@ export default function TaskForm({
         } else toast(result.error, "error");
       } else {
         // Effort floor: a 0-day task would vanish from workload math.
-        const days = Math.max(0.5, Number(form.days) || 0);
+        const days = Math.max(0.1, Number(form.days) || 0);
         const result = await createTask({
           title: form.title.trim(),
           kind: "ADHOC",
@@ -246,8 +246,8 @@ export default function TaskForm({
                 <Label>أيام العمل</Label>
                 <Input
                   type="number"
-                  step="0.5"
-                  min="0.5"
+                  step="0.1"
+                  min="0.1"
                   value={form.days}
                   onChange={(e) => set("days", e.target.value)}
                 />

@@ -68,7 +68,7 @@ export async function createTask(input: TaskInput) {
   try {
     const d = parsed.data;
     // Ad-hoc effort floor (see updateTaskDetails): never persist a 0-hour task.
-    if (d.kind === "ADHOC" && d.hours < 4) d.hours = 4;
+    if (d.kind === "ADHOC" && d.hours < 0.8) d.hours = 0.8;
     const now = new Date();
     const readyDate = d.readyDate ? fromISODate(d.readyDate) : null;
     const workDate = d.workDate ? fromISODate(d.workDate) : null;
@@ -271,9 +271,12 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId || null;
     if (input.priority !== undefined) data.priority = input.priority;
     // Ad-hoc effort floor: a 0-day task would cost nothing in workload math and
-    // silently disappear from capacity — clamp to at least half a working day.
+    // silently disappear from capacity — clamp to at least 0.1 of a working day
+    // (~1 hour). Was half a day: standing follow-up cards («متابعة مع العملاء» 8h,
+    // «متابعة مهام التصوير والسوشال ميديا» 16h) then ate the whole day and hid the
+    // person's scheduled work. Lead 14/10: «عدل الكود ليقبل 0.1 يوم (حوالي ساعة)».
     if (input.days != null && before.kind === "ADHOC") {
-      data.hours = Math.round(Math.max(0.5, input.days) * 8 * 10) / 10;
+      data.hours = Math.round(Math.max(0.1, input.days) * 8 * 10) / 10;
     }
     if (input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH") {
       data.quantity = Math.max(1, Math.round(input.quantity));
