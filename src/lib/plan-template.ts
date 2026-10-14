@@ -2,23 +2,30 @@
  * قالب خطة المحتوى — الملف يلي بتعبّيه نوال وبيقراه التطبيق بلا تخمين.
  *
  * القائدة (١٨/٩): «حتى نوال ما تخطئ بالكتابة، اعمل قوالب الوورد لكل خطة كيف
- * بتقدر تقرأهن بشكل صحيح، ونوال فقط بتعبي المحتوى». وفضّلت شكل خطة فوني جوبس.
- * وبعد أول نسخة: «جدول لكل نوع، ما تخلط كلشي بنفس الجدول» — وهي نفس قاعدتها
- * بملف التصدير (٤/٩): «جدول لكل نوع محتوى».
+ * بتقدر تقرأهن بشكل صحيح، ونوال فقط بتعبي المحتوى».
  *
- * فالشكل: صفحة **أفقية** وجدول لكل نوع. الأفقي مو تفصيل شكلي — الجدول بالطولي
- * أعرض من مساحة الكتابة فبيطلع مزاحاً عن الهامش، وهاد يلي صار بأول نسخة.
+ * القائدة (١٤/١٠): «نوال تعاني من شكل قالب الخطة الحالي… أريد منك تحسين شكل
+ * القالب الحالي بالمنصة ليتوافق مع القالب الذي تعمل عليه حتى لا يتسبب أي
+ * مشاكل. مع البنود التي تناسب الكارد أيضاً، وحسب خطة كل شركة».
+ * فالشكل صار **شكل نوال** («BalsamCenter_ContentPlan_2.docx»):
+ *  - جدول الخطة: # · النوع · الهوك / العنوان · السكريبت / نص التصميم · الكابشن · الهاشتاغات
+ *    — الريلات والبوستات بجدول واحد، والنوع بعمود بكل صف (Reel / Reel AI / Post / Carousel).
+ *  - «خطة الستوريز – N فكرة»: # · نوع الستوري · المحتوى / النص · تفاصيل.
+ * (بيلغي قاعدة ١٨/٩ «جدول لكل نوع» — سببها كان عمود نوع بيلزق الرقم بالنوع
+ * «3Reelوظيفة الاسبوع»، وهون الرقم بعمود والنوع بعمود.)
+ *
+ * **حسب خطة كل شركة:** الصفوف بتطلع معبّاية بالرقم والنوع حسب عقد الشركة —
+ * ٤ ريل = «1 Reel» لـ«4 Reel»، وبعدهن البوستات. نوال بتكتب المحتوى بس، والرقم
+ * هو رقم الكرت بالضبط. صف بلا محتوى بينتخطّى (قطعة لسا ما انكتبت).
+ *
+ * الصفحة **طولية** متل ملفها، بس الجدول بعرض مساحة الكتابة بالضبط (هوامش
+ * ٧٢٠): أول نسخة طولية كان جدولها أعرض من الصفحة فطلع مزاحاً عن الهامش.
  * وعرض الأعمدة مثبَّت بـ`columnWidths` وإلا Word بيوزّعهن على مزاجه.
- *
- * ونوع القطعة بيجي من **عنوان الجدول** («جدول الريلات»)، فما ضل عمود «النوع»
- * تعبّيه نوال. عمود واحد أقلّ، والالتباس القديم («3Reelوظيفة الاسبوع…») انتهى.
  */
 import {
   AlignmentType,
   BorderStyle,
   Document,
-  HeadingLevel,
-  PageOrientation,
   Paragraph,
   ShadingType,
   Table,
@@ -29,186 +36,156 @@ import {
   WidthType,
 } from "docx";
 
-const FONT = "Arial";
-const NAVY = "1F4E5F";
-const SOFT = "EAF1F3";
+/** خط قالب نوال؛ Word بيرجع لخط بديل لو مو مثبّت. */
+const FONT = "Tajawal";
+const TEAL = "20BEC6";
+const INK = "1A3C40";
+const ZEBRA = "F5F9F9";
 const MUTED = "7A7A7A";
 
-/** عرض مساحة الكتابة بصفحة أفقية بهوامش ٧٠٠ — نفس ملف التصدير. */
-const TABLE_W = 15350;
+/** صفحة Letter طولية (متل ملف نوال) بهوامش ٧٢٠ ← مساحة كتابة ١٠٨٠٠. */
+const PAGE = { width: 12240, height: 15840 };
+const MARGIN = { top: 900, bottom: 720, left: 720, right: 720 };
+const TABLE_W = PAGE.width - MARGIN.left - MARGIN.right;
 
-export type TemplateSection = {
-  type: "REEL" | "POST" | "STORY" | "AI_REEL";
-  /** عنوان الجدول — **القارئ بيقرا النوع منه**، فتغييره بيكسر الاستيراد. */
-  heading: string;
-  headers: string[];
-  widths: number[];
-  example: string[];
-};
-
-const pad = (widths: number[]) => {
+/** يحوّل نسب أعمدة ملف نوال لعرض مساحة الكتابة بالضبط. */
+const scale = (widths: number[]) => {
   const sum = widths.reduce((a, b) => a + b, 0);
-  return widths.map((w, i) => (i === widths.length - 1 ? w + (TABLE_W - sum) : w));
+  const out = widths.map((w) => Math.floor((w * TABLE_W) / sum));
+  out[out.length - 1] += TABLE_W - out.reduce((a, b) => a + b, 0);
+  return out;
 };
 
 /**
- * رقم صفّ المثال. القائدة شالت التعليمات من القالب («مالهن داعي»)، فما عاد في
- * سطر بيقول «احذفي صفّ المثال». فبدل ما نتّكل على حدا يتذكّر، الرقم كلمة لا
- * عدد، والقارئ بيتخطّى الصف كله — انحذف أو ضلّ، النتيجة وحدة.
+ * رقم صفّ المثال. القالب الجديد ما فيه صف مثال (الصفوف معبّاية بالرقم والنوع)،
+ * بس القارئ لسا بيتخطّى أي صف رقمه «مثال» — ملفات القالب القديم.
  */
 export const EXAMPLE_ROW_MARK = "مثال";
 
-/** جدول لكل نوع: الأعمدة يلي بتلزم هالنوع وبس. */
-export const TEMPLATE_SECTIONS: TemplateSection[] = [
-  {
-    type: "REEL",
-    heading: "جدول الريلات",
-    headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
-    widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
-    example: [
-      EXAMPLE_ROW_MARK,
-      "الجملة الأولى يلي بتوقّف المتابع.",
-      "السكريبت كامل، سطر لكل مشهد أو جملة.\nكل سطر بينزل متل ما هو على كرت المصوّر والمونتير.",
-      "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
-      "#العلامة #الخدمة",
-      "تصوير",
-    ],
-  },
-  {
-    type: "POST",
-    heading: "جدول البوستات",
-    headers: ["رقم", "نص التصميم", "الكابشن", "الهاشتاغات", "ملاحظة"],
-    widths: pad([800, 6200, 5200, 1700, 1450]),
-    example: [
-      EXAMPLE_ROW_MARK,
-      "النصّ يلي بينكتب جوّا التصميم، سطر لكل سطر بالتصميم.",
-      "نصّ الكابشن متل ما رح ينكتب بالمنشور.",
-      "#العلامة #الخدمة",
-      "كاروسيل ٣ شرائح",
-    ],
-  },
-  {
-    type: "STORY",
-    heading: "جدول الستوريز",
-    headers: ["رقم", "المحتوى", "ملاحظة"],
-    widths: pad([800, 10000, 4550]),
-    example: [EXAMPLE_ROW_MARK, "نصّ الستوري أو وصف اللقطة.", "تصويت / عدّاد / إعادة نشر"],
-  },
-  {
-    type: "AI_REEL",
-    heading: "جدول ريلات AI",
-    headers: ["رقم", "الهوك", "السكريبت", "الكابشن", "الهاشتاغات", "ملاحظة"],
-    widths: pad([800, 2600, 5200, 3900, 1500, 1350]),
-    example: [
-      EXAMPLE_ROW_MARK,
-      "الجملة الأولى يلي بتوقّف المتابع.",
-      "السكريبت كامل، سطر لكل مشهد.",
-      "نصّ الكابشن.",
-      "#العلامة",
-      "",
-    ],
-  },
-];
+/** كلمة النوع بعمود «النوع» — نفس كلمات ملف نوال، والقارئ بيفهمها. */
+export const TEMPLATE_TYPE_CELL = { REEL: "Reel", AI_REEL: "Reel AI", POST: "Post" } as const;
 
-const p = (
-  text: string,
-  o: { size?: number; bold?: boolean; color?: string; after?: number } = {},
-) =>
-  new Paragraph({
-    bidirectional: true,
-    alignment: AlignmentType.RIGHT,
-    spacing: { after: o.after ?? 60, line: 252 },
-    children: [
-      new TextRun({ text, rightToLeft: true, font: FONT, size: o.size ?? 18, bold: !!o.bold, color: o.color }),
-    ],
-  });
+/** جدول الخطة — ترويسة ملف نوال حرفياً. */
+export const TEMPLATE_MAIN = {
+  headers: ["#", "النوع", "الهوك / العنوان", "السكريبت / نص التصميم", "الكابشن", "الهاشتاغات"],
+  widths: scale([820, 1530, 1439, 3165, 2250, 2398]),
+};
 
-const cell = (text: string, o: { head?: boolean; width: number; muted?: boolean }) =>
-  new TableCell({
-    width: { size: o.width, type: WidthType.DXA },
-    verticalAlign: VerticalAlign.CENTER,
-    shading: o.head ? { type: ShadingType.CLEAR, fill: SOFT, color: "auto" } : undefined,
-    margins: { top: 60, bottom: 60, left: 90, right: 90 },
-    children: text
-      .split("\n")
-      .map((line, i, all) =>
-        p(line, { bold: o.head, size: o.head ? 18 : 17, color: o.muted ? MUTED : undefined, after: i === all.length - 1 ? 0 : 40 }),
-      ),
-  });
-
-const row = (cells: string[], widths: number[], o: { head?: boolean; muted?: boolean } = {}) =>
-  new TableRow({
-    tableHeader: o.head,
-    children: cells.map((text, i) => cell(text, { head: o.head, muted: o.muted, width: widths[i] })),
-  });
-
-const BORDERS = {
-  top: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-  bottom: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-  left: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-  right: { style: BorderStyle.SINGLE, size: 2, color: "BFD3D8" },
-  insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
-  insideVertical: { style: BorderStyle.SINGLE, size: 2, color: "DCE6E9" },
+/** جدول الستوريز — ترويسة ملف نوال حرفياً؛ «نوع الستوري» = Poll / Quiz / مشاركة… */
+export const TEMPLATE_STORIES = {
+  heading: (count: number) => `خطة الستوريز – ${count} فكرة`,
+  headers: ["#", "نوع الستوري", "المحتوى / النص", "تفاصيل"],
+  widths: scale([728, 1781, 3560, 3740]),
 };
 
 export type PlanTemplateInput = {
   company: string;
   /** نصّ الدورة متل ما بيعرضه التطبيق، مثال «١٣ أيلول ← ١٢ تشرين الأول». */
   cycleLabel?: string | null;
-  /** عدد القطع بالعقد — بيحدّد أي جدول بينحط وكم صف فاضي فيه. */
+  /** عدد القطع بالعقد — بيحدّد صفوف كل جدول. */
   plan?: { posts: number; reels: number; stories: number; aiReels: number } | null;
-  /** أقلّ عدد صفوف فاضية بكل جدول. */
+  /** بلا عقد معروف: كم صف من كل نوع. */
   minRows?: number;
 };
 
-function sectionBlocks(section: TemplateSection, blanks: number) {
+/** صفوف جدول الخطة معبّاية بالرقم والنوع — ريلات، ريلات AI، بوستات. */
+export function templateMainRows(plan: PlanTemplateInput["plan"], fallback = 4): [string, string][] {
+  const reels = plan ? plan.reels : fallback;
+  const aiReels = plan ? plan.aiReels : 0;
+  const posts = plan ? plan.posts : fallback;
+  const block = (count: number, word: string) =>
+    Array.from({ length: count }, (_, i) => [String(i + 1), word] as [string, string]);
   return [
-    new Paragraph({
-      bidirectional: true,
-      alignment: AlignmentType.RIGHT,
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 200, after: 60 },
-      children: [
-        new TextRun({ text: section.heading, rightToLeft: true, font: FONT, size: 24, bold: true, color: NAVY }),
-      ],
-    }),
-    new Table({
-      width: { size: TABLE_W, type: WidthType.DXA },
-      columnWidths: section.widths,
-      visuallyRightToLeft: true,
-      borders: BORDERS,
-      rows: [
-        row(section.headers, section.widths, { head: true }),
-        row(section.example, section.widths, { muted: true }),
-        ...Array.from({ length: blanks }, () => row(section.headers.map(() => ""), section.widths)),
-      ],
-    }),
-    p("", { after: 120 }),
+    ...block(reels, TEMPLATE_TYPE_CELL.REEL),
+    ...block(aiReels, TEMPLATE_TYPE_CELL.AI_REEL),
+    ...block(posts, TEMPLATE_TYPE_CELL.POST),
   ];
 }
 
+const run = (text: string, o: { size?: number; bold?: boolean; color?: string } = {}) =>
+  new TextRun({ text, rightToLeft: true, font: FONT, size: o.size ?? 22, bold: !!o.bold, color: o.color });
+
+const para = (
+  text: string,
+  o: { size?: number; bold?: boolean; color?: string; after?: number; center?: boolean } = {},
+) =>
+  new Paragraph({
+    bidirectional: true,
+    alignment: o.center ? AlignmentType.CENTER : AlignmentType.RIGHT,
+    spacing: { after: o.after ?? 0, line: 276 },
+    children: [run(text, o)],
+  });
+
+const cell = (
+  text: string,
+  width: number,
+  o: { head?: boolean; fill?: string; color?: string; bold?: boolean; center?: boolean } = {},
+) =>
+  new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    verticalAlign: VerticalAlign.CENTER,
+    shading: o.fill ? { type: ShadingType.CLEAR, fill: o.fill, color: "auto" } : undefined,
+    margins: { top: 80, bottom: 80, left: 100, right: 100 },
+    children: [para(text, { size: 22, bold: o.bold, color: o.color, center: o.center })],
+  });
+
+const BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 4, color: "BFE3E6" },
+  bottom: { style: BorderStyle.SINGLE, size: 4, color: "BFE3E6" },
+  left: { style: BorderStyle.SINGLE, size: 4, color: "BFE3E6" },
+  right: { style: BorderStyle.SINGLE, size: 4, color: "BFE3E6" },
+  insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: "DCEFF1" },
+  insideVertical: { style: BorderStyle.SINGLE, size: 4, color: "DCEFF1" },
+};
+
 /**
- * القالب: عنوان وسطر الدورة، وجدول لكل نوع بعنوانه. بلا تعليمات — قرار
- * القائدة ١٨/٩: «احذف التعليمات، مالهن داعي». فالأمان لازم يكون بالبنية لا
- * بسطر بينقرا: صفّ المثال رقمه كلمة، والقارئ بيتخطّاه لحاله.
- *
- * الجداول بتنحط حسب عقد الشركة: شركة بلا ستوريز ما بدها جدول ستوريز فاضي
- * يغري بالتعبئة، وشركة بلا ريلات AI ما بتشوف الجدول أصلاً.
+ * جدول بترويسة فيروزية بخط أبيض (متل ملف نوال)، والصفوف مخطّطة. أول عمودين
+ * (الرقم والنوع) بلون القالب لأنهن معبّايين سلفاً — نوال بتكتب بالباقي.
+ */
+function planTable(headers: string[], widths: number[], body: string[][]) {
+  return new Table({
+    width: { size: TABLE_W, type: WidthType.DXA },
+    columnWidths: widths,
+    visuallyRightToLeft: true,
+    borders: BORDERS,
+    rows: [
+      new TableRow({
+        tableHeader: true,
+        children: headers.map((h, i) =>
+          cell(h, widths[i], { fill: TEAL, color: "FFFFFF", bold: true, center: true }),
+        ),
+      }),
+      ...body.map(
+        (values, r) =>
+          new TableRow({
+            children: headers.map((_, i) =>
+              cell(values[i] ?? "", widths[i], {
+                fill: r % 2 === 1 ? ZEBRA : undefined,
+                color: i < 2 ? TEAL : INK,
+                bold: i < 2,
+                center: i < 2,
+              }),
+            ),
+          }),
+      ),
+    ],
+  });
+}
+
+/**
+ * القالب: العنوان، سطر الدورة والعدد، جدول الخطة، وجدول الستوريز إذا العقد فيه
+ * ستوريز. بلا تعليمات (قرار القائدة ١٨/٩: «احذف التعليمات، مالهن داعي») —
+ * الأمان بالبنية: الرقم والنوع معبّايين، والقارئ بيتخطّى الصف الفاضي.
  */
 export function buildPlanTemplate(input: PlanTemplateInput): Document {
   const counts = input.plan;
-  const minRows = Math.max(2, input.minRows ?? 4);
-  const quota: Record<TemplateSection["type"], number> = {
-    REEL: counts?.reels ?? 0,
-    POST: counts?.posts ?? 0,
-    STORY: counts?.stories ?? 0,
-    AI_REEL: counts?.aiReels ?? 0,
-  };
-  // بلا عقد معروف: كل الجداول بعدد صفوف افتراضي.
-  const sections = TEMPLATE_SECTIONS.filter((s) => !counts || quota[s.type] > 0);
+  const fallback = Math.max(1, input.minRows ?? 4);
+  const mainRows = templateMainRows(counts, fallback);
+  const stories = counts ? counts.stories : fallback;
   const planLine = counts
-    ? `العدد المتعاقد عليه: ${counts.posts} بوست · ${counts.reels} ريل · ${counts.stories} ستوري${counts.aiReels ? ` · ${counts.aiReels} ريل AI` : ""}.`
+    ? `العدد: ${counts.reels} ريل · ${counts.posts} بوست · ${counts.stories} ستوري${counts.aiReels ? ` · ${counts.aiReels} ريل AI` : ""}`
     : null;
+  const meta = [input.cycleLabel ? `الدورة: ${input.cycleLabel}` : null, planLine].filter(Boolean).join("   ·   ");
 
   return new Document({
     // المحاذاة والرَنّة بتنقبلوا هون؛ اتجاه الفقرة الافتراضي (`<w:bidi/>`)
@@ -216,7 +193,7 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
     styles: {
       default: {
         document: {
-          run: { font: FONT, size: 18, rightToLeft: true },
+          run: { font: FONT, size: 22, rightToLeft: true },
           paragraph: { alignment: AlignmentType.RIGHT },
         },
       },
@@ -224,27 +201,31 @@ export function buildPlanTemplate(input: PlanTemplateInput): Document {
     sections: [
       {
         properties: {
-          page: {
-            size: { orientation: PageOrientation.LANDSCAPE },
-            margin: { top: 700, bottom: 700, left: 700, right: 700 },
-          },
+          page: { size: PAGE, margin: MARGIN },
         },
         children: [
-          new Paragraph({
-            bidirectional: true,
-            alignment: AlignmentType.RIGHT,
-            heading: HeadingLevel.HEADING_1,
-            spacing: { after: 100 },
-            children: [
-              new TextRun({ text: `خطة المحتوى — ${input.company}`, rightToLeft: true, font: FONT, size: 30, bold: true, color: NAVY }),
-            ],
-          }),
-          p(input.cycleLabel ? `الدورة: ${input.cycleLabel}` : "الدورة: —", { color: MUTED, after: 40 }),
-          ...(planLine ? [p(planLine, { color: MUTED, after: 140 })] : [p("", { after: 100 })]),
-
-          ...sections.flatMap((section) =>
-            sectionBlocks(section, Math.max(minRows, (quota[section.type] || 0) + 1)),
-          ),
+          para(`خطة المحتوى الشهرية – ${input.company}`, { size: 40, bold: true, color: INK, center: true, after: 60 }),
+          para(meta || " ", { size: 20, color: MUTED, center: true, after: 240 }),
+          ...(mainRows.length
+            ? [
+                planTable(
+                  TEMPLATE_MAIN.headers,
+                  TEMPLATE_MAIN.widths,
+                  mainRows.map(([no, type]) => [no, type]),
+                ),
+                para("", { after: 360 }),
+              ]
+            : []),
+          ...(stories > 0
+            ? [
+                para(TEMPLATE_STORIES.heading(stories), { size: 32, bold: true, color: INK, center: true, after: 160 }),
+                planTable(
+                  TEMPLATE_STORIES.headers,
+                  TEMPLATE_STORIES.widths,
+                  Array.from({ length: stories }, (_, i) => [String(i + 1)]),
+                ),
+              ]
+            : []),
         ],
       },
     ],

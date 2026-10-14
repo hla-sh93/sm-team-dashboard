@@ -74,12 +74,14 @@ describe("قارئ القالب (بلا قاعدة)", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("ما في رقم");
   });
-  it("خانة محتوى فاضية برقم → «بلا أي محتوى» والملف كله مرفوض (كل-أو-لا-شي)", async () => {
+  it("صف برقم وبلا محتوى بينتخطّى (قطعة لسا ما انكتبت) — القالب بيطلع معبّى بالأرقام (القائدة ١٤/١٠)", async () => {
     const body = rows(3, "بوست");
     body[1] = ["2", "", "", "", "", ""];
     const r = await parseDocx(await docxBase64([{ heading: "جدول البوستات", headers: AR, body }]));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("بلا أي محتوى");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.pieces.map((p) => p.pieceNo)).toEqual([1, 3]);
+    expect(r.warnings.join(" ")).toContain("فجوة");
   });
   it("رقم مكرّر → مرفوض؛ وجدول بلا «النوع» وبلا عنوان → مرفوض؛ وفجوة بالترقيم تحذير لا رفض", async () => {
     const dup = rows(3, "بوست");

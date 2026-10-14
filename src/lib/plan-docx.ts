@@ -13,10 +13,10 @@
  * («3Reelوظيفة الاسبوع…»، «8 Reel»، «4post»). قراءة كل هالأشكال بالتخمين
  * بتنزّل سكريبت على القطعة الغلط بصمت — وهاد أسوأ من رفض الملف.
  *
- * فالقارئ بيشتغل على **القالب** وحده. والقالب جدول لكل نوع (قاعدة القائدة،
- * نفس قاعدة ملف التصدير): فنوع القطعة بيجي من **عنوان الجدول** — سطر بيبدأ
- * بكلمة «جدول» قبله مباشرة — أو من عمود «النوع» إذا وُجد. وبلا واحد منهن
- * بينرفض الملف كله.
+ * فالقارئ بيشتغل على **القالب** وحده. نوع القطعة بيجي من عمود «النوع» بكل صف
+ * (قالب نوال ١٤/١٠: Reel / Reel AI / Post / Carousel)، أو من **عنوان الجدول**
+ * قبله مباشرة — «جدول الريلات» (القالب القديم) أو «خطة الستوريز – ١٥ فكرة» —
+ * أو من ترويسة «نوع الستوري». وبلا واحد منهن بينرفض الملف كله.
  */
 
 /** أنواع المحتوى متل ما بيخزّنها التطبيق. */
@@ -107,21 +107,31 @@ export function extractDocxTables(documentXml: string): DocxTable[] {
     .map((block) => block.rows);
 }
 
-type ColumnKey = "no" | "type" | "hook" | "script" | "caption" | "tags" | "note";
+type ColumnKey = "no" | "kind" | "type" | "hook" | "script" | "caption" | "tags" | "note";
 
-/** أعمدة القالب. المطابقة بالكلمة المفتاحية مشان تصغير/تكبير وفراغ ما يكسروا. */
+/**
+ * أعمدة القالب. المطابقة بالكلمة المفتاحية مشان تصغير/تكبير وفراغ ما يكسروا.
+ *
+ * «نوع الستوري» (Poll / Quiz / مشاركة ريل…) قبل «النوع»: بقالب نوال (١٤/١٠) هاد
+ * عمود محتوى بجدول الستوريز، مو نوع القطعة — قراءته نوع قطعة كانت ترفض الملف كله
+ * («نوع غير معروف Poll»).
+ */
 const COLUMN_PATTERNS: { key: ColumnKey; test: RegExp }[] = [
   { key: "no", test: /^\s*(#|رقم|الرقم)\s*$/ },
+  { key: "kind", test: /نوع\s*(ال)?ستور/ },
   { key: "type", test: /نوع/ },
   { key: "hook", test: /هوك|عنوان/ },
-  { key: "script", test: /سكريبت|سكربت|نص التصميم|محتوى التصميم|نص المحتوى|^\s*المحتوى\s*$/ },
+  { key: "script", test: /سكريبت|سكربت|نص التصميم|محتوى التصميم|نص المحتوى|المحتوى|^\s*النص\s*$/ },
   { key: "caption", test: /كابشن|caption/i },
   { key: "tags", test: /هاشتا|hashtag/i },
   { key: "note", test: /ملاحظ|تفاصيل/ },
 ];
 
-function mapHeader(row: string[]): Partial<Record<ColumnKey, number>> | null {
+type HeaderMap = { map: Partial<Record<ColumnKey, number>>; unknown: string[] };
+
+function mapHeader(row: string[]): HeaderMap | null {
   const map: Partial<Record<ColumnKey, number>> = {};
+  const unknown: string[] = [];
   row.forEach((cell, index) => {
     const label = cell.replace(/\s+/g, " ").trim();
     if (!label) return;
@@ -131,9 +141,10 @@ function mapHeader(row: string[]): Partial<Record<ColumnKey, number>> | null {
         return;
       }
     }
+    unknown.push(label);
   });
   // «رقم» هو هوية القطعة. بلاه الصف مجرد نصّ.
-  return map.no !== undefined ? map : null;
+  return map.no !== undefined ? { map, unknown } : null;
 }
 
 const REEL_WORD = /reel|ريل|فيديو/i;
@@ -165,8 +176,16 @@ export function parsePieceType(value: string): PieceType | null {
 export function tableHeadingType(text: string): PieceType | null {
   // `\b` بيشتغل على [A-Za-z0-9_] وبس، فما بيلقى حدّاً بين حرف عربي ومسافة —
   // و`/^\s*جدول\b/` كان بيفشل على «جدول الريلات» نفسها.
-  return /^\s*جدول(?:\s|:|$)/.test(text) ? parsePieceType(text) : null;
+  if (/^\s*جدول(?:\s|:|$)/.test(text)) return parsePieceType(text);
+  // قالب نوال (١٤/١٠): «خطة الستوريز – ١٥ فكرة». النوع لازم يجي **بعد «خطة»
+  // مباشرة** — عنوان الملف «خطة المحتوى الشهرية – <الشركة>» ما بيصير عنوان جدول
+  // حتى لو اسم الشركة فيه كلمة نوع.
+  const plan = text.match(/^\s*خطة\s+(\S+(?:\s+AI)?)/i);
+  return plan ? parsePieceType(plan[1]) : null;
 }
+
+/** «Carousel» / «كاروسيل» بعمود النوع — بوست، وشكله بينكتب على الكرت. */
+const CAROUSEL_WORD = /كاروس|carousel/i;
 
 const TYPE_LABEL: Record<PieceType, string> = {
   POST: "بوست",
@@ -182,10 +201,77 @@ function buildBrief(parts: { label: string; value: string }[]): string {
     .join("\n\n");
 }
 
+/** صف مقروء قبل بناء الوصف — النوع ممكن يتصحّح (ريل AI بتسلسل الريلات). */
+type RawRow = {
+  at: string;
+  type: PieceType;
+  pieceNo: number;
+  carousel: boolean;
+  /** الصف كان «Reel AI» وانقرا ريلاً لأنّ رقمه بتسلسل الريلات. */
+  aiInReelSequence: boolean;
+  cells: Record<"kind" | "hook" | "script" | "caption" | "tags" | "note", string>;
+};
+
 /**
- * يقرأ المستند ويرجّع القطع. بيرفض الملف كله عند أول صفّ ملتبس: قطعة بلا رقم،
+ * الوصف بعناوين بتناسب الكرت (القائدة ١٤/١٠: «مع البنود التي تناسب الكارد»):
+ * المصوّر والمونتير بيقروا الهوك والسكريبت، المصمّم العنوان ونصّ التصميم وشكل
+ * البوست، الناشر الكابشن والهاشتاغات — والوصف واحد لكل مراحل القطعة.
+ */
+function briefFor(row: RawRow): string {
+  const c = row.cells;
+  if (row.type === "STORY") {
+    return buildBrief([
+      { label: "نوع الستوري", value: c.kind },
+      { label: "العنوان", value: c.hook },
+      { label: "النص", value: c.script },
+      { label: "التفاصيل", value: c.note },
+      { label: "الكابشن", value: c.caption },
+      { label: "الهاشتاغات", value: c.tags },
+    ]);
+  }
+  if (row.type === "POST") {
+    return buildBrief([
+      { label: "الشكل", value: row.carousel ? "كاروسيل" : "" },
+      { label: "العنوان", value: c.hook },
+      { label: "نص التصميم", value: c.script },
+      { label: "الكابشن", value: c.caption },
+      { label: "الهاشتاغات", value: c.tags },
+      { label: "ملاحظة", value: c.note },
+    ]);
+  }
+  return buildBrief([
+    { label: "التنفيذ", value: row.aiInReelSequence ? "AI" : "" },
+    { label: "الهوك", value: c.hook },
+    { label: "السكريبت", value: c.script },
+    { label: "الكابشن", value: c.caption },
+    { label: "الهاشتاغات", value: c.tags },
+    { label: "ملاحظة", value: c.note },
+  ]);
+}
+
+/**
+ * «Reel AI» بنفس تسلسل الريلات (ملف نوال للبلسم: 1 Reel · 2 Reel Ai · 3 Reel…)
+ * = ريل منفَّذ بالذكاء الاصطناعي، مو قطعة «ريل AI» بعدّاد لحالها — الشركة عقدها
+ * ريلات وبس. العلامة: أرقام الريل وريل AI بالجدول ما بيتقاطعوا. لو تقاطعوا
+ * (1 Reel · 1 Reel AI) = ترقيم مستقلّ متل القالب، فبيضل ريل AI.
+ */
+function foldAiIntoReelSequence(rows: RawRow[]): void {
+  const reels = new Set(rows.filter((r) => r.type === "REEL").map((r) => r.pieceNo));
+  const ai = rows.filter((r) => r.type === "AI_REEL");
+  if (!reels.size || !ai.length || ai.some((r) => reels.has(r.pieceNo))) return;
+  for (const row of ai) {
+    row.type = "REEL";
+    row.aiInReelSequence = true;
+  }
+}
+
+/**
+ * يقرأ المستند ويرجّع القطع. بيرفض الملف كله عند أول صفّ ملتبس: محتوى بلا رقم،
  * أو نوع مو معروف، أو رقم مكرّر. القارئ يلي «بيتسامح» بينزّل النصّ الغلط على
  * القطعة الغلط، وما حدا بيلاحظ إلا بعد النشر.
+ *
+ * الصف **بلا محتوى** بينتخطّى (كان بيرفض الملف): القالب بيطلع معبّى بالرقم والنوع
+ * لكل قطعة بالعقد، فصف فاضي = قطعة لسا ما انكتبت، ما في نصّ ينزل غلط.
  */
 export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
   const tables = blocks.filter((block) => block.kind === "table");
@@ -207,12 +293,14 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
     }
     tableNo++;
     const rows = block.rows;
-    const map = mapHeader(rows[0]);
-    if (!map) {
+    const header = mapHeader(rows[0]);
+    if (!header) {
       heading = null;
       continue; // جدول مو جدول قطع (غلاف، ملخّص…)
     }
-    const headingType = heading?.type ?? null;
+    const { map } = header;
+    // جدول ستوريز قالب نوال معروف من ترويسته: عمود «نوع الستوري» بلا عمود «النوع».
+    const headingType = heading?.type ?? (map.kind !== undefined ? "STORY" : null);
     const label = heading ? `«${heading.text}»` : `جدول ${tableNo}`;
     if (map.type === undefined && !headingType) {
       problems.push(`${label}: ما في عمود «النوع» ولا عنوان جدول يحدّد النوع`);
@@ -220,15 +308,29 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
       continue;
     }
     recognised++;
+    // عمود بترويسة ما انعرفت = نصّ ما رح ينزل على أي كرت — تحذير مو صمت.
+    if (header.unknown.length) {
+      warnings.push(`${label}: عمود ما انقرا («${header.unknown.slice(0, 3).join("»، «")}») — نصّه ما رح ينزل على الكروت`);
+    }
+    const tableRowsRead: RawRow[] = [];
     for (const [rowIndex, row] of rows.slice(1).entries()) {
       const at = `${label} صف ${rowIndex + 2}`;
       const cell = (key: ColumnKey) => (map[key] !== undefined ? (row[map[key]!] ?? "").trim() : "");
       const rawNo = cell("no");
       const rawType = cell("type");
-      const content = [cell("hook"), cell("script"), cell("caption"), cell("tags")].join("");
-      if (!rawNo && !rawType && !content) continue; // صف فاضي من القالب
+      const cells = {
+        kind: cell("kind"),
+        hook: cell("hook"),
+        script: cell("script"),
+        caption: cell("caption"),
+        tags: cell("tags"),
+        note: cell("note"),
+      };
+      // صف بلا محتوى = قطعة لسا ما انكتبت. القالب بيطلع معبّى بالرقم والنوع
+      // (١٤/١٠)، فالصف الفاضي طبيعي ومو غلط — العدد مقابل العقد بالمعاينة.
+      if (!Object.values(cells).join("")) continue;
 
-      // صفّ المثال بالقالب رقمه كلمة «مثال» — بينتخطّى انحذف أو ضلّ.
+      // صفّ المثال بالقالب القديم رقمه كلمة «مثال» — بينتخطّى انحذف أو ضلّ.
       if (/^\s*(مثال|example)\s*$/i.test(rawNo)) continue;
       const noMatch = rawNo.match(/\d+/);
       if (!noMatch) {
@@ -240,27 +342,24 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
         problems.push(`${at}: نوع غير معروف «${rawType.slice(0, 30)}»`);
         continue;
       }
-      const pieceNo = Number(noMatch[0]);
-      const key = `${type}|${pieceNo}`;
+      tableRowsRead.push({
+        at,
+        type,
+        pieceNo: Number(noMatch[0]),
+        carousel: CAROUSEL_WORD.test(rawType),
+        aiInReelSequence: false,
+        cells,
+      });
+    }
+    foldAiIntoReelSequence(tableRowsRead);
+    for (const row of tableRowsRead) {
+      const key = `${row.type}|${row.pieceNo}`;
       if (seen.has(key)) {
-        problems.push(`${at}: ${TYPE_LABEL[type]} رقم ${pieceNo} مكرّر`);
+        problems.push(`${row.at}: ${TYPE_LABEL[row.type]} رقم ${row.pieceNo} مكرّر`);
         continue;
       }
       seen.add(key);
-
-      const note = cell("note") || null;
-      const brief = buildBrief([
-        { label: "الهوك", value: cell("hook") },
-        { label: "السكريبت", value: cell("script") },
-        { label: "الكابشن", value: cell("caption") },
-        { label: "الهاشتاغات", value: cell("tags") },
-        { label: "ملاحظة", value: note ?? "" },
-      ]);
-      if (!brief) {
-        problems.push(`${at}: ${TYPE_LABEL[type]} رقم ${pieceNo} بلا أي محتوى`);
-        continue;
-      }
-      pieces.push({ type, pieceNo, brief, note });
+      pieces.push({ type: row.type, pieceNo: row.pieceNo, brief: briefFor(row), note: row.cells.note || null });
     }
     heading = null;
   }
