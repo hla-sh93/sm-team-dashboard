@@ -24,9 +24,8 @@ import JSZip from "jszip";
 import {
   buildPlanTemplate,
   EXAMPLE_ROW_MARK,
-  TEMPLATE_MAIN,
-  TEMPLATE_STORIES,
-  templateMainRows,
+  TEMPLATE_TABLES,
+  templateCounts,
 } from "@/lib/plan-template";
 
 /**
@@ -400,39 +399,52 @@ async function templateBlocks(plan: { posts: number; reels: number; stories: num
   return extractDocxBlocks(xml);
 }
 
-describe("القالب المولَّد: شكل نوال وحسب خطة الشركة", () => {
-  it("ترويسة الجداول حرفياً متل ملف نوال، والصفوف معبّاية بالرقم والنوع حسب العقد", async () => {
+const tablesOf = (blocks: DocxBlock[]) => blocks.filter((b): b is { kind: "table"; rows: DocxTable } => b.kind === "table");
+const headingsOf = (blocks: DocxBlock[]) => blocks.filter((b) => b.kind === "p").map((b) => (b.kind === "p" ? b.text : ""));
+
+describe("القالب المولَّد: جدول لكل نوع، بأسلوب نوال، وحسب خطة الشركة", () => {
+  // القائدة ١٤/١٠: «لا انت خليه جدول لكل نوع. بس يعني اعتمد اسلوبها بالتنسيق والكتابة».
+  it("جدول لكل نوع بالعقد بعنوان على طريقة نوال، والصفوف مرقّمة 1…N حسب العقد", async () => {
     const plan = { posts: 3, reels: 2, stories: 2, aiReels: 0 };
     const blocks = await templateBlocks(plan);
-    const tables = blocks.filter((b): b is { kind: "table"; rows: DocxTable } => b.kind === "table");
-    expect(tables).toHaveLength(2);
-    expect(tables[0].rows[0]).toEqual(TEMPLATE_MAIN.headers);
-    expect(tables[0].rows.slice(1).map((r) => `${r[0]} ${r[1]}`)).toEqual(["1 Reel", "2 Reel", "1 Post", "2 Post", "3 Post"]);
-    expect(templateMainRows(plan)).toHaveLength(5);
-    expect(tables[1].rows[0]).toEqual(TEMPLATE_STORIES.headers);
-    expect(blocks.some((b) => b.kind === "p" && b.text === TEMPLATE_STORIES.heading(2))).toBe(true);
-    expect(blocks.some((b) => b.kind === "p" && b.text.startsWith("خطة المحتوى الشهرية – مركز البلسم"))).toBe(true);
+    const tables = tablesOf(blocks);
+    expect(tables).toHaveLength(3);
+    expect(headingsOf(blocks)).toEqual(
+      expect.arrayContaining(["خطة الريلات – 2 ريل", "خطة البوستات – 3 بوست", "خطة الستوريز – 2 فكرة"]),
+    );
+    const byType = Object.fromEntries(TEMPLATE_TABLES.map((t) => [t.type, t]));
+    expect(tables[0].rows[0]).toEqual(byType.REEL.headers);
+    expect(tables[0].rows[0]).toEqual(["#", "التنفيذ", "الهوك / العنوان", "السكريبت", "الكابشن", "الهاشتاغات"]);
+    expect(tables[1].rows[0]).toEqual(["#", "الشكل", "العنوان", "نص التصميم", "الكابشن", "الهاشتاغات"]);
+    expect(tables[2].rows[0]).toEqual(["#", "نوع الستوري", "المحتوى / النص", "تفاصيل"]);
+    expect(tables[0].rows.slice(1).map((r) => r[0])).toEqual(["1", "2"]);
+    expect(tables[1].rows.slice(1).map((r) => `${r[0]} ${r[1]}`)).toEqual(["1 Post", "2 Post", "3 Post"]);
+    expect(templateCounts(plan)).toEqual({ REEL: 2, AI_REEL: 0, POST: 3, STORY: 2 });
+    expect(headingsOf(blocks)[0]).toBe("خطة المحتوى الشهرية – مركز البلسم");
   });
 
-  it("شركة بلا ستوريز ما بتشوف جدول ستوريز؛ وريل AI بعدّاد لحاله (Reel AI 1…)", async () => {
+  it("شركة بلا ستوريز ما بتشوف جدول ستوريز؛ وريلات AI بجدولها لحاله", async () => {
     const blocks = await templateBlocks({ posts: 1, reels: 1, stories: 0, aiReels: 2 });
-    const tables = blocks.filter((b): b is { kind: "table"; rows: DocxTable } => b.kind === "table");
-    expect(tables).toHaveLength(1);
-    expect(tables[0].rows.slice(1).map((r) => `${r[0]} ${r[1]}`)).toEqual(["1 Reel", "1 Reel AI", "2 Reel AI", "1 Post"]);
+    expect(tablesOf(blocks)).toHaveLength(3);
+    expect(headingsOf(blocks)).toContain("خطة ريلات AI – 2 ريل");
+    expect(headingsOf(blocks).some((h) => h.includes("الستوريز"))).toBe(false);
   });
 
-  it("القالب الفاضي بينرفض كخطة فاضية؛ والمعبّى بينقرا قطعة لكل صف بنفس رقم الكرت", async () => {
+  it("القالب الفاضي بينرفض كخطة فاضية (الشكل «Post» لحاله مو محتوى)؛ والمعبّى بينقرا قطعة لكل صف بنفس رقم الكرت", async () => {
     const blocks = await templateBlocks({ posts: 2, reels: 2, stories: 1, aiReels: 1 });
     const empty = parsePlanDocument(blocks);
     expect(empty.ok).toBe(false);
     if (!empty.ok) expect(empty.error).toContain("فاضية");
 
-    // نوال بتعبّي الخانات الفاضية — الرقم والنوع متل ما طلعوا من القالب.
+    // نوال بتعبّي الخانات من العمود التالت وطالع؛ والبوست ٢ كاروسيل والريل ١ فويس أوفر.
     const filled = blocks.map((b) =>
       b.kind === "table"
-        ? { kind: "table" as const, rows: b.rows.map((r, i) => (i === 0 ? r : r.map((c, j) => (j < 2 && b.rows[0].length === 6) || j === 0 ? c : `نص ${r[0]}-${j}`))) }
+        ? { kind: "table" as const, rows: b.rows.map((r, i) => (i === 0 ? r : r.map((c, j) => (j < 2 ? c : `نص ${r[0]}-${j}`)))) }
         : b,
     );
+    const posts = tablesOf(filled)[2];
+    posts.rows[2][1] = "Carousel";
+    tablesOf(filled)[0].rows[1][1] = "فويس أوفر";
     const result = parsePlanDocument(filled);
     expect(result.ok, result.ok ? "" : result.error).toBe(true);
     if (!result.ok) return;
@@ -440,5 +452,11 @@ describe("القالب المولَّد: شكل نوال وحسب خطة الش�
     expect(result.pieces.map((x) => `${x.type}#${x.pieceNo}`)).toEqual([
       "AI_REEL#1", "POST#1", "POST#2", "REEL#1", "REEL#2", "STORY#1",
     ]);
+    const brief = (type: string, no: number) => result.pieces.find((x) => x.type === type && x.pieceNo === no)!.brief;
+    expect(brief("POST", 2)).toContain("الشكل:\nCarousel");
+    expect(brief("POST", 1)).not.toContain("الشكل"); // «Post» الافتراضي ما بينكتب
+    expect(brief("REEL", 1)).toContain("التنفيذ:\nفويس أوفر");
+    expect(brief("AI_REEL", 1)).toContain("التنفيذ:\nAI");
+    expect(brief("REEL", 1)).toContain("السكريبت:\nنص 1-3");
   });
 });

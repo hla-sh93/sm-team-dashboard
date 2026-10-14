@@ -107,7 +107,7 @@ export function extractDocxTables(documentXml: string): DocxTable[] {
     .map((block) => block.rows);
 }
 
-type ColumnKey = "no" | "kind" | "type" | "hook" | "script" | "caption" | "tags" | "note";
+type ColumnKey = "no" | "kind" | "exec" | "format" | "type" | "hook" | "script" | "caption" | "tags" | "note";
 
 /**
  * أعمدة القالب. المطابقة بالكلمة المفتاحية مشان تصغير/تكبير وفراغ ما يكسروا.
@@ -119,6 +119,10 @@ type ColumnKey = "no" | "kind" | "type" | "hook" | "script" | "caption" | "tags"
 const COLUMN_PATTERNS: { key: ColumnKey; test: RegExp }[] = [
   { key: "no", test: /^\s*(#|رقم|الرقم)\s*$/ },
   { key: "kind", test: /نوع\s*(ال)?ستور/ },
+  // قالب ١٤/١٠: «التنفيذ» (تصوير / فويس أوفر / AI) للريل و«الشكل» (Post / Carousel)
+  // للبوست — بنود الكرت، مو نوع القطعة. قبل «النوع» مشان «نوع التنفيذ».
+  { key: "exec", test: /تنفيذ/ },
+  { key: "format", test: /الشكل/ },
   { key: "type", test: /نوع/ },
   { key: "hook", test: /هوك|عنوان/ },
   { key: "script", test: /سكريبت|سكربت|نص التصميم|محتوى التصميم|نص المحتوى|المحتوى|^\s*النص\s*$/ },
@@ -209,8 +213,11 @@ type RawRow = {
   carousel: boolean;
   /** الصف كان «Reel AI» وانقرا ريلاً لأنّ رقمه بتسلسل الريلات. */
   aiInReelSequence: boolean;
-  cells: Record<"kind" | "hook" | "script" | "caption" | "tags" | "note", string>;
+  cells: Record<"kind" | "exec" | "format" | "hook" | "script" | "caption" | "tags" | "note", string>;
 };
+
+/** «الشكل» الافتراضي يلي بيطلع معبّى بالقالب — مو معلومة تنكتب على الكرت. */
+const DEFAULT_FORMAT = /^\s*(post|بوست|منشور)\s*$/i;
 
 /**
  * الوصف بعناوين بتناسب الكرت (القائدة ١٤/١٠: «مع البنود التي تناسب الكارد»):
@@ -230,8 +237,9 @@ function briefFor(row: RawRow): string {
     ]);
   }
   if (row.type === "POST") {
+    const format = c.format && !DEFAULT_FORMAT.test(c.format) ? c.format : row.carousel ? "كاروسيل" : "";
     return buildBrief([
-      { label: "الشكل", value: row.carousel ? "كاروسيل" : "" },
+      { label: "الشكل", value: format },
       { label: "العنوان", value: c.hook },
       { label: "نص التصميم", value: c.script },
       { label: "الكابشن", value: c.caption },
@@ -240,7 +248,7 @@ function briefFor(row: RawRow): string {
     ]);
   }
   return buildBrief([
-    { label: "التنفيذ", value: row.aiInReelSequence ? "AI" : "" },
+    { label: "التنفيذ", value: c.exec || (row.aiInReelSequence ? "AI" : "") },
     { label: "الهوك", value: c.hook },
     { label: "السكريبت", value: c.script },
     { label: "الكابشن", value: c.caption },
@@ -320,15 +328,19 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
       const rawType = cell("type");
       const cells = {
         kind: cell("kind"),
+        exec: cell("exec"),
+        format: cell("format"),
         hook: cell("hook"),
         script: cell("script"),
         caption: cell("caption"),
         tags: cell("tags"),
         note: cell("note"),
       };
-      // صف بلا محتوى = قطعة لسا ما انكتبت. القالب بيطلع معبّى بالرقم والنوع
-      // (١٤/١٠)، فالصف الفاضي طبيعي ومو غلط — العدد مقابل العقد بالمعاينة.
-      if (!Object.values(cells).join("")) continue;
+      // صف بلا محتوى = قطعة لسا ما انكتبت. القالب بيطلع معبّى بالرقم (وبالشكل
+      // «Post» / التنفيذ «AI») (١٤/١٠)، فالصف الفاضي طبيعي — العدد مقابل العقد
+      // بالمعاينة. «التنفيذ» و«الشكل» لحالهن مو محتوى.
+      const { exec: _exec, format: _format, ...content } = cells;
+      if (!Object.values(content).join("")) continue;
 
       // صفّ المثال بالقالب القديم رقمه كلمة «مثال» — بينتخطّى انحذف أو ضلّ.
       if (/^\s*(مثال|example)\s*$/i.test(rawNo)) continue;
@@ -346,7 +358,7 @@ export function parsePlanDocument(blocks: DocxBlock[]): PlanDocxResult {
         at,
         type,
         pieceNo: Number(noMatch[0]),
-        carousel: CAROUSEL_WORD.test(rawType),
+        carousel: CAROUSEL_WORD.test(rawType) || CAROUSEL_WORD.test(cells.format),
         aiInReelSequence: false,
         cells,
       });
