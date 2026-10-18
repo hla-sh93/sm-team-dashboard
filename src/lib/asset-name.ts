@@ -35,6 +35,8 @@ export const SLUG_BY_NAME: Record<string, string> = {
   "BW": "BW",
   "كابرياني": "Capriani",
   "المدارس": "SKM",
+  // القائدة ١٨/١٠: شركة جديدة، واسم الملفات «Wataniya».
+  "الثانوية الوطنية الخاصة": "Wataniya",
 };
 
 /**

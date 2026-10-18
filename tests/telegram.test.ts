@@ -132,6 +132,9 @@ describe("asset name «Agalia 7-1»", () => {
   it("falls back to the known latin name when no slug is stored", () => {
     expect(companySlug({ name: "وصل للتداول", slug: null })).toBe("Wasl");
     expect(companySlug({ name: "أغاليا", slug: "Custom" })).toBe("Custom");
+    // الثانوية الوطنية الخاصة (القائدة ١٨/١٠): بلا هالسطر كان الاسم بيرجع عربي —
+    // «الثانوية الوطنية الخاصة-extra-…» بأسماء الملفات.
+    expect(companySlug({ name: "الثانوية الوطنية الخاصة", slug: null })).toBe("Wataniya");
   });
 
   it("returns null for work with no deliverable piece", () => {
