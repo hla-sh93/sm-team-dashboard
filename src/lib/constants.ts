@@ -275,6 +275,17 @@ export const FOOTAGE_BEFORE_MONTAGE = 1;
 export const SHOOT_BEFORE_MONTAGE = { min: 2, max: 3 };
 /** تسليم صور نزلة التصوير العامة (PHOTOSHOOT) بعد يومين عمل. */
 export const PHOTOSHOOT_DELIVER_DAYS = 2;
+/**
+ * يوم المصوّرة ٣ ريلات حد أدنى (القائدة ١٨/١٠: «خلينا نصور 3 باليوم حد أدنى
+ * (لكل الشركات) يعني عبي يوم المصورة كـ 3 باليوم في حال وجود محتوى» —
+ * «منكمّل من شركة تانية»). نزلة أصغر بتنضمّ ليوم تصوير تاني، من أي شركة.
+ */
+export const SHOOT_DAY_MIN_REELS = 3;
+/** أبعد ما بتتقدّم نزلة (أبكر) لتعبّي يوم تصوير — خطة الدورة مكتوبة من أولها. */
+export const SHOOT_POOL_MAX_PULL_DAYS = 10;
+/** موعد التصوير بينطلب من الزبون قبل يومين عالأقل (`scripts/shoot-week.ts`) — فالضمّ
+ *  ما بيحرّك نزلة صارت بأقل من هيك، وما بيقدّم نزلة لأقرب منه. */
+export const SHOOT_APPOINTMENT_NOTICE_DAYS = 2;
 
 const shiftCalendarDays = (date: Date, days: number) => {
   const d = new Date(date);

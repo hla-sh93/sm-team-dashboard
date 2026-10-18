@@ -10,6 +10,9 @@ import {
   PHOTO_DELIVER_MAX_DAYS,
   PHOTOSHOOT_DELIVER_DAYS,
   SHOOT_BEFORE_MONTAGE,
+  SHOOT_APPOINTMENT_NOTICE_DAYS,
+  SHOOT_DAY_MIN_REELS,
+  SHOOT_POOL_MAX_PULL_DAYS,
   footageDeadline,
   montageDay,
   shootWindow,
@@ -68,6 +71,9 @@ export function buildPhotoSessions(
     /** Contract start — no shoot/delivery may precede it (a new client has no
      *  prior-month prep before day one of the contract). */
     notBefore?: Date | null;
+    /** سكريبتات ريلات الدورة مكتوبة؟ `false` = نزلاتها ما بتتقدّم لتعبّي يوم
+     *  («في حال وجود محتوى» — القائدة ١٨/١٠). بلاه = مكتوبة. */
+    scriptsReady?: boolean;
   }[],
   photographerWorkDays: number[],
   /** سقف المصوّر اليومي بالعدد (ريلات/يوم) — من معدّله المخزَّن. قرار القائدة
@@ -79,6 +85,9 @@ export function buildPhotoSessions(
   /** ريلات محجوزة لنفس المصوّر بدلاء تانية (يوم YYYY-MM-DD → عدد): السقف اليومي عبر
    *  كل الدورات الشغّالة، مو جوّا الدلو بس (SC-01: ٩ ريلات لماجد ٢٨/٩ والسقف ٦). */
   preBooked?: ReadonlyMap<string, number>,
+  /** اليوم (بداية يوم الفريق). ضمّ النزلات الصغيرة ما بيحرّك نزلة يومها أقرب من
+   *  مهلة طلب الموعد (يومين)، وما بيقدّم نزلة لأقرب منها. بلاه (اختبارات صافية) ما في أرضية. */
+  today?: Date | null,
 ): PhotographerResult {
   const sessions: GeneratedPhotoSession[] = [];
   const reelDates = new Map<string, { shootDate: Date; deliverBy: Date }>();
@@ -125,6 +134,7 @@ export function buildPhotoSessions(
   const reelsBookedPerDay = new Map<string, number>(preBooked ?? []);
   const bookedOn = (d: Date) => reelsBookedPerDay.get(toKeyDate(d)) ?? 0;
   const fitsOn = (d: Date, count: number) => bookedOn(d) + count <= maxReelsPerDay;
+  const placed: PlacedBatch[] = [];
 
   companiesWithReels.forEach((co, ci) => {
     const reels = [...co.reels].sort((a, b) => {
@@ -234,65 +244,182 @@ export function buildPhotoSessions(
         }
       }
       reelsBookedPerDay.set(toKeyDate(shoot), bookedOn(shoot) + batch.length);
-      // التصوير قبل المونتاج بيومين على الأقل («التصوير نافذة لا يوم»): أرضية العقد أو
-      // زحمة اليوم ممكن يزحّطوه — منقولها بصوت بدل ما تستلم المونتيرة لقطات يومها (SC-03).
-      const montage = montageDay(epub, editorWorkDays);
-      if (Math.round((montage.getTime() - shoot.getTime()) / DAY) < SHOOT_BEFORE_MONTAGE.min) {
-        warnings.push({
-          level: "warning",
-          message: `${co.companyName}: التصوير ${toKeyDate(shoot)} قبل المونتاج ${toKeyDate(montage)} بأقل من ${SHOOT_BEFORE_MONTAGE.min} يوم — عدّليه يدوياً`,
-          companyId: co.companyId,
-        });
-      }
-      // تسليم اللقطات: خلال ٣ أيام من التصوير، وقبل يوم المونتاج بيوم — يعني
-      // نشر − ٣ (constants.footageDeadline). كان الحدّ «نشر − ١»، وهو يلي كان
-      // بيخلّي المونتاج ينزل يوم النشر أو قبله بيوم ويكسر قاعدة اليومين.
-      const footageBy = footageDeadline(epub, editorWorkDays);
-      const deliverTarget =
-        footageBy.getTime() < shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS).getTime()
-          ? footageBy
-          : shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS);
-      let deliver = backWorkday(deliverTarget, photoWork);
-      if (deliver.getTime() < shoot.getTime()) deliver = new Date(shoot);
-
-      // Invariants (§4.6 rule 5 / §9): shoot ≤ deliver ≤ shoot+3, deliver < epub,
-      // shoot not in the last cycle-week.
-      if (inLastWeek(shoot)) {
-        warnings.push({
-          level: "error",
-          message: `${co.companyName}: نزلة تصوير وقعت في الأسبوع الأخير — تحقّق من المواعيد`,
-          companyId: co.companyId,
-        });
-      }
-      if (deliver.getTime() > footageBy.getTime()) {
-        warnings.push({
-          level: "warning",
-          message: `${co.companyName}: اللقطات بتوصل بعد ${toKeyDate(footageBy)} — المونتاج ما بيلحق يجهز قبل النشر بيومين`,
-          companyId: co.companyId,
-        });
-      }
-
-      for (const r of batch) {
-        reelDates.set(r.detKey, { shootDate: shoot, deliverBy: deliver });
-      }
-
-      sessions.push({
-        detKey: `${co.companyId}|REELS|${toKeyDate(shoot)}|${sessionNo}`,
+      // النزلة بتنحجز بمكانها بالترتيب، وتاريخها وتسليمها بيكمَلوا بعد ضمّ الأيام
+      // الصغيرة (تحت) — هيداك ممكن ينقلها ليوم شركة تانية.
+      const session: GeneratedPhotoSession = {
+        detKey: "",
         companyId: co.companyId,
         no: sessionNo++,
         kind: "REELS",
         shootDate: shoot,
-        deliverBy: deliver,
+        deliverBy: shoot,
         reelCount: size,
         status: "NOT_STARTED",
         month,
         year,
         isAuto: true,
+      };
+      sessions.push(session);
+      placed.push({
+        companyId: co.companyId,
+        companyName: co.companyName,
+        batch,
+        epub,
+        shoot,
+        nb,
+        shootCap: SHOOT_CAP,
+        inLastWeek,
+        scriptsReady: co.scriptsReady !== false,
+        session,
       });
     }
   });
 
+  // يوم المصوّرة ٣ ريلات حد أدنى، ولو من شركتين (القائدة ١٨/١٠). يوم فيه أقل
+  // بتنضمّ نزلاته ليوم تصوير تاني **فيه ريلات قدّه أو أكتر** — من هالدلو أو
+  // محجوز بدلو تاني — ضمن حدود النزلة: مو أبكر من `SHOOT_POOL_MAX_PULL_DAYS`،
+  // ومو أبعد من آخر يوم بنافذتها (قبل المونتاج بيومين)، ولا قبل العقد أو اليوم،
+  // ولا بالأسبوع الأخير، ولا فوق سقف المصوّر. يوم ما إله جار بيضل متل ما هو.
+  // نزلة شركة سكريبتاتها مو مكتوبة ما بتتحرّك، ولا نزلة موعدها أقرب من مهلة طلب الموعد.
+  // كل نقلة بتكبّر مجموع مربّعات الأيام فالحلقة أكيد بتوقف.
+  const minPerDay = Math.min(SHOOT_DAY_MIN_REELS, maxReelsPerDay);
+  const floorDay = today ? shiftCal(today, SHOOT_APPOINTMENT_NOTICE_DAYS) : null;
+  for (let guard = 0; minPerDay > 1 && guard < placed.length * 4; guard++) {
+    let best: { p: PlacedBatch; to: Date; score: number[] } | null = null;
+    for (const p of placed) {
+      const fromKey = toKeyDate(p.shoot);
+      const fromCount = bookedOn(p.shoot);
+      if (fromCount >= minPerDay || !p.scriptsReady) continue;
+      if (floorDay && p.shoot.getTime() < floorDay.getTime()) continue;
+      const size = p.batch.length;
+      let lo = shiftCal(p.shoot, -SHOOT_POOL_MAX_PULL_DAYS);
+      if (p.nb && lo.getTime() < p.nb.getTime()) lo = p.nb;
+      if (floorDay && lo.getTime() < floorDay.getTime()) lo = floorDay;
+      let hi = backWorkday(shootWindow(p.epub, editorWorkDays).latest, photoWork);
+      if (hi.getTime() > p.shootCap.getTime()) hi = p.shootCap;
+      if (hi.getTime() < p.shoot.getTime()) hi = p.shoot;
+      for (const [key, count] of reelsBookedPerDay) {
+        if (key === fromKey || count <= 0 || count < fromCount) continue;
+        if (count + size > maxReelsPerDay) continue;
+        const d = keyDate(key);
+        if (d.getTime() < lo.getTime() || d.getTime() > hi.getTime()) continue;
+        if (!photoWork.includes(d.getDay()) || p.inLastWeek(d)) continue;
+        // الأفضل: يوم بيوصل للحد، بعدين الأقرب، بعدين الأبكر.
+        const score = [
+          count + size >= minPerDay ? 0 : 1,
+          Math.abs(Math.round((d.getTime() - p.shoot.getTime()) / DAY)),
+          d.getTime(),
+          placed.indexOf(p),
+        ];
+        if (!best || lexLess(score, best.score)) best = { p, to: d, score };
+      }
+    }
+    if (!best) break;
+    const size = best.p.batch.length;
+    const fromKey = toKeyDate(best.p.shoot);
+    const left = bookedOn(best.p.shoot) - size;
+    if (left > 0) reelsBookedPerDay.set(fromKey, left);
+    else reelsBookedPerDay.delete(fromKey);
+    reelsBookedPerDay.set(toKeyDate(best.to), bookedOn(best.to) + size);
+    best.p.shoot = best.to;
+  }
+
+  // نزلتين لنفس الشركة صاروا بنفس اليوم = زيارة وحدة: جلسة وحدة، والتسليم
+  // والإنذارات من أبكر نشر فيها. والأرقام بترجع متسلسلة لكل شركة.
+  const visits: PlacedBatch[] = [];
+  for (const p of placed) {
+    const twin = visits.find((v) => v.companyId === p.companyId && v.shoot.getTime() === p.shoot.getTime());
+    if (!twin) {
+      visits.push(p);
+      continue;
+    }
+    twin.batch = [...twin.batch, ...p.batch];
+    if (p.epub.getTime() < twin.epub.getTime()) twin.epub = p.epub;
+    twin.session.reelCount += p.session.reelCount;
+    sessions.splice(sessions.indexOf(p.session), 1);
+  }
+  const nextNo = new Map<string, number>();
+  for (const s of sessions) {
+    const no = (nextNo.get(s.companyId) ?? 0) + 1;
+    nextNo.set(s.companyId, no);
+    s.no = no;
+  }
+
+  for (const p of visits) {
+    const { shoot, epub } = p;
+    // التصوير قبل المونتاج بيومين على الأقل («التصوير نافذة لا يوم»): أرضية العقد أو
+    // زحمة اليوم ممكن يزحّطوه — منقولها بصوت بدل ما تستلم المونتيرة لقطات يومها (SC-03).
+    const montage = montageDay(epub, editorWorkDays);
+    if (Math.round((montage.getTime() - shoot.getTime()) / DAY) < SHOOT_BEFORE_MONTAGE.min) {
+      warnings.push({
+        level: "warning",
+        message: `${p.companyName}: التصوير ${toKeyDate(shoot)} قبل المونتاج ${toKeyDate(montage)} بأقل من ${SHOOT_BEFORE_MONTAGE.min} يوم — عدّليه يدوياً`,
+        companyId: p.companyId,
+      });
+    }
+    // تسليم اللقطات: خلال ٣ أيام من التصوير، وقبل يوم المونتاج بيوم — يعني
+    // نشر − ٣ (constants.footageDeadline). كان الحدّ «نشر − ١»، وهو يلي كان
+    // بيخلّي المونتاج ينزل يوم النشر أو قبله بيوم ويكسر قاعدة اليومين.
+    const footageBy = footageDeadline(epub, editorWorkDays);
+    const deliverTarget =
+      footageBy.getTime() < shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS).getTime()
+        ? footageBy
+        : shiftCal(shoot, PHOTO_DELIVER_MAX_DAYS);
+    let deliver = backWorkday(deliverTarget, photoWork);
+    if (deliver.getTime() < shoot.getTime()) deliver = new Date(shoot);
+
+    // Invariants (§4.6 rule 5 / §9): shoot ≤ deliver ≤ shoot+3, deliver < epub,
+    // shoot not in the last cycle-week.
+    if (p.inLastWeek(shoot)) {
+      warnings.push({
+        level: "error",
+        message: `${p.companyName}: نزلة تصوير وقعت في الأسبوع الأخير — تحقّق من المواعيد`,
+        companyId: p.companyId,
+      });
+    }
+    if (deliver.getTime() > footageBy.getTime()) {
+      warnings.push({
+        level: "warning",
+        message: `${p.companyName}: اللقطات بتوصل بعد ${toKeyDate(footageBy)} — المونتاج ما بيلحق يجهز قبل النشر بيومين`,
+        companyId: p.companyId,
+      });
+    }
+
+    for (const r of p.batch) {
+      reelDates.set(r.detKey, { shootDate: shoot, deliverBy: deliver });
+    }
+    p.session.detKey = `${p.companyId}|REELS|${toKeyDate(shoot)}|${p.session.no}`;
+    p.session.shootDate = shoot;
+    p.session.deliverBy = deliver;
+  }
+
   return { sessions, reelDates, warnings };
+}
+
+type PlacedBatch = {
+  companyId: string;
+  companyName: string;
+  batch: ReelTask[];
+  /** أبكر نشر بالنزلة — منه النافذة والمونتاج والتسليم. */
+  epub: Date;
+  shoot: Date;
+  /** أرضية العقد (أول دورة لزبون جديد). */
+  nb: Date | null;
+  /** آخر يوم قبل الأسبوع الأخير بالدورة. */
+  shootCap: Date;
+  inLastWeek: (d: Date) => boolean;
+  scriptsReady: boolean;
+  session: GeneratedPhotoSession;
+};
+
+function lexLess(a: number[], b: number[]): boolean {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
+function keyDate(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function getWorkingDaysForPhoto(

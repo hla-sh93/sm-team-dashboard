@@ -133,6 +133,11 @@ export type SchedulerState = {
    */
   reelPlacementFor?: string | null;
   savedBucketBookings?: { companyId: string; shootDate: Date; reelCount: number }[];
+  /** بداية يوم الفريق — ضمّ نزلات التصوير الصغيرة (٣ ريلات باليوم) ما بيرجّع نزلة لقبله. */
+  today?: Date | null;
+  /** الشركات يلي كل ريلات دورتها بهالدلو إلها سكريبت (وصف الخطة). غيرها نزلاتها ما
+   *  بتتقدّم لتعبّي يوم المصوّرة. بلاه (اختبارات صافية) = الكل مكتوب. */
+  reelScriptsReady?: ReadonlySet<string> | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -766,6 +771,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       cycleStart: Date;
       cycleEnd: Date;
       notBefore: Date | null;
+      scriptsReady: boolean;
       reels: ReelTask[];
     }[]
   >();
@@ -782,6 +788,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
       cycleStart: co.resume ? co.resume.from : cyc.start,
       cycleEnd: co.resume ? co.resume.until : cyc.end,
       notBefore: productionFloorByCompany.get(co.id) ?? null,
+      scriptsReady: state.reelScriptsReady ? state.reelScriptsReady.has(co.id) : true,
       reels: tasks
         .filter((t) => t.type === "REEL" && t.companyId === co.id && !t.settled)
         .map<ReelTask>((t) => ({
@@ -840,6 +847,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
         reelsPerDayOf(emp),
         editorWorkDays,
         group.booked,
+        state.today ?? null,
       );
       sessions.push(...photo.sessions);
       // إنذارات الشركات التانية بالتوليد المحصور من نسخة ما رح تنكتب — ضجّة.

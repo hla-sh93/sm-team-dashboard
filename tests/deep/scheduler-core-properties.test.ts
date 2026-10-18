@@ -270,7 +270,9 @@ describe("نواة الجدولة — خصائص ثابتة على مدخلات 
     expect(bad).toEqual([]);
   });
 
-  it("الجلسات: فوتوسشن أولاً، نزلات ٢–٣ ريل لما الخطة ≥ ٢، مجموعها = الخطة، وأرقامها متسلسلة", () => {
+  // نزلة الشركة ٢–٣ ريل، بس نزلتين إلها بنفس اليوم بعد ضمّ الأيام الصغيرة (٣ ريلات باليوم
+  // حد أدنى — القائدة ١٨/١٠) بيصيروا زيارة وحدة: ٢ لحد سقف ليلاس (٦).
+  it("الجلسات: فوتوسشن أولاً، نزلات ٢–٦ ريل لما الخطة ≥ ٢، مجموعها = الخطة، وأرقامها متسلسلة", () => {
     const bad: string[] = [];
     for (const c of CASES) {
       const byCo = new Map<string, typeof c.r.sessions>();
@@ -282,7 +284,7 @@ describe("نواة الجدولة — خصائص ثابتة على مدخلات 
         if (ss[0]?.kind !== "PHOTOSHOOT") bad.push(`seed ${c.seed}: ${co.id} أول جلسة مو فوتوسشن`);
         const reelSess = ss.filter((s) => s.kind === "REELS");
         if (reelSess.reduce((a, s) => a + s.reelCount, 0) !== co.reels) bad.push(`seed ${c.seed}: ${co.id} مجموع النزلات ≠ ${co.reels}`);
-        if (co.reels >= 2) for (const s of reelSess) if (s.reelCount < 2 || s.reelCount > 3) bad.push(`seed ${c.seed}: ${co.id} نزلة ${s.reelCount}`);
+        if (co.reels >= 2) for (const s of reelSess) if (s.reelCount < 2 || s.reelCount > 6) bad.push(`seed ${c.seed}: ${co.id} نزلة ${s.reelCount}`);
         ss.forEach((s, i) => { if (s.no !== i + 1) bad.push(`seed ${c.seed}: ${co.id} أرقام ${ss.map((x) => x.no)}`); });
       }
     }
@@ -501,10 +503,13 @@ describe("نواة الجدولة — علاقات تحويلية (metamorphic)"
           if (dates(r1.tasks, co.id, ty).length !== dates(r0.tasks, co.id, ty).length + 1) bad.push(`${tag}: العدد`);
           const other = ty === "STORY" ? ["POST", "REEL", "AI_REEL"] : ["STORY"];
           for (const o of other) if (pubOf(r0, co.id, o) !== pubOf(r1, co.id, o)) bad.push(`${tag}: ${o} تحرّك`);
+          // يوم المصوّرة مشترك (سقف ٦، وحد أدنى ٣ من أي شركة — القائدة ١٨/١٠): تصوير
+          // شركة تانية بيتحرّك بس إذا نزلات هالشركة نفسها تحرّكت. نشرها ولا مرّة.
+          const ownShootsMoved = shootsOf(r0, co.id) !== shootsOf(r1, co.id);
           for (const x of st0.companies.filter((x) => x.id !== co.id)) {
             for (const o of Object.values(TYPES)) if (pubOf(r0, x.id, o) !== pubOf(r1, x.id, o)) bad.push(`${tag}: نشر ${x.id} ${o} تحرّك`);
             if (shootsOf(r0, x.id) !== shootsOf(r1, x.id)) {
-              if (field === "reels") shootsMoved++;
+              if (field === "reels" || ownShootsMoved) shootsMoved++;
               else bad.push(`${tag}: تصوير ${x.id} تحرّك`);
             }
           }
@@ -513,7 +518,8 @@ describe("نواة الجدولة — علاقات تحويلية (metamorphic)"
     }
     expect(n).toBeGreaterThanOrEqual(40);
     expect(bad).toEqual([]);
-    expect(shootsMoved).toBeLessThanOrEqual(2); // اليوم: حالة وحدة (سقف المصوّر بيدفع جلسة شركة تانية)
+    // كل تحرّك تصوير لشركة تانية انعدّ بس لما ريل زيادة أو نزلات هالشركة تحرّكت (فوق).
+    expect(shootsMoved).toBeLessThan(n);
   });
 
   it("شركة بخطة صفر ما بتولّد شي لحالها — بس وجودها بيحرّك دوران الشركات اللي بعدها (سلوك موثَّق SC-06)", () => {

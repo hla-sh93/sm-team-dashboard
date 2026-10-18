@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPhotoSessions, type ReelTask } from "@/lib/photographer";
+import { shootWindow } from "@/lib/constants";
 
 /**
  * جدولة التصوير كانت بلا ولا اختبار — وهي يلي بتحدد أيام ماجد وبتغذّي كرت
@@ -157,5 +158,86 @@ describe("جدولة جلسات التصوير", () => {
     const r = buildPhotoSessions(2026, 7, [co("a", reels)], WORK);
     const total = r.sessions.filter((s) => s.kind === "REELS").reduce((a, s) => a + s.reelCount, 0);
     expect(total).toBe(reels.length);
+  });
+});
+
+// القائدة ١٨/١٠: «خلينا نصور 3 باليوم حد أدنى (لكل الشركات) يعني عبي يوم المصورة
+// كـ 3 باليوم في حال وجود محتوى» — «منكمّل من شركة تانية». يوم فيه أقل من ٣ بينضمّ
+// ليوم تصوير تاني (أي شركة) ضمن نافذة الريل، بلا ما يكسر السقف أو يرجع لقبل اليوم.
+describe("يوم المصوّرة ٣ ريلات حد أدنى", () => {
+  const reelsPerDay = (r: ReturnType<typeof buildPhotoSessions>) => {
+    const m = new Map<string, number>();
+    for (const s of r.sessions.filter((x) => x.kind === "REELS")) m.set(iso(s.shootDate), (m.get(iso(s.shootDate)) ?? 0) + s.reelCount);
+    return m;
+  };
+  const near = () => [co("a", [reel("a", 1, 12), reel("a", 2, 14)]), co("b", [reel("b", 1, 15), reel("b", 2, 17)])];
+
+  it("شركتين بريلين ريلين قراب من بعض → يوم واحد فيه ٤", () => {
+    const days = reelsPerDay(buildPhotoSessions(2026, 7, near(), WORK));
+    expect([...days.values()]).toEqual([4]);
+  });
+
+  it("الضمّ ما بيأخّر تصوير ريل لبعد نافذته (قبل المونتاج بيومين)", () => {
+    const r = buildPhotoSessions(2026, 7, near(), WORK);
+    for (const x of near().flatMap((c) => c.reels)) {
+      const d = r.reelDates.get(x.detKey)!;
+      const latest = shootWindow(x.publishDate).latest;
+      expect(d.shootDate.getTime(), x.detKey).toBeLessThanOrEqual(latest.getTime());
+    }
+  });
+
+  it("يوم فيه ٣ ما بينفرط، والريل الوحيد القريب بينضمّله", () => {
+    const r = buildPhotoSessions(2026, 7, [co("a", [reel("a", 1, 12), reel("a", 2, 13), reel("a", 3, 14)]), co("b", [reel("b", 1, 16)])], WORK);
+    expect([...reelsPerDay(r).values()]).toEqual([4]);
+  });
+
+  it("ما بيتخطّى سقف المصوّر: سقف ٣ → ريلين وريلين بيضلّوا بيومين", () => {
+    const days = reelsPerDay(buildPhotoSessions(2026, 7, near(), WORK, 3));
+    expect([...days.values()]).toEqual([2, 2]);
+  });
+
+  it("أيام بعيدة (أكتر من ١٠ أيام) ما بتنضمّ — بلا محتوى قريب اليوم بيضل متل ما هو", () => {
+    const r = buildPhotoSessions(2026, 7, [co("a", [reel("a", 1, 8), reel("a", 2, 9)]), co("b", [reel("b", 1, 28), reel("b", 2, 29)])], WORK);
+    expect([...reelsPerDay(r).values()]).toEqual([2, 2]);
+  });
+
+  it("ما بيرجّع نزلة لقبل اليوم، وما بيحرّك نزلة مرق يومها", () => {
+    const withToday = buildPhotoSessions(2026, 7, near(), WORK, 6, undefined, undefined, new Date(2026, 7, 9));
+    expect([...reelsPerDay(withToday).entries()]).toEqual([["2026-08-05", 2], ["2026-08-10", 2]]);
+  });
+
+  it("ولا لأقرب من مهلة طلب الموعد (يومين من اليوم)", () => {
+    // اليوم ١/٨ → المهلة لـ٣/٨: يوم ٥/٨ بيستقبل. اليوم ٤/٨ → ٥/٨ بكرا، أقرب من المهلة: ما بيستقبل.
+    const early = buildPhotoSessions(2026, 7, near(), WORK, 6, undefined, undefined, new Date(2026, 7, 1));
+    expect([...reelsPerDay(early).values()]).toEqual([4]);
+    const late = buildPhotoSessions(2026, 7, near(), WORK, 6, undefined, undefined, new Date(2026, 7, 4));
+    expect([...reelsPerDay(late).entries()]).toEqual([["2026-08-05", 2], ["2026-08-10", 2]]);
+  });
+
+  it("«في حال وجود محتوى»: شركة سكريبتاتها مو مكتوبة نزلاتها ما بتتقدّم — بس يومها بيستقبل غيرها", () => {
+    const [a, b] = near();
+    const bNoScript = buildPhotoSessions(2026, 7, [a, { ...b, scriptsReady: false }], WORK);
+    expect([...reelsPerDay(bNoScript).entries()]).toEqual([["2026-08-05", 2], ["2026-08-10", 2]]);
+    const aNoScript = buildPhotoSessions(2026, 7, [{ ...a, scriptsReady: false }, b], WORK);
+    expect([...reelsPerDay(aNoScript).values()]).toEqual([4]);
+  });
+
+  it("ولا قبل بداية العقد", () => {
+    const r = buildPhotoSessions(2026, 7, [near()[0], { ...near()[1], notBefore: new Date(2026, 7, 10) }], WORK);
+    const b = r.sessions.find((s) => s.companyId === "b" && s.kind === "REELS")!;
+    expect(b.shootDate.getTime()).toBeGreaterThanOrEqual(new Date(2026, 7, 10).getTime());
+  });
+
+  it("يوم محجوز بدلو تاني بيعبّي كمان (يوم المصوّرة مو يوم الدورة)", () => {
+    const r = buildPhotoSessions(2026, 7, [co("a", [reel("a", 1, 15), reel("a", 2, 17)])], WORK, 6, undefined, new Map([["2026-08-10", 2]]));
+    expect(iso(r.sessions.find((s) => s.kind === "REELS")!.shootDate)).toBe("2026-08-10");
+  });
+
+  it("نزلتين لنفس الشركة بنفس اليوم = جلسة وحدة، والأرقام متسلسلة", () => {
+    const r = buildPhotoSessions(2026, 7, [co("a", [reel("a", 1, 12), reel("a", 2, 14), reel("a", 3, 17), reel("a", 4, 19)])], WORK);
+    const reels = r.sessions.filter((s) => s.kind === "REELS");
+    expect(reels.map((s) => s.reelCount)).toEqual([4]);
+    expect(r.sessions.map((s) => s.no)).toEqual([1, 2]);
+    expect(reels[0].detKey).toBe(`a|REELS|${iso(reels[0].shootDate)}|2`);
   });
 });

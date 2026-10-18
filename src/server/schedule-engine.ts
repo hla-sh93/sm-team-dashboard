@@ -416,6 +416,17 @@ async function generateScheduleOnce(
       ).map((s) => ({ companyId: s.companyId, shootDate: s.shootDate, reelCount: s.reelCount }));
     }
 
+    state.today = todayStart;
+    // «في حال وجود محتوى» (القائدة ١٨/١٠): نزلات شركة بتتقدّم لتعبّي يوم المصوّرة بس
+    // إذا كل كروت ريلاتها بهالدلو إلها وصف (نص الخطة). دلو لسا ما انولّد = مو مكتوب.
+    const reelCards = await prisma.task.findMany({
+      where: { year, month, isAuto: true, type: "REEL", stage: "SHOOT" },
+      select: { companyId: true, brief: true },
+    });
+    const scriptless = new Set(reelCards.filter((t) => !t.brief?.trim()).map((t) => t.companyId));
+    state.reelScriptsReady = new Set(
+      reelCards.map((t) => t.companyId).filter((id): id is string => !!id && !scriptless.has(id)),
+    );
     const result = buildSchedule(state);
 
     // «تسليم الشغل» (D4): المغادر ما بياخد ولا كرت مولَّد — الدور بيروح لخلفه.
