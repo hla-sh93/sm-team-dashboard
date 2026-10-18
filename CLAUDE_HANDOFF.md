@@ -2,7 +2,7 @@
 
 > **Canonical continuity file.** Any Codex or Claude agent continuing this project must read this file completely before inspecting, changing, deploying, or reconciling data. Update the current-state sections and append a session entry before ending meaningful work.
 
-Last updated: **2026-10-14 (١٤:٤٠، الديسكتوب)** — LIVE `f5271ee` on Vercel (GitLab `main`). See the 2026-10-14 log entries. (Previous: **2026-10-13 (١٨:٤٥)** (fix plan A–I + independent F–H review fixes + lead's 13/10 decisions + final 5-reviewer pre-merge review + lead's §15/§16 decisions (carousel load, no idle day) — all PUSHED to GitHub branch `claude/interesting-feistel-0eec40-gqr3vf` on `hla-sh93/sm-team-dashboard` (PUBLIC repo; private disabled by GitHub regional policy). NOT merged to `main`, NOT deployed; production deploys from GitLab `main` → Vercel. See the 2026-10-13 (١٧:٠٠) log entry.))
+Last updated: **2026-10-18 (٠٩:٣٥، الديسكتوب)** — data-only writes since 14/10 (see the 2026-10-18 log entries; latest verified backup `prod-20261018-0933.json`); code still LIVE `f5271ee`, Wataniya slug `9f170bc` local awaiting «انشر». (Previous: **2026-10-14 (١٤:٤٠، الديسكتوب)**) — LIVE `f5271ee` on Vercel (GitLab `main`). See the 2026-10-14 log entries. (Previous: **2026-10-13 (١٨:٤٥)** (fix plan A–I + independent F–H review fixes + lead's 13/10 decisions + final 5-reviewer pre-merge review + lead's §15/§16 decisions (carousel load, no idle day) — all PUSHED to GitHub branch `claude/interesting-feistel-0eec40-gqr3vf` on `hla-sh93/sm-team-dashboard` (PUBLIC repo; private disabled by GitHub regional policy). NOT merged to `main`, NOT deployed; production deploys from GitLab `main` → Vercel. See the 2026-10-13 (١٧:٠٠) log entry.))
 
 Workspace: `C:\Users\hla2-\Videos\Social\socialmediateam-live` (fresh clone of `origin/main` at `ffcd0bc`, 2026-09-15). **⚠️ The former workspace `C:\Users\hla2-\Videos\Social\sm-team-dashboard` no longer holds this repository**: on 2026-09-14 its contents were replaced by the May-2026 zip extraction (`sm-team-dashboard.zip`, Apr-30 code, no `.git`, no handoff). A full day of test/report work was done there on 2026-09-15 against that stale copy before the mismatch was noticed; nothing from it applies to production. The lead's own working folder appears to be `E:\Hla\Social\sm-team-dashboard` (drive not mounted here). Uncommitted local work that may exist there is not in this clone.
 
@@ -823,6 +823,18 @@ Before ending meaningful work:
 If Claude works in another clone or a cloud-only chat, this file will not synchronize automatically. Commit/push it with the project or give Claude this file directly. When both agents use this same local folder, changes are shared immediately.
 
 ## 14. Session continuation log (append-only)
+
+### 2026-10-18 (٠٩:٣٥، الديسكتوب) — Claude — دفعة القائدة: ريل AI لأيمن، تدريبات ١١ لسابين، يوم سابين للهوية، كرتا سكريبتات لنوال · **حيّ، متحقَّق**
+
+- **[USER-CONFIRMED]** «@جدول شهر أكتوبر11.docx كمان مهمة لسابين, مو مستعجلة: تصاميم تدريبات شهر 11 / بالنسبة لأيمن اليوم مهمته انتاج ريل ai شخصية فوني جوبس / كروت سابين للتوظيف اليوم أهملها, فقط تصميم الهوية البصرية الجديدة, خليها يوم عمل كامل. / نوال: كرت جديد - كتابة سكريبتات جديدة ل فونيتك و BW (ريلات تصوير بلا أشخاص)».
+- **[VERIFIED — نسخة ٠٩:٢٩ مقابل ٠٩:١٢: +٨، ٤ تغيّروا، ٠ انمحى]** من Chrome القائدة، كل حمولة بـpreflight + تجربة على `test-mirror-1410.db` + مطابقة SHA-256 للنص الملصوق:
+  - `prod-94` (التوظيف m=9): `adhoc_jobs-phoni-ai-reel-1` «إنتاج ريل AI — شخصية فوني جوبس (التميمة)»، أيمن، ٨س، مهم، ١٨/١٠.
+  - `prod-95` (التدريب m=9، `courses`): ٣ برامج من «جدول شهر أكتوبر11.docx» (الموظف الرقمي · وكلاء الذكاء الاصطناعي · الذكاء الاصطناعي لتطوير البرمجيات) — تصميم سابين ٢٢/١٠ و٢٥/١٠، نشر عمر ٥/١١ و١٢/١١ و١٨/١١ + جدول تشرين الثاني `course_schedule-2026-11_design` ٢٥/١٠. «مو مستعجلة» → مواعيد تقديري.
+  - `prod-96` (الثانوية الوطنية الخاصة): `adhoc_wataniya-visual-identity` ٤س → ٨س (يوم كامل) + السطر بالملاحظات والوصف.
+  - «تعديل مهام اليوم» لسابين (`updateDailyTasks`): الهوية وحدها اليوم (manualDay ١٨/١٠)، وبوستات التوظيف ٦/٧/٨ (`2026_9_d_c_tawzeef_POST_10/12/14`) انتقلوا ١٨→١٩/١٠. بوست ٩/١٠ وغلاف المقال ١٠ كانوا أصلاً على ١٩/١٠. يوم أيمن كان صحيح (الريل وحده) — ما انحفظ شي.
+- **[VERIFIED — نسخة ٠٩:٣٣ مقابل ٠٩:٢٩: +٢، ٠ تغيّر، ٠ انمحى]** `prod-97` (Phoenitech m=9) و`prod-98` (BW m=9): `adhoc_phoenitech-scripts-no-people` و`adhoc_bw-scripts-no-people` «كتابة سكريبتات جديدة — ريلات تصوير بلا أشخاص (…)»، نوال، WRITE، ٤س كل واحد، ١٩→٢٠/١٠، عادي. **[INFERENCE/قرار Claude]** القائدة قالت «كرت جديد» (مفرد)؛ انقسم كرتين لأن كل شركة إلها تقرير دورة وموضوع تلغرام لحالها — إذا بدها كرت واحد بينضمّوا. المدة والمواعيد والأولوية تقديري. كرت نوال «كتابة سكريبتات فوني جوبس» (مهم، يوم كامل) بيضل أول بقائمتها لحد ما يتسكّر.
+- **ملاحظة:** إذا ما خلصت الهوية اليوم، بكرا (١٩/١٠) بيطلعوا بوستات التوظيف المنقولة أول (manualDay=اليوم) والهوية بترجع ٢٠/١٠ (محاكاة `q-queues-1410`).
+- **معلّق عند القائدة:** «انشر» لكود Wataniya (`9f170bc`)؛ أسئلة الثانوية (بوستات ٨–١٠ بلا نص، ستوري ١٣–١٥، تصوير ريل ١ وحده ٢٧/١٠، تيزر ٣٠/١٠، موضوع تلغرام + حساب إنستغرام)؛ مخبر ريل ٢ متأخّر وريل ٤/٦ بلا موعد تصوير.
 
 ### 2026-10-18 (٠٩:١٥، الديسكتوب) — Claude — مهمة حلا «تصميم غلاف بوكس كابرياني» · **حيّ، متحقَّق**
 
