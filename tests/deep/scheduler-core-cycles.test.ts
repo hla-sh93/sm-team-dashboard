@@ -3,7 +3,7 @@
  * 2026-01-01 و2028-12-31 (شباط الكبيسة 2028، رأس السنة، 28/29/30/31)،
  * التجديد المبكر والمكرّر، قرار «لم يُجدد»، وحدود الدلو شاملة/حصرية.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   cyclesOf,
   cycleForBucket,
@@ -94,8 +94,16 @@ describe("الدورات — سلسلة تجديدات متّصلة من كل ي
     expect(b[0].days).toHaveLength(12);
     expect(cyclesOf({ publishStartDate: D("2026-10-13"), renewals: null, contractEndedAt: D("2026-10-13") })).toHaveLength(0);
     expect(cycleForBucket({ publishStartDate: D("2026-10-13"), renewals: null, contractEndedAt: D("2026-10-13") }, 2026, 9)).toBeNull();
-    // المحرّك: ولا كرت بعد يوم «لم يُجدد»
-    const r = buildSchedule({ year: 2026, month: 9, employees: team(), companies: [company("c", "c", PLANS.bw, { publishStartDate: D("2026-09-13"), renewals: ["2026-10-13"], contractEndedAt: D("2026-10-25") })], adhoc: [] });
+    // المحرّك: ولا كرت بعد يوم «لم يُجدد». الساعة مثبّتة قبل يوم الإنهاء: `buildSchedule`
+    // بيقرا الأرشفة (`isDormantCompany`) بساعة الجهاز، فمن ٢٥/١٠/٢٠٢٦ الشركة صارت مؤرشفة
+    // والمحرّك ما بيولّد إلها شي — والفحص كان يفشل بالتاريخ مو بالكود.
+    vi.setSystemTime(D("2026-10-20"));
+    let r: ReturnType<typeof buildSchedule>;
+    try {
+      r = buildSchedule({ year: 2026, month: 9, employees: team(), companies: [company("c", "c", PLANS.bw, { publishStartDate: D("2026-09-13"), renewals: ["2026-10-13"], contractEndedAt: D("2026-10-25") })], adhoc: [] });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(r.tasks.length).toBeGreaterThan(0);
     for (const t of r.tasks) expect(t.publishDate!.getTime()).toBeLessThan(D("2026-10-25").getTime());
   });
