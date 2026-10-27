@@ -13,6 +13,7 @@
  */
 import {
   Building2,
+  CalendarClock,
   CheckSquare,
   FileBarChart,
   FileDown,
@@ -73,6 +74,8 @@ export const adminNav: NavSection[] = [
     title: "الإعدادات",
     items: [
       { href: `${ADMIN_BASE}/priorities`, label: "الأولويات", icon: ListOrdered },
+      // «إعادة جدولة المتأخر» (القائدة ٢٧/١٠) — للإدارة بس.
+      { href: `${ADMIN_BASE}/reschedule`, label: "إعادة جدولة المتأخر", icon: CalendarClock },
       { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
       { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
       { href: `${ADMIN_BASE}/telegram`, label: "تلغرام", icon: MessageCircle },

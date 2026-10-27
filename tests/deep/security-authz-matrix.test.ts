@@ -119,6 +119,7 @@ beforeAll(async () => {
   const telegram = await import("@/server/actions/telegram");
   const auth = await import("@/server/actions/auth");
   const admins = await import("@/server/actions/admins");
+  const lateResched = await import("@/server/actions/late-reschedule");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -155,6 +156,9 @@ beforeAll(async () => {
     { name: "addAdminAction", call: () => admins.addAdminAction({ name: "x", email: "bad", password: "x" }), reached: "message" },
     { name: "resetAdminPasswordAction", call: () => admins.resetAdminPasswordAction(NOPE, "x"), reached: "message" },
     { name: "removeAdminAction", call: () => admins.removeAdminAction(NOPE), reached: "queries" },
+    // «إعادة جدولة المتأخر» (٢٧/١٠).
+    { name: "previewLateReschedule", call: () => lateResched.previewLateReschedule("2026-10-27", []), reached: "queries" },
+    { name: "applyLateReschedule", call: () => lateResched.applyLateReschedule("2026-10-27", [], "x"), reached: "queries" },
   ];
 });
 
@@ -254,10 +258,10 @@ describe("خريطة التصديرات (ثابت)", () => {
     const guarded = useServerExports().filter((e) => e.guarded).map((e) => e.name).sort();
     expect(guarded).toEqual(
       [
-        "addAdminAction", "applyCompanyPlanUpdate", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
+        "addAdminAction", "applyCompanyPlanUpdate", "applyLateReschedule", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "markChatAsTeam",
-        "pauseCompanyPublishing", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
+        "pauseCompanyPublishing", "previewLateReschedule", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "setBriefRecipient", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",
