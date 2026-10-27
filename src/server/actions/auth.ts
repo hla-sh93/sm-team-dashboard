@@ -4,6 +4,7 @@ import { revalidateSafely } from "@/lib/revalidate";
 import { headers } from "next/headers";
 import {
   assertAdmin,
+  assertOwner,
   claimAdminEmail,
   claimFirstAdmin,
   createSession,
@@ -12,7 +13,7 @@ import {
   invalidateAllSessions,
   isAdminConfigured,
   setAdminPassword,
-  verifyAdminEmail,
+  verifyAdminLogin,
   verifyAdminPassword,
 } from "@/lib/auth";
 
@@ -104,17 +105,16 @@ export async function loginAction(
     };
   }
   reserveLoginAttempt(throttleKey);
-  // الاتنين بيتحقّقوا دايماً: إيميل غلط كان يرجع قبل scrypt، فزمن الردّ كان
-  // يكشف الإيميل الصحيح (SA-06).
-  const emailOk = await verifyAdminEmail(em);
-  const passwordOk = await verifyAdminPassword(pw);
-  if (!emailOk || !passwordOk) {
+  // الإيميل والكلمة بيتحقّقوا دايماً سوا: إيميل غلط كان يرجع قبل scrypt، فزمن الردّ
+  // كان يكشف الإيميل الصحيح (SA-06). بريد مسؤول إضافي بيتحقّق بكلمته هو بس.
+  const who = await verifyAdminLogin(em, pw);
+  if (!who) {
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
   failedLogins.delete(throttleKey);
-  // كلمة موجودة بلا إيميل (تثبيت قديم): أول دخول صحيح بيثبّت الإيميل.
-  if (!(await getAdminEmail()) && EMAIL_RE.test(em)) await claimAdminEmail(em);
-  await createSession();
+  // كلمة موجودة بلا إيميل (تثبيت قديم): أول دخول صحيح للمالكة بيثبّت الإيميل.
+  if (who.kind === "owner" && !(await getAdminEmail()) && EMAIL_RE.test(em)) await claimAdminEmail(em);
+  await createSession(who);
   return { ok: true };
 }
 
@@ -135,6 +135,12 @@ export async function changePasswordAction(
     await assertAdmin();
   } catch {
     return { ok: false, error: "يلزم تسجيل الدخول" };
+  }
+  // كلمة سر المالكة لإلها بس — المسؤول الإضافي ما بيغيّرها.
+  try {
+    await assertOwner();
+  } catch {
+    return { ok: false, error: "تغيير كلمة مرور المالكة للمالكة فقط" };
   }
   if (!(await verifyAdminPassword((currentPassword ?? "").trim()))) {
     return { ok: false, error: "كلمة المرور الحالية غير صحيحة" };

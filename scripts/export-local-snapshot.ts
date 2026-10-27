@@ -33,7 +33,7 @@ async function main() {
   // silently replace the PRODUCTION admin password with the local one. The
   // import script explicitly preserves prod's own auth keys whenever the
   // snapshot doesn't carry them — so we omit them here.
-  const AUTH_KEYS = new Set(["authSecret", "adminPasswordHash", "adminEmail", "authEpoch", "revokedSessions"]);
+  const AUTH_KEYS = new Set(["authSecret", "adminPasswordHash", "adminEmail", "authEpoch", "revokedSessions", "extraAdmins"]);
   const settings = allSettings.filter((s: { key: string }) => !AUTH_KEYS.has(s.key));
 
   // Timezone normalisation: schedule dates are stored at LOCAL midnight (e.g.

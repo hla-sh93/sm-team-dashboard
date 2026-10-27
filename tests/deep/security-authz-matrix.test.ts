@@ -118,6 +118,7 @@ beforeAll(async () => {
   const schedule = await import("@/server/actions/schedule");
   const telegram = await import("@/server/actions/telegram");
   const auth = await import("@/server/actions/auth");
+  const admins = await import("@/server/actions/admins");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -150,6 +151,10 @@ beforeAll(async () => {
     { name: "registerWebhook", call: () => telegram.registerWebhook("https://example.test"), reached: "message" },
     { name: "telegramStatus", call: () => telegram.telegramStatus(), reached: "message" },
     { name: "changePasswordAction", call: () => auth.changePasswordAction("x", "y"), reached: "message" },
+    // المسؤولون الإضافيون (٢٧/١٠) — للمالكة بس.
+    { name: "addAdminAction", call: () => admins.addAdminAction({ name: "x", email: "bad", password: "x" }), reached: "message" },
+    { name: "resetAdminPasswordAction", call: () => admins.resetAdminPasswordAction(NOPE, "x"), reached: "message" },
+    { name: "removeAdminAction", call: () => admins.removeAdminAction(NOPE), reached: "queries" },
   ];
 });
 
@@ -162,7 +167,7 @@ afterAll(async () => {
   if (scratch.target) removeDb(scratch.target);
 });
 
-const UNAUTH = new Set(["غير مصرّح", "يلزم تسجيل الدخول", "فشل حذف الشركة", "فشل أرشفة الشركة", "فشل حذف الموظف", "فشلت إعادة الجدولة"]);
+const UNAUTH = new Set(["غير مصرّح", "يلزم تسجيل الدخول", "فشل حذف الشركة", "فشل أرشفة الشركة", "فشل حذف الموظف", "فشلت إعادة الجدولة", "غير مصرّح — إدارة المسؤولين للمالكة فقط"]);
 
 describe("أفعال الإدارة: بلا جلسة صحيحة ما في ولا استعلام ولا كتابة", () => {
   const forged = () => [
@@ -249,11 +254,11 @@ describe("خريطة التصديرات (ثابت)", () => {
     const guarded = useServerExports().filter((e) => e.guarded).map((e) => e.name).sort();
     expect(guarded).toEqual(
       [
-        "applyCompanyPlanUpdate", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
+        "addAdminAction", "applyCompanyPlanUpdate", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "markChatAsTeam",
         "pauseCompanyPublishing", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
-        "registerWebhook", "removeLatestRenewal", "renewContract", "reorderCompanies",
+        "registerWebhook", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "setBriefRecipient", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",
       ].sort(),

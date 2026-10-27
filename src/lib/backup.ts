@@ -28,6 +28,8 @@ export const AUTH_KEYS = new Set([
   "adminEmail",
   "authEpoch",
   "revokedSessions",
+  // المسؤولون الإضافيون: هاشات كلمات سرّهم — متل هاش المالكة ما بتطلع بلقطة.
+  "extraAdmins",
 ]);
 
 export type SnapshotCounts = {

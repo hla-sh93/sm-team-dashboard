@@ -165,7 +165,7 @@ async function main() {
   // NOT be lost when a snapshot without it replaces prod — otherwise a re-sync
   // would silently reset the admin login. Capture prod's values first; restore
   // any key the incoming snapshot doesn't already carry.
-  const AUTH_KEYS = ["authSecret", "adminPasswordHash", "adminEmail", "authEpoch", "revokedSessions"];
+  const AUTH_KEYS = ["authSecret", "adminPasswordHash", "adminEmail", "authEpoch", "revokedSessions", "extraAdmins"];
   const preservedAuth = await prisma.setting
     .findMany({ where: { key: { in: AUTH_KEYS } } })
     .catch(() => [] as { key: string; value: string }[]);

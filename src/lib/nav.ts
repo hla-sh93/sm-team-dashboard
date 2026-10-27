@@ -16,6 +16,7 @@ import {
   CheckSquare,
   FileBarChart,
   FileDown,
+  KeyRound,
   LayoutDashboard,
   ListOrdered,
   MessageCircle,
@@ -75,6 +76,8 @@ export const adminNav: NavSection[] = [
       { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
       { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
       { href: `${ADMIN_BASE}/telegram`, label: "تلغرام", icon: MessageCircle },
+      // حسابات دخول إضافية للإدارة (القائدة ٢٧/١٠) — إدارتها للمالكة بس.
+      { href: `${ADMIN_BASE}/admins`, label: "المسؤولون", icon: KeyRound },
     ],
   },
 ];

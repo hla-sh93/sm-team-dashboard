@@ -45,6 +45,13 @@ const EMAIL_KEY = "adminEmail";
 const EPOCH_KEY = "authEpoch";
 /** جلسات انسكّرت بالخروج: `{sid: exp}` — بتنحذف من القائمة لما تنتهي صلاحيتها. */
 const REVOKED_KEY = "revokedSessions";
+/**
+ * مسؤولون إضافيون (القائدة ٢٧/١٠: «امكانية إضافة أدمن جديد … لعمر بنفس الصلاحيات
+ * لواجهة الإدارة»): قائمة JSON بصفّ `Setting` واحد — بلا جدول جديد ولا تغيير schema.
+ * كل واحد إلو هاش scrypt لحالو و`gen` («جيل» جلساته): تصفير كلمته أو حذفه بيبدّل/بيشيل
+ * الـ`gen` فبتبطل جلساته هو بس، وجلسات المالكة ما بتنمسّ.
+ */
+const EXTRA_ADMINS_KEY = "extraAdmins";
 export const SESSION_COOKIE = "sm_admin";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -260,6 +267,137 @@ export async function claimAdminEmail(email: string): Promise<boolean> {
   }
 }
 
+// --- extra admins -----------------------------------------------------------
+
+type ExtraAdminRow = {
+  id: string;
+  name: string;
+  email: string;
+  hash: string;
+  gen: string;
+  createdAt: string;
+};
+
+/** شكل المسؤول الإضافي يلي بيطلع للواجهة — بلا هاش ولا جيل. */
+export type ExtraAdmin = Pick<ExtraAdminRow, "id" | "name" | "email" | "createdAt">;
+
+/** مين صاحب الجلسة: المالكة (الدخول الأصلي) أو مسؤول إضافي. */
+export type AdminIdentity = { kind: "owner" } | { kind: "extra"; id: string; gen: string };
+
+const normEmail = (email: string) => (email ?? "").trim().toLowerCase();
+
+function parseExtraAdmins(value: string | null | undefined): ExtraAdminRow[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (a): a is ExtraAdminRow =>
+            a != null && typeof a.id === "string" && typeof a.email === "string" && typeof a.hash === "string",
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readExtraAdmins(): Promise<{ raw: string | null; admins: ExtraAdminRow[] }> {
+  const row = await prisma.setting.findUnique({ where: { key: EXTRA_ADMINS_KEY } });
+  return { raw: row?.value ?? null, admins: parseExtraAdmins(row?.value) };
+}
+
+/**
+ * تعديل القائمة بكتابة مشروطة على القيمة يلي انقرت (متل `revokeToken`) — إضافتان
+ * بنفس اللحظة ما بتمحي وحدة التانية. `edit` بترجّع القائمة الجديدة أو رسالة رفض.
+ */
+async function writeExtraAdmins(
+  edit: (admins: ExtraAdminRow[]) => ExtraAdminRow[] | string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { raw, admins } = await readExtraAdmins();
+    const next = edit(admins);
+    if (typeof next === "string") return next;
+    const value = JSON.stringify(next);
+    if (raw == null) {
+      try {
+        await prisma.setting.create({ data: { key: EXTRA_ADMINS_KEY, value } });
+        return null;
+      } catch {
+        continue; // انخلق الصفّ بنفس اللحظة — منعيد القراءة ومندمج
+      }
+    }
+    const written = await prisma.setting.updateMany({
+      where: { key: EXTRA_ADMINS_KEY, value: raw },
+      data: { value },
+    });
+    if (written.count > 0) return null;
+  }
+  return "تعذّر الحفظ — أعد المحاولة";
+}
+
+export async function listExtraAdmins(): Promise<ExtraAdmin[]> {
+  const { admins } = await readExtraAdmins();
+  return admins.map(({ id, name, email, createdAt }) => ({ id, name, email, createdAt }));
+}
+
+/** بيرجّع `null` لما ينجح، وإلا سبب الرفض. */
+export async function addExtraAdmin(input: { name: string; email: string; password: string }): Promise<string | null> {
+  const email = normEmail(input.email);
+  const name = (input.name ?? "").trim();
+  if (!name) return "اكتب اسم المسؤول";
+  const owner = await getAdminEmail();
+  if (owner && normEmail(owner) === email) return "هاد بريد حساب المالكة";
+  const hash = hashPassword(input.password);
+  return writeExtraAdmins((admins) =>
+    admins.some((a) => a.email === email)
+      ? "في مسؤول بنفس البريد"
+      : [
+          ...admins,
+          {
+            id: randomBytes(6).toString("hex"),
+            name,
+            email,
+            hash,
+            gen: randomBytes(8).toString("hex"),
+            createdAt: new Date().toISOString(),
+          },
+        ],
+  );
+}
+
+/** كلمة سر جديدة = جيل جديد: كل جلسات هالمسؤول القديمة بتبطل. */
+export async function resetExtraAdminPassword(id: string, password: string): Promise<string | null> {
+  const hash = hashPassword(password);
+  return writeExtraAdmins((admins) =>
+    admins.some((a) => a.id === id)
+      ? admins.map((a) => (a.id === id ? { ...a, hash, gen: randomBytes(8).toString("hex") } : a))
+      : "المسؤول غير موجود",
+  );
+}
+
+/** الحذف بيبطّل جلساته فوراً (جيله ما عاد موجود). */
+export async function removeExtraAdmin(id: string): Promise<string | null> {
+  return writeExtraAdmins((admins) =>
+    admins.some((a) => a.id === id) ? admins.filter((a) => a.id !== id) : "المسؤول غير موجود",
+  );
+}
+
+/**
+ * مين هالبريد + كلمة السر: مسؤول إضافي (إذا البريد إلو) أو المالكة. بريد المسؤول
+ * الإضافي ما بيقدر يفوت بكلمة المالكة ولا العكس. scrypt بيشتغل بكل الحالات (حتى بريد
+ * مو موجود) لحتى زمن الرد ما يكشف شي (SA-06).
+ */
+export async function verifyAdminLogin(email: string, password: string): Promise<AdminIdentity | null> {
+  const { admins } = await readExtraAdmins();
+  const extra = admins.find((a) => a.email === normEmail(email));
+  if (extra) {
+    return password && verifyPasswordHash(password, extra.hash) ? { kind: "extra", id: extra.id, gen: extra.gen } : null;
+  }
+  const emailOk = await verifyAdminEmail(email);
+  const passwordOk = await verifyAdminPassword(password);
+  return emailOk && passwordOk ? { kind: "owner" } : null;
+}
+
 // --- session token ----------------------------------------------------------
 
 async function sign(payload: string): Promise<string> {
@@ -267,14 +405,21 @@ async function sign(payload: string): Promise<string> {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
+/** جلسة مسؤول إضافي: `x<id>~<gen>~<عشوائي>` بمكان الـsid (بلا نقاط، فشكل الكوكي نفسه). */
+const EXTRA_SID = /^x([0-9a-f]+)~([0-9a-f]+)~[0-9a-f]+$/;
+
 /**
  * Token = `exp.epoch.sid.HMAC(exp.epoch.sid)`. `sid` is random per login so a
  * single session can be revoked on logout without touching the others; `epoch`
- * ties the token to the current session generation (password change).
+ * ties the token to the current session generation (password change). An extra
+ * admin's sid also carries their id + generation (see `EXTRA_SID`), so the owner's
+ * existing cookies keep their exact old shape.
  */
-async function makeToken(): Promise<string> {
+async function makeToken(who: AdminIdentity = { kind: "owner" }): Promise<string> {
   const exp = String(Date.now() + SESSION_TTL_MS);
-  const payload = `${exp}.${await currentEpoch()}.${randomBytes(12).toString("hex")}`;
+  const rand = randomBytes(12).toString("hex");
+  const sid = who.kind === "extra" ? `x${who.id}~${who.gen}~${rand}` : rand;
+  const payload = `${exp}.${await currentEpoch()}.${sid}`;
   return `${payload}.${await sign(payload)}`;
 }
 
@@ -294,14 +439,26 @@ async function parseSignedToken(token: string | undefined): Promise<ParsedToken 
   return { exp: Number(exp), epoch, sid };
 }
 
-async function isValidToken(token: string | undefined): Promise<boolean> {
+/** صاحب الكوكي إذا صالحة (توقيع + جيل عام + مو مسكّرة + جيل المسؤول الإضافي)، وإلا null. */
+async function tokenIdentity(token: string | undefined): Promise<AdminIdentity | null> {
   const parsed = await parseSignedToken(token);
-  if (!parsed) return false;
-  const rows = await prisma.setting.findMany({ where: { key: { in: [EPOCH_KEY, REVOKED_KEY] } } });
+  if (!parsed) return null;
+  const rows = await prisma.setting.findMany({
+    where: { key: { in: [EPOCH_KEY, REVOKED_KEY, EXTRA_ADMINS_KEY] } },
+  });
   const epoch = rows.find((r) => r.key === EPOCH_KEY)?.value || "0";
-  if (parsed.epoch !== epoch) return false;
+  if (parsed.epoch !== epoch) return null;
   const revoked = parseRevoked(rows.find((r) => r.key === REVOKED_KEY)?.value);
-  return revoked[parsed.sid] == null;
+  if (revoked[parsed.sid] != null) return null;
+  const extra = EXTRA_SID.exec(parsed.sid);
+  if (!extra) return { kind: "owner" };
+  const [, id, gen] = extra;
+  const admin = parseExtraAdmins(rows.find((r) => r.key === EXTRA_ADMINS_KEY)?.value).find((a) => a.id === id);
+  return admin && admin.gen === gen ? { kind: "extra", id, gen } : null;
+}
+
+async function isValidToken(token: string | undefined): Promise<boolean> {
+  return (await tokenIdentity(token)) != null;
 }
 
 /**
@@ -338,9 +495,9 @@ async function revokeToken(token: string | undefined): Promise<void> {
 
 // --- session cookie ---------------------------------------------------------
 
-export async function createSession(): Promise<void> {
+export async function createSession(who: AdminIdentity = { kind: "owner" }): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, await makeToken(), {
+  cookieStore.set(SESSION_COOKIE, await makeToken(who), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -385,5 +542,22 @@ export async function requireAdminPage(from?: string): Promise<void> {
 export async function assertAdmin(): Promise<void> {
   if (!(await isAuthenticated())) {
     throw new Error("غير مصرّح — يلزم تسجيل الدخول كمسؤول");
+  }
+}
+
+/** صاحب جلسة الطلب الحالي، أو null. */
+export async function currentAdmin(): Promise<AdminIdentity | null> {
+  const cookieStore = await cookies();
+  return tokenIdentity(cookieStore.get(SESSION_COOKIE)?.value);
+}
+
+/**
+ * إدارة المسؤولين للمالكة بس: المسؤول الإضافي إلو كل صلاحيات واجهة الإدارة، بس ما
+ * بيضيف/بيشيل مسؤولين ولا بيغيّر كلمة سر المالكة — هيك ما حدا بيقفلها برّا حسابها.
+ */
+export async function assertOwner(): Promise<void> {
+  const who = await currentAdmin();
+  if (who?.kind !== "owner") {
+    throw new Error("غير مصرّح — إدارة المسؤولين للمالكة فقط");
   }
 }
