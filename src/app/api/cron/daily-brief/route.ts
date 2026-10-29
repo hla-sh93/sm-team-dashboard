@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { sendDailyBrief, type BriefWave } from "@/lib/telegram/service";
 import { bearerMatches } from "@/lib/secret-compare";
+import { applyDueHandovers } from "@/server/handover";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,6 +29,15 @@ export async function GET(req: Request) {
   const raw = new URL(req.url).searchParams.get("wave");
   const wave: BriefWave = raw === "general" || raw === "detail" ? raw : "all";
 
+  // التسليمات المجدولة (نهاية عقد) يلي إجا يومها — قبل البريف، حتى توزيع اليوم يطلع للخلف.
+  let handovers: Awaited<ReturnType<typeof applyDueHandovers>> | { error: string };
+  try {
+    handovers = await applyDueHandovers();
+  } catch (e) {
+    console.error("[cron] scheduled handovers failed", e);
+    handovers = { error: "handovers_failed" };
+  }
+
   const res = await sendDailyBrief(new Date(), wave);
-  return NextResponse.json({ ...res, wave }, { status: res.ok ? 200 : 500 });
+  return NextResponse.json({ ...res, wave, handovers }, { status: res.ok ? 200 : 500 });
 }

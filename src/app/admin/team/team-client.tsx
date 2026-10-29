@@ -7,10 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/badge";
 import MemberForm from "@/components/forms/MemberForm";
-import { deleteEmployee, handoverEmployeeWork } from "@/server/actions/employees";
+import { cancelScheduledHandover, deleteEmployee, handoverEmployeeWork } from "@/server/actions/employees";
 import { sendTelegramTest } from "@/server/actions/telegram-identity";
 import type { TelegramSenderRow } from "@/server/telegram-identity";
-import type { HandoverRecord } from "@/server/handover";
+import type { HandoverRecord, PlannedHandover } from "@/server/handover";
 import TelegramSenders from "./telegram-senders";
 import { toast } from "@/components/ui/toaster";
 import { ROLE_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
@@ -22,13 +22,16 @@ export default function TeamClient({
   employees,
   unknownSenders,
   handovers = [],
+  planned = [],
   canSeePay = false,
 }: {
   employees: Employee[];
   unknownSenders: TelegramSenderRow[];
   handovers?: HandoverRecord[];
+  planned?: PlannedHandover[];
   canSeePay?: boolean;
 }) {
+  const plannedOf = new Map(planned.map((p) => [p.fromId, p]));
   const handoverOf = new Map(handovers.map((h) => [h.fromId, h]));
   const nameOf = (id: string) => employees.find((x) => x.id === id)?.name ?? "—";
   const fmtDay = (iso: string | null) => (iso ? `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}` : "");
@@ -101,14 +104,24 @@ export default function TeamClient({
             `من <b>${esc(e.name)}</b> لـ<b>${esc(toName)}</b> من ${esc(fromDate)}:<br/>` +
             `${probe.openCards} كرت مفتوح · ${probe.doneSince} كرت منجز من التاريخ · ${probe.companies} شركة` +
             (future
-              ? `<br/><br/><b style="color:#c77e1b">⚠️ التاريخ لسا ما إجا:</b> التسليم بيصير <b>هلّق</b> — كروت ${esc(e.name)} المفتوحة كلها (حتى يلي قبل ${esc(fromDate)}) بتنتقل اليوم، وبيطلع من التوزيع اليوم. إذا لسا عم يشتغل، الأحسن تعمليه يوم ${esc(fromDate)}.`
+              ? `<br/><br/><b>التاريخ لسا ما إجا (نهاية عقد؟)</b><br/>«جدوِلي» = ${esc(e.name)} بيضل شغّال وكروته معه لحدّ ${esc(fromDate)}، وكرون الصبح بيسلّم يومها (الأعداد وقتها ممكن تختلف). «سلّمي هلّق» = كل المفتوح بينتقل اليوم.`
               : ""),
           icon: "question",
           showCancelButton: true,
-          confirmButtonText: "سلّم",
+          showDenyButton: future,
+          confirmButtonText: future ? `جدوِلي ليوم ${fromDate}` : "سلّم",
+          denyButtonText: "سلّمي هلّق",
           cancelButtonText: "إلغاء",
         });
-        if (!confirm.isConfirmed) return;
+        if (future && confirm.isConfirmed) {
+          const r = await handoverEmployeeWork({ fromId: e.id, toId, fromDate, schedule: true });
+          if (r.ok) {
+            toast(`انجدول: ${e.name} بيسلّم لـ${toName} يوم ${fromDate}`);
+            router.refresh();
+          } else toast(r.error, "error");
+          return;
+        }
+        if (!confirm.isConfirmed && !confirm.isDenied) return;
         const r = await handoverEmployeeWork({ fromId: e.id, toId, fromDate, confirm: probe.total });
         if (r.ok) {
           toast(`انسلّم شغل ${e.name} لـ${toName}`);
@@ -154,6 +167,25 @@ export default function TeamClient({
                     <div className="text-xs text-fg-dim">
                       {ROLE_LABELS[e.role] ?? e.role} · {e.hoursPerDay}س/يوم
                     </div>
+                    {plannedOf.get(e.id) && (
+                      <div className="text-[10px] text-warning flex items-center gap-1.5">
+                        عقده بينتهي {fmtDay(plannedOf.get(e.id)!.fromDate)} — بيسلّم شغله لـ{nameOf(plannedOf.get(e.id)!.toId)} الصبح
+                        <button
+                          className="text-accent hover:underline"
+                          onClick={() =>
+                            start(async () => {
+                              const r = await cancelScheduledHandover(e.id);
+                              if (r.ok) {
+                                toast("انلغى التسليم المجدول");
+                                router.refresh();
+                              } else toast(r.error, "error");
+                            })
+                          }
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    )}
                     {handoverOf.get(e.id) && (
                       <div className="text-[10px] text-fg-muted">
                         سلّم شغله لـ{nameOf(handoverOf.get(e.id)!.toId)}

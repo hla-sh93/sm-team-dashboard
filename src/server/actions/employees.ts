@@ -4,9 +4,8 @@ import { prisma } from "@/lib/db";
 import { assertAdmin, isOwnerSession, withoutPay } from "@/lib/auth";
 import { employeeSchema, isCalendarDay, type EmployeeInput } from "@/lib/schemas";
 import { revalidateAll } from "@/lib/revalidate";
-import { fromISODate } from "@/lib/dates";
-import { withEvidenceLine } from "@/lib/evidence";
-import { recordHandover } from "@/server/handover";
+import { executeHandover, handoverPlan, planHandover, cancelPlannedHandover } from "@/server/handover";
+import { teamTodayISO } from "@/lib/team-day";
 
 
 /** Build the rates JSON (items/day). planDays → PLAN rate = 1/planDays. */
@@ -203,6 +202,8 @@ export async function handoverEmployeeWork(input: {
   toId: string;
   fromDate: string;
   confirm?: number;
+  /** تاريخ مستقبلي: احفظ التسليم وخلّي كرون الصبح ينفّذه يومها بدل هلّق. */
+  schedule?: boolean;
 }) {
   try {
     await assertAdmin();
@@ -215,73 +216,37 @@ export async function handoverEmployeeWork(input: {
   }
   if (!isCalendarDay(fromDate)) return { ok: false as const, error: "تاريخ غير صالح" };
   try {
-    const [from, to] = await Promise.all([
-      prisma.employee.findUnique({ where: { id: fromId } }),
-      prisma.employee.findUnique({ where: { id: toId } }),
-    ]);
-    if (!from || !to) return { ok: false as const, error: "الموظف غير موجود" };
-    const since = fromISODate(fromDate);
-
-    const open = await prisma.task.findMany({
-      where: {
-        assigneeId: fromId,
-        status: { notIn: ["CANCELED", "READY", "PUBLISHED"] },
-        board: { not: "DONE" },
-      },
-      select: { id: true, notes: true },
-    });
-    const doneSince = await prisma.task.findMany({
-      where: {
-        assigneeId: fromId,
-        OR: [{ status: { in: ["READY", "PUBLISHED"] } }, { board: "DONE" }],
-        AND: [{ OR: [{ finishedAt: { gte: since } }, { AND: [{ finishedAt: null }, { completedAt: { gte: since } }] }] }],
-      },
-      select: { id: true, notes: true },
-    });
-    const ownerFields = [
-      "photographerId",
-      "postOwnerId",
-      "storyOwnerId",
-      "aiReelOwnerId",
-      "defaultOwnerId",
-      "accountOwnerId",
-    ] as const;
-    const companies = (await prisma.company.findMany()).filter((c) => c.status !== "archived");
-    const companyUpdates = companies
-      .map((c) => ({
-        id: c.id,
-        data: Object.fromEntries(ownerFields.filter((f) => c[f] === fromId).map((f) => [f, toId])),
-      }))
-      .filter((u) => Object.keys(u.data).length > 0);
-
-    const total = open.length + doneSince.length + companyUpdates.length;
-    const summary = {
-      openCards: open.length,
-      doneSince: doneSince.length,
-      companies: companyUpdates.length,
-      total,
-    };
+    const plan = await handoverPlan(fromId, toId, fromDate);
+    if (!plan) return { ok: false as const, error: "الموظف غير موجود" };
+    const summary = plan.summary;
+    // تاريخ لسا ما إجا (نهاية عقد): بينحفظ تسليم مجدول بينفّذه كرون الصبح يومها — المغادر بيضل
+    // شغّال وكروته معه لحدّ هداك اليوم (المرحلة C، ٢٩/١٠).
+    if (input.schedule) {
+      if (fromDate <= teamTodayISO()) return { ok: false as const, error: "التاريخ اليوم أو مرق — سلّمي هلّق" };
+      await planHandover(fromId, toId, fromDate);
+      revalidateAll();
+      return { ok: true as const, preview: false as const, scheduled: true as const, ...summary };
+    }
     if (input.confirm == null) return { ok: true as const, preview: true as const, ...summary };
-    if (input.confirm !== total) {
+    if (input.confirm !== summary.total) {
       return { ok: false as const, error: "الأعداد تغيّرت من وقت المعاينة — أعيدي المعاينة", ...summary };
     }
-
-    const line = `انتقل من ${from.name} لـ${to.name} (تسليم الشغل من ${fromDate})`;
-    await prisma.$transaction([
-      ...[...open, ...doneSince].map((t) =>
-        prisma.task.update({
-          where: { id: t.id },
-          data: { assigneeId: toId, notes: withEvidenceLine(t.notes, line) },
-        }),
-      ),
-      ...companyUpdates.map((u) => prisma.company.update({ where: { id: u.id }, data: u.data })),
-      prisma.employee.update({ where: { id: fromId }, data: { isScheduled: false } }),
-    ]);
-    // المحرّك بيختار الكاتبة/المونتيرة/الناشر بالدور — الخلف بيورث الدور كمان.
-    await recordHandover(fromId, toId, fromDate);
+    await executeHandover(plan);
     revalidateAll();
     return { ok: true as const, preview: false as const, ...summary };
   } catch {
     return { ok: false as const, error: "فشل تسليم الشغل" };
   }
+}
+
+/** إلغاء تسليم مجدول (عقد انمدّد مثلاً). */
+export async function cancelScheduledHandover(fromId: string) {
+  try {
+    await assertAdmin();
+  } catch {
+    return { ok: false as const, error: "غير مصرّح" };
+  }
+  await cancelPlannedHandover(fromId);
+  revalidateAll();
+  return { ok: true as const };
 }
