@@ -22,6 +22,53 @@ function buildRates(d: EmployeeInput): string | null {
   return Object.keys(r).length ? JSON.stringify(r) : null;
 }
 
+const normIdentity = (v: string) => v.normalize("NFKC").replace(/^@/, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** «Lilas, ليلاس ,lilas» ← «Lilas, ليلاس» — بلا فراغات زايدة ولا تكرار. */
+function cleanAliases(raw: string | null | undefined): string | null {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    const v = part.replace(/\s+/g, " ").trim();
+    if (!v || seen.has(normIdentity(v))) continue;
+    seen.add(normIdentity(v));
+    out.push(v);
+  }
+  return out.length ? out.join(", ") : null;
+}
+
+/**
+ * هوية تلغرام لازم تدلّ على شخص واحد: نفس المعرّف أو اسم المستخدم أو اسم بديل عند موظفين = البوت
+ * ما بيعرف مين بعت (`resolveSender` بيرجّع «مجهول» لاسم بيطابق شخصين) — وملفاتهم كلها بتنحجز.
+ */
+async function telegramIdentityClash(
+  selfId: string | null,
+  data: { telegramUserId?: string | null; telegramUsername?: string | null; telegramAliases?: string | null },
+): Promise<string | null> {
+  const others = await prisma.employee.findMany({
+    where: selfId ? { id: { not: selfId } } : {},
+    select: { name: true, telegramUserId: true, telegramUsername: true, telegramAliases: true },
+  });
+  const mine = new Set((data.telegramAliases ?? "").split(",").map(normIdentity).filter(Boolean));
+  for (const o of others) {
+    if (data.telegramUserId && o.telegramUserId === data.telegramUserId)
+      return `معرّف تلغرام هاد مربوط أصلاً بـ«${o.name}»`;
+    if (data.telegramUsername && o.telegramUsername && normIdentity(o.telegramUsername) === normIdentity(data.telegramUsername))
+      return `اسم المستخدم هاد مربوط أصلاً بـ«${o.name}»`;
+    const theirs = (o.telegramAliases ?? "").split(",").map(normIdentity).filter(Boolean);
+    const shared = theirs.find((a) => mine.has(a));
+    if (shared) return `الاسم البديل «${shared}» مستعمل أصلاً عند «${o.name}»`;
+  }
+  return null;
+}
+
+/** حقول تلغرام يلي **انبعتت** بس — نداء ما بيبعتها (سكربت، نموذج قديم) ما بيمحي الربط الموجود. */
+const telegramFields = (d: EmployeeInput) => ({
+  ...(d.telegramUserId !== undefined ? { telegramUserId: d.telegramUserId ?? null } : {}),
+  ...(d.telegramUsername !== undefined ? { telegramUsername: d.telegramUsername ?? null } : {}),
+  ...(d.telegramAliases !== undefined ? { telegramAliases: cleanAliases(d.telegramAliases) } : {}),
+});
+
 export async function createEmployee(input: EmployeeInput) {
   try {
     await assertAdmin();
@@ -32,9 +79,12 @@ export async function createEmployee(input: EmployeeInput) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
   }
+  const clash = await telegramIdentityClash(null, telegramFields(parsed.data));
+  if (clash) return { ok: false as const, error: clash };
   try {
     const e = await prisma.employee.create({
       data: {
+        ...telegramFields(parsed.data),
         name: parsed.data.name,
         role: parsed.data.role,
         hoursPerDay: parsed.data.hoursPerDay,
@@ -64,10 +114,13 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "بيانات غير صالحة" };
   }
+  const clash = await telegramIdentityClash(id, telegramFields(parsed.data));
+  if (clash) return { ok: false as const, error: clash };
   try {
     const e = await prisma.employee.update({
       where: { id },
       data: {
+        ...telegramFields(parsed.data),
         name: parsed.data.name,
         role: parsed.data.role,
         hoursPerDay: parsed.data.hoursPerDay,

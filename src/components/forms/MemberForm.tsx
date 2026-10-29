@@ -64,6 +64,9 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
           REEL: er.REEL,
         },
         planDays: er.PLAN ? Math.round(1 / er.PLAN) : undefined,
+        telegramUserId: employee.telegramUserId ?? "",
+        telegramUsername: employee.telegramUsername ?? "",
+        telegramAliases: employee.telegramAliases ?? "",
       }
     : {
         name: "",
@@ -74,6 +77,9 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
         isPhotographer: false,
         color: "#C8A84E",
         rates: {},
+        telegramUserId: "",
+        telegramUsername: "",
+        telegramAliases: "",
       };
 
   const {
@@ -159,6 +165,11 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
             <div className="space-y-1.5">
               <Label>الدور</Label>
               <Select {...register("role")}>
+                {/* دور مخزَّن كنصّ («مونتيرة»، «ناشر + مدير صفحات») بيضل خيار — بلاه المتصفّح كان
+                    يختار أول خيار وبيبدّل الدور بصمت عند الحفظ. */}
+                {employee && !(employee.role in ROLE_LABELS) && (
+                  <option value={employee.role}>{employee.role}</option>
+                )}
                 {Object.entries(ROLE_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v}
@@ -291,6 +302,29 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>ربط تلغرام</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">المعرّف الرقمي</span>
+                <Input dir="ltr" inputMode="numeric" placeholder="123456789" {...register("telegramUserId")} />
+                {errors.telegramUserId && <p className="text-xs text-danger">{errors.telegramUserId.message}</p>}
+              </div>
+              <div className="space-y-1">
+                <span className="text-[11px] text-fg-dim">اسم المستخدم (بلا @)</span>
+                <Input dir="ltr" placeholder="Omar_ORR" {...register("telegramUsername")} />
+                {errors.telegramUsername && <p className="text-xs text-danger">{errors.telegramUsername.message}</p>}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[11px] text-fg-dim">الأسماء الظاهرة بتلغرام (مفصولة بفاصلة)</span>
+              <Input placeholder="Lilas, ليلاس" {...register("telegramAliases")} />
+            </div>
+            <p className="text-[10px] text-fg-muted">
+              بلا ربط، البوت ما بيعرف مين بعت الملف فما بيسكّر كرته. الأسهل: من «مرسلون غير معروفين» تحت قائمة الفريق.
+            </p>
           </div>
 
           <div className="flex items-center gap-6">

@@ -120,6 +120,7 @@ beforeAll(async () => {
   const auth = await import("@/server/actions/auth");
   const admins = await import("@/server/actions/admins");
   const lateResched = await import("@/server/actions/late-reschedule");
+  const tgIdentity = await import("@/server/actions/telegram-identity");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -159,6 +160,10 @@ beforeAll(async () => {
     // «إعادة جدولة المتأخر» (٢٧/١٠).
     { name: "previewLateReschedule", call: () => lateResched.previewLateReschedule("2026-10-27", []), reached: "queries" },
     { name: "applyLateReschedule", call: () => lateResched.applyLateReschedule("2026-10-27", [], "x"), reached: "queries" },
+    // ربط تلغرام من صفحة الفريق (٢٩/١٠).
+    { name: "linkTelegramSender", call: () => tgIdentity.linkTelegramSender(NOPE, "123456"), reached: "queries" },
+    { name: "rematchSenderFiles", call: () => tgIdentity.rematchSenderFiles("123456", 0), reached: "queries" },
+    { name: "sendTelegramTest", call: () => tgIdentity.sendTelegramTest(NOPE), reached: "queries" },
   ];
 });
 
@@ -260,10 +265,10 @@ describe("خريطة التصديرات (ثابت)", () => {
       [
         "addAdminAction", "applyCompanyPlanUpdate", "applyLateReschedule", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
-        "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "markChatAsTeam",
+        "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "linkTelegramSender", "markChatAsTeam",
         "pauseCompanyPublishing", "previewLateReschedule", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
-        "registerWebhook", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
-        "resumeCompanyPublishing", "sendBriefNow", "setBriefRecipient", "telegramStatus",
+        "registerWebhook", "rematchSenderFiles", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
+        "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",
       ].sort(),
     );

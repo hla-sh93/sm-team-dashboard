@@ -8,13 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/badge";
 import MemberForm from "@/components/forms/MemberForm";
 import { deleteEmployee, handoverEmployeeWork } from "@/server/actions/employees";
+import { sendTelegramTest } from "@/server/actions/telegram-identity";
+import type { TelegramSenderRow } from "@/server/telegram-identity";
+import TelegramSenders from "./telegram-senders";
 import { toast } from "@/components/ui/toaster";
 import { ROLE_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
 import { parseWorkDays } from "@/lib/dates";
 import type { Employee } from "@/types";
-import { Plus, Pencil, Trash2, Camera, Zap, ArrowRightLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, Camera, Zap, ArrowRightLeft, Send } from "lucide-react";
 
-export default function TeamClient({ employees }: { employees: Employee[] }) {
+export default function TeamClient({
+  employees,
+  unknownSenders,
+}: {
+  employees: Employee[];
+  unknownSenders: TelegramSenderRow[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -132,6 +141,13 @@ export default function TeamClient({ employees }: { employees: Employee[] }) {
                     <div className="text-xs text-fg-dim">
                       {ROLE_LABELS[e.role] ?? e.role} · {e.hoursPerDay}س/يوم
                     </div>
+                    <div className={"text-[10px] " + (e.telegramUserId ? "text-success" : "text-warning")}>
+                      {e.telegramUserId
+                        ? "تلغرام مربوط ✓"
+                        : e.telegramUsername || e.telegramAliases
+                          ? "تلغرام بالاسم بس — ثبّتي المعرّف"
+                          : "تلغرام غير مربوط"}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -144,6 +160,21 @@ export default function TeamClient({ employees }: { employees: Employee[] }) {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
+                  {e.telegramUserId && (
+                    <button
+                      className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
+                      title="رسالة اختبار على تلغرام"
+                      onClick={() =>
+                        start(async () => {
+                          const r = await sendTelegramTest(e.id);
+                          if (r.ok) toast(`انبعتت رسالة اختبار لـ${e.name}`);
+                          else toast(r.error, "error");
+                        })
+                      }
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     className="p-1.5 rounded-md hover:bg-bg-elev2 text-fg-dim"
                     title="تسليم الشغل لموظف تاني"
@@ -173,6 +204,8 @@ export default function TeamClient({ employees }: { employees: Employee[] }) {
           );
         })}
       </div>
+
+      <TelegramSenders rows={unknownSenders} employees={employees} />
 
       <MemberForm open={open} onOpenChange={setOpen} employee={editing} />
     </div>

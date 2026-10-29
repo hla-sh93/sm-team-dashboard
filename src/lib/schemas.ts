@@ -48,6 +48,17 @@ export const employeeSchema = z.object({
     })
     .optional(),
   planDays: z.preprocess(emptyToUndef, z.coerce.number().min(0).max(30).optional()), // days/plan
+  // ربط تلغرام (القائدة ٢٩/١٠: «تلغرام ما عم يربط ليلاس») — كانت بالـschema بس، والربط
+  // كله بسكربتات. المعرّف الرقمي هو الهوية الثابتة؛ اسم المستخدم والأسماء البديلة احتياط.
+  telegramUserId: z.preprocess(
+    emptyToNull,
+    z.string().trim().regex(/^\d{3,15}$/, "معرّف تلغرام أرقام بس").nullable().optional(),
+  ),
+  telegramUsername: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().replace(/^@/, "") || null : (v ?? null)),
+    z.string().regex(/^[A-Za-z0-9_]{3,32}$/, "اسم مستخدم تلغرام: حروف لاتينية وأرقام و_").nullable().optional(),
+  ),
+  telegramAliases: z.preprocess(emptyToNull, z.string().trim().max(300).nullable().optional()),
 });
 export type EmployeeInput = z.infer<typeof employeeSchema>;
 

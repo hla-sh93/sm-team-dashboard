@@ -23,6 +23,8 @@ export type Employee = {
   telegramUsername?: string | null;
   /** Numeric Telegram user id — who a delivery is credited to. */
   telegramUserId?: string | null;
+  /** الأسماء الظاهرة بتلغرام، مفصولة بفاصلة — احتياط بعد المعرّف واسم المستخدم. */
+  telegramAliases?: string | null;
   salary: number;
   costPerReel: number | null;
   color: string | null;
@@ -78,7 +80,7 @@ export type Company = {
  * الموظف كما بيوصل لصفحات الموظفين المفتوحة — بلا المالية ولا هوية تلغرام الرقمية
  * (`src/server/public-rows.ts`، SA-01).
  */
-export type PublicEmployee = Omit<Employee, "salary" | "costPerReel" | "telegramUserId">;
+export type PublicEmployee = Omit<Employee, "salary" | "costPerReel" | "telegramUserId" | "telegramAliases">;
 
 /** الشركة كما بتوصل لصفحات الموظفين المفتوحة — بلا قيمة العقد (SA-01). */
 export type PublicCompany = Omit<Company, "contractValue">;

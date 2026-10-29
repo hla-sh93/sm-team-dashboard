@@ -830,6 +830,19 @@ describe("قاعدة الدورة — التسمية بشهر النشر بتل�
     ).toBe("shoot4");
   });
 
+  it("صاحبة التصوير والمونتاج سوا (ليلاس من ١/١١): الفيديو النهائي بيسكّر المونتاج مو التصوير", () => {
+    const both = cards.map((c) => ({ ...(c as object), assigneeId: "lilas" })) as never[];
+    const hit = matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", both, [], [], JULY_BUCKET, false, "lilas");
+    expect(hit?.taskId).toBe("edit4");
+    // المصوّرة لحالها (صاحبة التصوير بس) بتضل تسكّر تصويرها.
+    const split = [
+      { ...(cards[0] as object), assigneeId: "photo" },
+      { ...(cards[1] as object), assigneeId: "editor" },
+    ] as never[];
+    expect(matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", split, [], [], JULY_BUCKET, false, "photo")?.taskId).toBe("shoot4");
+    expect(matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", split, [], [], JULY_BUCKET, false, "editor")?.taskId).toBe("edit4");
+  });
+
   it("بعد ما يخلص التصوير، نفس الاسم بيسكّر المونتاج", () => {
     const hit = matchDelivery(sent("Makhbar 8-4.mp4", 3), "Makhbar", [cards[1]], [], [], JULY_BUCKET);
     expect(hit?.taskId).toBe("edit4");

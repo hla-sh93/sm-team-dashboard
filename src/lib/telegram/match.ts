@@ -453,9 +453,19 @@ export function matchDelivery(
   if (delivery.kind === "TEXT") return null;
   const ownsStage = (t: MatchCandidate) =>
     senderEmployeeId != null && t.assigneeId === senderEmployeeId;
-  /** مرحلة المرسِل أولاً، وبعدها الأبكر موعداً (الترتيب القديم). */
+  /**
+   * فيديو مسمّى لقطعة = الريل **النهائي**، فبين مرحلتين بنفس الملكية المونتاج قبل التصوير (وإقفال
+   * المونتاج بيسكّر التصوير بالتتابع). من ١/١١ ليلاس صاحبة التصوير والمونتاج سوا (القائدة ٢٩/١٠)،
+   * والأبكر موعداً كان التصوير — فملفها النهائي كان يسكّر التصوير ويترك المونتاج مفتوحاً.
+   * لما المرسِل صاحب مرحلة وحدة (أو مجهول)، الترتيب القديم بيضل: الملكية ثم الأبكر موعداً.
+   */
+  const editFirst = (a: MatchCandidate, b: MatchCandidate) =>
+    delivery.kind === "VIDEO" && ownsStage(a) && ownsStage(b)
+      ? Number(a.stage !== "EDIT") - Number(b.stage !== "EDIT")
+      : 0;
+  /** مرحلة المرسِل أولاً، وبعدها (فيديو وصاحب المرحلتين) المونتاج، وبعدها الأبكر موعداً. */
   const byOwnerThenDeadline = (a: MatchCandidate, b: MatchCandidate) =>
-    (ownsStage(b) ? 1 : 0) - (ownsStage(a) ? 1 : 0) || deadlineOf(a) - deadlineOf(b);
+    (ownsStage(b) ? 1 : 0) - (ownsStage(a) ? 1 : 0) || editFirst(a, b) || deadlineOf(a) - deadlineOf(b);
   // Off-plan work (وصل's exchange-rate bulletins, client-supplied analysis) is
   // published on the same channels and lands in the same group, but it is not
   // part of what the contract counts — crediting it to a plan piece would
