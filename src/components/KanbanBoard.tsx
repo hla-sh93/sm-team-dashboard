@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/badge";
 import { Select } from "@/components/ui/input";
 import {
@@ -32,6 +32,7 @@ import { cardAssetName } from "@/lib/asset-name";
 import { makeReadiness } from "@/lib/readiness";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
+import { chosenActorId, ensureActor } from "@/lib/actor-client";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company, PublicEmployee, PublicCompany } from "@/types";
 import {
@@ -117,6 +118,12 @@ export default function KanbanBoard({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  // «أنا مين» (F) — بقسم الموظفين بس؛ بالإدارة الفاعل جلسة المسؤول.
+  const [actorId, setActorState] = useState<string | null>(null);
+  useEffect(() => setActorState(chosenActorId()), []);
+  const isAdminArea = usePathname()?.startsWith("/admin") ?? false;
+  const actorName = employees.find((e) => e.id === actorId)?.name ?? null;
+
   const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
   // من **كل** الكروت: لوح مفلتر على شخص ما فيه حاجز كروته (تصوير غيره).
   const readinessOf = useMemo(() => makeReadiness(allTasks), [allTasks]);
@@ -354,7 +361,9 @@ export default function KanbanBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, groupBy, coById, empOrder, year, month]);
 
-  const onMove = (ids: string[], board: string) =>
+  const onMove = async (ids: string[], board: string) => {
+    if (!(await ensureActor(employees))) return router.refresh();
+    setActorState(chosenActorId());
     start(async () => {
       const res = await Promise.all(ids.map((id) => moveCard(id, board)));
       if (res.every((r) => r.ok)) {
@@ -367,6 +376,7 @@ export default function KanbanBoard({
         router.refresh();
       }
     });
+  };
 
   const renderKCard = (c: KCard) => {
     const t = c.repr;
@@ -513,6 +523,20 @@ export default function KanbanBoard({
 
   return (
     <div className="flex flex-col gap-3">
+      {!isAdminArea && (
+        <div className="text-[11px] text-fg-muted flex items-center gap-1.5">
+          {actorName ? <>أنا: <b className="text-fg">{actorName}</b></> : "ما اخترتِ «أنا مين» على هالجهاز"}
+          <button
+            type="button"
+            className="text-accent underline-offset-2 hover:underline"
+            onClick={async () => {
+              if (await ensureActor(employees, true)) setActorState(chosenActorId());
+            }}
+          >
+            {actorName ? "غيّر" : "اختاري"}
+          </button>
+        </div>
+      )}
       {grouped && allGroupIds.length > 0 && (
         <div className="flex justify-end">
           <button

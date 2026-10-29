@@ -32,6 +32,7 @@ import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 import { completeProductionForPublishedTask } from "@/server/task-ops";
 import { teamToday } from "@/lib/team-day";
 import { notifyUnblockedSafely } from "@/server/unblock-notify";
+import { recordTaskEventSafely } from "@/server/task-events";
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
@@ -490,6 +491,8 @@ export async function updateTaskStatus(id: string, status: string) {
     });
     if (done) await completeProductionForPublishedTask(before, before.completedAt ?? now);
     if (done && !isDone(before.status)) await notifyUnblockedSafely([id]);
+    // «مين عمل شو» (F): كان ١١/١٠ ٦ مونتاجات انسكّروا بالإيد وما في طريقة نعرف مين.
+    await recordTaskEventSafely({ taskId: id, from: before.status, to: next, source: "status" });
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -534,6 +537,7 @@ export async function moveCard(id: string, board: string) {
     });
     if (board === "DONE") await completeProductionForPublishedTask(t, t.completedAt ?? now);
     if (board === "DONE" && t.board !== "DONE") await notifyUnblockedSafely([id]);
+    await recordTaskEventSafely({ taskId: id, from: t.board, to: board, source: "board" });
     revalidateAll();
     return { ok: true as const };
   } catch {

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/toaster";
 import { updateTaskStatus } from "@/server/actions/tasks";
+import { ensureActor } from "@/lib/actor-client";
 import { undoMatch } from "@/server/actions/telegram";
 import {
   CONTENT_TYPE_COLORS,
@@ -173,7 +174,8 @@ export default function TodayClient({
     [rows],
   );
 
-  const markPublished = (id: string) =>
+  const markPublished = async (id: string) => {
+    if (!(await ensureActor(employees))) return;
     start(async () => {
       const r = await updateTaskStatus(id, "PUBLISHED");
       if (r.ok) {
@@ -181,6 +183,7 @@ export default function TodayClient({
         router.refresh();
       } else toast(r.error, "error");
     });
+  };
 
   const undo = (id: string) =>
     start(async () => {

@@ -10,6 +10,7 @@ import Calendar, { type CalendarMode } from "@/components/calendar/Calendar";
 import KanbanBoard from "@/components/KanbanBoard";
 import TaskForm from "@/components/forms/TaskForm";
 import ChainTaskForm from "@/components/forms/ChainTaskForm";
+import { ensureActor } from "@/lib/actor-client";
 import {
   CONTENT_TYPE_LABELS,
   TASK_KIND_LABELS,
@@ -212,7 +213,8 @@ export default function TasksClient({
     [allItems, person, company],
   );
 
-  const onStatus = (id: string, status: string) =>
+  const onStatus = async (id: string, status: string) => {
+    if (!(await ensureActor(employees))) return router.refresh();
     startTransition(async () => {
       const r = await updateTaskStatus(id, status);
       if (r.ok) {
@@ -220,6 +222,7 @@ export default function TasksClient({
         router.refresh();
       } else toast(r.error, "error");
     });
+  };
   const onSessionStatus = (id: string, status: string) =>
     startTransition(async () => {
       const r = await updatePhotoSessionStatus(id, status);

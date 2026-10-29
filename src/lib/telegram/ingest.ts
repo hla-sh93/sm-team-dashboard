@@ -13,6 +13,7 @@
  */
 import { notifyUnblockedSafely } from "@/server/unblock-notify";
 import { isLeadRole } from "@/lib/labels";
+import { recordTaskEventSafely } from "@/server/task-events";
 import { dayKeyOf } from "@/lib/team-day";
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
@@ -387,7 +388,11 @@ const noteParts = (existing: string | null) =>
     .filter(Boolean);
 
 /** إقفال كرت نشر واحد بوقت النشر الحقيقي + دليله. */
-async function markPublished(publishCard: { id: string; startedAt: Date | null; notes: string | null }, at: Date, why: string) {
+async function markPublished(
+  publishCard: { id: string; startedAt: Date | null; notes: string | null; board?: string | null },
+  at: Date,
+  why: string,
+) {
   await prisma.task.update({
     where: { id: publishCard.id },
     data: {
@@ -403,6 +408,8 @@ async function markPublished(publishCard: { id: string; startedAt: Date | null; 
       })(),
     },
   });
+  // «مين عمل شو» (F): `why` فيه اسم المؤكِّد ونصّ الرسالة.
+  await recordTaskEventSafely({ taskId: publishCard.id, from: publishCard.board ?? "TODO", to: "DONE", source: "telegram", actor: `تأكيد نشر (تلغرام): ${why}`, actorId: null });
 }
 
 /**
@@ -620,6 +627,7 @@ async function settleDelivery(
     const advanced = await closeProductionCard(card, delivery.sentAt, {
       by: "NAME",
       evidence: evidenceOf(delivery),
+      sender,
     });
     await setRow({ taskId: card.id, matchedBy: "NAME", confirmed: true });
     return { taskId: card.id, matchedBy: "NAME", advanced };
@@ -646,6 +654,7 @@ async function settleDelivery(
       const advanced = await closeProductionCard(card, delivery.sentAt, {
         by: match.by,
         evidence: evidenceOf(delivery),
+        sender,
       });
       await setRow({ taskId: card.id, matchedBy: match.by, confirmed: true });
       // A carousel arrives as several files for ONE post. Record the slide count on
@@ -792,7 +801,7 @@ async function closeProductionCard(
   },
   at: Date,
   /** الدليل يلي سكّر الكرت — بينكتب عليه متل ما بيعمل استيراد التصدير. */
-  proof: { by: MatchedBy; evidence: string },
+  proof: { by: MatchedBy; evidence: string; sender?: SenderIdentity | null },
 ): Promise<boolean> {
   if (isTaskDoneState(t)) return false;
   // بلا هالسطر الكرت بينسكّر بلا سبب مكتوب عليه: الربط موجود بجدول الرسائل بس،
@@ -833,6 +842,14 @@ async function closeProductionCard(
   }
   // «صار جاهز إلك» لصاحب المرحلة الجاية (مطفي افتراضياً؛ ما بيوقّع الإقفال).
   await notifyUnblockedSafely([t.id]);
+  await recordTaskEventSafely({
+    taskId: t.id,
+    from: t.board ?? "TODO",
+    to: "DONE",
+    source: "telegram",
+    actor: `${proof.sender?.name ?? "مرسِل غير معروف"} (تلغرام: ${proof.evidence})`,
+    actorId: proof.sender?.id ?? null,
+  });
   return true;
 }
 

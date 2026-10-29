@@ -22,6 +22,7 @@ import {
   type Status,
 } from "@/lib/constants";
 import { updateTaskStatus } from "@/server/actions/tasks";
+import { ensureActor } from "@/lib/actor-client";
 import { toast } from "@/components/ui/toaster";
 import { buildReelNumbers, comparePieceSequence, publishTypeLabel } from "@/lib/cards";
 import { calendarPublishItems, publishesInMonth } from "@/lib/publish-calendar";
@@ -152,7 +153,8 @@ export default function PublishingClient({
     return out;
   }, [managed, bucketPub]);
 
-  const onStatus = (id: string, status: string) =>
+  const onStatus = async (id: string, status: string) => {
+    if (!(await ensureActor(employees))) return router.refresh();
     start(async () => {
       const r = await updateTaskStatus(id, status);
       if (r.ok) {
@@ -160,6 +162,7 @@ export default function PublishingClient({
         router.refresh();
       } else toast(r.error, "error");
     });
+  };
 
   const typeColor = (t: Task) =>
     CONTENT_TYPE_COLORS[(t.type as ContentType) ?? "POST"] ?? "#C8A84E";
