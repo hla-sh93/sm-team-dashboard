@@ -824,6 +824,12 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-10-29 (سحابة، لاحقاً) — Claude — «تحقق الآن»: الصفحتان الجديدتان **حيّتان** · [LIVE/VERIFIED — من برّا، بلا دخول]
+
+- جلسة الديسكتوب ما لقت الفرع أول مرة (دوّرت بـGitLab والمحلي بس؛ الفرع على GitHub — `git ls-remote origin` = `2e50e21`، والصفحة العامة 200)؛ بعدها القائدة طلبت «تحقق الآن».
+- **الطريقة:** الـmiddleware بيحوّل أي `/admin/*` بلا كوكي، فـ307 لحاله ما بيثبت وجود صفحة. بكوكي وهمية (`sm_admin=probe-invalid`، مرفوضة): صفحة مو موجودة `/admin/zz-not-a-page` → **404**؛ `/admin/telegram` (موجودة) → 307 للدخول من layout الإدارة؛ **`/admin/admins` → 307 و`/admin/reschedule` → 307** = موجودتين على الإنتاج. `/login` 200، `/api/cron/done-report` بلا سرّ 401.
+- **ما انفحص:** محتوى الصفحتين بجلسة أدمن (ما في دخول من هون)، وأي commit بالضبط انبنى (ما في وصول لـGitLab/Vercel). القائدة بتتأكّد بعينها: «المسؤولون» و«إعادة جدولة المتأخر» بالقائمة.
+
 ### 2026-10-29 (سحابة) — Claude — **[USER-CONFIRMED] موافقة النشر** («طيب يلا, ارفع التحديث») · **ما انرفع — محجوب من السحابة**
 
 - **[VERIFIED]** هالحاوية ما فيها ريموت GitLab ولا صلاحية عليه (`origin` = GitHub بس)، وما في كمبيوتر مربوط بالجلسة (`list_computer_folders` فاضي — وجهاز القائدة Windows، والربط من السحابة بيقبل Mac/Linux بس). فالنشر على Vercel (من GitLab `main`) لازم ينعمل من جلسة الديسكتوب.
