@@ -5,5 +5,5 @@ export default async function AdminTasksPage({
 }: {
   searchParams: Promise<{ y?: string; m?: string }>;
 }) {
-  return <TasksView searchParams={await searchParams} />;
+  return <TasksView searchParams={await searchParams} admin />;
 }

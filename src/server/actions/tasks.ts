@@ -397,6 +397,30 @@ export async function deleteTasks(ids: string[]) {
     const autoIds = [...autoIdSet];
 
     if (manualIds.length > 0) {
+      // «سلسلة مراحل» (B، ٢٩/١٠): حذف مرحلة من النص بيربط يلي بعدها باللي قبلها. بلا هيك
+      // الحاجز الممحي بينقرا «ما عاد حاجز» (`firstOpenBlocker`) والمرحلة الجاية بتنفكّ
+      // قبل ما تخلص الكتابة يلي قبلها.
+      const gone = new Set(manualIds);
+      const parentOf = new Map(
+        (await prisma.task.findMany({ where: { id: { in: manualIds } }, select: { id: true, blockedById: true } })).map(
+          (r) => [r.id, r.blockedById] as const,
+        ),
+      );
+      const survivor = (id: string | null) => {
+        const seen = new Set<string>();
+        while (id && gone.has(id) && !seen.has(id)) {
+          seen.add(id);
+          id = parentOf.get(id) ?? null;
+        }
+        return id;
+      };
+      const dependents = await prisma.task.findMany({
+        where: { blockedById: { in: manualIds }, id: { notIn: manualIds } },
+        select: { id: true, blockedById: true },
+      });
+      for (const d of dependents) {
+        await prisma.task.update({ where: { id: d.id }, data: { blockedById: survivor(d.blockedById) } });
+      }
       await prisma.task.deleteMany({ where: { id: { in: manualIds } } });
     }
     if (autoIds.length > 0) {

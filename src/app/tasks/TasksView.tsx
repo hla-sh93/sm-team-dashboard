@@ -8,8 +8,10 @@ import TasksClient from "./tasks-client";
 /** Shared tasks view — identical at `/tasks` (employees) and `/admin/tasks`. */
 export default async function TasksView({
   searchParams,
+  admin = false,
 }: {
   searchParams: { y?: string; m?: string; person?: string; company?: string };
+  admin?: boolean;
 }) {
   const { year, month } = await resolveActiveMonth(searchParams);
   // نفس مُحمِّل «اليوم» والبريف حرفياً. كان هون نسخة تانية من نفس المنطق —
@@ -35,6 +37,7 @@ export default async function TasksView({
       sessions={sessions}
       initialPerson={searchParams.person ?? "all"}
       initialCompany={searchParams.company ?? "all"}
+      canChain={admin}
     />
   );
 }

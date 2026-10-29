@@ -70,6 +70,14 @@ vi.mock("@/lib/db", async () => {
 import { removeDb, signToken } from "./security-fixture";
 
 const SECRET = "matrix-secret";
+const CHAIN_INPUT = (who: string) => ({
+  title: "فحص",
+  brief: "فحص",
+  companyId: null,
+  priority: "NORMAL" as const,
+  targetISO: "2099-01-05",
+  steps: [{ stage: "DESIGN" as const, assigneeId: who, days: 1 }],
+});
 let prisma: any;
 const skip = () => !scratch.available;
 
@@ -121,6 +129,7 @@ beforeAll(async () => {
   const admins = await import("@/server/actions/admins");
   const lateResched = await import("@/server/actions/late-reschedule");
   const tgIdentity = await import("@/server/actions/telegram-identity");
+  const taskChain = await import("@/server/actions/task-chain");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -166,6 +175,9 @@ beforeAll(async () => {
     { name: "sendTelegramTest", call: () => tgIdentity.sendTelegramTest(NOPE), reached: "queries" },
     // إشعار «صار جاهز إلك» (٢٩/١٠) — مطفي افتراضياً، بيفتحه المسؤول بس.
     { name: "setUnblockNotify", call: () => telegram.setUnblockNotify(true), reached: "queries" },
+    // «سلسلة مراحل» (٢٩/١٠) — بتوزّع شغل على أكتر من شخص.
+    { name: "previewTaskChain", call: () => taskChain.previewTaskChain(CHAIN_INPUT(NOPE)), reached: "queries" },
+    { name: "createTaskChain", call: () => taskChain.createTaskChain(CHAIN_INPUT(NOPE), "x"), reached: "queries" },
   ];
 });
 
@@ -268,7 +280,7 @@ describe("خريطة التصديرات (ثابت)", () => {
         "addAdminAction", "applyCompanyPlanUpdate", "applyLateReschedule", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "linkTelegramSender", "markChatAsTeam",
-        "pauseCompanyPublishing", "previewLateReschedule", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
+        "pauseCompanyPublishing", "previewLateReschedule", "previewTaskChain", "createTaskChain", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "rematchSenderFiles", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "setUnblockNotify", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",

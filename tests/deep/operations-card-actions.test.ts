@@ -357,7 +357,8 @@ describe("الحذف (§6.1)", () => {
     expect((await actions.deleteTasks([a.id])).ok).toBe(true);
     expect(await prisma.task.count({ where: { id: a.id } })).toBe(0);
     const bAfter = await prisma.task.findUniqueOrThrow({ where: { id: b.id } });
-    expect(bAfter.blockedById).toBe(a.id); // مرجع معلّق — ما بينضّف
+    // كان مرجع معلّق؛ من «سلسلة مراحل» (٢٩/١٠) بينربط بحاجز المحذوف — وهون ما إلو حاجز.
+    expect(bAfter.blockedById).toBeNull();
     expect(daily.makeBlockedPredicate([bAfter])(bAfter)).toBe(false);
   });
 });

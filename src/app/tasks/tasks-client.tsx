@@ -9,6 +9,7 @@ import { MonthBar } from "@/components/MonthBar";
 import Calendar, { type CalendarMode } from "@/components/calendar/Calendar";
 import KanbanBoard from "@/components/KanbanBoard";
 import TaskForm from "@/components/forms/TaskForm";
+import ChainTaskForm from "@/components/forms/ChainTaskForm";
 import {
   CONTENT_TYPE_LABELS,
   TASK_KIND_LABELS,
@@ -72,6 +73,7 @@ export default function TasksClient({
   sessions,
   initialPerson = "all",
   initialCompany = "all",
+  canChain = false,
 }: {
   year: number;
   month: number;
@@ -84,6 +86,8 @@ export default function TasksClient({
   // via useSearchParams to avoid opting the whole route into a client bail-out.
   initialPerson?: string;
   initialCompany?: string;
+  /** «سلسلة مراحل» — للإدارة بس (`/admin/tasks`)؛ الفعل محروس بالسيرفر كمان. */
+  canChain?: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<CalendarMode | "board">("board");
@@ -91,6 +95,7 @@ export default function TasksClient({
   const [company, setCompany] = useState<string>(initialCompany);
   const [groupBy, setGroupBy] = useState<"company" | "type" | "person" | "none">("company");
   const [formOpen, setFormOpen] = useState(false);
+  const [chainOpen, setChainOpen] = useState(false);
   const [editing, setEditing] = useState<{ task: Task; ids: string[]; label: string } | null>(
     null,
   );
@@ -386,6 +391,11 @@ export default function TasksClient({
           <Button size="sm" onClick={openCreate}>
             <Plus className="w-4 h-4" /> مهمة إضافية
           </Button>
+          {canChain && (
+            <Button size="sm" variant="ghost" onClick={() => setChainOpen(true)}>
+              <Plus className="w-4 h-4" /> سلسلة مراحل
+            </Button>
+          )}
           <MonthBar year={year} month={month} />
         </div>
       </header>
@@ -483,6 +493,10 @@ export default function TasksClient({
           accent="var(--info, #3b82f6)"
           emptyLabel="لا مهام"
         />
+      )}
+
+      {canChain && (
+        <ChainTaskForm open={chainOpen} onOpenChange={setChainOpen} employees={employees} companies={companies} />
       )}
 
       <TaskForm
