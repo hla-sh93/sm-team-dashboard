@@ -1,5 +1,6 @@
 "use client";
 
+import { isLeadRole } from "@/lib/labels";
 import { cycleSpanLabel, isCarryoverFromPastCycle } from "@/lib/contract";
 import { isDormantCompany } from "@/lib/company-visibility";
 import { makeLatePredicate } from "@/lib/late";
@@ -118,7 +119,7 @@ export default function OverviewClient({
   // ممتلئة بمهام الإدارة، والباقي للمهام الإضافية»)، فنصف الدونات عندها محجوز
   // ومعدود دايماً، والنصف التاني بيتحرّك مع مهامها الإضافية. كانت بتطلع 0%
   // لأنّ إدارة الفريق ما إلها كروت تنعدّ.
-  const isLead = (e: PublicEmployee) => /تيم ليدر|team ?lead/i.test(e.role);
+  const isLead = (e: PublicEmployee) => isLeadRole(e.role);
   const LEAD_ADMIN_SHARE = 0.5;
   const achievement = employees
     .map((e) => {

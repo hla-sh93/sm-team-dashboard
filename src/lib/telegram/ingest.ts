@@ -12,6 +12,7 @@
  * (one carousel sent as many messages) closes its piece once.
  */
 import { notifyUnblockedSafely } from "@/server/unblock-notify";
+import { isLeadRole } from "@/lib/labels";
 import { dayKeyOf } from "@/lib/team-day";
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
@@ -122,7 +123,7 @@ export async function resolveSender(
 }
 
 /** «تيم ليدر». */
-const isLead = (role: string) => /ليدر|lead|قائد/i.test(role);
+const isLead = isLeadRole;
 
 /**
  * مين بيسكّر كرت إنتاج: صاحبه أو القائدة — قرار القائدة ١٢/١٠ (D3)، أحدث من «الكريدت
@@ -354,7 +355,7 @@ function isPublishConfirmation(text: string, anchored: boolean): boolean {
 /** مين مخوّل يأكّد النشر: الناشر والقائدة (القائدة 8/8: «أحياناً حلا بتقول»؛ D3: للصيغ كلها). */
 function mayConfirmPublish(emp: { role: string } | null): boolean {
   if (!emp) return false;
-  return /ناشر|publish/i.test(emp.role) || /ليدر|lead|قائد/i.test(emp.role);
+  return /ناشر|publish/i.test(emp.role) || isLeadRole(emp.role);
 }
 
 /**

@@ -429,7 +429,7 @@ export default function TodayClient({
             <AlertTriangle className="w-4 h-4" /> وصل وما انحسب ({unmatched.length})
           </h2>
           <p className="text-[11px] text-fg-muted mb-2">
-            الكرت بيسكّره صاحبه أو القائدة بس؛ والصورة الخام ما بتنحسب. وإلا غالباً ما في قطعة
+            الكرت بيسكّره صاحبه أو المسؤولة بس؛ والصورة الخام ما بتنحسب. وإلا غالباً ما في قطعة
             مفتوحة من هالنوع، أو الاسم مو حسب الصيغة{" "}
             <span className="font-mono">Agalia-post-7-1</span>.
           </p>

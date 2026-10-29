@@ -69,7 +69,7 @@ export default function Sidebar() {
       <div>
         <div className="display-font text-base leading-tight">إدارة الفريق</div>
         <div className="text-[10px] text-fg-muted tracking-widest">
-          {isAdmin ? "ADMIN · لوحة الإدارة" : "SOCIAL MEDIA OPS"}
+          {isAdmin ? "ADMIN · الإدارة" : "SOCIAL MEDIA OPS"}
         </div>
       </div>
     </Link>

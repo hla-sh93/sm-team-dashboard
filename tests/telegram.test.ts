@@ -1,4 +1,5 @@
 import { STAGES } from "@/lib/constants";
+import { isLeadRole } from "@/lib/labels";
 import { readFileSync } from "node:fs";
 /**
  * Telegram follow-up (§14) — naming, delivery matching and the morning brief.
@@ -1058,6 +1059,15 @@ describe("صلاحية تأكيد النشر", () => {
   it("المخوّلون: الناشر والقائدة فقط", () => {
     const fn = src.match(/function mayConfirmPublish[\s\S]*?\n}/)![0];
     expect(fn).toMatch(/ناشر|publish/);
-    expect(fn).toMatch(/ليدر|lead|قائد/);
+    expect(fn).toMatch(/isLeadRole\(emp\.role\)/);
+  });
+
+  it("دور المسؤولة بكل صيغه (القديمة والجديدة)، و«مسؤول حسابات» مو منهن", () => {
+    for (const role of ["lead", "تيم ليدر + نص مصمم", "قائد الفريق", "مسؤولة الفريق", "مسؤول فريق", "مشرفة"]) {
+      expect(isLeadRole(role), role).toBe(true);
+    }
+    for (const role of ["مسؤول حسابات", "ناشر + مدير صفحات", "مصمم", "مونتيرة", "", null]) {
+      expect(isLeadRole(role), String(role)).toBe(false);
+    }
   });
 });

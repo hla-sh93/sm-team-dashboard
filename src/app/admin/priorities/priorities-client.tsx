@@ -94,7 +94,7 @@ export default function PrioritiesClient({ companies: initialCompanies }: Props)
         </div>
         <Button variant="primary" onClick={handleReschedule} disabled={isScheduling}>
           <Wand2 className="w-4 h-4" />
-          {isScheduling ? 'جاري إعادة الجدولة...' : 'إعادة جدولة فوراً'}
+          {isScheduling ? 'جاري إعادة الجدولة...' : 'إعادة توليد جدول الشهر'}
         </Button>
       </div>
 

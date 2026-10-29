@@ -209,13 +209,13 @@ export default function CompaniesClient({
    */
   const onPausePublishing = (c: Company) => {
     Swal.fire({
-      title: `أوقف النشر — ${c.name}`,
+      title: `إيقاف مؤقت بطلب الزبون — ${c.name}`,
       html:
         "الكروت <b>بتضل محفوظة ومخفيّة</b> بأوصافها وحالاتها، وما بينحسب تأخير لحدّ ما ترجع." +
         "<br/>لما ترجّعيها بتاريخ، <b>الباقي بس</b> بيتجدول من هالتاريخ — بنافذة على قدّ الباقي من الخطة.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "أوقف النشر",
+      confirmButtonText: "أوقف مؤقتاً",
       cancelButtonText: "إلغاء",
       confirmButtonColor: "#c0392b",
     }).then((res) => {
@@ -233,7 +233,7 @@ export default function CompaniesClient({
   /** إرجاع شركة موقوفة — التاريخ إلزامي لأنه مرساة الدورة كلها. */
   const onResumePublishing = (c: Company) => {
     Swal.fire({
-      title: `رجّع النشر — ${c.name}`,
+      title: `استئناف — ${c.name}`,
       html: "حطّي تاريخ الرجوع. منه بيتجدول <b>الباقي</b> من الخطة (التصميم والتصوير والمونتاج والنشر) بنافذة على قدّ الباقي، والمنجز بيضل بمكانه.",
       input: "text",
       inputPlaceholder: "YYYY-MM-DD",
@@ -391,11 +391,11 @@ export default function CompaniesClient({
    *  مؤرشفة، نشطة أو موقوفة (١/١٠: برو موقوفة ثم لم تجدّد). */
   const onEndContract = (c: Company) => {
     Swal.fire({
-      title: `لم يُجدد عقد ${c.name}؟`,
+      title: `إنهاء التعاقد مع ${c.name}؟`,
       text: "ستنتقل الشركة إلى قسم الأرشيف، وتُغلق كل كروتها المفتوحة تلقائياً (ملغاة، لا منجزة)، ولا يُولَّد لها عمل جديد ولا يُحتسب عليها تأخير. تعود بتسجيل تجديد لاحقاً.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "نعم، لم يُجدد",
+      confirmButtonText: "نعم، إنهاء التعاقد",
       cancelButtonText: "إلغاء",
       confirmButtonColor: "#ef4444",
     }).then((res) => {
@@ -559,24 +559,7 @@ export default function CompaniesClient({
                 title="نقل الشركة إلى الأرشيف وإغلاق كروتها المفتوحة"
                 onClick={() => onEndContract(c)}
               >
-                لم يُجدد
-              </button>
-            )}
-            {/* تصحيح/شيل آخر تجديد بدهم دورة قائمة — الموقوفة بلا مرساة ما إلها. */}
-            {hasRenewals && lifecycle !== "archived" && hasCycle && (
-              <button
-                className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-warning/10 hover:text-warning"
-                onClick={() => onCorrectLatestRenewal(c)}
-              >
-                صحّح آخر تجديد
-              </button>
-            )}
-            {hasRenewals && lifecycle !== "archived" && hasCycle && (
-              <button
-                className="text-[11px] px-2 py-0.5 rounded-md text-fg-dim hover:bg-danger/10 hover:text-danger"
-                onClick={() => onRemoveLatestRenewal(c)}
-              >
-                شيل آخر تجديد
+                إنهاء التعاقد
               </button>
             )}
           </div>
@@ -586,13 +569,6 @@ export default function CompaniesClient({
           <div className="mt-3 flex flex-wrap gap-1.5">
             {/* أزرار الخطة الثلاثة — نفس المكوّن يلي بصفحة الموظفين. */}
             {c.publishStartDate && <PlanDocxButtons companyId={c.id} companyName={c.name} />}
-            <button
-              className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
-              title="لصق حمولة JSON — للعمليات: إقفال قطع بدليل، كروت خارج الخطة، دورات التدريب"
-              onClick={() => onImportPlan(c)}
-            >
-              استيراد خطة JSON
-            </button>
             {lifecycle === "active" && (
               <button
                 className="text-[11px] px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10"
@@ -602,13 +578,6 @@ export default function CompaniesClient({
                 أعد جدولة الدورة الحالية
               </button>
             )}
-            <button
-              className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
-              title="حذف كروت لا تنتمي لأي دورة صالحة"
-              onClick={() => onPurgeOrphans(c)}
-            >
-              نظّف الكروت اليتيمة
-            </button>
             {/* إيقاف/إرجاع النشر — للشركة النشطة وحدها، والزرّان بديل بعض حسب
                 حالتها، فما بتقدري توقفي موقوفة ولا ترجّعي شغّالة. */}
             {lifecycle === "paused" ? (
@@ -616,17 +585,65 @@ export default function CompaniesClient({
                 className="text-[11px] px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10"
                 onClick={() => onResumePublishing(c)}
               >
-                رجّع النشر
+                استئناف
               </button>
             ) : (
               <button
                 className="text-[11px] px-2 py-1 rounded-md border border-danger/40 text-danger hover:bg-danger/10"
                 onClick={() => onPausePublishing(c)}
               >
-                أوقف النشر
+                إيقاف مؤقت (بطلب الزبون)
               </button>
             )}
           </div>
+        )}
+        {/* أدوات تقنية (خطة E، ٢٩/١٠): بتغيّر داتا بالجملة — مطوية تحت تحذير، مو بنفس صفّ الشغل اليومي. */}
+        {lifecycle !== "archived" && (c.managed || (hasRenewals && hasCycle)) && (
+          <details className="mt-2 group">
+            <summary className="text-[11px] text-fg-muted cursor-pointer select-none hover:text-fg w-fit">
+              أدوات تقنية
+            </summary>
+            <p className="text-[10px] text-warning mt-1">
+              بتغيّر كروت وتواريخ بالجملة — استعمليها بس إذا عارفة شو بتعمل.
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {c.managed && (
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-bg-elev2 hover:text-fg"
+                  title="لصق حمولة JSON — للعمليات: إقفال قطع بدليل، كروت خارج الخطة، دورات التدريب"
+                  onClick={() => onImportPlan(c)}
+                >
+                  استيراد خطة JSON
+                </button>
+              )}
+              {c.managed && (
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
+                  title="حذف كروت لا تنتمي لأي دورة صالحة"
+                  onClick={() => onPurgeOrphans(c)}
+                >
+                  نظّف الكروت اليتيمة
+                </button>
+              )}
+              {/* تصحيح/شيل آخر تجديد بدهم دورة قائمة — الموقوفة بلا مرساة ما إلها. */}
+              {hasRenewals && hasCycle && (
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-warning/10 hover:text-warning"
+                  onClick={() => onCorrectLatestRenewal(c)}
+                >
+                  صحّح آخر تجديد
+                </button>
+              )}
+              {hasRenewals && hasCycle && (
+                <button
+                  className="text-[11px] px-2 py-1 rounded-md border border-border text-fg-dim hover:bg-danger/10 hover:text-danger"
+                  onClick={() => onRemoveLatestRenewal(c)}
+                >
+                  شيل آخر تجديد
+                </button>
+              )}
+            </div>
+          </details>
         )}
       </Card>
     );

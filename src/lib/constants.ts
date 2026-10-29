@@ -1,3 +1,4 @@
+import { LEAD_TITLE } from "@/lib/labels";
 import { WORK_WEEK } from "./dates";
 import { teamToday } from "./team-day";
 
@@ -72,11 +73,11 @@ export const STATUSES = [
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_LABELS: Record<Status, string> = {
-  NOT_STARTED: "لم يبدأ",
+  NOT_STARTED: "لم تبدأ",
   IN_PROGRESS: "قيد التنفيذ",
   AWAITING_APPROVAL: "بانتظار الموافقة",
-  READY: "جاهز",
-  PUBLISHED: "تم النشر",
+  READY: "جاهزة",
+  PUBLISHED: "منشورة",
 };
 
 export const STATUS_COLORS: Record<Status, string> = {
@@ -189,7 +190,7 @@ export const PHOTO_KIND_LABELS: Record<PhotoKind, string> = {
   REELS: "ريلات",
 };
 export const PHOTO_STATUS_LABELS: Record<PhotoStatus, string> = {
-  NOT_STARTED: "لم يبدأ",
+  NOT_STARTED: "لم تبدأ",
   SHOT: "تم التصوير",
   EDITING: "قيد المونتاج",
   DELIVERED: "تم التسليم",
@@ -417,7 +418,8 @@ export const STAGE_LABELS: Record<Stage, string> = {
 export const BOARDS = ["TODO", "DOING", "REVIEW", "DONE"] as const;
 export type Board = (typeof BOARDS)[number];
 export const BOARD_LABELS: Record<Board, string> = {
-  TODO: "قيد الانتظار",
+  // كان «قيد الانتظار» — بيلتبس مع «بانتظار مرحلة سابقة» (المحجوز). هاد شغل جاهز وما بلّش.
+  TODO: "لم تبدأ",
   DOING: "قيد التنفيذ",
   REVIEW: "للمراجعة",
   DONE: "منجز",
@@ -452,7 +454,7 @@ export function normalizeStatusForStage(status: string, stage?: string | null): 
 }
 
 export const ROLE_LABELS: Record<string, string> = {
-  lead: "تيم ليدر",
+  lead: LEAD_TITLE,
   writer: "كاتب محتوى",
   designer: "مصمم",
   photographer: "مصور",
