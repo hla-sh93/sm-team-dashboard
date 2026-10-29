@@ -19,7 +19,7 @@ import {
   statusToBoard,
 } from "@/lib/constants";
 import { formatDateShort, fromISODate, parseWorkDays, toISODate, utcMidnight } from "@/lib/dates";
-import { teamToday } from "@/lib/team-day";
+import { dayKeyOf, teamToday } from "@/lib/team-day";
 import { cycleForBucket, cyclesOf, parseRenewals, serializeRenewals } from "@/lib/contract";
 import { hasLaterCycle, planTotal, type PlanCounts } from "@/lib/cycle-plan";
 import { bucketKey, existingPieceCounts, planReductionBlocker } from "@/server/cycle-plan";
@@ -278,12 +278,19 @@ const planUpdateSchema = z
             doneOn: isoDate.optional(),
             /** شو لازم ينعمل بالضبط — بيظهر على الكرت وبالبريف. */
             brief: z.string().trim().max(4000).optional(),
+            /**
+             * «سلسلة مراحل» بالحمولة (خطة B، ٢٩/١٠): الكرت ورا كرت تاني (معرّفه بنفس الحمولة أو
+             * `adhoc_<slug>` موجود لنفس الشركة) — بيصير محجوز لحدّ ما يخلص، وبيشاركه مفتاح السلسلة
+             * (فـ«تم النشر» رد على ملف التصميم بيسكّر النشر).
+             */
+            after: z.string().regex(/^[a-z0-9-]{3,60}$/, "معرّف الكرت يلي قبله").optional(),
             evidence: z.string().trim().min(3).max(500),
           })
           .strict()
           .refine((card) => card.workDate <= card.readyDate, {
             message: "يوم الشغل بعد يوم التسليم",
-          }),
+          })
+          .refine((card) => card.after !== card.slug, { message: "الكرت ما بيكون ورا حاله" }),
       )
       .max(30)
       .optional(),
@@ -1070,14 +1077,47 @@ async function applyPlanUpdateOnce(input: unknown) {
         return { ok: false as const, error: `المسؤول «${missingPerson}» غير موجود` };
       }
       const ids = newAdhocSpecs.map((card) => `adhoc_${card.slug}`);
+      const afterIds = newAdhocSpecs.filter((c) => c.after && !slugs.includes(c.after)).map((c) => `adhoc_${c.after}`);
       const existing = await prisma.task.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: [...ids, ...afterIds] } },
         select: {
           id: true, companyId: true, status: true, board: true, notes: true, finishedAt: true, startedAt: true,
           completedAt: true, title: true, stage: true, hours: true, priority: true, workDate: true,
-          readyDate: true, assigneeId: true, brief: true, isPinned: true,
+          readyDate: true, assigneeId: true, brief: true, isPinned: true, blockedById: true, pipelineKey: true,
         },
       });
+      // السلسلة: الكرت يلي قبله لازم يكون معروف، بنفس الشركة، بلا حلقة، وما بيخلص بعد ما يبلّش هاد.
+      const specBySlug = new Map(newAdhocSpecs.map((c) => [c.slug, c]));
+      const existingAfter = new Map(existing.filter((t) => afterIds.includes(t.id)).map((t) => [t.id, t]));
+      for (const card of newAdhocSpecs) {
+        if (!card.after) continue;
+        const prevSpec = specBySlug.get(card.after);
+        const prevRow = existingAfter.get(`adhoc_${card.after}`);
+        if (!prevSpec && !prevRow) return { ok: false as const, error: `«${card.slug}» ورا «${card.after}» — وما في كرت بهالمعرّف` };
+        if (prevRow && prevRow.companyId !== companyId) return { ok: false as const, error: `«${card.after}» تبع شركة تانية` };
+        const prevReady = prevSpec ? prevSpec.readyDate : prevRow?.readyDate ? dayKeyOf(prevRow.readyDate) : null;
+        if (prevReady && prevReady > card.workDate) {
+          return { ok: false as const, error: `«${card.slug}» بيبلّش ${card.workDate} قبل ما يخلص «${card.after}» (${prevReady})` };
+        }
+        const seen = new Set<string>([card.slug]);
+        for (let cur = card.after as string | undefined; cur; cur = specBySlug.get(cur)?.after) {
+          if (seen.has(cur)) return { ok: false as const, error: `حلقة بالسلسلة عند «${cur}»` };
+          seen.add(cur);
+        }
+      }
+      // مفتاح السلسلة = أول كرت فيها (بالحمولة، أو مفتاح الكرت الموجود يلي قبلها).
+      const chainKeyOf = (slug: string): string | null => {
+        let cur = slug;
+        for (let i = 0; i < 40; i++) {
+          const spec = specBySlug.get(cur);
+          if (!spec?.after) return spec && cur !== slug ? `chain_adhoc_${cur}` : null;
+          const prevRow = existingAfter.get(`adhoc_${spec.after}`);
+          if (prevRow) return prevRow.pipelineKey ?? `chain_adhoc_${spec.after}`;
+          cur = spec.after;
+        }
+        return null;
+      };
+      const isChainHead = new Set(newAdhocSpecs.filter((c) => c.after).map((c) => c.after!));
       const existingById = new Map(existing.map((task) => [task.id, task]));
       const foreign = existing.find((task) => task.companyId !== companyId);
       if (foreign) {
@@ -1116,6 +1156,11 @@ async function applyPlanUpdateOnce(input: unknown) {
           // اليوم قرار القائدة لا حساب المحرّك — والتثبيت هو مراجعة الساعات
           // كمان (فحص «كرت خارج الخطة ما بيبلع يوم الشخص»).
           isPinned: true,
+          ...(card.after
+            ? { blockedById: `adhoc_${card.after}`, pipelineKey: chainKeyOf(card.slug) }
+            : isChainHead.has(card.slug)
+              ? { pipelineKey: found?.pipelineKey ?? `chain_adhoc_${card.slug}` }
+              : {}),
           startedAt: status === "NOT_STARTED" ? null : (found?.startedAt ?? doneAt ?? workDate),
           finishedAt: doneAt,
           completedAt: doneAt,
