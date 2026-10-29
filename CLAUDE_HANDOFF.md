@@ -824,6 +824,12 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-10-29 (سحابة، آخر الليل) — Claude — **[USER-CONFIRMED]** «مشرفة. ارفع التحديث» · المسمّى انطبّق (`2558119`)؛ **النشر محجوب من السحابة**
+
+- المسمّى: `LEAD_TITLE = "مشرفة"`، «تقرير المشرفة» بالبريف، «صاحبه أو المشرفة» بـ«اليوم» وتقرير الفترة. الطقم ١٤٨٤ = ١٤٥٠ ناجح · ٤ · ٣٠ بيئة/seed (نفس القائمة).
+- **[USER-CONFIRMED] موافقة النشر** للفرع كامل (A·E·B·C·D·F + المسمّى) حتى `2558119`. **ما انرفع:** السحابة ما فيها وصول لـGitLab (الـremote الوحيد GitHub)، و`list_computer_folders` فاضية (ما في جهاز موصول بـRemote Control).
+- **للجلسة الجاية على الديسكتوب (الموافقة موجودة):** `git fetch https://github.com/hla-sh93/sm-team-dashboard.git claude/blissful-turing-2jat11:claude/blissful-turing-2jat11` → `npm run backup:pull` → دمج على `main` (merge مو rebase لو `main` تقدّم) → `npx prisma generate` + الطقم على المرآة + `PREDEPLOY=1 npx vitest run tests/predeploy-mirror.test.ts` → `git push gitlab main` → تحقّق حيّ: `/login` 200، الكرون 401، و`/admin/fill-days` `/admin/activity` `/admin/admins` `/admin/reschedule` بكوكي وهمية 307 (مو 404). **لا تغيير schema.** بعد النشر: كل الأجهزة رح تنسأل «أنا مين؟» بأول تغيير حالة.
+
 ### 2026-10-29 (سحابة، ليلاً — تنفيذ) — Claude — المرحلة F (بلا schema): «مين عمل شو» + «أنا مين» · **كود على فرع GitHub `claude/blissful-turing-2jat11`؛ مو منشور** · **خلصت كل مراحل الخطة**
 
 - **الكود:** `task-events.ts` (حدث لكل تغيير حالة بـ`Setting taskEvent:*`، تقليم ١٢٠ يوم؛ الفاعل = جلسة الإدارة أو كوكي «أنا مين» محقّق إنه موظف) — مربوط باللوح وقائمة الحالة (بعد النجاح بس) وإقفال تلغرام (المرسِل + الملف) وتأكيد النشر. سؤال «أنا مين؟» قبل أول تغيير بقسم الموظفين + «أنا: X · غيّر» فوق اللوح. `/admin/activity`.
