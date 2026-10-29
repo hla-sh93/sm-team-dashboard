@@ -123,7 +123,7 @@ function isExclusiveDayTask(_task: Pick<Task, "type">, effortDays: number): bool
  * (`computeWorkload` كان أصلاً صح لأنو بياخد كروت الشهر بس — كانت الدالتين
  * بتحسبا نفس الفكرة برقمين مختلفين.)
  */
-function writeScopeCounts(tasks: Task[]): Map<string, number> {
+export function writeScopeCounts(tasks: Task[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const task of tasks) {
     if (!(task.stage === "WRITE" || task.kind === "CONTENT_WRITING")) continue;

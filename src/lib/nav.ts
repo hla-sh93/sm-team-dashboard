@@ -11,7 +11,7 @@
  * base itself. /admin IS password-protected (see lib/auth.ts): middleware +
  * admin layout + assertAdmin() gate it; the owner logs in at /login.
  */
-import {
+import { CalendarRange,
   Building2,
   CalendarClock,
   CheckSquare,
@@ -76,6 +76,8 @@ export const adminNav: NavSection[] = [
       { href: `${ADMIN_BASE}/priorities`, label: "الأولويات", icon: ListOrdered },
       // «إعادة جدولة المتأخر» (القائدة ٢٧/١٠) — للإدارة بس.
       { href: `${ADMIN_BASE}/reschedule`, label: "إعادة جدولة المتأخر", icon: CalendarClock },
+      // «تعبئة الأيام» (خطة D، ٢٩/١٠) — يوم البداية المتوقّع بطاقة كل شخص الكاملة.
+      { href: `${ADMIN_BASE}/fill-days`, label: "تعبئة الأيام", icon: CalendarRange },
       { href: `${ADMIN_BASE}/companies`, label: "الشركات", icon: Building2 },
       { href: `${ADMIN_BASE}/team`, label: "الفريق", icon: Users },
       { href: `${ADMIN_BASE}/telegram`, label: "تلغرام", icon: MessageCircle },

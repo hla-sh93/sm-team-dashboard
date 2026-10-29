@@ -130,6 +130,7 @@ beforeAll(async () => {
   const lateResched = await import("@/server/actions/late-reschedule");
   const tgIdentity = await import("@/server/actions/telegram-identity");
   const taskChain = await import("@/server/actions/task-chain");
+  const fillDays = await import("@/server/actions/fill-days");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -178,6 +179,9 @@ beforeAll(async () => {
     // «سلسلة مراحل» (٢٩/١٠) — بتوزّع شغل على أكتر من شخص.
     { name: "previewTaskChain", call: () => taskChain.previewTaskChain(CHAIN_INPUT(NOPE)), reached: "queries" },
     { name: "createTaskChain", call: () => taskChain.createTaskChain(CHAIN_INPUT(NOPE), "x"), reached: "queries" },
+    // «تعبئة الأيام» (٢٩/١٠) — بيكتب يوم البداية على كروت الخطة.
+    { name: "previewFillDays", call: () => fillDays.previewFillDays("2099-01-04"), reached: "queries" },
+    { name: "applyFillDays", call: () => fillDays.applyFillDays("2099-01-04", "x"), reached: "queries" },
   ];
 });
 
@@ -280,7 +284,7 @@ describe("خريطة التصديرات (ثابت)", () => {
         "addAdminAction", "applyCompanyPlanUpdate", "applyLateReschedule", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "linkTelegramSender", "markChatAsTeam",
-        "pauseCompanyPublishing", "previewLateReschedule", "previewTaskChain", "createTaskChain", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
+        "pauseCompanyPublishing", "previewLateReschedule", "previewTaskChain", "createTaskChain", "previewFillDays", "applyFillDays", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "rematchSenderFiles", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "setUnblockNotify", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",
