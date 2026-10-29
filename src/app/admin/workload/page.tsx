@@ -122,7 +122,10 @@ export default async function WorkloadPage({
                 <span>· ريل: {w.breakdown.REEL}</span>
                 <span>· ريل AI: {w.breakdown.AI_REEL}</span>
                 <span>· ستوري: {w.breakdown.STORY}</span>
-                <span>· مستعجلة: {w.breakdown.ADHOC}</span>
+                {/* كانت «مستعجلة» — هي المهام الإضافية (ADHOC)، وحملها من ساعاتها المكتوبة مو من المعدّل. */}
+                <span className={w.adhocDays > w.capacityDays / 2 ? "text-warning font-semibold" : ""}>
+                  · مهام إضافية: {w.breakdown.ADHOC} ({w.adhocDays} يوم)
+                </span>
                 <span>· الطاقة: {w.capacityDays} يوم</span>
                 <span>· منجز: {w.donePct}%</span>
               </div>

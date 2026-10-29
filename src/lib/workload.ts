@@ -45,6 +45,8 @@ export type WorkloadEntry = {
   itemCount: number;
   tracksDays: boolean; // producers → days; publisher → also days now
   breakdown: { POST: number; REEL: number; AI_REEL: number; STORY: number; ADHOC: number };
+  /** أيام المهام الإضافية من «مطلوب» — من ساعاتها المكتوبة (٨ س = يوم)، مو من معدّل الشخص. */
+  adhocDays: number;
 };
 
 // Roles are free-text and may be Arabic ("ناشر + مدير صفحات") or English keys.
@@ -175,6 +177,7 @@ export function computeWorkload(
     let doneDays = 0;
     let itemCount = 0;
     const breakdown = { POST: 0, REEL: 0, AI_REEL: 0, STORY: 0, ADHOC: 0 };
+    let adhocDaysSum = 0;
 
     if (publisher) {
       const publishTasks = myTasks.filter(
@@ -210,7 +213,10 @@ export function computeWorkload(
       if (isDoneTask(task)) doneDays += effort;
       itemCount += task.quantity ?? 1;
 
-      if (task.kind === "ADHOC") breakdown.ADHOC += 1;
+      if (task.kind === "ADHOC") {
+        breakdown.ADHOC += 1;
+        adhocDaysSum += effort;
+      }
       else if (task.type === "POST") breakdown.POST += task.quantity ?? 1;
       else if (task.type === "REEL") breakdown.REEL += task.quantity ?? 1;
       else if (task.type === "AI_REEL") breakdown.AI_REEL += task.quantity ?? 1;
@@ -254,6 +260,7 @@ export function computeWorkload(
       itemCount,
       tracksDays: true,
       breakdown,
+      adhocDays: r1(adhocDaysSum),
     };
   });
 }
