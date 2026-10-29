@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { archiveEndedContracts } from "@/server/company-lifecycle";
 import CompaniesClient from "./companies-client";
+import { withoutPay } from "@/lib/auth";
 
 export default async function CompaniesPage() {
   // شركة عليها قرار «لم يُجدد» بتنقل للأرشيف وكروتها بتنقفل من حالها — بلا زرّ.
@@ -10,5 +11,6 @@ export default async function CompaniesPage() {
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
   ]);
-  return <CompaniesClient employees={employees} companies={companies} />;
+  // صفحة الشركات ما بتلزمها الرواتب — ما بتوصل المتصفّح لحدا (٢٩/١٠).
+  return <CompaniesClient employees={employees.map(withoutPay)} companies={companies} />;
 }

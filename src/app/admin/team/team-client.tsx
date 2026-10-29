@@ -22,10 +22,12 @@ export default function TeamClient({
   employees,
   unknownSenders,
   handovers = [],
+  canSeePay = false,
 }: {
   employees: Employee[];
   unknownSenders: TelegramSenderRow[];
   handovers?: HandoverRecord[];
+  canSeePay?: boolean;
 }) {
   const handoverOf = new Map(handovers.map((h) => [h.fromId, h]));
   const nameOf = (id: string) => employees.find((x) => x.id === id)?.name ?? "—";
@@ -224,7 +226,7 @@ export default function TeamClient({
 
       <TelegramSenders rows={unknownSenders} employees={employees} />
 
-      <MemberForm open={open} onOpenChange={setOpen} employee={editing} />
+      <MemberForm open={open} onOpenChange={setOpen} employee={editing} canSeePay={canSeePay} />
     </div>
   );
 }

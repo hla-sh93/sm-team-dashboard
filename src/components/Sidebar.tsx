@@ -11,7 +11,7 @@ import {
   areaSwitchHref,
   employeeNav,
 } from "@/lib/nav";
-import { logoutAction } from "@/server/actions/auth";
+import { canSeePayAction, logoutAction } from "@/server/actions/auth";
 
 /**
  * App navigation — responsive.
@@ -28,7 +28,20 @@ export default function Sidebar() {
   const [, startLogout] = useTransition();
 
   const isAdmin = path === ADMIN_BASE || path.startsWith(`${ADMIN_BASE}/`);
-  const navSections = isAdmin ? adminNav : employeeNav;
+  // «المالية» للمالكة بس (٢٩/١٠) — مخفية لحدّ ما ينعرف، فالمسؤول الإضافي ما بيشوفها ولا لحظة.
+  const [canSeePay, setCanSeePay] = useState(false);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let live = true;
+    canSeePayAction().then((v) => live && setCanSeePay(v), () => {});
+    return () => {
+      live = false;
+    };
+  }, [isAdmin]);
+  const navSections = (isAdmin ? adminNav : employeeNav).map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canSeePay || item.href !== `${ADMIN_BASE}/finance`),
+  }));
   const switchHref = areaSwitchHref(isAdmin);
 
   // Close the drawer whenever the route changes.

@@ -552,6 +552,24 @@ export async function currentAdmin(): Promise<AdminIdentity | null> {
 }
 
 /**
+ * الرواتب للمالكة بس (القائدة ٢٩/١٠: «بدي تخفي الرواتب تماماً عن الأدمن الثاني. فقط أنا بشوف
+ * الرواتب»). صفحة المالية، خانات الراتب بنموذج الموظف، والراتب بأي صفّ موظف بيوصل المتصفّح.
+ * ما بيرمي: برّا طلب = مو مالكة.
+ */
+export async function isOwnerSession(): Promise<boolean> {
+  try {
+    return (await currentAdmin())?.kind === "owner";
+  } catch {
+    return false;
+  }
+}
+
+/** صفّ موظف بلا راتب ولا تكلفة ريل — لكل شي بيوصل متصفّح غير المالكة. */
+export function withoutPay<T extends { salary?: number | null; costPerReel?: number | null }>(row: T): T {
+  return { ...row, salary: 0, costPerReel: null };
+}
+
+/**
  * إدارة المسؤولين للمالكة بس: المسؤول الإضافي إلو كل صلاحيات واجهة الإدارة، بس ما
  * بيضيف/بيشيل مسؤولين ولا بيغيّر كلمة سر المالكة — هيك ما حدا بيقفلها برّا حسابها.
  */

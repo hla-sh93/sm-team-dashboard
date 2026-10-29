@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { assertAdmin } from "@/lib/auth";
+import { assertAdmin, isOwnerSession, withoutPay } from "@/lib/auth";
 import { employeeSchema, isCalendarDay, type EmployeeInput } from "@/lib/schemas";
 import { revalidateAll } from "@/lib/revalidate";
 import { fromISODate } from "@/lib/dates";
@@ -81,6 +81,7 @@ export async function createEmployee(input: EmployeeInput) {
   }
   const clash = await telegramIdentityClash(null, telegramFields(parsed.data));
   if (clash) return { ok: false as const, error: clash };
+  const owner = await isOwnerSession();
   try {
     const e = await prisma.employee.create({
       data: {
@@ -91,14 +92,15 @@ export async function createEmployee(input: EmployeeInput) {
         workDays: JSON.stringify(parsed.data.workDays),
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
-        salary: parsed.data.salary ?? 0,
-        costPerReel: parsed.data.costPerReel ?? null,
+        // الراتب للمالكة بس: المسؤول الإضافي ما بيكتبه (ولا بيشوفه بالردّ).
+        salary: owner ? (parsed.data.salary ?? 0) : 0,
+        costPerReel: owner ? (parsed.data.costPerReel ?? null) : null,
         color: parsed.data.color ?? null,
         rates: buildRates(parsed.data),
       },
     });
     revalidateAll();
-    return { ok: true as const, data: e };
+    return { ok: true as const, data: owner ? e : withoutPay(e) };
   } catch {
     return { ok: false as const, error: "فشل إنشاء الموظف" };
   }
@@ -116,6 +118,7 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
   }
   const clash = await telegramIdentityClash(id, telegramFields(parsed.data));
   if (clash) return { ok: false as const, error: clash };
+  const owner = await isOwnerSession();
   try {
     const e = await prisma.employee.update({
       where: { id },
@@ -127,14 +130,14 @@ export async function updateEmployee(id: string, input: EmployeeInput) {
         workDays: JSON.stringify(parsed.data.workDays),
         isScheduled: parsed.data.isScheduled,
         isPhotographer: parsed.data.isPhotographer,
-        salary: parsed.data.salary ?? 0,
-        costPerReel: parsed.data.costPerReel ?? null,
+        // حفظ من المسؤول الإضافي ما بيلمس الراتب المخزَّن (كان رح يصفّره — الخانة مخفية عنده).
+        ...(owner ? { salary: parsed.data.salary ?? 0, costPerReel: parsed.data.costPerReel ?? null } : {}),
         color: parsed.data.color ?? null,
         rates: buildRates(parsed.data),
       },
     });
     revalidateAll();
-    return { ok: true as const, data: e };
+    return { ok: true as const, data: owner ? e : withoutPay(e) };
   } catch {
     return { ok: false as const, error: "فشل تحديث الموظف" };
   }

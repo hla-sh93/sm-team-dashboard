@@ -17,7 +17,11 @@ const scratch = await vi.hoisted(async () => {
 const sent = vi.hoisted(() => ({ calls: [] as { chatId: string; text: string }[], fail: "" }));
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
-vi.mock("@/lib/auth", () => ({ assertAdmin: async () => {} }));
+vi.mock("@/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth")>()),
+  assertAdmin: async () => {},
+  isOwnerSession: async () => true,
+}));
 vi.mock("@/lib/telegram/client", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/telegram/client")>();
   return {

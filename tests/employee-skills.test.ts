@@ -43,7 +43,11 @@ const scratch = await vi.hoisted(async () => {
 });
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
-vi.mock("@/lib/auth", () => ({ assertAdmin: async () => {} }));
+vi.mock("@/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth")>()),
+  assertAdmin: async () => {},
+  isOwnerSession: async () => true,
+}));
 vi.mock("@/lib/db", async () => {
   const { PrismaClient } = await import("@prisma/client");
   const { assertIsolatedTestDatabaseUrl } = await import("./_helpers/test-database");

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { teamToday } from "@/lib/team-day";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react";
+import { isOwnerSession } from "@/lib/auth";
 
 const money = (n: number) => {
   const r = Math.round(n);
@@ -18,6 +19,14 @@ export default async function FinancePage({
 }: {
   searchParams: Promise<{ y?: string; m?: string }>;
 }) {
+  // المالية فيها الرواتب (والربح بيكشفها) — للمالكة بس (٢٩/١٠). ولا قراءة قبل الفحص.
+  if (!(await isOwnerSession())) {
+    return (
+      <div className="rounded-lg border border-border bg-bg-elev p-6 text-sm text-fg-dim flex items-center gap-2">
+        <Lock className="w-4 h-4" /> صفحة المالية للمالكة بس.
+      </div>
+    );
+  }
   const { year, month } = await resolveActiveMonth(await searchParams);
   const label = monthLabel({ year, month });
   const [employees, companies] = await Promise.all([

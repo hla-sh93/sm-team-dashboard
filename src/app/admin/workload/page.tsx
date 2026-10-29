@@ -8,6 +8,7 @@ import { ROLE_LABELS, isTaskDoneState } from "@/lib/constants";
 import { workRoster } from "@/lib/team";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import { AlertTriangle } from "lucide-react";
+import { withoutPay } from "@/lib/auth";
 
 export default async function WorkloadPage({
   searchParams,
@@ -18,7 +19,7 @@ export default async function WorkloadPage({
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);
   const publishFetchEnd = new Date(year, month + 1, 2);
-  const [employees, companies, allTasks, allSessions] = await Promise.all([
+  const [employeeRows, companies, allTasks, allSessions] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
     prisma.task.findMany({
@@ -36,6 +37,8 @@ export default async function WorkloadPage({
     }),
   ]);
 
+  // الحمل ما بيلزمه راتب — ولا رقم بيوصل المتصفّح (٢٩/١٠).
+  const employees = employeeRows.map(withoutPay);
   // شغل شركة موقوفة محفوظ ومخفي — ما بيدخل الحمل (D1، مراجعة ١٢/١٠).
   const tasks = hideDormantCompanyWork(allTasks, companies);
   const sessions = hideDormantCompanyWork(allSessions, companies);

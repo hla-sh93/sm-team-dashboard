@@ -28,6 +28,8 @@ const INTENTIONALLY_PUBLIC = new Set([
   // الدخول والخروج — ما فيهن يكونوا محروسين بطبيعتهن
   "loginAction",
   "logoutAction",
+  // نعم/لا «هالجلسة مالكة؟» للشريط الجانبي (رابط المالية، ٢٩/١٠) — ما بيرجّع داتا.
+  "canSeePayAction",
   // شاشات الموظف: تحديث حالة كرت وتحريكه وإسناده — بلا تسجيل دخول بقرار القائدة
   "createTask",
   "updateTaskDetails",

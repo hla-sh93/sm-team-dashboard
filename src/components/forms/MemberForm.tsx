@@ -31,6 +31,8 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   employee?: Employee | null;
+  /** خانات الراتب للمالكة بس (٢٩/١٠). */
+  canSeePay?: boolean;
 }
 
 // أسبوع الفريق (الأحد → الخميس) هو الافتراضي؛ الباقي لحالات فردية.
@@ -40,7 +42,7 @@ const PRESETS = [
   { label: "الأحد → الخميس + السبت", days: [6, 0, 1, 2, 3, 4] },
 ];
 
-export default function MemberForm({ open, onOpenChange, employee }: Props) {
+export default function MemberForm({ open, onOpenChange, employee, canSeePay = false }: Props) {
   const router = useRouter();
   const [isPending, start] = useTransition();
   const isEdit = !!employee;
@@ -269,7 +271,8 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
             </p>
           </div>
 
-          {/* Finance: monthly salary (+ per-reel cost for a freelance photographer) */}
+          {/* Finance: monthly salary (+ per-reel cost for a freelance photographer) — للمالكة بس. */}
+          {canSeePay && (
           <div className="space-y-2">
             <Label>التكلفة (للمالية)</Label>
             <div className="grid grid-cols-2 gap-4">
@@ -290,6 +293,7 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
               </p>
             )}
           </div>
+          )}
 
           <div className="space-y-2">
             <Label>أيام العمل</Label>

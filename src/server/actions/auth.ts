@@ -15,6 +15,7 @@ import {
   setAdminPassword,
   verifyAdminLogin,
   verifyAdminPassword,
+  isOwnerSession,
 } from "@/lib/auth";
 
 const MIN_PASSWORD = 6;
@@ -119,6 +120,11 @@ export async function loginAction(
 }
 
 /** Sign out of the admin area. */
+/** للشريط الجانبي: رابط «المالية» للمالكة بس. ما بيرجّع داتا — بس نعم/لا. */
+export async function canSeePayAction(): Promise<boolean> {
+  return isOwnerSession();
+}
+
 export async function logoutAction(): Promise<{ ok: true }> {
   await destroySession();
   revalidateSafely("/", "layout");
