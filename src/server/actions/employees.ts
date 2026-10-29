@@ -13,7 +13,7 @@ import { recordHandover } from "@/server/handover";
 function buildRates(d: EmployeeInput): string | null {
   const r: Record<string, number> = {};
   const src = d.rates ?? {};
-  for (const k of ["POST", "STORY", "AI_REEL", "REEL"] as const) {
+  for (const k of ["POST", "STORY", "AI_REEL", "REEL", "SHOOT", "EDIT"] as const) {
     const v = src[k];
     if (typeof v === "number" && v > 0) r[k] = v;
   }

@@ -44,6 +44,9 @@ export const employeeSchema = z.object({
       STORY: rateNum,
       AI_REEL: rateNum,
       REEL: rateNum,
+      // تصوير/مونتاج منفصلين لشخص بيعمل الاتنين (المرحلة C) — فاضي = `REEL`.
+      SHOOT: rateNum,
+      EDIT: rateNum,
       PLAN: rateNum,
     })
     .optional(),

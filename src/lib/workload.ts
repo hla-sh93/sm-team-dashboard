@@ -25,7 +25,7 @@
 import type { Employee, Task, PhotoSession, Company } from "@/types";
 import { isTaskDoneState } from "./constants";
 import { getMonthDays, parseWorkDays, toISODate } from "./dates";
-import { taskDays, adhocDays } from "./capacity";
+import { taskDays, adhocDays, rateKeyFor } from "./capacity";
 
 export type WorkloadEntry = {
   employee: Employee;
@@ -129,7 +129,7 @@ function taskEffortDays(
     const totalCompanyPlanDays = taskDays(emp, "PLAN", task.quantity ?? 1);
     return totalCompanyPlanDays / writeScopeCount(task);
   }
-  if (task.type) return taskDays(emp, task.type, task.quantity ?? 1);
+  if (task.type) return taskDays(emp, rateKeyFor(task), task.quantity ?? 1);
   return adhocDays(emp, task.hours);
 }
 

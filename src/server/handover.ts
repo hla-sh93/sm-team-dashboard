@@ -19,6 +19,25 @@ export async function recordHandover(fromId: string, toId: string, fromDate: str
   await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
 }
 
+export type HandoverRecord = { fromId: string; toId: string; fromDate: string | null };
+
+/** كل التسليمات المسجّلة بتاريخها — لشارة «سلّم شغله لـ…» بصفحة الفريق (المرحلة C). */
+export async function loadHandovers(): Promise<HandoverRecord[]> {
+  const rows = await prisma.setting.findMany({ where: { key: { startsWith: PREFIX } } });
+  const out: HandoverRecord[] = [];
+  for (const row of rows) {
+    try {
+      const v = JSON.parse(row.value) as { toId?: unknown; fromDate?: unknown };
+      if (typeof v.toId === "string" && v.toId) {
+        out.push({ fromId: row.key.slice(PREFIX.length), toId: v.toId, fromDate: typeof v.fromDate === "string" ? v.fromDate : null });
+      }
+    } catch {
+      /* صفّ تالف = ما في تسليم */
+    }
+  }
+  return out;
+}
+
 /** المغادر ← خلفه، من كل التسليمات المسجّلة. */
 export async function loadSuccessors(): Promise<Map<string, string>> {
   const rows = await prisma.setting.findMany({ where: { key: { startsWith: PREFIX } } });

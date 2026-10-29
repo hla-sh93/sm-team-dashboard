@@ -506,6 +506,16 @@ async function generateScheduleOnce(
         settled: t.settled ?? false,
       }));
 
+    // المرحلة C (٢٩/١٠): مرحلة بلا صاحب كانت بتختفي **بصمت** — بلا مونتيرة ما بيتولّد ولا كرت
+    // مونتاج (`wantsEdit`). هلّق بتطلع إنذار. (`isScheduled=false` مو «غادر» — نوال وعمر هيك
+    // عن قصد، فما في إنذار «مغادر بلا خلف» بلا حقل حالة.)
+    if (items.some((i) => i.type === "REEL") && !editorId) {
+      result.warnings.push({
+        level: "warning",
+        message: "ما في مونتير/ة بالفريق — الريلات رح تنجدول بلا كروت مونتاج. حطّي «مونتير» بدور حدا، أو سلّمي شغل المونتيرة لخلفها.",
+      });
+    }
+
     const pipe = expandPipeline(items, {
       writerId,
       publisherId,

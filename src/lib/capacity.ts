@@ -50,10 +50,24 @@ export function parseRates(raw: string | null | undefined): Record<string, numbe
 
 type RateEmp = { rates?: string | null; hoursPerDay?: number };
 
+/**
+ * مفاتيح الريل حسب المرحلة (المرحلة C، ٢٩/١٠): `REEL` كان معناه «تصوير» للمصوّر و«مونتاج»
+ * للمونتيرة — وليلاس من ١/١١ بتعمل الاتنين، فما في طريقة تقول «٦ تصوير و٣ مونتاج». `SHOOT`
+ * و`EDIT` اختياريين بسجلّ الشخص؛ بلاهن بيرجعوا لـ`REEL` متل قبل حرفياً.
+ */
+export const REEL_STAGE_KEYS = ["SHOOT", "EDIT"] as const;
+
 /** Items per working day for this person + type. */
 export function ratePerDay(emp: RateEmp, type: string): number {
   const r = parseRates(emp.rates);
+  if (type === "SHOOT" || type === "EDIT") return r[type] ?? r.REEL ?? DEFAULT_RATES.REEL;
   return r[type] ?? DEFAULT_RATES[type] ?? 1;
+}
+
+/** مفتاح المعدّل لكرت: ريل بمرحلة تصوير/مونتاج بياخد مفتاح مرحلته، والباقي نوعه. */
+export function rateKeyFor(task: { type?: string | null; stage?: string | null }): string {
+  if (task.type === "REEL" && (task.stage === "SHOOT" || task.stage === "EDIT")) return task.stage;
+  return task.type ?? "";
 }
 
 /**
@@ -100,7 +114,7 @@ export function cardDurationDays(
   if (!emp) return 0;
   const qty = task.quantity ?? 1;
   if (task.stage === "WRITE") return taskDays(emp, "PLAN", qty);
-  if (task.type) return taskDays(emp, task.type, qty);
+  if (task.type) return taskDays(emp, rateKeyFor(task), qty);
   if (task.kind === "ADHOC") return adhocDays(emp, task.hours ?? 0);
   return 0;
 }

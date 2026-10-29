@@ -301,7 +301,8 @@ function hoursForTask(emp: EmployeeInput | undefined, type: ContentType): number
 /** سقف المصوّر اليومي **بالعدد** — قرار القائدة (١/٩): المهم كم ريل بالنهار،
  *  مو لكم شركة. معدّله المخزَّن هو الرقم. */
 function reelsPerDayOf(emp: EmployeeInput | undefined): number {
-  const rate = emp ? ratePerDay(emp, "REEL") : 0;
+  // `SHOOT` إذا محطوط (مصوّرة ومونتيرة بنفس الشخص)، وإلا `REEL` متل قبل.
+  const rate = emp ? ratePerDay(emp, "SHOOT") : 0;
   return rate > 0 ? Math.floor(rate) : 1;
 }
 

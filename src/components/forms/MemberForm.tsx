@@ -62,6 +62,8 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
           STORY: er.STORY,
           AI_REEL: er.AI_REEL,
           REEL: er.REEL,
+          SHOOT: er.SHOOT,
+          EDIT: er.EDIT,
         },
         planDays: er.PLAN ? Math.round(1 / er.PLAN) : undefined,
         telegramUserId: employee.telegramUserId ?? "",
@@ -101,6 +103,9 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
 
   const workDays = watch("workDays") ?? [];
   const isPhotographer = watch("isPhotographer");
+  const role = watch("role") ?? "";
+  // مصوّرة ومونتيرة بنفس الشخص (ليلاس من ١/١١): رقمين منفصلين بدل `REEL` الواحد.
+  const doesReels = isPhotographer || /مونت|editor/i.test(role);
 
   // Photographer capacity entered the natural way: "X reels every Y days". We
   // derive the engine's rate = X / Y (reels per working day). Editing an existing
@@ -230,6 +235,22 @@ export default function MemberForm({ open, onOpenChange, employee }: Props) {
                   <span className="text-[11px] text-fg-dim">ريل AI / يوم</span>
                   <Input type="number" step="1" min="0" placeholder="—" {...register("rates.AI_REEL", { valueAsNumber: true })} />
                 </div>
+              </div>
+            )}
+
+            {doesReels && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">تصوير ريل / يوم</span>
+                  <Input type="number" step="0.5" min="0" placeholder="متل الريل" {...register("rates.SHOOT", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[11px] text-fg-dim">مونتاج ريل / يوم</span>
+                  <Input type="number" step="0.5" min="0" placeholder="متل الريل" {...register("rates.EDIT", { valueAsNumber: true })} />
+                </div>
+                <p className="col-span-2 text-[10px] text-fg-muted">
+                  للي بيصوّر وبيمنتج سوا. فاضي = نفس رقم الريل (متل قبل).
+                </p>
               </div>
             )}
 

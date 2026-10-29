@@ -136,7 +136,7 @@ export function computeFinance(
     const ao = ownerOf(c, "AI_REEL");
     if (c.aiReels > 0 && ao && empById.get(ao)) addEffort(ao, c.id, taskDays(empById.get(ao)!, "AI_REEL", c.aiReels));
     const pid = photographerOf(c);
-    if (c.reels > 0 && pid && empById.get(pid)) addEffort(pid, c.id, taskDays(empById.get(pid)!, "REEL", c.reels));
+    if (c.reels > 0 && pid && empById.get(pid)) addEffort(pid, c.id, taskDays(empById.get(pid)!, "SHOOT", c.reels));
     if (items > 0 && writerId && empById.get(writerId) && !isTrainerSuppliedContentCompany(c))
       addEffort(writerId, c.id, taskDays(empById.get(writerId)!, "PLAN", 1));
     if (items > 0 && publisherId) pubItems.set(c.id, (pubItems.get(c.id) ?? 0) + items);

@@ -10,6 +10,7 @@ import MemberForm from "@/components/forms/MemberForm";
 import { deleteEmployee, handoverEmployeeWork } from "@/server/actions/employees";
 import { sendTelegramTest } from "@/server/actions/telegram-identity";
 import type { TelegramSenderRow } from "@/server/telegram-identity";
+import type { HandoverRecord } from "@/server/handover";
 import TelegramSenders from "./telegram-senders";
 import { toast } from "@/components/ui/toaster";
 import { ROLE_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
@@ -20,10 +21,15 @@ import { Plus, Pencil, Trash2, Camera, Zap, ArrowRightLeft, Send } from "lucide-
 export default function TeamClient({
   employees,
   unknownSenders,
+  handovers = [],
 }: {
   employees: Employee[];
   unknownSenders: TelegramSenderRow[];
+  handovers?: HandoverRecord[];
 }) {
+  const handoverOf = new Map(handovers.map((h) => [h.fromId, h]));
+  const nameOf = (id: string) => employees.find((x) => x.id === id)?.name ?? "—";
+  const fmtDay = (iso: string | null) => (iso ? `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}` : "");
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -85,11 +91,16 @@ export default function TeamClient({
         const probe = await handoverEmployeeWork({ fromId: e.id, toId, fromDate });
         if (!probe.ok) return void toast(probe.error, "error");
         const toName = others.find((x) => x.id === toId)?.name ?? "";
+        // التسليم بينفّذ هلّق: كل المفتوح بينتقل والمغادر بيطلع من التوزيع اليوم — مو بالتاريخ.
+        const future = fromDate > iso;
         const confirm = await Swal.fire({
           title: "تأكيد التسليم",
           html:
             `من <b>${esc(e.name)}</b> لـ<b>${esc(toName)}</b> من ${esc(fromDate)}:<br/>` +
-            `${probe.openCards} كرت مفتوح · ${probe.doneSince} كرت منجز من التاريخ · ${probe.companies} شركة`,
+            `${probe.openCards} كرت مفتوح · ${probe.doneSince} كرت منجز من التاريخ · ${probe.companies} شركة` +
+            (future
+              ? `<br/><br/><b style="color:#c77e1b">⚠️ التاريخ لسا ما إجا:</b> التسليم بيصير <b>هلّق</b> — كروت ${esc(e.name)} المفتوحة كلها (حتى يلي قبل ${esc(fromDate)}) بتنتقل اليوم، وبيطلع من التوزيع اليوم. إذا لسا عم يشتغل، الأحسن تعمليه يوم ${esc(fromDate)}.`
+              : ""),
           icon: "question",
           showCancelButton: true,
           confirmButtonText: "سلّم",
@@ -141,6 +152,12 @@ export default function TeamClient({
                     <div className="text-xs text-fg-dim">
                       {ROLE_LABELS[e.role] ?? e.role} · {e.hoursPerDay}س/يوم
                     </div>
+                    {handoverOf.get(e.id) && (
+                      <div className="text-[10px] text-fg-muted">
+                        سلّم شغله لـ{nameOf(handoverOf.get(e.id)!.toId)}
+                        {handoverOf.get(e.id)!.fromDate ? ` من ${fmtDay(handoverOf.get(e.id)!.fromDate)}` : ""} — المنجز قبلها باسمه
+                      </div>
+                    )}
                     <div className={"text-[10px] " + (e.telegramUserId ? "text-success" : "text-warning")}>
                       {e.telegramUserId
                         ? "تلغرام مربوط ✓"
