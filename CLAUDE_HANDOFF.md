@@ -824,6 +824,11 @@ If Claude works in another clone or a cloud-only chat, this file will not synchr
 
 ## 14. Session continuation log (append-only)
 
+### 2026-10-29 (سحابة) — Claude — **[USER-CONFIRMED] موافقة النشر** («طيب يلا, ارفع التحديث») · **ما انرفع — محجوب من السحابة**
+
+- **[VERIFIED]** هالحاوية ما فيها ريموت GitLab ولا صلاحية عليه (`origin` = GitHub بس)، وما في كمبيوتر مربوط بالجلسة (`list_computer_folders` فاضي — وجهاز القائدة Windows، والربط من السحابة بيقبل Mac/Linux بس). فالنشر على Vercel (من GitLab `main`) لازم ينعمل من جلسة الديسكتوب.
+- **للجلسة الجاية على الديسكتوب (الموافقة موجودة):** `git fetch origin claude/blissful-turing-2jat11` → نسخة احتياطية `npm run backup:pull` → دمج الفرع على `main` (لو GitLab `main` تقدّم بعد ١٨/١٠: merge مو rebase) → `npx prisma generate` + الطقم على المرآة + `PREDEPLOY=1 npx vitest run tests/predeploy-mirror.test.ts` → `git push gitlab main` → تحقّق حيّ: `/admin/admins` و`/admin/reschedule` بيرجعوا 307 بلا جلسة، `/login` 200، الكرون 401. لا تغيير schema.
+
 ### 2026-10-27 (سحابة، ليلاً) — Claude — زرّ «إعادة جدولة المتأخر» للإدارة · **كود على فرع GitHub `claude/blissful-turing-2jat11` بس؛ مو مدموج على GitLab `main` ومو منشور، ولا كتابة على الإنتاج**
 
 - **[USER-CONFIRMED]** «كمان بدي زر حصري للأدمنز: إعادة جدولة للتأخيرات (بس اكبسه بيعمل إعادة جدولة للمهام المتأخرة كلها) مع مراعاة الازاحة لباقي المهام وتأثيراتها على بعضها. طبعاً مع امكانية سحب تاريخ اليوم فبيعمل الجدولة من تاريخ اليوم يلي» (الجملة مقطوعة — فهمتها: تاريخ بداية قابل للاختيار، الافتراضي اليوم).
