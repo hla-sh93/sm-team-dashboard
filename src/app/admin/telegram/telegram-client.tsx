@@ -2,10 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Link2, Send, MessageCircle, RefreshCw } from "lucide-react";
+import { Copy, Link2, Send, MessageCircle, RefreshCw, BellRing } from "lucide-react";
 import { Select, Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toaster";
-import { linkChatToCompany, markChatAsTeam, sendBriefNow, setBriefRecipient } from "@/server/actions/telegram";
+import {
+  linkChatToCompany,
+  markChatAsTeam,
+  sendBriefNow,
+  setBriefRecipient,
+  setUnblockNotify,
+} from "@/server/actions/telegram";
 import type { DailyBrief } from "@/lib/telegram/brief";
 import type { Company, TelegramChat, TelegramMessage } from "@/types";
 
@@ -16,6 +22,8 @@ export default function TelegramClient({
   leadChatId,
   recent,
   brief,
+  unblockNotify,
+  linkedEmployees,
 }: {
   configured: boolean;
   chats: TelegramChat[];
@@ -23,6 +31,8 @@ export default function TelegramClient({
   leadChatId: string | null;
   recent: TelegramMessage[];
   brief: DailyBrief;
+  unblockNotify: boolean;
+  linkedEmployees: number;
 }) {
   const router = useRouter();
   const [busy, start] = useTransition();
@@ -111,6 +121,34 @@ export default function TelegramClient({
             className="h-9 px-3 rounded-md border border-border text-sm hover:bg-bg disabled:opacity-50 flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" /> ابعتيلي البريف هلق
+          </button>
+        </div>
+      </section>
+
+      {/* «صار جاهز إلك» */}
+      <section className="rounded-lg border border-border bg-bg-elev p-3 flex flex-col gap-2">
+        <h2 className="text-sm font-semibold flex items-center gap-2">
+          <BellRing className="w-4 h-4 text-accent" /> إشعار «صار جاهز إلك»
+          <span className={`text-[11px] rounded px-1.5 py-0.5 ${unblockNotify ? "bg-success/15 text-success" : "bg-bg text-fg-muted"}`}>
+            {unblockNotify ? "شغّال" : "مطفي"}
+          </span>
+        </h2>
+        <p className="text-[11px] text-fg-muted">
+          لما تنسكّر مرحلة (تصوير، تصميم…) البوت بيبعت رسالة خاصة وحدة لصاحب المرحلة الجاية فيها الكروت يلي صارت
+          جاهزة إله. كل كرت مرّة وحدة بس، وما بيبعت للشخص عن شغله هو، وبرّا ساعات الدوام (٩–٦ وأيام العطلة) بتوصل
+          صامتة. بتوصل بس للموظفين المربوطين يلي بعتوا /start للبوت — هلّق {linkedEmployees} مربوطين.
+        </p>
+        <div>
+          <button
+            disabled={busy}
+            onClick={() =>
+              run(() => setUnblockNotify(!unblockNotify), unblockNotify ? "انطفى الإشعار" : "اشتغل الإشعار")
+            }
+            className={`h-9 px-3 rounded-md text-sm disabled:opacity-50 ${
+              unblockNotify ? "border border-border hover:bg-bg" : "bg-accent text-bg"
+            }`}
+          >
+            {unblockNotify ? "طفّيه" : "شغّليه"}
           </button>
         </div>
       </section>

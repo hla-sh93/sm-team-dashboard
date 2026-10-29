@@ -164,6 +164,8 @@ beforeAll(async () => {
     { name: "linkTelegramSender", call: () => tgIdentity.linkTelegramSender(NOPE, "123456"), reached: "queries" },
     { name: "rematchSenderFiles", call: () => tgIdentity.rematchSenderFiles("123456", 0), reached: "queries" },
     { name: "sendTelegramTest", call: () => tgIdentity.sendTelegramTest(NOPE), reached: "queries" },
+    // إشعار «صار جاهز إلك» (٢٩/١٠) — مطفي افتراضياً، بيفتحه المسؤول بس.
+    { name: "setUnblockNotify", call: () => telegram.setUnblockNotify(true), reached: "queries" },
   ];
 });
 
@@ -268,7 +270,7 @@ describe("خريطة التصديرات (ثابت)", () => {
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "linkTelegramSender", "markChatAsTeam",
         "pauseCompanyPublishing", "previewLateReschedule", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "rematchSenderFiles", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
-        "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "telegramStatus",
+        "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "setUnblockNotify", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",
       ].sort(),
     );

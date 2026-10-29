@@ -29,6 +29,7 @@ import {
   isGroupableCard,
 } from "@/lib/cards";
 import { cardAssetName } from "@/lib/asset-name";
+import { makeReadiness } from "@/lib/readiness";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { toast } from "@/components/ui/toaster";
@@ -48,6 +49,15 @@ import {
 
 const BOARD_RANK: Record<Board, number> = { TODO: 0, DOING: 1, REVIEW: 2, DONE: 3 };
 
+/**
+ * عمود عرض بس، مو حالة: كرت «قيد الانتظار» وحاجزه لسا مفتوح بينعرض لحاله تحت «بانتظار
+ * مرحلة سابقة» — ظاهر ومسمّى (ناطر شو وعند مين)، بس مفصول عن الشغل يلي فيه يبلّش هلّق.
+ */
+type Column = Board | "WAITING";
+const COLUMNS: readonly Column[] = ["WAITING", ...BOARDS];
+const COLUMN_LABELS: Record<Column, string> = { WAITING: "بانتظار مرحلة سابقة", ...BOARD_LABELS };
+const COLUMN_COLORS: Record<Column, string> = { WAITING: "var(--warning)", ...BOARD_COLORS };
+
 /** A board card. Each content piece is its own card (no batching); the shape is
  *  kept generic (`ids` is an array) so a card can still act on >1 task at once. */
 type KCard = {
@@ -58,6 +68,8 @@ type KCard = {
   count: number;
   label: string;
   blockedByLabel: string | null;
+  /** حاجز مفتوح بيمنع الإقفال (السيرفر بيرفض «منجز») — سبب التعطيل. */
+  closeBlockedWhy: string | null;
   durLabel: string;
 };
 
@@ -98,7 +110,7 @@ export default function KanbanBoard({
   // Collapsed groups, keyed `${board}|${groupKey}`, so a heavy column can be
   // folded down to its group headers — less clutter, less scroll.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const groupId = (board: Board, key: string) => `${board}|${key}`;
+  const groupId = (board: Column, key: string) => `${board}|${key}`;
   const toggleGroup = (id: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -106,6 +118,8 @@ export default function KanbanBoard({
       return next;
     });
   const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
+  // من **كل** الكروت: لوح مفلتر على شخص ما فيه حاجز كروته (تصوير غيره).
+  const readinessOf = useMemo(() => makeReadiness(allTasks), [allTasks]);
   const emp = (id: string | null) => employees.find((e) => e.id === id);
   const empName = (id: string | null) => emp(id)?.name ?? "—";
   const empColor = (id: string | null) => emp(id)?.color ?? undefined;
@@ -185,10 +199,21 @@ export default function KanbanBoard({
       }
     }
     const out: KCard[] = [];
+    // أول حاجز **مفتوح** بالسلسلة (مو المباشر بس) + صاحبه — نفس جواب طابور اليوم.
+    const waitingOf = (repr: Task) => {
+      const r = readinessOf(repr);
+      return r.state === "waiting" ? r : null;
+    };
     const blockedLabel = (repr: Task): string | null => {
-      if (!repr.blockedById) return null;
-      const pre = byId.get(repr.blockedById);
-      return pre && pre.board !== "DONE" ? cardLabel(pre, 1) : null;
+      const w = waitingOf(repr);
+      if (!w) return null;
+      const stage = STAGE_LABELS[w.blocker.stage as Stage];
+      const owner = w.blockerOwnerId ? ` · عند ${empName(w.blockerOwnerId)}` : "";
+      return `${stage ? `${stage} ` : ""}${cardLabel(w.blocker, 1)}${owner}`;
+    };
+    const closeBlockedWhy = (repr: Task): string | null => {
+      const w = waitingOf(repr);
+      return w && !w.canClose ? "ما بينسكّر قبل ما تخلص المرحلة يلي قبله" : null;
     };
     for (const [key, arr] of groups) {
       const repr = arr[0];
@@ -204,6 +229,7 @@ export default function KanbanBoard({
         count,
         label: cardLabel(repr, count),
         blockedByLabel: blockedLabel(repr),
+        closeBlockedWhy: closeBlockedWhy(repr),
         durLabel:
           repr.stage === "PUBLISH"
             ? ""
@@ -219,16 +245,17 @@ export default function KanbanBoard({
         count: t.quantity ?? 1,
         label: cardLabel(t, t.quantity ?? 1),
         blockedByLabel: blockedLabel(t),
+        closeBlockedWhy: closeBlockedWhy(t),
         durLabel: t.stage === "PUBLISH" ? "" : durationLabel(t),
       });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, byId, reelNum]);
+  }, [tasks, byId, reelNum, readinessOf]);
 
   const columns = useMemo(() => {
-    const m: Record<Board, KCard[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
-    for (const c of cards) m[c.board].push(c);
+    const m: Record<Column, KCard[]> = { WAITING: [], TODO: [], DOING: [], REVIEW: [], DONE: [] };
+    for (const c of cards) m[c.board === "TODO" && c.blockedByLabel ? "WAITING" : c.board].push(c);
     return m;
   }, [cards]);
 
@@ -302,8 +329,8 @@ export default function KanbanBoard({
   };
 
   const columnGroups = useMemo(() => {
-    const out: Record<Board, CardGroup[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
-    for (const board of BOARDS) {
+    const out: Record<Column, CardGroup[]> = { WAITING: [], TODO: [], DOING: [], REVIEW: [], DONE: [] };
+    for (const board of COLUMNS) {
       const sortedCards = [...columns[board]].sort(byTime);
       if (groupBy === "none") {
         out[board] = [{ key: "__all", label: "", cards: sortedCards }];
@@ -467,8 +494,9 @@ export default function KanbanBoard({
           onChange={(e) => onMove(c.ids, e.target.value)}
         >
           {BOARDS.map((b) => (
-            <option key={b} value={b}>
+            <option key={b} value={b} disabled={b === "DONE" && c.board !== "DONE" && !!c.closeBlockedWhy}>
               {BOARD_LABELS[b]}
+              {b === "DONE" && c.board !== "DONE" && c.closeBlockedWhy ? ` — ${c.closeBlockedWhy}` : ""}
             </option>
           ))}
         </Select>
@@ -477,7 +505,8 @@ export default function KanbanBoard({
   };
 
   // Collapse-all / expand-all across every group currently on the board.
-  const allGroupIds = BOARDS.flatMap((b) => columnGroups[b].map((g) => groupId(b, g.key)));
+  const visibleColumns = COLUMNS.filter((col) => col !== "WAITING" || columns.WAITING.length > 0);
+  const allGroupIds = visibleColumns.flatMap((b) => columnGroups[b].map((g) => groupId(b, g.key)));
   const grouped = groupBy !== "none";
   const allCollapsed =
     grouped && allGroupIds.length > 0 && allGroupIds.every((id) => collapsed.has(id));
@@ -500,13 +529,15 @@ export default function KanbanBoard({
           </button>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {BOARDS.map((col) => (
+      <div
+        className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${visibleColumns.length > 4 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}
+      >
+        {visibleColumns.map((col) => (
           <div key={col} className="bg-bg-elev/40 border border-border-soft rounded-md p-2">
             <div className="flex items-center justify-between px-1.5 py-1 mb-2">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: BOARD_COLORS[col] }} />
-                <span className="text-sm font-semibold">{BOARD_LABELS[col]}</span>
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLUMN_COLORS[col] }} />
+                <span className="text-sm font-semibold">{COLUMN_LABELS[col]}</span>
               </div>
               <span className="text-xs text-fg-muted">{columns[col].length}</span>
             </div>

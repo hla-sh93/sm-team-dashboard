@@ -13,6 +13,7 @@ import { assertAdmin } from "@/lib/auth";
 import { getMe, getWebhookInfo, setWebhook, webhookSecret } from "@/lib/telegram/client";
 import { unmatchMessage } from "@/lib/telegram/ingest";
 import { sendDailyBrief, setLeadChatId } from "@/lib/telegram/service";
+import { UNBLOCK_NOTIFY_KEY } from "@/server/unblock-notify";
 
 
 async function guard(): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -86,6 +87,27 @@ export async function setBriefRecipient(chatId: string) {
   if (!/^-?\d+$/.test(id)) return { ok: false as const, error: "chat id غير صالح" };
   try {
     await setLeadChatId(id);
+    revalidateAll();
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "فشل الحفظ" };
+  }
+}
+
+/**
+ * «صار جاهز إلك» — رسالة خاصة لصاحب المرحلة الجاية لما ينفكّ حجزه (خطة A). مطفي
+ * افتراضياً: بيطلع رسائل لحسابات الموظفين، فالمسؤولة بتفتحه بقرار.
+ */
+export async function setUnblockNotify(on: boolean) {
+  const g = await guard();
+  if (!g.ok) return g;
+  try {
+    const value = on ? "on" : "off";
+    await prisma.setting.upsert({
+      where: { key: UNBLOCK_NOTIFY_KEY },
+      update: { value },
+      create: { key: UNBLOCK_NOTIFY_KEY, value },
+    });
     revalidateAll();
     return { ok: true as const };
   } catch {

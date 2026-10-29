@@ -238,7 +238,7 @@ export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean 
  * طلع متأخر بولا قائمة (والتقرير الدوري بيعدّه متأخر). غير هيك — مونتاج منجز
  * وتصويره مفتوح — تناقض بالداتا بيضل حاجز متل قبل.
  */
-function firstOpenBlocker(byId: Map<string, Task>, task: Task): Task | null {
+export function firstOpenBlocker(byId: Map<string, Task>, task: Task): Task | null {
   const seen = new Set<string>();
   let cur: Task | undefined = task;
   let passedDone = false;

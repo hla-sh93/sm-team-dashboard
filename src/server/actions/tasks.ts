@@ -31,6 +31,7 @@ import { revalidateAll, revalidateSafely } from "@/lib/revalidate";
 // عمليات داخلية مو نقاط نهاية للمتصفّح (فحص ١٢/١٠، SA-08) — بملف عادي.
 import { completeProductionForPublishedTask } from "@/server/task-ops";
 import { teamToday } from "@/lib/team-day";
+import { notifyUnblockedSafely } from "@/server/unblock-notify";
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
@@ -464,6 +465,7 @@ export async function updateTaskStatus(id: string, status: string) {
       },
     });
     if (done) await completeProductionForPublishedTask(before, before.completedAt ?? now);
+    if (done && !isDone(before.status)) await notifyUnblockedSafely([id]);
     revalidateAll();
     return { ok: true as const };
   } catch {
@@ -507,6 +509,7 @@ export async function moveCard(id: string, board: string) {
       },
     });
     if (board === "DONE") await completeProductionForPublishedTask(t, t.completedAt ?? now);
+    if (board === "DONE" && t.board !== "DONE") await notifyUnblockedSafely([id]);
     revalidateAll();
     return { ok: true as const };
   } catch {

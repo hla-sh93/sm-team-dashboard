@@ -11,6 +11,7 @@
  * can never double-count a delivery or a publish confirmation, and an album
  * (one carousel sent as many messages) closes its piece once.
  */
+import { notifyUnblockedSafely } from "@/server/unblock-notify";
 import { dayKeyOf } from "@/lib/team-day";
 import { prisma } from "@/lib/db";
 import { isTaskDoneState } from "@/lib/constants";
@@ -829,6 +830,8 @@ async function closeProductionCard(
       });
     }
   }
+  // «صار جاهز إلك» لصاحب المرحلة الجاية (مطفي افتراضياً؛ ما بيوقّع الإقفال).
+  await notifyUnblockedSafely([t.id]);
   return true;
 }
 
