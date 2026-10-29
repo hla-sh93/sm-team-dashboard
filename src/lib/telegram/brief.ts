@@ -586,6 +586,6 @@ export function buildDailyBrief({
     detail: { key: "detail", title: "التفصيلي (٨:٠٠)", text: detailLines.join("\n") },
     companies: companyMessages,
     employees: employeeMessages,
-    lead: { key: "lead", title: "تقرير المسؤولة", text: leadLines.join("\n") },
+    lead: { key: "lead", title: "تقرير المشرفة", text: leadLines.join("\n") },
   };
 }
