@@ -18,7 +18,7 @@ import { isDormantCompany } from "@/lib/company-visibility";
 import { prisma } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth";
 import { isTaskDoneState } from "@/lib/constants";
-import { buildSchedule, signingPrepOf } from "@/lib/scheduler";
+import { buildSchedule, signingPrepOf, type SchedulerState } from "@/lib/scheduler";
 import { expandPipeline, type PipelineTask } from "@/lib/pipeline";
 import { applyPipelinePreservation } from "@/lib/pipeline-preservation";
 import {
@@ -41,7 +41,9 @@ import { frozenPlanCounts, pieceHasWorkOrBrief } from "@/server/cycle-plan";
 import { markResumeApplied, resumeWindowsFor } from "@/server/company-pause";
 import { loadSuccessors, successorOf } from "@/server/handover";
 import { revalidateAll } from "@/lib/revalidate";
-import { teamDayStart, teamToday } from "@/lib/team-day";
+import { dayKeyOf, teamDayStart, teamToday } from "@/lib/team-day";
+import { dailyTaskEffortDays } from "@/lib/daily-work";
+import { effectiveHours } from "@/lib/capacity";
 
 
 // كل تاريخ بينكتب على منتصف ليل **UTC** (SC-08): نفس الشي على Vercel، ومن جهاز بدمشق
@@ -427,6 +429,9 @@ async function generateScheduleOnce(
     state.reelScriptsReady = new Set(
       reelCards.map((t) => t.companyId).filter((id): id is string => !!id && !scriptless.has(id)),
     );
+    // طابور واحد للشخص عبر الدلاء (خطة D، ٢٩/١٠): ساعات شغله المفتوح بالدلاء التانية من اليوم
+    // ولقدّام، موزّعة على أيام دوامه بين البداية والتسليم — الحشر بيبلّش منها.
+    state.externalLoad = await externalLoadFor(year, month, todayStart, state, plannedIds);
     const result = buildSchedule(state);
 
     // «تسليم الشغل» (D4): المغادر ما بياخد ولا كرت مولَّد — الدور بيروح لخلفه.
@@ -917,3 +922,54 @@ async function generateScheduleOnce(
     return { ok: false as const, error: `فشل توليد الجدول — ${detail}` };
   }
 }
+
+/**
+ * حمل كل شخص بالدلاء **التانية** (خطة D): الكروت المفتوحة يلي بيومها من اليوم ولقدّام، لشركة
+ * مخطّطة أو بلا شركة. المقياس نفس الحشر: الإضافية بساعاتها، والمحتوى بأيام معدّله × ساعات يومه.
+ */
+export async function externalLoadFor(
+  year: number,
+  month: number,
+  todayStart: Date,
+  state: SchedulerState,
+  plannedIds: string[],
+): Promise<Record<string, Record<string, number>>> {
+  const rows = await prisma.task.findMany({
+    where: {
+      NOT: { year, month },
+      status: { notIn: ["CANCELED", "READY", "PUBLISHED"] },
+      board: { not: "DONE" },
+      assigneeId: { not: null },
+      kind: { not: "PUBLISH" },
+      // `stage: { not }` لحاله بيسقط المرحلة الفاضية (SQL: NULL <> x مو صح) — يعني كل مهمة إضافية.
+      AND: [
+        { OR: [{ stage: null }, { stage: { not: "PUBLISH" } }] },
+        { OR: [{ companyId: null }, { companyId: { in: plannedIds } }] },
+      ],
+      workDate: { gte: todayStart, lt: new Date(year, month + 3, 1) },
+    },
+  });
+  const empById = new Map(state.employees.map((e) => [e.id, e]));
+  const out: Record<string, Record<string, number>> = {};
+  for (const t of rows) {
+    const emp = empById.get(t.assigneeId!);
+    if (!emp || !t.workDate) continue;
+    const hours =
+      t.kind === "ADHOC" ? t.hours : dailyTaskEffortDays(emp as never, t as never) * effectiveHours(emp);
+    if (!(hours > 0)) continue;
+    const wd = parseWorkDays(emp.workDays as string | number[]);
+    const start = dayKeyOf(t.workDate);
+    const end = t.readyDate && dayKeyOf(t.readyDate) > start ? dayKeyOf(t.readyDate) : start;
+    const days: string[] = [];
+    for (let d = start; d <= end && days.length < 60; d = nextISO(d)) {
+      if (wd.includes(new Date(`${d}T00:00:00Z`).getUTCDay())) days.push(d);
+    }
+    if (!days.length) days.push(start);
+    const mine = (out[emp.id] ??= {});
+    for (const d of days) mine[d] = (mine[d] ?? 0) + hours / days.length;
+  }
+  return out;
+}
+
+const nextISO = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+

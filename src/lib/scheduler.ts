@@ -127,6 +127,12 @@ export type SchedulerState = {
   /** نزلات ريلات محجوزة **بدلاء تانية** (من القاعدة) — سقف المصوّر اليومي عبر الدورات (SC-01). */
   reelBookings?: { companyId: string; shootDate: Date; reelCount: number }[];
   /**
+   * طابور واحد للشخص عبر الدلاء (خطة D، ٢٩/١٠): ساعات شغله المفتوح **بدلاء تانية** بكل يوم من
+   * اليوم ولقدّام — `empId → (ISO → ساعات)`. الحشر بيبلّش منها بدل يوم فاضي، فدورتان متقاطعتان
+   * ما بيحمّلوا نفس اليوم فوق طاقته. نفس فكرة `reelBookings` للمصوّر.
+   */
+  externalLoad?: Record<string, Record<string, number>>;
+  /**
    * توليد محصور على شركة وحدة (`onlyCompanyId`): نزلات هالشركة بتنحطّ حول نزلات الشركات
    * التانية **المحفوظة** بنفس الدلو (`savedBucketBookings`)، مو حول نسخهم بالذاكرة — هدول
    * ما بينكتبوا، فالسقف كان ينكسر على الأيام المحفوظة بلا إنذار (مراجعة F–H، SC-01).
@@ -948,7 +954,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   for (const [empId, empTasks] of byEmployee) {
     const emp = empById.get(empId);
     if (!emp) continue;
-    packEmployee(emp, empTasks, year, month, until, warnings, coPriority);
+    packEmployee(emp, empTasks, year, month, until, warnings, coPriority, state.externalLoad?.[empId]);
   }
 
   // Stats.
@@ -1005,6 +1011,7 @@ function packEmployee(
   until: Date,
   warnings: SchedulerWarning[],
   coPriority: Map<string, number>,
+  external?: Record<string, number>,
 ): void {
   const priorityOf = (companyId: string | null) =>
     companyId != null ? (coPriority.get(companyId) ?? 99) : 99;
@@ -1017,6 +1024,8 @@ function packEmployee(
   const load = new Map<string, number>();
   const loadOf = (iso: string) => load.get(iso) ?? 0;
   const addLoad = (iso: string, h: number) => load.set(iso, loadOf(iso) + h);
+  // 0) شغل الشخص بالدلاء التانية حاجز ساعاته أصلاً (خطة D).
+  if (external) for (const iso of dayISO) if (external[iso]) addLoad(iso, external[iso]);
 
   // Deadline used for placement: content → readyDate, adhoc → readyDate, else
   // the last day of the period.

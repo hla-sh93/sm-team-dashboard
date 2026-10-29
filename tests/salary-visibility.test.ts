@@ -74,7 +74,7 @@ describe.skipIf(!scratch.available)("الرواتب للمالكة بس", () => 
     const extra = (await TeamPage()) as { props: { employees: { id: string; salary: number }[]; canSeePay: boolean } };
     expect(extra.props.canSeePay).toBe(false);
     expect(extra.props.employees.every((e) => e.salary === 0)).toBe(true);
-    expect(json(extra.props.employees)).not.toContain("500");
+    expect(json(extra.props.employees)).not.toMatch(/"salary":[1-9]|"costPerReel":[1-9]/);
     who.owner = true;
     const owner = (await TeamPage()) as typeof extra;
     expect(owner.props.canSeePay).toBe(true);
