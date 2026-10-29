@@ -33,6 +33,8 @@ import { completeProductionForPublishedTask } from "@/server/task-ops";
 import { teamToday } from "@/lib/team-day";
 import { notifyUnblockedSafely } from "@/server/unblock-notify";
 import { recordTaskEventSafely } from "@/server/task-events";
+import { adhocOverloadDays } from "@/lib/adhoc-effort";
+import { dayKeyOf } from "@/lib/team-day";
 
 const isDone = (s: string) => DONE_STATUSES.includes(s as Status);
 
@@ -60,6 +62,37 @@ async function closeBlockedReason(task: Task): Promise<string | null> {
   return `ما بينسكّر ${label(task.stage)} قبل ما يخلص ${label(blocker.stage)}${owner ? ` (عند ${owner})` : ""} — سكّر ${label(blocker.stage)} أول إذا صار فعلاً.`;
 }
 
+/**
+ * «يوم مستحيل» (المشرفة ٢٩/١٠): بعد حفظ مهمة إضافية، إذا صار عند صاحبها يوم فيه أكتر من ٨ س
+ * مهام إضافية — تنبيه (مو رفض: ممكن فعلاً شغل إضافي، بس لازم ينشاف). بتشرين ١١ كرت بـ٨ س بيوم.
+ */
+async function adhocOverloadWarning(taskId: string): Promise<string | undefined> {
+  try {
+    const t = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!t || t.kind !== "ADHOC" || !t.assigneeId) return undefined;
+    const anchor = t.workDate ?? t.readyDate;
+    if (!anchor) return undefined;
+    const from = new Date(anchor.getTime() - 45 * 86_400_000);
+    const to = new Date((t.readyDate ?? anchor).getTime() + 45 * 86_400_000);
+    const [rows, emp] = await Promise.all([
+      prisma.task.findMany({
+        where: { assigneeId: t.assigneeId, kind: "ADHOC", status: { not: "CANCELED" }, OR: [{ workDate: { gte: from, lte: to } }, { readyDate: { gte: from, lte: to } }] },
+        select: { assigneeId: true, kind: true, status: true, hours: true, workDate: true, readyDate: true },
+      }),
+      prisma.employee.findUnique({ where: { id: t.assigneeId }, select: { name: true, workDays: true } }),
+    ]);
+    const mine = new Set<string>();
+    const s = dayKeyOf(anchor);
+    const e = t.readyDate && dayKeyOf(t.readyDate) > s ? dayKeyOf(t.readyDate) : s;
+    const over = adhocOverloadDays(rows, () => emp?.workDays).filter((o) => o.dayISO >= s && o.dayISO <= e);
+    for (const o of over) mine.add(`${Number(o.dayISO.slice(8, 10))}/${Number(o.dayISO.slice(5, 7))} (${o.hours} س · ${o.cards} كرت)`);
+    if (!mine.size) return undefined;
+    return `تنبيه: ${emp?.name ?? "صاحب الكرت"} صار عنده أكتر من يوم شغل مهام إضافية بـ${[...mine].join("، ")} — راجعي المدد.`;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Create an ad-hoc / manual task (§4.8). Re-runs the month engine so the new
  *  task is scheduled (ASAP for urgent) immediately. */
 export async function createTask(input: TaskInput) {
@@ -80,7 +113,7 @@ export async function createTask(input: TaskInput) {
       : null;
     const startedAt =
       d.status === "NOT_STARTED" ? null : done ? (workDate ?? doneAt) : now;
-    await prisma.task.create({
+    const created = await prisma.task.create({
       data: {
         kind: d.kind,
         type: d.type ?? null,
@@ -114,6 +147,8 @@ export async function createTask(input: TaskInput) {
       const built = await generateScheduleInternal(d.year, d.month, null);
       if (!built.ok) warning = `انحفظت المهمة، بس إعادة الجدولة ما مرقت: ${built.error}`;
     }
+    const overload = await adhocOverloadWarning(created.id);
+    if (overload) warning = warning ? `${warning}\n${overload}` : overload;
     revalidateAll();
     return { ok: true as const, ...(warning ? { warning } : {}) };
   } catch {
@@ -278,7 +313,8 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     // «متابعة مهام التصوير والسوشال ميديا» 16h) then ate the whole day and hid the
     // person's scheduled work. Lead 14/10: «عدل الكود ليقبل 0.1 يوم (حوالي ساعة)».
     if (input.days != null && before.kind === "ADHOC") {
-      data.hours = Math.round(Math.max(0.1, input.days) * 8 * 10) / 10;
+      // منزلتين: ١/٦ يوم = ١.٣٣ س (قرار ١١/١٠)، مو ١.٣.
+      data.hours = Math.round(Math.max(0.1, input.days) * 8 * 100) / 100;
     }
     if (input.quantity != null && before.kind === "CONTENT" && before.stage !== "PUBLISH") {
       data.quantity = Math.max(1, Math.round(input.quantity));
@@ -337,6 +373,10 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     if (reschedule && (await isLiveBucket(before.year, before.month))) {
       const built = await generateScheduleInternal(before.year, before.month, null);
       if (!built.ok) warning = `انحفظ التعديل، بس إعادة الجدولة ما مرقت: ${built.error}`;
+    }
+    if (before.kind === "ADHOC" && (input.days != null || datesTouched || input.assigneeId !== undefined)) {
+      const overload = await adhocOverloadWarning(primary);
+      if (overload) warning = warning ? `${warning}\n${overload}` : overload;
     }
 
     revalidateAll();

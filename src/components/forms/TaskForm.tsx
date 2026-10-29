@@ -23,6 +23,8 @@ import {
 import { toast } from "@/components/ui/toaster";
 import { toISODate } from "@/lib/dates";
 import { extraAssetName } from "@/lib/asset-name";
+import { ADHOC_WORK_TYPES, adhocDaysFromRate, hoursOfDays, rateNote, type AdhocWorkType } from "@/lib/adhoc-effort";
+import { ratePerDay } from "@/lib/capacity";
 
 interface TaskFormProps {
   open: boolean;
@@ -58,7 +60,10 @@ export default function TaskForm({
     title: "",
     assigneeId: employees[0]?.id ?? "",
     companyId: "",
-    days: 1,
+    // بلا افتراضي: «يوم» افتراضي كان سبب ٤١ تصميم بـ٨ س لكل وحدة (تشرين).
+    days: "" as number | string,
+    workType: "" as AdhocWorkType | "",
+    units: 1 as number | string,
     priority: "NORMAL",
     status: "NOT_STARTED",
     workDate: "",
@@ -73,7 +78,9 @@ export default function TaskForm({
     title: t.title || displayLabel || "",
     assigneeId: t.assigneeId ?? "",
     companyId: t.companyId ?? "",
-    days: Math.round(((t.hours || 0) / HPD) * 10) / 10 || 1,
+    days: Math.round(((t.hours || 0) / HPD) * 100) / 100 || 1,
+    workType: "OTHER" as AdhocWorkType | "",
+    units: 1 as number | string,
     priority: t.priority,
     status: t.status,
     workDate: t.workDate ? toISODate(new Date(t.workDate)) : "",
@@ -98,8 +105,27 @@ export default function TaskForm({
   const isPublishCard = isEdit && task?.kind === "PUBLISH" && task.stage === "PUBLISH";
   const postFormat = Number(form.quantity) > 1 ? "CAROUSEL" : "SINGLE";
 
+  // مدة المهمة الإضافية: نوع العمل × الوحدات ÷ معدّل صاحب الكرت، أو يدوي لـ«شغل تاني».
+  const assignee = employees.find((e) => e.id === form.assigneeId);
+  const rateDays =
+    form.workType && form.workType !== "OTHER" ? adhocDaysFromRate(assignee, form.workType, Number(form.units)) : null;
+  const effectiveDays = rateDays ?? (Number(form.days) || 0);
+  const workTypeMeta = ADHOC_WORK_TYPES.find((t) => t.key === form.workType);
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAdhoc && !isEdit && !form.workType) {
+      toast("اختاري نوع العمل — المدة بتنحسب من معدّل الشخص", "error");
+      return;
+    }
+    if (isAdhoc && form.workType && form.workType !== "OTHER" && !assignee) {
+      toast("اختاري المسؤول أول — المدة من معدّله", "error");
+      return;
+    }
+    if (isAdhoc && (!form.workType || form.workType === "OTHER") && !(Number(form.days) > 0)) {
+      toast("اكتبي أيام العمل (مثلاً 0.5 = نص يوم)", "error");
+      return;
+    }
     if (!form.title.trim()) {
       toast("العنوان مطلوب", "error");
       return;
@@ -126,7 +152,9 @@ export default function TaskForm({
           ...(changed("priority") ? { priority: form.priority } : {}),
           ...(changed("status") ? { status: form.status } : {}),
           // Effort floor: a 0-day task would vanish from workload math.
-          ...(isAdhoc && changed("days") ? { days: Math.max(0.1, Number(form.days) || 0) } : {}),
+          ...(isAdhoc && (changed("days") || rateDays != null)
+            ? { days: Math.max(0.1, effectiveDays) }
+            : {}),
           ...(isDesignUnitEditable && changed("quantity")
             ? { quantity: Math.max(1, Math.round(Number(form.quantity) || 1)) }
             : {}),
@@ -139,17 +167,18 @@ export default function TaskForm({
         } else toast(result.error, "error");
       } else {
         // Effort floor: a 0-day task would vanish from workload math.
-        const days = Math.max(0.1, Number(form.days) || 0);
+        const days = Math.max(0.1, effectiveDays);
+        const why = rateDays != null && assignee && form.workType ? rateNote(assignee, form.workType, Number(form.units)) : null;
         const result = await createTask({
           title: form.title.trim(),
           kind: "ADHOC",
-          hours: Math.round(days * HPD * 10) / 10,
+          hours: hoursOfDays(days),
           days,
           priority: form.priority as TaskCreatePriority,
           status: form.status as TaskCreateStatus,
           readyDate: form.readyDate || null,
           workDate: form.workDate || null,
-          notes: form.notes || null,
+          notes: [form.notes, why].filter(Boolean).join("\n") || null,
           brief: form.brief.trim(),
           assigneeId: form.assigneeId || null,
           companyId: form.companyId || null,
@@ -242,15 +271,54 @@ export default function TaskForm({
 
           <div className="grid grid-cols-3 gap-4">
             {isAdhoc && (
-              <div className="space-y-1.5">
-                <Label>أيام العمل</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={form.days}
-                  onChange={(e) => set("days", e.target.value)}
-                />
+              <div className="space-y-1.5 col-span-3">
+                <Label>نوع العمل (المدة بتنحسب من معدّل المسؤول)</Label>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <Select className="flex-1 min-w-48" value={form.workType} onChange={(e) => set("workType", e.target.value)}>
+                    <option value="">— اختاري —</option>
+                    {ADHOC_WORK_TYPES.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {workTypeMeta?.rateKey ? (
+                    <>
+                      <Input
+                        className="w-20"
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={form.units}
+                        onChange={(e) => set("units", e.target.value)}
+                        title="عدد الوحدات"
+                      />
+                      <span className="text-[11px] text-fg-dim">{workTypeMeta.unit}</span>
+                    </>
+                  ) : form.workType === "OTHER" ? (
+                    <>
+                      <Input
+                        className="w-24"
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        placeholder="أيام"
+                        value={form.days}
+                        onChange={(e) => set("days", e.target.value)}
+                      />
+                      <span className="text-[11px] text-fg-dim">يوم عمل</span>
+                    </>
+                  ) : null}
+                </div>
+                {rateDays != null && assignee && workTypeMeta?.rateKey && (
+                  <p className="text-[11px] text-accent">
+                    {Math.round(Number(form.units))} {workTypeMeta.unit} ÷ {ratePerDay(assignee, workTypeMeta.rateKey)}/يوم ({assignee.name}) ={" "}
+                    {hoursOfDays(rateDays)} س ≈ {Math.round(rateDays * 100) / 100} يوم
+                  </p>
+                )}
+                {isEdit && form.workType === "OTHER" && (
+                  <p className="text-[10px] text-fg-muted">المخزَّن هلّق: {form.days} يوم. لو هو تصميم، اختاري «تصميم» والعدد حتى تنحسب من المعدّل.</p>
+                )}
               </div>
             )}
             {isDesignUnitEditable && (

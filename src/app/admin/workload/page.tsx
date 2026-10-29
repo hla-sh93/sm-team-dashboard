@@ -9,6 +9,7 @@ import { workRoster } from "@/lib/team";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import { AlertTriangle } from "lucide-react";
 import { withoutPay } from "@/lib/auth";
+import { adhocOverloadDays } from "@/lib/adhoc-effort";
 
 export default async function WorkloadPage({
   searchParams,
@@ -51,6 +52,11 @@ export default async function WorkloadPage({
   const roster = workRoster(employees, openHolders);
 
   // Whole team, designers first (days), then the rest (by item count).
+  // «يوم مستحيل» (٢٩/١٠): ساعات المهام الإضافية بيوم واحد > ٨ — عادةً مدة مكتوبة غلط.
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const overload = adhocOverloadDays(tasks, (id) => employees.find((e) => e.id === id)?.workDays).filter((o) =>
+    o.dayISO.startsWith(monthKey),
+  );
   const workload = computeWorkload(roster, tasks, year, month, sessions, companies).sort(
     (a, b) =>
       Number(b.tracksDays) - Number(a.tracksDays) ||
@@ -132,6 +138,15 @@ export default async function WorkloadPage({
                 <span>· الطاقة: {w.capacityDays} يوم</span>
                 <span>· منجز: {w.donePct}%</span>
               </div>
+              {overload.some((o) => o.personId === w.employee.id) && (
+                <div className="mt-2 text-[11px] text-warning">
+                  ⚠️ أيام فيها أكتر من ٨ س مهام إضافية (غالباً مدة مكتوبة غلط):{" "}
+                  {overload
+                    .filter((o) => o.personId === w.employee.id)
+                    .map((o) => `${Number(o.dayISO.slice(8, 10))}/${Number(o.dayISO.slice(5, 7))} (${o.hours} س · ${o.cards} كرت)`)
+                    .join("، ")}
+                </div>
+              )}
             </Card>
           );
         })}
