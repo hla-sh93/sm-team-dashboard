@@ -238,7 +238,16 @@ export function makeBlockedPredicate(allTasks: Task[]): (task: Task) => boolean 
  * طلع متأخر بولا قائمة (والتقرير الدوري بيعدّه متأخر). غير هيك — مونتاج منجز
  * وتصويره مفتوح — تناقض بالداتا بيضل حاجز متل قبل.
  */
+/**
+ * «فكّ الحجز يدوياً» (المشرفة، خطة A): سطر دليل على الكرت نفسه بسبب مكتوب. بالملاحظات مش بحقل
+ * لأن إعادة التوليد بتحفظ الملاحظات دايماً وبتبني `blockedById` من جديد — فالقرار بيعيش.
+ */
+export const MANUAL_UNBLOCK_PREFIX = "فكّ الحجز يدوياً";
+export const isManuallyUnblocked = (task: Pick<Task, "notes">): boolean =>
+  (task.notes ?? "").split(/\r?\n/).some((l) => l.trim().startsWith(MANUAL_UNBLOCK_PREFIX));
+
 export function firstOpenBlocker(byId: Map<string, Task>, task: Task): Task | null {
+  if (isManuallyUnblocked(task)) return null;
   const seen = new Set<string>();
   let cur: Task | undefined = task;
   let passedDone = false;

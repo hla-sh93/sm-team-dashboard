@@ -131,6 +131,7 @@ beforeAll(async () => {
   const tgIdentity = await import("@/server/actions/telegram-identity");
   const taskChain = await import("@/server/actions/task-chain");
   const fillDays = await import("@/server/actions/fill-days");
+  const unblockActions = await import("@/server/actions/unblock");
   const NOPE = "c_security_matrix_does_not_exist";
   specs = [
     { name: "createCompany", call: () => companies.createCompany({} as never), reached: "message" },
@@ -182,6 +183,9 @@ beforeAll(async () => {
     // «تعبئة الأيام» (٢٩/١٠) — بيكتب يوم البداية على كروت الخطة.
     { name: "previewFillDays", call: () => fillDays.previewFillDays("2099-01-04"), reached: "queries" },
     { name: "applyFillDays", call: () => fillDays.applyFillDays("2099-01-04", "x"), reached: "queries" },
+    // «فكّ الحجز يدوياً» (٢٩/١٠).
+    { name: "manualUnblock", call: () => unblockActions.manualUnblock(NOPE, "سبب للفحص"), reached: "queries" },
+    { name: "undoManualUnblock", call: () => unblockActions.undoManualUnblock(NOPE), reached: "queries" },
   ];
 });
 
@@ -284,7 +288,7 @@ describe("خريطة التصديرات (ثابت)", () => {
         "addAdminAction", "applyCompanyPlanUpdate", "applyLateReschedule", "archiveCompany", "changePasswordAction", "correctLatestRenewal",
         "createCompany", "createEmployee", "deleteCompany", "deleteEmployee", "endContract",
         "generateCompanySchedule", "generateSchedule", "handoverEmployeeWork", "linkChatToCompany", "linkTelegramSender", "markChatAsTeam",
-        "pauseCompanyPublishing", "previewLateReschedule", "previewTaskChain", "createTaskChain", "previewFillDays", "applyFillDays", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
+        "pauseCompanyPublishing", "previewLateReschedule", "previewTaskChain", "createTaskChain", "previewFillDays", "applyFillDays", "manualUnblock", "undoManualUnblock", "purgeOrphanCards", "regenerateCompanyCurrentCycle",
         "registerWebhook", "rematchSenderFiles", "removeAdminAction", "removeLatestRenewal", "resetAdminPasswordAction", "renewContract", "reorderCompanies",
         "resumeCompanyPublishing", "sendBriefNow", "sendTelegramTest", "setBriefRecipient", "setUnblockNotify", "telegramStatus",
         "undoMatch", "updateCompany", "updateEmployee",

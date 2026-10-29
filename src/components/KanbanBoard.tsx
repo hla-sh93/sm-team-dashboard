@@ -33,6 +33,9 @@ import { makeReadiness } from "@/lib/readiness";
 import { Pill, PriorityPill, LatePill, CyclePill, daysLateOf } from "@/components/ui/pills";
 import { moveCard } from "@/server/actions/tasks";
 import { chosenActorId, ensureActor } from "@/lib/actor-client";
+import { isManuallyUnblocked } from "@/lib/daily-work";
+import { manualUnblock, undoManualUnblock } from "@/server/actions/unblock";
+import Swal from "sweetalert2";
 import { toast } from "@/components/ui/toaster";
 import type { Task, Employee, Company, PublicEmployee, PublicCompany } from "@/types";
 import {
@@ -455,6 +458,52 @@ export default function KanbanBoard({
         {c.blockedByLabel && (
           <div className="flex items-center gap-1 text-[10px] text-warning">
             <Lock className="w-3 h-3" /> بانتظار: {c.blockedByLabel}
+            {isAdminArea && (
+              <button
+                type="button"
+                className="ms-auto text-accent hover:underline"
+                title="الكرت بيصير جاهز قبل ما تخلص المرحلة يلي قبله — بسبب مكتوب"
+                onClick={async () => {
+                  const res = await Swal.fire({
+                    title: "فكّ الحجز يدوياً",
+                    input: "text",
+                    inputLabel: `«${c.label}» بيصير جاهز قبل ما تخلص المرحلة يلي قبله. السبب؟`,
+                    inputPlaceholder: "مثلاً: الوصف وصل للمصمّم شفهياً",
+                    showCancelButton: true,
+                    confirmButtonText: "فكّ الحجز",
+                    cancelButtonText: "إلغاء",
+                  });
+                  if (!res.isConfirmed) return;
+                  const r = await manualUnblock(t.id, String(res.value ?? ""));
+                  if (r.ok) {
+                    toast("انفكّ الحجز");
+                    router.refresh();
+                  } else toast(r.error, "error");
+                }}
+              >
+                فكّ الحجز
+              </button>
+            )}
+          </div>
+        )}
+        {t.blockedById && isManuallyUnblocked(t) && (
+          <div className="flex items-center gap-1 text-[10px] text-fg-muted">
+            🔓 انفكّ الحجز يدوياً
+            {isAdminArea && (
+              <button
+                type="button"
+                className="ms-auto text-accent hover:underline"
+                onClick={async () => {
+                  const r = await undoManualUnblock(t.id);
+                  if (r.ok) {
+                    toast("رجع الحجز");
+                    router.refresh();
+                  } else toast(r.error, "error");
+                }}
+              >
+                رجّع الحجز
+              </button>
+            )}
           </div>
         )}
 
