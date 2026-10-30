@@ -13,6 +13,7 @@ import { revalidateAll } from "@/lib/revalidate";
 import { fromISODate, parseWorkDays, utcMidnight } from "@/lib/dates";
 import { dayKeyOf, teamTodayISO } from "@/lib/team-day";
 import { dailyTaskEffortDays } from "@/lib/daily-work";
+import { loadWriteScopeCounts } from "@/server/write-scopes";
 import { isTaskDoneState } from "@/lib/constants";
 import { WORK_DAY_HOURS } from "@/lib/capacity";
 import { extraAssetName } from "@/lib/asset-name";
@@ -76,6 +77,7 @@ async function computePlan(input: TaskChainInput) {
       OR: [{ readyDate: { gte: utcMidnight(fromISODate(todayISO)) } }, { workDate: { gte: utcMidnight(fromISODate(todayISO)) } }],
     },
   })) as unknown as Task[];
+  const scopes = await loadWriteScopeCounts(ids);
   const load = buildLoadLedger(
     open
       .filter((t) => !isTaskDoneState(t) && t.stage !== "PUBLISH" && t.kind !== "PUBLISH")
@@ -88,7 +90,7 @@ async function computePlan(input: TaskChainInput) {
     (id) => parseWorkDays(empById.get(id)?.workDays),
     (row) => {
       const e = row.assigneeId ? empById.get(row.assigneeId) : undefined;
-      return e ? dailyTaskEffortDays(e, row.task) : 0;
+      return e ? dailyTaskEffortDays(e, row.task, scopes) : 0;
     },
   );
   const plan = planTaskChain({

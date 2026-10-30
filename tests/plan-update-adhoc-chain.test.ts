@@ -87,4 +87,25 @@ describe("adhocCards.after", () => {
     expect(loop.ok).toBe(false);
     expect(await prisma.task.count()).toBe(before);
   });
+
+  // فحص ٣٠/١٠: الحلقة كانت تنفحص بالحمولة بس. «التصميم» ورا «التقرير» (موجود)، والتقرير
+  // بالقاعدة ورا النشر يلي ورا التصميم ← التلاتة محجوزين للأبد.
+  it.skipIf(skip())("رفض: حلقة بتسكّر عبر كروت موجودة بالقاعدة", async () => {
+    const r = await apply(payload([card("design", { workDate: "2026-09-27", readyDate: "2026-09-28", after: `${P}-report` })]));
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("حلقة");
+    expect((await prisma.task.findUnique({ where: { id: `adhoc_${P}-design` } })).blockedById).toBeNull();
+  });
+
+  it.skipIf(skip())("مسموح: إعادة توجيه بتفكّ الحاجز القديم ما بتنحسب حلقة", async () => {
+    // a ورا b بالقاعدة؛ الحمولة: b ورا c، وa ورا c ← ما في حلقة (حاجز a القديم بيتغيّر).
+    expect((await apply(payload([card("ra", { workDate: "2026-09-27", readyDate: "2026-09-27" }), card("rb", { workDate: "2026-09-28", readyDate: "2026-09-28", after: `${P}-ra` })]))).ok).toBe(true);
+    const r = await apply(payload([
+      card("rc", { workDate: "2026-09-20", readyDate: "2026-09-20" }),
+      card("ra", { workDate: "2026-09-27", readyDate: "2026-09-27", after: `${P}-rb` }),
+      card("rb", { workDate: "2026-09-22", readyDate: "2026-09-22", after: `${P}-rc` }),
+    ]));
+    expect(r.ok, r.error).toBe(true);
+    expect((await prisma.task.findUnique({ where: { id: `adhoc_${P}-ra` } })).blockedById).toBe(`adhoc_${P}-rb`);
+  });
 });

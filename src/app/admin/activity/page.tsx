@@ -3,6 +3,7 @@ import { loadTaskEvents } from "@/server/task-events";
 import { buildReelNumbers, cardLabelFor } from "@/lib/cards";
 import { BOARD_LABELS, STATUS_LABELS } from "@/lib/constants";
 import type { Task } from "@/types";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ const when = (iso: string) => {
 
 /** /admin/activity — «مين عمل شو» (خطة التحسينات F): آخر ١٤ يوم من تغييرات الحالة. */
 export default async function ActivityPage() {
+  await requireAdminPage("/admin/activity");
   const events = await loadTaskEvents(14);
   const ids = [...new Set(events.map((e) => e.taskId))];
   const [tasks, companies] = await Promise.all([

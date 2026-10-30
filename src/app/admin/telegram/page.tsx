@@ -3,12 +3,14 @@ import { isTelegramConfigured } from "@/lib/telegram/client";
 import { getLeadChatId, buildTodayBrief } from "@/lib/telegram/service";
 import { isUnblockNotifyOn } from "@/server/unblock-notify";
 import TelegramClient from "./telegram-client";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 /** /admin/telegram (§14) — link the company groups, set where the morning brief
  *  is delivered, and preview exactly what will be sent. */
 export default async function TelegramAdminPage() {
+  await requireAdminPage("/admin/telegram");
   const configured = isTelegramConfigured();
   const [chats, companies, leadChatId, recent, unblockNotify, linkedEmployees] = await Promise.all([
     prisma.telegramChat.findMany({ orderBy: { lastSeenAt: "desc" } }),

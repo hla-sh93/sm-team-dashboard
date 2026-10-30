@@ -43,6 +43,7 @@ import { loadSuccessors, successorOf } from "@/server/handover";
 import { revalidateAll } from "@/lib/revalidate";
 import { dayKeyOf, teamDayStart, teamToday } from "@/lib/team-day";
 import { dailyTaskEffortDays } from "@/lib/daily-work";
+import { loadWriteScopeCounts } from "@/server/write-scopes";
 import { effectiveHours } from "@/lib/capacity";
 
 
@@ -950,12 +951,14 @@ export async function externalLoadFor(
     },
   });
   const empById = new Map(state.employees.map((e) => [e.id, e]));
+  // كرت الخطة بينقسم على نطاقاته بالدورة متل الطابور (مو يوم كامل لكل كرت).
+  const scopes = await loadWriteScopeCounts([...new Set(rows.map((t) => t.assigneeId!))]);
   const out: Record<string, Record<string, number>> = {};
   for (const t of rows) {
     const emp = empById.get(t.assigneeId!);
     if (!emp || !t.workDate) continue;
     const hours =
-      t.kind === "ADHOC" ? t.hours : dailyTaskEffortDays(emp as never, t as never) * effectiveHours(emp);
+      t.kind === "ADHOC" ? t.hours : dailyTaskEffortDays(emp as never, t as never, scopes) * effectiveHours(emp);
     if (!(hours > 0)) continue;
     const wd = parseWorkDays(emp.workDays as string | number[]);
     const start = dayKeyOf(t.workDate);

@@ -120,6 +120,9 @@ export async function executeHandover(plan: HandoverPlan): Promise<void> {
   ]);
   // المحرّك بيختار الكاتبة/المونتيرة/الناشر بالدور — الخلف بيورث الدور كمان.
   await recordHandover(plan.from.id, plan.to.id, plan.fromDate);
+  // تسليم هلّق بيلغي أي تسليم مجدول قديم لنفس الشخص — وإلا الكرون يومها بيكتب فوق السجلّ
+  // لخلف تاني والمحرّك بيبعت الشغل الجاي للغلط (فحص ٣٠/١٠).
+  await cancelPlannedHandover(plan.from.id);
 }
 
 // ─────────────────────────────── التسليم المجدول — «عقدها بينتهي ١/١١» (المرحلة C، ٢٩/١٠)

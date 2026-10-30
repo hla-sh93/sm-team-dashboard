@@ -291,6 +291,20 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
     const touchStatus = input.status !== undefined || (isDone(before.status) && datesTouched);
     const patch = touchStatus ? statusPatch(before, input, dates, now) : null;
 
+    // نفس «راعي الترتيب» تبع اللوح وقائمة الحالة: خانة الحالة بنافذة التعديل كانت طريق
+    // تالت بيسكّر مونتاج قبل تصويره (فحص ٣٠/١٠). بالدفعة، كرت واحد مرفوض بيرفض الحفظ كلّه.
+    const others = (await prisma.task.findMany({ where: { id: { in: ids.slice(1) } } })).sort(
+      (a, b) => ids.indexOf(a.id) - ids.indexOf(b.id),
+    );
+    if (input.status !== undefined) {
+      const closing = isDone(normalizeStatusForStage(input.status, before.stage)) && !isDone(before.status) ? [before] : [];
+      for (const o of others) if (isDone(normalizeStatusForStage(input.status, o.stage)) && !isDone(o.status)) closing.push(o);
+      for (const t of closing) {
+        const refused = await closeBlockedReason(t);
+        if (refused) return { ok: false as const, error: ids.length > 1 ? `«${t.title}»: ${refused}` : refused };
+      }
+    }
+
     // A manual edit is ALWAYS pinned so it survives إعادة الجدولة (the regen
     // preserves pinned cards' title/dates/owner/priority).
     const data: Record<string, unknown> = { isPinned: true };
@@ -333,9 +347,9 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
 
     // Shared fields on the other cards of a batched edit — with the SAME status
     // stamping as the primary (OP-14).
-    for (const id of ids.slice(1)) {
-      const other = await prisma.task.findUnique({ where: { id } });
-      if (!other) continue;
+    const statusChanged: { id: string; from: string; to: string }[] = [];
+    if (patch && patch.data.status !== before.status) statusChanged.push({ id: primary, from: before.status, to: patch.data.status });
+    for (const other of others) {
       const shared: TaskDetailsInput = {
         ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
@@ -350,8 +364,9 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
               now,
             )
           : null;
-      await prisma.task.updateMany({
-        where: { id },
+      // مشروط بالحالة يلي انقرت (متل الكرت الأساسي): ما منكتب حالة قديمة فوق إقفال صار بالنص.
+      const otherWritten = await prisma.task.updateMany({
+        where: otherPatch ? { id: other.id, status: other.status } : { id: other.id },
         data: {
           isPinned: true,
           ...(shared.assigneeId !== undefined ? { assigneeId: shared.assigneeId || null } : {}),
@@ -359,8 +374,15 @@ export async function updateTaskDetails(ids: string[], input: TaskDetailsInput) 
           ...(otherPatch ? otherPatch.data : {}),
         },
       });
+      if (otherWritten.count === 0) continue;
       if (otherPatch?.done) await completeProductionForPublishedTask(other, otherPatch.doneAt);
+      if (otherPatch && otherPatch.data.status !== other.status) statusChanged.push({ id: other.id, from: other.status, to: otherPatch.data.status });
     }
+
+    // متل اللوح وقائمة الحالة: «صار جاهز إلك» للمرحلة الجاية، وسطر «مين عمل شو».
+    const newlyDone = statusChanged.filter((c) => isDone(c.to) && !isDone(c.from)).map((c) => c.id);
+    if (newlyDone.length) await notifyUnblockedSafely(newlyDone);
+    for (const c of statusChanged) await recordTaskEventSafely({ taskId: c.id, from: c.from, to: c.to, source: "status" });
 
     // Reschedule when scheduling-relevant fields changed (pins are preserved).
     const reschedule =

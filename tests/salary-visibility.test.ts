@@ -18,7 +18,7 @@ const who = vi.hoisted(() => ({ owner: false }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/auth")>();
-  return { ...orig, assertAdmin: async () => {}, isOwnerSession: async () => who.owner };
+  return { ...orig, assertAdmin: async () => {}, requireAdminPage: async () => {}, isOwnerSession: async () => who.owner };
 });
 vi.mock("@/lib/db", async () => {
   const { PrismaClient } = await import("@prisma/client");

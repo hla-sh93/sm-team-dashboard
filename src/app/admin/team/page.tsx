@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db";
 import { loadUnknownTelegramSenders } from "@/server/telegram-identity";
 import { loadHandovers, loadPlannedHandovers } from "@/server/handover";
-import { isOwnerSession, withoutPay } from "@/lib/auth";
+import { isOwnerSession, withoutPay, requireAdminPage } from "@/lib/auth";
 import TeamClient from "./team-client";
 
 export default async function TeamPage() {
+  await requireAdminPage("/admin/team");
   const [rows, unknownSenders, handovers, owner, planned] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     loadUnknownTelegramSenders(),

@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { teamToday } from "@/lib/team-day";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react";
-import { isOwnerSession } from "@/lib/auth";
+import { isOwnerSession, requireAdminPage } from "@/lib/auth";
 import { EVIDENCE_LABELS, freelanceOutput } from "@/lib/freelance-output";
 import { buildReelNumbers, cardLabelFor } from "@/lib/cards";
 
@@ -21,6 +21,7 @@ export default async function FinancePage({
 }: {
   searchParams: Promise<{ y?: string; m?: string }>;
 }) {
+  await requireAdminPage("/admin/finance");
   // المالية فيها الرواتب (والربح بيكشفها) — للمالكة بس (٢٩/١٠). ولا قراءة قبل الفحص.
   if (!(await isOwnerSession())) {
     return (

@@ -8,7 +8,7 @@ import { ROLE_LABELS, isTaskDoneState } from "@/lib/constants";
 import { workRoster } from "@/lib/team";
 import { hideDormantCompanyWork } from "@/lib/company-visibility";
 import { AlertTriangle } from "lucide-react";
-import { withoutPay } from "@/lib/auth";
+import { withoutPay, requireAdminPage } from "@/lib/auth";
 import { adhocOverloadDays } from "@/lib/adhoc-effort";
 
 export default async function WorkloadPage({
@@ -16,6 +16,7 @@ export default async function WorkloadPage({
 }: {
   searchParams: Promise<{ y?: string; m?: string }>;
 }) {
+  await requireAdminPage("/admin/workload");
   const { year, month } = await resolveActiveMonth(await searchParams);
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);

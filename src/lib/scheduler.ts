@@ -954,7 +954,7 @@ export function buildSchedule(state: SchedulerState): SchedulerResult {
   for (const [empId, empTasks] of byEmployee) {
     const emp = empById.get(empId);
     if (!emp) continue;
-    packEmployee(emp, empTasks, year, month, until, warnings, coPriority, state.externalLoad?.[empId]);
+    packEmployee(emp, empTasks, year, month, until, warnings, coPriority, state.externalLoad?.[empId], state.today ?? null);
   }
 
   // Stats.
@@ -1012,6 +1012,7 @@ function packEmployee(
   warnings: SchedulerWarning[],
   coPriority: Map<string, number>,
   external?: Record<string, number>,
+  today: Date | null = null,
 ): void {
   const priorityOf = (companyId: string | null) =>
     companyId != null ? (coPriority.get(companyId) ?? 99) : 99;
@@ -1035,12 +1036,23 @@ function packEmployee(
   // Floor: no placement before the company's contract start (first cycle).
   const minISO = (t: ScheduledTask): string =>
     t.notBefore ? toISODate(t.notBefore) : "";
+  // مهمة إضافية مفتوحة بلا يوم مثبّت ما بتنحطّ بيوم مرق (فحص ٣٠/١٠): نافذة الحشر بتبلّش
+  // قبل أول الشهر بأسبوع، فكانت تاخد ٢٨/٩ بدلو تشرين يوم ٣٠/١٠ — وصفحة الأحمال وفحص اليوم
+  // المستحيل بيفرشوا ساعاتها من هداك اليوم. المتأخرة (موعدها مرق) بتاخد أول يوم فاضي من اليوم.
+  const todayISO = today ? toISODate(today) : "";
+  const adhocFloor = (t: ScheduledTask): string => {
+    const nb = minISO(t);
+    const open = t.status !== "READY" && t.status !== "PUBLISHED";
+    return t.kind === "ADHOC" && open && todayISO > nb && dayISO.some((d) => d >= todayISO) ? todayISO : nb;
+  };
 
   // 1) Pinned tasks reserve their stored workDate first.
   const pinned = empTasks.filter((t) => t.isPinned && t.workDate);
   for (const t of pinned) {
     if (!workDays.includes(t.workDate!.getDay())) {
-      const snapped = backWorkday(t.workDate!, workDays);
+      // المهمة الإضافية ما بتبلّش قبل تاريخ بدايتها (§١٦): بداية يوم عطلة بتمشي لأول يوم
+      // دوام **بعدها** — كانت ترجع لقبلها والمحرّك بيكتبها بالقاعدة (فحص ٣٠/١٠).
+      const snapped = t.kind === "ADHOC" ? forwardWorkday(t.workDate!, workDays) : backWorkday(t.workDate!, workDays);
       if (minISO(t) && toISODate(snapped) < minISO(t)) {
         t.workDate = forwardWorkday(t.notBefore!, workDays);
       } else {
@@ -1071,8 +1083,8 @@ function packEmployee(
       a.detKey.localeCompare(b.detKey),
   );
   for (const t of urgent) {
-    const dl = deadlineISO(t);
-    const nb = minISO(t);
+    const nb = adhocFloor(t);
+    const dl = t.kind === "ADHOC" && deadlineISO(t) < nb ? lastISO : deadlineISO(t);
     let placed = false;
     for (let i = 0; i < dayISO.length; i++) {
       const iso = dayISO[i];

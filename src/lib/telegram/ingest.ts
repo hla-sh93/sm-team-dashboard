@@ -392,9 +392,11 @@ async function markPublished(
   publishCard: { id: string; startedAt: Date | null; notes: string | null; board?: string | null },
   at: Date,
   why: string,
-) {
-  await prisma.task.update({
-    where: { id: publishCard.id },
+): Promise<boolean> {
+  // مشروط «لسا مفتوح»: تأكيدين بنفس اللحظة (تلغرام بيبعت التحديثات بالتوازي) كانوا ياخدوا
+  // نفس أقدم كرت، فقطعة بتضل مفتوحة ودليل التاني بيضيع (فحص ٣٠/١٠).
+  const written = await prisma.task.updateMany({
+    where: { id: publishCard.id, board: { not: "DONE" }, status: { notIn: ["PUBLISHED", "READY", "CANCELED"] } },
     data: {
       status: "PUBLISHED",
       board: "DONE",
@@ -408,8 +410,10 @@ async function markPublished(
       })(),
     },
   });
+  if (written.count === 0) return false;
   // «مين عمل شو» (F): `why` فيه اسم المؤكِّد ونصّ الرسالة.
   await recordTaskEventSafely({ taskId: publishCard.id, from: publishCard.board ?? "TODO", to: "DONE", source: "telegram", actor: `تأكيد نشر (تلغرام): ${why}`, actorId: null });
+  return true;
 }
 
 /**
@@ -473,8 +477,7 @@ async function handlePublishConfirmation(input: {
         where: { pipelineKey: production.pipelineKey, stage: "PUBLISH", status: { not: "CANCELED" } },
       });
       if (card && !isTaskDoneState(card)) {
-        await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${fileLabel}${who}`);
-        return [card.id];
+        return (await markPublished(card, at, `رد «${text.slice(0, 30)}» على ${fileLabel}${who}`)) ? [card.id] : [];
       }
     }
     return [];
@@ -530,8 +533,9 @@ async function handlePublishConfirmation(input: {
       if (!typeWord && new Set(inBucket.map((t) => t.type)).size > 1) continue;
       if (!named.includes(inBucket[0])) named.push(inBucket[0]);
     }
-    for (const card of named) await markPublished(card, at, `«${text.slice(0, 40)}»${who}`);
-    return named.map((card) => card.id);
+    const closed: string[] = [];
+    for (const card of named) if (await markPublished(card, at, `«${text.slice(0, 40)}»${who}`)) closed.push(card.id);
+    return closed;
   }
 
   // ٣) تأكيد مجرّد → أقدم قطعة مستحقّة اليوم أو قبلو. ولا مرة قطعة مستقبلية.
@@ -545,10 +549,11 @@ async function handlePublishConfirmation(input: {
   // قطعة محتوى قبل أي كرت متابعة إداري: «تم النشر» بتوبيك شركة بتعني قطعتها،
   // مو كرت «تجهيز القنوات». الإداري بيتسكّر بس لما ما يكون في قطعة مستحقّة.
   const content = due.filter((t) => t.type != null);
-  const pick = (content.length ? content : due)[0];
-  if (!pick) return [];
-  await markPublished(pick, at, `«${text.slice(0, 40)}»${who} — أقدم قطعة مستحقّة`);
-  return [pick.id];
+  // أقدم كرت لسا مفتوح؛ إذا تأكيد تاني سبقنا عليه، اللي بعده.
+  for (const pick of content.length ? content : due) {
+    if (await markPublished(pick, at, `«${text.slice(0, 40)}»${who} — أقدم قطعة مستحقّة`)) return [pick.id];
+  }
+  return [];
 }
 
 // ───────────────────────────────────────────────────────── مطابقة الملف وإقفاله

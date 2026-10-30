@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db";
 import { archiveEndedContracts } from "@/server/company-lifecycle";
 import CompaniesClient from "./companies-client";
-import { withoutPay } from "@/lib/auth";
+import { withoutPay, requireAdminPage } from "@/lib/auth";
 
 export default async function CompaniesPage() {
+  await requireAdminPage("/admin/companies");
   // شركة عليها قرار «لم يُجدد» بتنقل للأرشيف وكروتها بتنقفل من حالها — بلا زرّ.
   // متكافئة: لما ما في شي يتغيّر ما بتكتب شي.
   await archiveEndedContracts();

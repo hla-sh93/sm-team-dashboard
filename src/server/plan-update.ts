@@ -1099,10 +1099,23 @@ async function applyPlanUpdateOnce(input: unknown) {
         if (prevReady && prevReady > card.workDate) {
           return { ok: false as const, error: `«${card.slug}» بيبلّش ${card.workDate} قبل ما يخلص «${card.after}» (${prevReady})` };
         }
-        const seen = new Set<string>([card.slug]);
-        for (let cur = card.after as string | undefined; cur; cur = specBySlug.get(cur)?.after) {
-          if (seen.has(cur)) return { ok: false as const, error: `حلقة بالسلسلة عند «${cur}»` };
+        // الحلقة بتنفحص بالحمولة **وبالقاعدة**: كرت موجود محجوز أصلاً ورا هاد بيعمل حلقة كمان
+        // (فحص ٣٠/١٠: a ورا b بالحمولة وb ورا a بالقاعدة ← التنين محجوزين للأبد).
+        const seen = new Set<string>([`adhoc_${card.slug}`]);
+        let cur: string | null = `adhoc_${card.after}`;
+        for (let step = 0; cur && step < 80; step++) {
+          if (seen.has(cur)) return { ok: false as const, error: `حلقة بالسلسلة عند «${cur.replace(/^adhoc_/, "")}»` };
           seen.add(cur);
+          const at: string = cur;
+          const spec = at.startsWith("adhoc_") ? specBySlug.get(at.slice("adhoc_".length)) : undefined;
+          const row = existing.find((t) => t.id === at);
+          const rowSettled = !!row && (row.status === "CANCELED" || row.board === "DONE" || row.finishedAt != null || DONE_STATUSES.includes(row.status as never));
+          // الحمولة بتغيّر «ورا مين» بس لكرت فيه `after` ومو منجز/ملغى؛ غير هيك الحاجز الموجود بيضل.
+          if (spec?.after && !rowSettled) {
+            cur = `adhoc_${spec.after}`;
+            continue;
+          }
+          cur = row ? row.blockedById : ((await prisma.task.findUnique({ where: { id: at }, select: { blockedById: true } }))?.blockedById ?? null);
         }
       }
       // مفتاح السلسلة = أول كرت فيها (بالحمولة، أو مفتاح الكرت الموجود يلي قبلها).

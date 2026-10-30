@@ -114,7 +114,11 @@ async function main() {
     if (!t) problems.push(`التوظيف: ${id} مش موجود`);
     else if (t.companyId !== JOBS_COMPANY) problems.push(`التوظيف: ${id} مو للتوظيف`);
     else if (DONE.has(t.status) || t.board === "DONE" || t.finishedAt) problems.push(`التوظيف: ${id} منجز/ملغى أصلاً (${t.status}) — ما بينلغى`);
+    else if (t.status !== "NOT_STARTED" || t.startedAt) problems.push(`التوظيف: ${id} بلّش الشغل عليه (${t.status}) — اسألي قبل الإلغاء`);
   }
+  // ملف تلغرام مربوط = في شغل انسلّم عالكرت؛ الإلغاء بيخبّيه.
+  const withFiles = await prisma.telegramMessage.groupBy({ by: ["taskId"], where: { taskId: { in: JOBS_CANCEL } }, _count: true });
+  for (const g of withFiles) problems.push(`التوظيف: ${g.taskId} عليه ${g._count} رسالة تلغرام مربوطة — اسألي قبل الإلغاء`);
   const company = await prisma.company.findUnique({ where: { id: JOBS_COMPANY } });
   if (!company) problems.push("التوظيف: الشركة مش موجودة");
   else if (company.reels !== JOBS_REELS_FROM) problems.push(`التوظيف: عدد الريلات بالسجلّ ${company.reels} مو ${JOBS_REELS_FROM}`);
@@ -136,27 +140,37 @@ async function main() {
     return;
   }
 
-  await prisma.$transaction([
-    ...AYMAN_CARDS.map((c) => {
+  // كل كتابة مشروطة بالحالة يلي انقرت، وأي كتابة ما لقت صفّها (تغيّر بين الفحص والتطبيق)
+  // بترمي — المعاملة كلها بترجع وما بينكتب شي (فحص ٣٠/١٠: كانت تمرق بصمت وتكمّل الباقي).
+  const expectOne = async (what: string, run: Promise<{ count: number }>) => {
+    const r = await run;
+    if (r.count !== 1) throw new Error(`⛔ ${what}: تغيّر من وقت الفحص (${r.count} صف) — ما انكتب شي`);
+  };
+  const ali = alissar[0];
+  await prisma.$transaction(async (tx) => {
+    for (const c of AYMAN_CARDS) {
       const t = ay.find((x) => x.id === c.id)!;
-      return prisma.task.updateMany({
+      await expectOne(`أيمن ${c.id}`, tx.task.updateMany({
         where: { id: c.id, hours: c.hours },
         data: {
           hours: AYMAN_NEW_HOURS,
           notes: note(t.notes, `تصحيح ساعات (المشرفة ${TODAY}): ${c.hours} س ← ${AYMAN_NEW_HOURS} س = تصميم واحد بمعدّل أيمن ٦/يوم (تدقيق ٢٩/١٠)`),
         },
-      });
-    }),
-    ...JOBS_CANCEL.map((id) => {
+      }));
+    }
+    for (const id of JOBS_CANCEL) {
       const t = jobs.find((x) => x.id === id)!;
-      return prisma.task.updateMany({
-        where: { id, status: { notIn: [...DONE] }, board: { not: "DONE" } },
+      await expectOne(`التوظيف ${id}`, tx.task.updateMany({
+        where: { id, status: "NOT_STARTED", startedAt: null, finishedAt: null, board: { not: "DONE" } },
         data: { status: "CANCELED", notes: note(t.notes, `انلغى (المشرفة ${TODAY}): التوظيف ٤ ريل بالشهر — الريلات الزيادة`) },
-      });
-    }),
-    prisma.company.update({ where: { id: JOBS_COMPANY }, data: { reels: JOBS_REELS_TO } }),
-    prisma.employee.update({ where: { id: alissar[0].id }, data: { costPerReel: ALISSAR_COST_PER_REEL, salary: 0 } }),
-  ]);
+      }));
+    }
+    await expectOne("سجلّ التوظيف", tx.company.updateMany({ where: { id: JOBS_COMPANY, reels: JOBS_REELS_FROM }, data: { reels: JOBS_REELS_TO } }));
+    await expectOne("أليسار", tx.employee.updateMany({
+      where: { id: ali.id, salary: ali.salary, costPerReel: ali.costPerReel },
+      data: { costPerReel: ALISSAR_COST_PER_REEL, salary: 0 },
+    }));
+  });
   console.log("\n✅ انطبّق. بعدها: إعادة توليد دلو تشرين للتوظيف من صفحة الشركات، وتحقّق بنسخة احتياطية جديدة.");
 }
 
