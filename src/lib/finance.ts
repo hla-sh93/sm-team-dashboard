@@ -163,13 +163,18 @@ export function computeFinance(
     }
   }
 
-  // Variable per-reel cost (freelance photographers paid by the job).
+  // Variable per-reel cost (freelancers paid by the job): the photographer of a
+  // company's reels, and — since 30/10 (أليسار فريلانس، ٥$ للريل) — the editor:
+  // the engine's editor is the FIRST employee whose role matches (same rule).
   let totalVariable = 0;
+  const editorId = employees.find((e) => /مونتير|مونتاج|editor/i.test(e.role))?.id ?? null;
   for (const e of employees) {
     const cpr = e.costPerReel ?? 0;
-    if (cpr <= 0 || !e.isPhotographer) continue;
+    if (cpr <= 0) continue;
+    const isEditor = !e.isPhotographer && e.id === editorId;
+    if (!e.isPhotographer && !isEditor) continue;
     for (const c of managed) {
-      if (photographerOf(c) === e.id && c.reels > 0) {
+      if ((isEditor || photographerOf(c) === e.id) && c.reels > 0) {
         const v = cpr * c.reels;
         variableCost.set(c.id, variableCost.get(c.id)! + v);
         laborCost.set(c.id, laborCost.get(c.id)! + v);

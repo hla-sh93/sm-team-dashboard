@@ -8,6 +8,8 @@ import { teamToday } from "@/lib/team-day";
 import { frozenPlanCounts } from "@/server/cycle-plan";
 import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react";
 import { isOwnerSession } from "@/lib/auth";
+import { EVIDENCE_LABELS, freelanceOutput } from "@/lib/freelance-output";
+import { buildReelNumbers, cardLabelFor } from "@/lib/cards";
 
 const money = (n: number) => {
   const r = Math.round(n);
@@ -67,6 +69,35 @@ export default async function FinancePage({
     }
   }
   const profit = f.netProfit >= 0;
+
+  // خرج الفريلانس بالقطعة — كروت فعلية (مو الخطة).
+  const payPerReel = employees.filter((e) => (e.costPerReel ?? 0) > 0);
+  const reelRows = payPerReel.length
+    ? await prisma.task.findMany({
+        where: {
+          assigneeId: { in: payPerReel.map((e) => e.id) },
+          type: "REEL",
+          stage: { in: ["SHOOT", "EDIT"] },
+          // «منجز» = ختم إنجاز (نفس `isTaskDoneState`)؛ هامش يوم على الطرفين ويوم دمشق بيحسمه `freelanceOutput`.
+          OR: [
+            { finishedAt: { gte: new Date(year, month, -1), lt: new Date(year, month + 1, 2) } },
+            { AND: [{ finishedAt: null }, { completedAt: { gte: new Date(year, month, -1), lt: new Date(year, month + 1, 2) } }] },
+          ],
+        },
+      })
+    : [];
+  const reelNum = buildReelNumbers(reelRows as never);
+  const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
+  const freelance = payPerReel.map((e) => {
+    const out = freelanceOutput(e, reelRows, year, month);
+    return {
+      id: e.id,
+      name: e.name,
+      cpr: e.costPerReel ?? 0,
+      ...out,
+      lines: out.lines.map((l) => ({ ...l, label: cardLabelFor(reelRows.find((r) => r.id === l.id) as never, 1, reelNum, coName) })),
+    };
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -235,6 +266,34 @@ export default async function FinancePage({
           </div>
         </Card>
       </div>
+      {/* «خرج الفريلانس» (٣٠/١٠): المدفوع بالقطعة — العدد الفعلي ودليل كل ريل قبل الدفع. */}
+      {freelance.length > 0 && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold mb-1">خرج الفريلانس — {label}</h2>
+          <p className="text-[11px] text-fg-muted mb-3">
+            ريلات منجزة فعلاً بالشهر (مونتاج للمونتير، تصوير للمصوّر) × تكلفة الريل. الدليل من سطر الإقفال على الكرت:
+            «ملف تلغرام» = البوت لقط ملفه؛ «انسكّر مع النشر» أو «بلا دليل» = راجعيه قبل الدفع.
+          </p>
+          {freelance.map((p) => (
+            <div key={p.id} className="mb-4 last:mb-0">
+              <div className="text-sm font-semibold">
+                {p.name}: {p.count} ريل × ${p.cpr} = <span className="text-accent">${p.amount}</span>
+                <span className="text-[11px] text-fg-dim font-normal">
+                  {" "}· بملف تلغرام {p.withEvidence} · للمراجعة {p.count - p.withEvidence}
+                </span>
+              </div>
+              <ul className="mt-1 text-[11px] text-fg-dim flex flex-col gap-0.5">
+                {p.lines.map((l) => (
+                  <li key={l.id} className={l.evidence === "telegram" || l.evidence === "cascade" ? "" : "text-warning"}>
+                    {l.doneISO.slice(8, 10)}/{Number(l.doneISO.slice(5, 7))} · {l.label} — {EVIDENCE_LABELS[l.evidence]}
+                    {l.evidenceLine ? ` («${l.evidenceLine.slice(0, 70)}»)` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }

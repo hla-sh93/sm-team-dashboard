@@ -280,16 +280,17 @@ export default function MemberForm({ open, onOpenChange, employee, canSeePay = f
                 <span className="text-[11px] text-fg-dim">الراتب الشهري ($)</span>
                 <Input type="number" step="1" min="0" placeholder="—" {...register("salary", { valueAsNumber: true })} />
               </div>
-              {isPhotographer && (
+              {doesReels && (
                 <div className="space-y-1">
                   <span className="text-[11px] text-fg-dim">تكلفة الريل الواحد ($)</span>
                   <Input type="number" step="1" min="0" placeholder="—" {...register("costPerReel", { valueAsNumber: true })} />
                 </div>
               )}
             </div>
-            {isPhotographer && (
+            {doesReels && (
               <p className="text-[10px] text-fg-muted">
-                للمصوّر المدفوع بالقطعة: اتركي الراتب فارغاً واملئي تكلفة الريل. وللمصوّر براتب ثابت: العكس.
+                للمصوّر أو المونتير المدفوع بالقطعة: اتركي الراتب فارغاً واملئي تكلفة الريل (بتطلع بالمالية «خرج
+                الفريلانس» مع دليل كل ريل). وللي براتب ثابت: العكس.
               </p>
             )}
           </div>
