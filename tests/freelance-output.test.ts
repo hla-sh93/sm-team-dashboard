@@ -53,3 +53,41 @@ describe("المالية: المونتيرة بالقطعة", () => {
     expect(f.totalVariable).toBe(20);
   });
 });
+
+// القائدة ٣٠/١٠: «أليسار انتهى عقدها كموظفة، وصار عنا سعر فريلانس عالريل» — من ١/١١. الشهور قبل
+// (وتشرين نفسه) لازم تضل براتبها، مو تنحسب فريلانس من الأول لأنّ السجلّ الحالي صار راتب ٠.
+describe("تغيير شروط الدفع بتاريخ", () => {
+  const emp = (o: Record<string, unknown>) => ({ salary: 0, costPerReel: null, isPhotographer: false, isScheduled: true, hoursPerDay: 8, workDays: "[0,1,2,3,4]", rates: null, ...o });
+  // السجلّ بعد السكربت: راتب ٠ وتكلفة ٥$، والقديم محفوظ.
+  const now = [emp({ id: "e_alissar", name: "أليسار", role: "مونتيرة", costPerReel: 5 }), emp({ id: "e_lilas", name: "ليلاس", role: "مصورة", isPhotographer: true })];
+  const changes = [{ employeeId: "e_alissar", from: "2026-11-01", before: { salary: 300, costPerReel: null } }];
+  const companies = [{ id: "c1", name: "C", managed: true, status: "active", posts: 0, stories: 0, aiReels: 0, reels: 4, contractValue: 100, photographerId: "e_lilas" }] as never;
+
+  it("تشرين الأول: راتبها القديم وبلا تكلفة ريل؛ تشرين التاني: ٠ راتب و٥$ × ٤", async () => {
+    const { employeesForMonth } = await import("@/lib/pay-terms");
+    const oct = computeFinance(employeesForMonth(now as never, changes, 2026, 9) as never, companies, 2026, 9, { today: new Date("2026-10-30T00:00:00Z") });
+    expect(oct.totalSalaries).toBe(300);
+    expect(oct.totalVariable).toBe(0);
+    const nov = computeFinance(employeesForMonth(now as never, changes, 2026, 10) as never, companies, 2026, 10, { today: new Date("2026-11-10T00:00:00Z") });
+    expect(nov.totalSalaries).toBe(0);
+    expect(nov.totalVariable).toBe(20);
+  });
+
+  it("خرج الفريلانس: ريل منجز قبل ١/١١ (كانت موظفة) ما بينعدّ بالقطعة؛ بعده بـ٥$", async () => {
+    const { payTermsAt } = await import("@/lib/pay-terms");
+    const cprAt = (d: string) => payTermsAt({ id: "e_alissar", salary: 0, costPerReel: 5 }, changes, d).costPerReel ?? 0;
+    const rows = [t("old", { finishedAt: new Date("2026-10-31T20:00:00Z") }), t("new1", {}), t("new2", { finishedAt: new Date("2026-10-31T21:30:00Z") })];
+    const octOut = freelanceOutput(alissar, rows, 2026, 9, cprAt);
+    expect(octOut).toMatchObject({ count: 0, amount: 0 });
+    const novOut = freelanceOutput(alissar, rows, 2026, 10, cprAt);
+    expect(novOut.lines.map((l) => l.id).sort()).toEqual(["new1", "new2"]);
+    expect(novOut.amount).toBe(10);
+  });
+
+  it("سجلّ تالف أو ناقص ← بيتجاهل (ولا بيكسر الصفحة)", async () => {
+    const { parsePayChange } = await import("@/lib/pay-terms");
+    expect(parsePayChange("payChange:x", "{bad")).toBeNull();
+    expect(parsePayChange("payChange:x", JSON.stringify({ from: "1/11", before: { salary: 1 } }))).toBeNull();
+    expect(parsePayChange("payChange:x", JSON.stringify({ from: "2026-11-01", before: { salary: 300, costPerReel: null } }))).toEqual(changes[0] && { ...changes[0], employeeId: "x" });
+  });
+});

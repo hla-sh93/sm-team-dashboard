@@ -91,6 +91,9 @@ const JOBS_REELS_TO = 4;
 
 const ALISSAR_NAME = "أليسار";
 const ALISSAR_COST_PER_REEL = 5;
+// «بينتهي عقدها ب1/11» (المشرفة ٢٩/١٠) و«انتهى عقدها كموظفة، وصار عنا سعر فريلانس عالريل» (٣٠/١٠):
+// الشروط الجديدة من هاليوم؛ قبله المالية بتاخد راتبها القديم (`lib/pay-terms.ts`).
+const ALISSAR_FREELANCE_FROM = "2026-11-01";
 
 const DONE = new Set(["READY", "PUBLISHED", "CANCELED"]);
 const note = (old: string | null, line: string) => [old?.trim(), line].filter(Boolean).join("\n");
@@ -126,10 +129,12 @@ async function main() {
   // ٣) أليسار
   const alissar = await prisma.employee.findMany({ where: { name: ALISSAR_NAME } });
   if (alissar.length !== 1) problems.push(`أليسار: لقيت ${alissar.length} سجلّ باسم «${ALISSAR_NAME}» (لازم واحد)`);
+  else if (await prisma.setting.findUnique({ where: { key: `payChange:${alissar[0].id}` } }))
+    problems.push("أليسار: في سجلّ تغيير دفع إلها أصلاً — انطبّق قبل؟");
 
   console.log(`١) أيمن: ${AYMAN_CARDS.length} كرت → ${AYMAN_NEW_HOURS} س (من ${AYMAN_CARDS.reduce((s, c) => s + c.hours, 0)} س = ${AYMAN_CARDS.reduce((s, c) => s + c.hours, 0) / 8} يوم إلى ${(AYMAN_CARDS.length * AYMAN_NEW_HOURS) / 8} يوم)`);
   console.log(`٢) التوظيف: إلغاء ${JOBS_CANCEL.length} كرت (ريل ٥–٨ + إضافي ٩–١٠)، والسجلّ ${JOBS_REELS_FROM} → ${JOBS_REELS_TO} ريل`);
-  console.log(`٣) أليسار: تكلفة الريل ${ALISSAR_COST_PER_REEL}$، الراتب ٠ (كان: ${alissar[0]?.salary ?? "?"}، تكلفة ${alissar[0]?.costPerReel ?? "—"})`);
+  console.log(`٣) أليسار: من ${ALISSAR_FREELANCE_FROM} تكلفة الريل ${ALISSAR_COST_PER_REEL}$، الراتب ٠ — والشهور قبل بتضل براتبها (كان: ${alissar[0]?.salary ?? "?"}، تكلفة ${alissar[0]?.costPerReel ?? "—"})`);
   if (problems.length) {
     console.log("\n⛔ ما انكتب شي:\n" + problems.map((p) => "  · " + p).join("\n"));
     process.exitCode = 1;
@@ -170,6 +175,13 @@ async function main() {
       where: { id: ali.id, salary: ali.salary, costPerReel: ali.costPerReel },
       data: { costPerReel: ALISSAR_COST_PER_REEL, salary: 0 },
     }));
+    // الشروط القديمة بتنحفظ قبل ما تنمحي — الشهور قبل ١/١١ (وتشرين) بتضل براتبها.
+    await tx.setting.create({
+      data: {
+        key: `payChange:${ali.id}`,
+        value: JSON.stringify({ from: ALISSAR_FREELANCE_FROM, before: { salary: ali.salary, costPerReel: ali.costPerReel } }),
+      },
+    });
   });
   console.log("\n✅ انطبّق. بعدها: إعادة توليد دلو تشرين للتوظيف من صفحة الشركات، وتحقّق بنسخة احتياطية جديدة.");
 }

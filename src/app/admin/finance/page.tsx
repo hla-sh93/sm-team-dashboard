@@ -10,6 +10,7 @@ import { TrendingUp, TrendingDown, Wallet, DollarSign, Lock } from "lucide-react
 import { isOwnerSession, requireAdminPage } from "@/lib/auth";
 import { EVIDENCE_LABELS, freelanceOutput } from "@/lib/freelance-output";
 import { buildReelNumbers, cardLabelFor } from "@/lib/cards";
+import { employeesForMonth, payTermsAt, PAY_CHANGE_PREFIX, parsePayChange, type PayChange } from "@/lib/pay-terms";
 
 const money = (n: number) => {
   const r = Math.round(n);
@@ -32,10 +33,14 @@ export default async function FinancePage({
   }
   const { year, month } = await resolveActiveMonth(await searchParams);
   const label = monthLabel({ year, month });
-  const [employees, companies] = await Promise.all([
+  const [employees, companies, payRows] = await Promise.all([
     prisma.employee.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { priority: "asc" } }),
+    prisma.setting.findMany({ where: { key: { startsWith: PAY_CHANGE_PREFIX } } }),
   ]);
+  // شروط دفع اتغيّرت بتاريخ (أليسار: موظفة ← فريلانس من ١/١١): كل شهر بشروطه وقتها.
+  const payChanges = payRows.map((r) => parsePayChange(r.key, r.value)).filter((c): c is PayChange => c != null);
+  const monthTeam = employeesForMonth(employees, payChanges, year, month);
   // P&L history: computeFinance always reads CURRENT salaries/contract values,
   // so a raise or an archived client would silently rewrite past months. For a
   // PAST month we therefore freeze the first computed result as a snapshot in
@@ -50,7 +55,7 @@ export default async function FinancePage({
     companies.filter((c) => c.managed),
     () => ({ year, month }),
   );
-  let f = computeFinance(employees, companies, year, month, { plans, today });
+  let f = computeFinance(monthTeam, companies, year, month, { plans, today });
   let snapshotAt: Date | null = null;
   if (isPast) {
     const row = await prisma.setting.findUnique({ where: { key: snapKey } }).catch(() => null);
@@ -72,7 +77,9 @@ export default async function FinancePage({
   const profit = f.netProfit >= 0;
 
   // خرج الفريلانس بالقطعة — كروت فعلية (مو الخطة).
-  const payPerReel = employees.filter((e) => (e.costPerReel ?? 0) > 0);
+  // مين إلو سعر بالقطعة بأي يوم من هالشهر (الحالي أو قبل التغيير)؛ وكل ريل بسعر يومه.
+  const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-31`;
+  const payPerReel = employees.filter((e) => (payTermsAt(e, payChanges, monthEnd).costPerReel ?? 0) > 0 || (monthTeam.find((m) => m.id === e.id)?.costPerReel ?? 0) > 0);
   const reelRows = payPerReel.length
     ? await prisma.task.findMany({
         where: {
@@ -90,11 +97,11 @@ export default async function FinancePage({
   const reelNum = buildReelNumbers(reelRows as never);
   const coName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? "";
   const freelance = payPerReel.map((e) => {
-    const out = freelanceOutput(e, reelRows, year, month);
+    const out = freelanceOutput(e, reelRows, year, month, (dayISO) => payTermsAt(e, payChanges, dayISO).costPerReel ?? 0);
     return {
       id: e.id,
       name: e.name,
-      cpr: e.costPerReel ?? 0,
+      cpr: payTermsAt(e, payChanges, monthEnd).costPerReel ?? 0,
       ...out,
       lines: out.lines.map((l) => ({ ...l, label: cardLabelFor(reelRows.find((r) => r.id === l.id) as never, 1, reelNum, coName) })),
     };

@@ -54,6 +54,9 @@ export function freelanceOutput(
   tasks: Row[],
   year: number,
   month: number,
+  /** سعر الريل بيوم إنجازه (تغيير شروط الدفع بتاريخ). بلاه = `costPerReel` الحالي. ريل بيوم
+   *  سعره ٠ (كانت موظفة براتب) مو شغل بالقطعة — ما بينعدّ. */
+  cprAt?: (dayISO: string) => number,
 ): { lines: FreelanceLine[]; count: number; withEvidence: number; amount: number } {
   const stage = person.isPhotographer ? "SHOOT" : "EDIT";
   const key = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -64,15 +67,16 @@ export function freelanceOutput(
     if (!done) continue;
     const doneISO = dayKeyOf(done);
     if (!doneISO.startsWith(key)) continue;
+    if (cprAt && !(cprAt(doneISO) > 0)) continue;
     const ev = evidenceOf(t.notes);
     lines.push({ ...t, doneISO, evidence: ev.kind, evidenceLine: ev.line });
   }
   lines.sort((a, b) => a.doneISO.localeCompare(b.doneISO));
-  const cpr = person.costPerReel ?? 0;
+  const cprOf = cprAt ?? (() => person.costPerReel ?? 0);
   return {
     lines,
     count: lines.length,
     withEvidence: lines.filter((l) => l.evidence === "telegram" || l.evidence === "cascade").length,
-    amount: Math.round(lines.length * cpr * 100) / 100,
+    amount: Math.round(lines.reduce((sum, l) => sum + cprOf(l.doneISO), 0) * 100) / 100,
   };
 }

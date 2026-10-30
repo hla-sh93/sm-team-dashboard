@@ -98,7 +98,8 @@ describe("المالية — ثوابت ومحاسبة", () => {
     // الصفحة بتمرّر خطة دلو الشهر.
     const page = readFileSync("src/app/admin/finance/page.tsx", "utf8");
     expect(page).toMatch(/frozenPlanCounts\(\s*companies\.filter\(\(c\) => c\.managed\),\s*\(\) => \(\{ year, month \}\),?\s*\)/);
-    expect(page).toMatch(/computeFinance\(employees, companies, year, month, \{ plans, today \}\)/);
+    // الفريق بشروط دفع الشهر (تغيير شروط بتاريخ، ٣٠/١٠) + خطة الشهر نفسه.
+    expect(page).toMatch(/computeFinance\(monthTeam, companies, year, month, \{ plans, today \}\)/);
   });
 
   it("[TR-20] شركة ما جدّدت من ١/١٠ كانت عقداً شغّالاً بأيلول — إيراد أيلول بيشملها، وتشرين لأ", () => {
